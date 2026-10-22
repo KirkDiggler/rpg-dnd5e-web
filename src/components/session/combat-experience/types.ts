@@ -10,11 +10,14 @@ import type {
   Participant,
   ReactChoice,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
+import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
+import type { ToastRule } from './toastPolicy';
 
 /** Local interaction state. Provider facts remain in generated messages. */
 export interface CombatExperiencePresentationState {
@@ -99,8 +102,23 @@ export interface CombatExperienceStoryExchange {
   nested?: boolean;
   /** The roll that decided the act, as a breakdown line. */
   rollBreakdown?: string;
-  /** Whether a live arrival of this row may toast (`actToasts`). */
-  toast?: boolean;
+  /** The act this row describes; the forms render from it (#1301). */
+  act?: Act;
+  /** The member and names the row was described for. */
+  describeContext?: DescribeContext;
+  /**
+   * The named toast-policy case a live arrival of this row toasts under
+   * (`toastPolicy.ts`); absent rows stay in the log only.
+   */
+  toastRule?: ToastRule;
+  /** The describer's one line: what a toast shows and is timed by. */
+  toastText?: string;
+  /** The viewer's own deed: its arrival releases held combat toasts. */
+  byViewer?: boolean;
+  /** A fight was formed once this row's act had landed. */
+  inFight?: boolean;
+  /** This row formed or dissolved the fight. */
+  fightEdge?: 'formed' | 'dissolved';
 }
 
 /** Presentation projection of an already-authoritative typed attack event. */

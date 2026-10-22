@@ -242,6 +242,9 @@ const STORY_SAMPLES: NonNullable<HudConceptProfile['storySamples']> = [
     headline: 'Skeleton Guard attacks Aldric',
     detail: 'Aldric turns the blow aside. Miss.',
     tone: 'neutral',
+    // The toast policy's case for each sample (rpg-dnd5e-web#1301): a swing
+    // at the viewer is done to them; another's walk never toasts.
+    toastRule: { case: 'done-to-you', hold: false },
   },
   {
     eyebrow: 'Mira · Movement',
@@ -254,6 +257,7 @@ const STORY_SAMPLES: NonNullable<HudConceptProfile['storySamples']> = [
     headline: 'Aldric casts Healing Word on Mira',
     detail: 'Mira regains 5 hit points.',
     tone: 'success',
+    toastRule: { case: 'own-outcome', hold: false },
   },
 ];
 const martial = ORGANIZED_HUD_PROFILES[1];
