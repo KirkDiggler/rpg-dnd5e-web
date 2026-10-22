@@ -1,10 +1,5 @@
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
-  EventKind,
-  EventSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { PlacementKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import {
   ActSchema,
   AttackOutcome,
   CastOutcome,
@@ -16,47 +11,43 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import { refreshKeysForAct } from './actRefreshKeys';
-import { refreshKeysFor } from './sessionRefreshKeys';
 
 const VIEWER = 'p1';
 const me = { kind: PartyKind.MEMBER, id: VIEWER };
 const them = { kind: PartyKind.MEMBER, id: 'scout' };
 
 type ActInit = MessageInitShape<typeof ActSchema>;
-type EventInit = MessageInitShape<typeof EventSchema>;
 
 function act(family: Family, body: ActInit['body']) {
   return create(ActSchema, { id: 'id-1', family, body });
 }
-function v1(body: EventInit['body'], kind = EventKind.UNSPECIFIED) {
-  return create(EventSchema, { kind, body });
-}
 
 /**
- * Each act beside the v1 event it replaces. The act stream folds several v1
- * beats into one act in places (a cast and its results, a line and its
- * answer); the v1 side names the beat whose row the act must reproduce.
+ * Each act beside the keys it refreshes. The table was the v1 event
+ * stream's (`sessionRefreshKeys.ts`) row for the beat each act replaced; it
+ * is pinned here as literals since that stream left (rpg-dnd5e-web#1305).
  */
-const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
+
+const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
   [
     'own walk',
     act(Family.ACT, { case: 'walk', value: { mover: me } }),
-    v1({ case: 'moved', value: { member: VIEWER } }),
+    ['afford', 'turn', 'where'],
   ],
   [
     'their walk',
     act(Family.ACT, { case: 'walk', value: { mover: them } }),
-    v1({ case: 'moved', value: { member: 'scout' } }),
+    ['view'],
   ],
   [
     'hit',
     act(Family.ACT, { case: 'attack', value: { outcome: AttackOutcome.HIT } }),
-    v1({ case: 'struck', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'miss',
     act(Family.ACT, { case: 'attack', value: { outcome: AttackOutcome.MISS } }),
-    v1({ case: 'missed', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'warded',
@@ -64,7 +55,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'attack',
       value: { outcome: AttackOutcome.WARDED },
     }),
-    v1({ case: 'warded', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'reaction',
@@ -75,7 +66,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
         reaction: { name: 'Opportunity Attack' },
       },
     }),
-    v1({ case: 'struck', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'cast',
@@ -83,7 +74,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'cast',
       value: { results: [{ outcome: CastOutcome.FAILED }] },
     }),
-    v1({ case: 'cast', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'cast warded',
@@ -91,12 +82,12 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'cast',
       value: { results: [{ outcome: CastOutcome.WARDED }] },
     }),
-    v1({ case: 'castWarded', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'activated alone',
     act(Family.ACT, { case: 'activate', value: { by: me } }),
-    v1({ case: 'activated', value: {} }),
+    [],
   ],
   [
     'activation',
@@ -104,7 +95,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'activate',
       value: { results: [{ kind: 'healed' }] },
     }),
-    v1({ case: 'activationResult', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'stabilized',
@@ -114,70 +105,43 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
         results: [{ kind: 'stabilized', stabilization: { stabilized: true } }],
       },
     }),
-    v1({
-      case: 'activationResult',
-      value: { result: { case: 'stabilized', value: {} } },
-    }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'own line',
     act(Family.ACT, { case: 'speak', value: { by: me } }),
-    v1({ case: 'spoke', value: { actor: VIEWER } }),
+    ['afford', 'characterData'],
   ],
-  [
-    'their line',
-    act(Family.ACT, { case: 'speak', value: { by: them } }),
-    v1({ case: 'spoke', value: { actor: 'scout' } }),
-  ],
+  ['their line', act(Family.ACT, { case: 'speak', value: { by: them } }), []],
   [
     'death save',
     act(Family.ACT, { case: 'deathSave', value: { by: me } }),
-    v1({ case: 'deathSaveRolled', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
-  [
-    'loot',
-    act(Family.ACT, { case: 'loot', value: { by: me } }),
-    v1({ case: 'looted', value: {} }),
-  ],
-  [
-    'hold',
-    act(Family.ACT, { case: 'hold', value: { by: me } }),
-    v1({ case: 'held', value: {} }),
-  ],
-  [
-    'drop',
-    act(Family.ACT, { case: 'drop', value: { by: me } }),
-    v1({ case: 'dropped', value: {} }),
-  ],
+  ['loot', act(Family.ACT, { case: 'loot', value: { by: me } }), []],
+  ['hold', act(Family.ACT, { case: 'hold', value: { by: me } }), ['view']],
+  ['drop', act(Family.ACT, { case: 'drop', value: { by: me } }), ['view']],
   [
     'door',
     act(Family.ACT, { case: 'door', value: { door: 'gate' } }),
-    v1({ case: 'door', value: {} }),
+    ['view'],
   ],
   [
     'equip',
     act(Family.ACT, { case: 'equip', value: { by: me } }),
-    v1({ case: 'equipmentChanged', value: {} }),
+    ['afford', 'characterData'],
   ],
-  [
-    'stay',
-    act(Family.ACT, { case: 'stay', value: { member: them } }),
-    v1({ case: 'stayed', value: {} }),
-  ],
-  [
-    'sneak',
-    act(Family.ACT, { case: 'sneak', value: { by: me } }),
-    v1({ case: 'snuck', value: {} }),
-  ],
+  ['stay', act(Family.ACT, { case: 'stay', value: { member: them } }), []],
+  ['sneak', act(Family.ACT, { case: 'sneak', value: { by: me } }), []],
   [
     'rest',
     act(Family.ACT, { case: 'rest', value: { by: me } }),
-    v1({ case: 'rested', value: {} }),
+    ['afford', 'characterData', 'turn'],
   ],
   [
     'answer',
     act(Family.TABLE_ANSWER, { case: 'tableAnswer', value: { word: 'yield' } }),
-    v1({ case: 'answered', value: {} }),
+    ['afford', 'view'],
   ],
   [
     'temper',
@@ -185,17 +149,17 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'tableAnswer',
       value: { dealt: { temper: 'wary' } },
     }),
-    v1({ case: 'tempered', value: {} }),
+    [],
   ],
   [
     'downed',
     act(Family.STATE, { case: 'state', value: { change: StateKind.DOWNED } }),
-    v1({ case: 'downed', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'stance',
     act(Family.STATE, { case: 'state', value: { change: StateKind.STANCE } }),
-    v1({ case: 'stanceChanged', value: {} }),
+    ['afford', 'view'],
   ],
   [
     'concentration',
@@ -203,7 +167,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'state',
       value: { change: StateKind.CONCENTRATION_ENDED },
     }),
-    v1({ case: 'concentrationEnded', value: {} }),
+    ['characterData', 'turn'],
   ],
   [
     'condition lifted',
@@ -211,7 +175,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'state',
       value: { change: StateKind.CONDITION_REMOVED },
     }),
-    v1({ case: 'activationResult', value: {} }),
+    ['afford', 'characterData', 'view'],
   ],
   [
     'experience',
@@ -219,7 +183,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'state',
       value: { change: StateKind.EXPERIENCE },
     }),
-    v1({ case: 'experienceGained', value: {} }),
+    ['characterData'],
   ],
   [
     'sighted',
@@ -227,7 +191,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'perception',
       value: { sense: Sense.SIGHT },
     }),
-    v1({ case: 'sighted', value: {} }),
+    ['roster', 'view'],
   ],
   [
     'heard',
@@ -235,7 +199,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'perception',
       value: { sense: Sense.HEARING },
     }),
-    v1({ case: 'heard', value: {} }),
+    [],
   ],
   [
     'discovery',
@@ -243,7 +207,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'perception',
       value: { sense: Sense.DISCOVERY, observer: me },
     }),
-    v1({ case: 'discoveryChecked', value: { member: VIEWER } }),
+    ['afford', 'characterData'],
   ],
   [
     'revealed',
@@ -251,7 +215,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'perception',
       value: { sense: Sense.REVEAL },
     }),
-    v1({ case: 'concealmentRevealed', value: {} }),
+    ['atlas', 'doors'],
   ],
   [
     'cells',
@@ -259,17 +223,17 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'perception',
       value: { sense: Sense.CELLS },
     }),
-    v1({ case: 'cellsRevealed', value: {} }),
+    ['roster', 'view'],
   ],
   [
     'tick',
     act(Family.CLOCK, { case: 'clock', value: { mark: ClockMark.TICK } }),
-    v1(undefined as never, EventKind.TICK),
+    [],
   ],
   [
     'turn ended',
     act(Family.CLOCK, { case: 'clock', value: { mark: ClockMark.TURN_ENDED } }),
-    v1({ case: 'turnEnded', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'fight formed',
@@ -277,7 +241,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.FIGHT_FORMED },
     }),
-    v1({ case: 'fightStarted', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'fight dissolved',
@@ -285,17 +249,17 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.FIGHT_DISSOLVED },
     }),
-    v1({ case: 'fightEnded', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'joined',
     act(Family.CLOCK, { case: 'clock', value: { mark: ClockMark.JOINED } }),
-    v1({ case: 'joined', value: {} }),
+    ['roster'],
   ],
   [
     'exited',
     act(Family.CLOCK, { case: 'clock', value: { mark: ClockMark.EXITED } }),
-    v1({ case: 'exited', value: {} }),
+    [],
   ],
   [
     'arrived monster',
@@ -303,7 +267,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.ARRIVED, arrival: { kind: 'monster' } },
     }),
-    v1({ case: 'arrived', value: { kind: PlacementKind.MONSTER } }),
+    ['roster', 'view'],
   ],
   [
     'arrived prop',
@@ -311,12 +275,12 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.ARRIVED, arrival: { kind: 'prop' } },
     }),
-    v1({ case: 'arrived', value: { kind: PlacementKind.PROP } }),
+    ['atlas', 'view'],
   ],
   [
     'ended',
     act(Family.CLOCK, { case: 'clock', value: { mark: ClockMark.ENDED } }),
-    v1({ case: 'ended', value: {} }),
+    ['afford', 'characterData', 'turn', 'view'],
   ],
   [
     'window',
@@ -324,7 +288,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.WINDOW_OPENED },
     }),
-    v1({ case: 'windowOpened', value: {} }),
+    ['afford', 'view'],
   ],
   [
     'roll window',
@@ -332,7 +296,7 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.ROLL_WINDOW_OPENED },
     }),
-    v1({ case: 'rollWindowOpened', value: {} }),
+    ['afford'],
   ],
   [
     'scene opened',
@@ -340,15 +304,13 @@ const PAIRS: [string, ReturnType<typeof act>, ReturnType<typeof v1>][] = [
       case: 'clock',
       value: { mark: ClockMark.SCENE_OPENED },
     }),
-    v1(undefined as never, EventKind.SCENE_OPENED),
+    [],
   ],
 ];
 
 describe('refreshKeysForAct', () => {
-  it.each(PAIRS)('refresh keys match v1 for each family: %s', (_, a, e) => {
-    expect(new Set(refreshKeysForAct(a, VIEWER))).toEqual(
-      new Set(refreshKeysFor(e, VIEWER))
-    );
+  it.each(PAIRS)('refresh keys for each family: %s', (_, a, keys) => {
+    expect(new Set(refreshKeysForAct(a, VIEWER))).toEqual(new Set(keys));
   });
 
   it('a line with its answer folded in adds the answer’s row', () => {

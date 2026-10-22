@@ -13,7 +13,6 @@ import type {
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
-import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
@@ -237,7 +236,6 @@ interface CombatExperienceBaseProps {
   story: readonly CombatExperienceStoryExchange[];
   /** Desktop opt-in: temporary released narration and optional history, scoped by caller. */
   storyFeedback?: { scopeKey: string };
-  debug: readonly DebugFeedEntry[];
   /** The session record for the debug panel (rpg-project#628). */
   record?: RecordFeedSnapshot;
   /** Told whether the record panel is showing (Debug, expanded). */

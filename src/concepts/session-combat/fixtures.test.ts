@@ -283,8 +283,5 @@ describe('session combat generated-shape review fixtures', () => {
       'round-2-turn',
       'catch-up-restored',
     ]);
-    expect(reconnected.debug.at(-1)).toContain(
-      'catch_up from_seq=18 entries=3'
-    );
   });
 });

@@ -41,7 +41,6 @@ function renderExperience(participants: CombatExperienceProps['participants']) {
       logMode="story"
       streamState="live"
       story={[]}
-      debug={[]}
       diceEvents={[]}
       location={{ name: 'Crypt', area: 'Table' }}
       renderMap={() => <div />}

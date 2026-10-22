@@ -6,7 +6,6 @@ import type { AttackResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/ap
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
-import type { DebugFeedEntry } from '../debugLogLine';
 import {
   emptyPresentation,
   reduceCombatPresentation,
@@ -54,7 +53,6 @@ export interface UseCombatPresentationResult {
   /** Targets whose attack roll has not been revealed yet — the map holds
    * their downed reveal until it has (`downedReveal.ts`). */
   readonly unresolvedAttackTargets: ReadonlySet<string>;
-  readonly debug: readonly DebugFeedEntry[];
   readonly diceEvents: readonly DicePresentationEvent[];
   readonly semanticFallback: boolean;
   readonly diceWitnessRole: 'roller' | 'spectator';
@@ -276,7 +274,6 @@ export function useCombatPresentation(
     blocksManualEndTurn,
     liveAnnouncement,
     unresolvedAttackTargets,
-    debug: state.debug,
     diceEvents,
     semanticFallback: current?.semanticFallback ?? false,
     diceWitnessRole: authoritativeRoller ? 'roller' : 'spectator',

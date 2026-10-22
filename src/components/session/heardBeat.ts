@@ -17,13 +17,20 @@
  * that; this only says which way to look.
  */
 import { HEX_SIZE } from '@/components/hex-grid/hexMath';
-import type { Heard } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { worldPositionOf } from './positionBridge';
 
 /** A cell, dungeon-absolute and axial like every position on this seam. */
 export interface HeardCell {
   readonly x: number;
   readonly y: number;
+}
+
+/** A sound as this module reads it: its kind, where it was made, and how
+ * many regions it crossed. */
+export interface HeardSound {
+  readonly kind: string;
+  readonly position?: HeardCell;
+  readonly hops: number;
 }
 
 /**
@@ -90,7 +97,7 @@ export interface HeardLine {
  * cell AND crossed no region: both facts agree it is beside them.
  */
 export function formatHeardLine(
-  heard: Pick<Heard, 'kind' | 'position' | 'hops'>,
+  heard: HeardSound,
   listenerAt?: HeardCell | null
 ): HeardLine {
   const phrase = soundPhrase(heard.kind);
@@ -122,7 +129,7 @@ export function formatHeardLine(
 /** The one-line form the beat line and the live announcement use:
  * "You hear metal clanging, to the north — 2 rooms away." */
 export function heardSentence(
-  heard: Pick<Heard, 'kind' | 'position' | 'hops'>,
+  heard: HeardSound,
   listenerAt?: HeardCell | null
 ): string {
   const line = formatHeardLine(heard, listenerAt);

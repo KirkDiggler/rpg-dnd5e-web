@@ -54,7 +54,6 @@ function propsFor(
     logMode: 'story',
     streamState: fixture.streamState,
     story: fixture.story,
-    debug: fixture.debug,
     diceEvents: [],
     location: { name: 'Reference Tomb', area: 'South reliquary' },
     renderMap: ({ attackableTargets, onTargetClick }) => (

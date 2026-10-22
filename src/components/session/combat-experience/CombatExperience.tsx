@@ -168,7 +168,6 @@ export function CombatExperience({
   streamState,
   story,
   storyFeedback,
-  debug,
   record,
   onRecordShownChange,
   result,
@@ -580,7 +579,6 @@ export function CombatExperience({
 
         <StoryLog
           story={revealedStory}
-          debug={debug}
           record={record}
           onRecordShownChange={onRecordShownChange}
           mode={logMode}

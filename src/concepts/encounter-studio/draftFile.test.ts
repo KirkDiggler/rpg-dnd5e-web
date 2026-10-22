@@ -110,6 +110,10 @@ describe('the draft as a file (rpg-project#578)', () => {
    * garrison marches the same way on the throne room. The engine reads it, so
    * the studio's import must — the web never refuses what the engine accepts
    * (#1119). Reading a waypoint's wait and facing is #1314's (S1).
+   *
+   * BEFORE rpg-dnd5e-web#1311 the operator's Open from server said: `Could
+   * not import: Site table gate-patrol.time[5].toward.path[0]: field wait not
+   * found in type dungeonspec.RoomCell`.
    */
   it("imports the mad king's castle, patrols and all, with no refusal", () => {
     const yaml = readFileSync(
@@ -151,5 +155,87 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(
       exportDraftYaml({ draft: again.draft, scope: again.scope }, read.key)
     ).toBe(once);
+  });
+
+  it('the castle round-trips: open from server, save, open again equal', () => {
+    const yaml = readFileSync(
+      'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
+      'utf8'
+    );
+    const opened = readDraftYaml(yaml);
+    if (!opened.ok) throw new Error(opened.refusal);
+    const saved = exportDraftYaml(
+      { draft: opened.draft, scope: opened.scope },
+      opened.key
+    );
+    // The pause survives the save in the file's own spelling.
+    expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
+    const reopened = readDraftYaml(saved);
+    if (!reopened.ok) throw new Error(reopened.refusal);
+    expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({
+      draft: opened.draft,
+      scope: opened.scope,
+    });
+  });
+
+  /**
+   * THE TWO REFERENCE SITES (rpg-dnd5e-web#1311). Verbatim copies of rpg-api
+   * `content/creature-facts-walk.yaml` (85d50e9) and
+   * `content/reference-discovery-checks.yaml` (105c2fe). The engine reads
+   * exactly one number from each presentation block —
+   * `coordinateFrame.hexRadius` (must be 1) and `workspace.hexRadius` (the
+   * floor bound, positive) — so a frame that states only its scale and a
+   * radius workspace off the editor's three presets are files the engine
+   * plays, and the studio reads them.
+   */
+  const reference = (file: string) =>
+    readFileSync(`src/concepts/encounter-studio/fixtures/${file}.yaml`, 'utf8');
+
+  it('opens The Watch Post (before: "Could not import: Unsupported room coordinate frame.") and round-trips it', () => {
+    const opened = readDraftYaml(reference('creature-facts-walk'));
+    if (!opened.ok) throw new Error(opened.refusal);
+    expect(opened.key).toBe('creature-facts-walk');
+    expect(opened.draft.workspace).toEqual({
+      hexRadius: 6,
+      horizontalLimit: 12,
+    });
+    const saved = exportDraftYaml(
+      { draft: opened.draft, scope: opened.scope },
+      opened.key
+    );
+    const reopened = readDraftYaml(saved);
+    if (!reopened.ok) throw new Error(reopened.refusal);
+    expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({
+      draft: opened.draft,
+      scope: opened.scope,
+    });
+  });
+
+  it('reads Discovery Check Walk\'s radius-9 workspace (before: "Could not import: Unsupported room workspace extent.") and names the prop the studio cannot draw', () => {
+    const yaml = reference('reference-discovery-checks');
+    // The workspace is read as written once the uncatalogued props are out
+    // of the way: the extent is no longer the refusal.
+    const withoutUncatalogued = yaml
+      .replace('dnd5e:props:scroll', 'dnd5e:props:books')
+      .replace('dnd5e:props:reliquary', 'dnd5e:props:vase');
+    const opened = readDraftYaml(withoutUncatalogued);
+    if (!opened.ok) throw new Error(opened.refusal);
+    expect(opened.draft.workspace).toEqual({
+      hexRadius: 9,
+      horizontalLimit: 20,
+    });
+    const saved = exportDraftYaml(
+      { draft: opened.draft, scope: opened.scope },
+      opened.key
+    );
+    const reopened = readDraftYaml(saved);
+    if (!reopened.ok) throw new Error(reopened.refusal);
+    expect(reopened.draft).toEqual(opened.draft);
+    // The shipped file: what remains is the prop catalog, named by ref.
+    expect(readDraftYaml(yaml)).toEqual({
+      ok: false,
+      refusal:
+        'Could not import: scene.items[1].assetRef "dnd5e:props:scroll" is not in the local prop catalog.',
+    });
   });
 });

@@ -1955,7 +1955,6 @@ function SessionEncounterScope({
                 ? { scopeKey: `${sessionId}\u0000${member}` }
                 : undefined
             }
-            debug={combat.debug}
             record={record}
             onRecordShownChange={setRecordShown}
             result={combat.result}

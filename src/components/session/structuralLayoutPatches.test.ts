@@ -1,9 +1,5 @@
 // @vitest-environment node
 import { clone, create } from '@bufbuild/protobuf';
-import {
-  ConcealmentRevealedSchema,
-  RegionRevealedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { GetAtlasResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AtlasStructuralDoorSchema,
@@ -12,10 +8,11 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
+  applyCellsRevealed,
   applyConcealmentRevealed,
-  applyRegionRevealed,
   applyStructuralRecords,
 } from './applyReveal';
+import { cellsPatch, secretPatch } from './revealPatches.test-fixtures';
 
 const opening = (id: string, position = 3, width = 1) => ({
   id,
@@ -51,7 +48,7 @@ const replacement = (wallId = 'wall', openings = [opening('new', 4, 2)]) =>
 describe('structural component replacements', () => {
   it('replaces only openings and introduces the door in the same immutable update', () => {
     const before = baseline();
-    const event = create(ConcealmentRevealedSchema, {
+    const event = secretPatch({
       concealment: 'secret',
       structuralDoors: [door()],
       structuralWallOpeningsReplacements: [replacement()],
@@ -74,11 +71,11 @@ describe('structural component replacements', () => {
     expect(event.structuralDoors[0].from!.x).toBe(3);
   });
 
-  it('applies the same component through a room reveal', () => {
-    const after = applyRegionRevealed(
+  it('applies the same component through cells learned', () => {
+    const after = applyCellsRevealed(
       baseline(),
-      create(RegionRevealedSchema, {
-        region: { id: 'room' },
+      cellsPatch({
+        regions: [{ id: 'room' }],
         structuralWallOpeningsReplacements: [replacement()],
       })
     );
@@ -87,9 +84,7 @@ describe('structural component replacements', () => {
 
   it('distinguishes an absent record from present empty/default clears', () => {
     const before = baseline();
-    expect(
-      applyConcealmentRevealed(before, create(ConcealmentRevealedSchema))
-    ).toBe(before);
+    expect(applyConcealmentRevealed(before, secretPatch())).toBe(before);
     for (const patch of [
       replacement('wall', []),
       create(StructuralWallOpeningsReplacementSchema, { wallId: 'wall' }),

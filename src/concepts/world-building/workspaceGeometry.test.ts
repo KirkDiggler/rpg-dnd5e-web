@@ -390,3 +390,41 @@ describe('workspace growth by chosen edges (R13)', () => {
     expect(containsWorkspaceCell(workspace, { q: 0, r: 0 })).toBe(false);
   });
 });
+
+/** A RADIUS WORKSPACE OFF THE PRESETS (rpg-dnd5e-web#1311). Before, Discovery
+ * Check Walk's `{hexRadius: 9, horizontalLimit: 20}` and The Watch Post's
+ * `{hexRadius: 6}` were refused with "Unsupported room workspace extent."
+ * The engine reads only the radius, so the studio reads both as written. */
+describe('validateWorkspace reads a radius workspace as written', () => {
+  it('keeps a preset, a radius off the presets, and a radius alone', () => {
+    expect(validateWorkspace({ hexRadius: 6, horizontalLimit: 12 })).toEqual({
+      hexRadius: 6,
+      horizontalLimit: 12,
+    });
+    expect(validateWorkspace({ hexRadius: 9, horizontalLimit: 20 })).toEqual({
+      hexRadius: 9,
+      horizontalLimit: 20,
+    });
+    expect(validateWorkspace({ hexRadius: 6 })).toEqual({
+      hexRadius: 6,
+      horizontalLimit: 12,
+    });
+  });
+
+  it('refuses a radius it cannot hold, naming what the file says', () => {
+    expect(() => validateWorkspace({ hexRadius: 0 })).toThrow(
+      'Unsupported room workspace extent: hexRadius must be a whole number from 1 to 73, and this file says 0.'
+    );
+    expect(() => validateWorkspace({ hexRadius: 6.5 })).toThrow(
+      'and this file says 6.5.'
+    );
+    expect(() =>
+      validateWorkspace({ hexRadius: 100, horizontalLimit: 200 })
+    ).toThrow('and this file says 100.');
+    expect(() =>
+      validateWorkspace({ hexRadius: 9, horizontalLimit: -1 })
+    ).toThrow(
+      'Unsupported room workspace extent: horizontalLimit must be a positive number, and this file says -1.'
+    );
+  });
+});

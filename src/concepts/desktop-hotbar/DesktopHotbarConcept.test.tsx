@@ -145,18 +145,16 @@ describe('DesktopHotbarConcept', () => {
     expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
   });
 
-  it('offers a real retained debug event and expands its formatted JSON', async () => {
+  it('debug mode says a fixture has no session record (web#1305)', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: /Inspect event Fixture turn ended/ })
-    );
-    const json = await screen.findByLabelText('Formatted event JSON');
-    expect(json).toHaveTextContent('skeleton-archer');
-    fireEvent.focus(json);
     expect(
-      screen.getByRole('button', { name: 'Narrow debug panel' })
+      screen.getByText('No session record for this view.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Fixture turn ended/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Widen debug panel' })
     ).toBeInTheDocument();
     expect(screen.getByTestId('desktop-action-surface')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No intent sent');

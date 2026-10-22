@@ -205,3 +205,111 @@ describe('a cell and a route in words', () => {
     );
   });
 });
+
+/**
+ * A WAYPOINT MAY STATE THE PAUSE THERE (rpg-project#624, encounter v0.136.0,
+ * rpg-dnd5e-web#1311). The engine's `decodeWaypoint` reads `{ q, r }` plus an
+ * optional `wait` (whole rounds the walker stands) and `facing` (a compass
+ * word taken while standing). Before this, the studio refused the shipped
+ * castle: `Site table gate-patrol.time[5].toward.path[0]: field wait not
+ * found in type dungeonspec.RoomCell`.
+ */
+describe('a route waypoint carries its pause', () => {
+  const GUARD = {
+    when: { enemy: 'none' },
+    toward: {
+      path: [
+        { q: -7, r: 9, wait: 2, facing: 'se' },
+        { q: -1, r: 9, wait: 2, facing: 'sw' },
+        { q: -3, r: 12 },
+        { q: -9, r: 12, wait: 1 },
+      ],
+    },
+  };
+
+  it('reads wait and facing on a waypoint and carries them verbatim', () => {
+    expect(validateAnswerTable({ time: [GUARD] }, 'on')).toEqual({
+      time: [GUARD],
+    });
+  });
+
+  it("refuses what the engine's dialect refuses, in its sentences", () => {
+    const waypoint = (extra: Record<string, unknown>) =>
+      table({ time: [{ toward: { path: [{ q: 0, r: 0, ...extra }] } }] });
+    expect(waypoint({ facing: 'se' })).toThrow(
+      'on.time[0].toward.path[0].facing: a facing is taken while standing; give the waypoint a wait'
+    );
+    // A wait of 0 is no stand, so the facing is still alone (grammar.go:
+    // `word != "" && route[i].wait == 0`).
+    expect(waypoint({ facing: 'se', wait: 0 })).toThrow(
+      'on.time[0].toward.path[0].facing: a facing is taken while standing; give the waypoint a wait'
+    );
+    // Stricter than the engine, deliberately: its grammar skips an empty
+    // word, the studio refuses it as no compass direction.
+    expect(waypoint({ facing: '', wait: 1 })).toThrow(
+      'on.time[0].toward.path[0].facing: "" is not a compass direction'
+    );
+    expect(waypoint({ facing: 'up', wait: 1 })).toThrow(
+      'on.time[0].toward.path[0].facing: "up" is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw'
+    );
+    expect(waypoint({ facing: 3, wait: 1 })).toThrow(
+      "on.time[0].toward.path[0]: a waypoint's facing is a word, one of n|ne|e|se|s|sw|w|nw"
+    );
+    expect(waypoint({ wait: 1.5 })).toThrow(
+      "on.time[0].toward.path[0]: a waypoint's wait is a whole number of rounds"
+    );
+    expect(waypoint({ wait: -1 })).toThrow(
+      'on.time[0].toward.path[0].wait: a wait is how many rounds the walker stands here, and -1 is negative'
+    );
+    // Only a route's waypoint pauses: a cell is still strictly { q, r }.
+    expect(
+      table({ time: [{ toward: { at: { q: 0, r: 0, wait: 1 } } }] })
+    ).toThrow(
+      'on.time[0].toward.at: field wait not found in type dungeonspec.RoomCell'
+    );
+  });
+
+  it('round-trips a paused route through the encoder', () => {
+    const yaml = patrols().replace(/path: \[\{ ?q: -2, r: 0 ?\}/, (m) =>
+      m.replace(/\}$/, ', wait: 2, facing: se }')
+    );
+    expect(yaml).not.toBe(patrols());
+    const once = encodeSingleRoomDungeon(decodeSingleRoomDungeon(yaml));
+    const bindings = decodeSingleRoomDungeon(once).draft.room.monsterBindings;
+    expect(bindings?.['gate-patrol']?.on?.time?.[0]?.toward).toEqual({
+      path: [
+        { q: -2, r: 0, wait: 2, facing: 'se' },
+        { q: 0, r: -2 },
+        { q: 2, r: 0 },
+        { q: 0, r: 2 },
+      ],
+    });
+    expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(once))).toBe(once);
+  });
+
+  it('refuses a wait written as a float, as the engine refuses !!float', () => {
+    for (const written of ['2.0', '2e0', '!!float 2']) {
+      const yaml = patrols().replace(/path: \[\{ ?q: -2, r: 0 ?\}/, (m) =>
+        m.replace(/\}$/, `, wait: ${written} }`)
+      );
+      expect(() => decodeSingleRoomDungeon(yaml)).toThrow(
+        "Monster binding for gate-patrol on.time[0].toward.path[0]: a waypoint's wait is a whole number of rounds"
+      );
+    }
+  });
+
+  it('refuses malformed YAML whole, never as a partial draft', () => {
+    expect(() => decodeSingleRoomDungeon('key: [unclosed')).toThrow(
+      /^Invalid single-room YAML: /
+    );
+  });
+
+  it('shows each pause on the route, in words and in the shorthand', () => {
+    expect(wordPhrase(GUARD, 'it')).toBe(
+      'walks a route through 4 cells, standing 2 rounds facing se at {q: -7, r: 9}, 2 rounds facing sw at {q: -1, r: 9} and 1 round at {q: -9, r: 12}'
+    );
+    expect(wordShorthand(GUARD, 'toward')).toBe(
+      'toward path {q: -7, r: 9, wait: 2, facing: se} {q: -1, r: 9, wait: 2, facing: sw} {q: -3, r: 12} {q: -9, r: 12, wait: 1}'
+    );
+  });
+});

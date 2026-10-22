@@ -1,70 +1,96 @@
 /**
- * applyReveal — patching the cached atlas when a concealed region or a
- * concealed door enters this recipient's knowledge.
+ * applyReveal — patching the cached atlas when a perception act adds to what
+ * this recipient knows: newly learned cells, or a revealed secret.
  *
- * A reveal is the one beat that adds to what a member may see. Before
- * wall geometry it added cells, regions, props, boundaries and doorways,
- * all of them pure additions. Slice 2 adds two more fields, and they do
- * NOT behave the same way, which is the whole reason this module exists
- * rather than a spread operator at the call site.
+ * Every field is a pure addition, de-duplicated by identity, except two.
  *
- * # segments APPEND. sealed REPLACES within the revealed region.
+ * # segments APPEND. sealed REPLACES within the newly owned cells.
  *
- * `RegionRevealed.segments` is a DIFFERENCE: the segments this recipient
- * did not have and now does — the revealed room's other walls. Appending
- * is right, and dropping a segment because the event did not repeat it
- * would erase a wall drawn for some other reason entirely.
+ * A reveal's `segments` are a DIFFERENCE: the segments this recipient did not
+ * have and now does. Appending is right, and dropping a segment because the
+ * reveal did not repeat it would erase a wall drawn for some other reason.
  *
- * `RegionRevealed.sealed` is the revealed region's OWN sealed cells, and
- * appending it is a bug with a visible symptom: a room you can see and
- * cannot walk into.
+ * A reveal's `sealed` cells are its regions' OWN sealed cells, and appending
+ * them is a bug with a visible symptom: a room you can see and cannot walk
+ * into. A wall presented to a non-knower has to stand on floor they can see;
+ * that floor belongs to the room they cannot see, so it reaches them as
+ * ownerless scenery, which is sealed (design C18). The moment the cells are
+ * theirs, those same cells are ordinary standable floor:
  *
- * The reason is design C18's footing. A wall presented to a non-knower
- * has to stand on floor they can see; that floor belongs to the room
- * they cannot see; so it reaches them as ownerless scenery, which is
- * sealed. The moment the room is theirs, those same cells are ordinary
- * standable floor. Cells therefore LEAVE the sealed list on a reveal,
- * and the beat carries `region.cells` for exactly that subtraction:
+ *     after.sealed = (before.sealed \ newly owned cells) ∪ reveal.sealed
  *
- *     after.sealed = (before.sealed \ region.cells) ∪ event.sealed
+ * (Ruled on rpg-project#360, 2026-09-03.)
  *
- * (Measured by the toolkit builder and pinned in their test; ruled on
- * rpg-project#360, 2026-09-03, correcting an earlier "append both".)
+ * The region and door reveal reducers that read the v1 event stream's
+ * `RegionRevealed` and `DoorRevealed` left with that stream
+ * (rpg-dnd5e-web#1305). The act stream carries cells learned and secrets
+ * revealed; `actGeometry.ts` brings them to this module's patch shapes.
  *
- * # Legacy segment/doorway rendering
- *
- * No doorway rides `RegionRevealed`. A concealed door arrives on
- * `DoorRevealed`, and the segment through it was already presented
- * whole — the masquerade shows a wall with no gap, design C19 — so the
- * gap derives where the new doorway meets a segment this client already
- * holds. `segmentsToWallRuns` does that on its own, from the patched
- * atlas, with no reveal-specific geometry anywhere.
+ * Doorways need no wall-gap logic here: `segmentsToWallRuns` derives the gap
+ * where a doorway meets a segment, from the patched atlas, with no
+ * reveal-specific geometry anywhere.
  */
-
 import { clone } from '@bufbuild/protobuf';
-import {
-  CellsRevealedSchema,
-  DoorRevealedSchema,
-  RegionRevealedSchema,
-  type CellsRevealed,
-  type ConcealmentRevealed,
-  type DoorRevealed,
-  type RegionRevealed,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetAtlasResponseSchema,
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
+  AtlasBoundary,
+  AtlasDoorway,
+  AtlasExit,
+  AtlasPlacedProp,
+  AtlasProp,
   AtlasRegion,
   AtlasSegment,
   AtlasStructuralDoor,
   AtlasStructuralWall,
   Position,
+  PropPresentation,
   StructuralWallOpeningsReplacement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { applyPropPresentations } from './propPresentations';
 import { assertStructuralLayoutIntegrity } from './structuralLayout';
+
+/**
+ * A perception's newly learned cells (the act's `CellsLearned`), in the
+ * knowledge atlas's own rows. `actGeometry.cellsPatchOf` builds it.
+ */
+export interface CellsPatch {
+  readonly regions: readonly AtlasRegion[];
+  readonly props: readonly AtlasProp[];
+  readonly boundaries: readonly AtlasBoundary[];
+  readonly segments: readonly AtlasSegment[];
+  readonly sealed: readonly Position[];
+  readonly doorways: readonly AtlasDoorway[];
+  readonly placed: readonly AtlasPlacedProp[];
+  readonly exits: readonly AtlasExit[];
+  readonly scenery: readonly Position[];
+  readonly structuralWalls: readonly AtlasStructuralWall[];
+  readonly structuralDoors: readonly AtlasStructuralDoor[];
+  readonly structuralWallOpeningsReplacements: readonly StructuralWallOpeningsReplacement[];
+  readonly propPresentations: readonly PropPresentation[];
+}
+
+/**
+ * A revealed secret (the act's `SecretRevealed`), in the knowledge atlas's
+ * own rows. `actGeometry.secretPatchOf` builds it; its doors are re-read
+ * through GetDoors.
+ */
+export interface SecretPatch {
+  readonly concealment: string;
+  readonly cells: readonly Position[];
+  readonly props: readonly AtlasProp[];
+  readonly doorways: readonly AtlasDoorway[];
+  readonly boundaries: readonly AtlasBoundary[];
+  readonly segments: readonly AtlasSegment[];
+  readonly sealed: readonly Position[];
+  readonly regions: readonly AtlasRegion[];
+  readonly structuralWalls: readonly AtlasStructuralWall[];
+  readonly structuralDoors: readonly AtlasStructuralDoor[];
+  readonly structuralWallOpeningsReplacements: readonly StructuralWallOpeningsReplacement[];
+  readonly propPresentations: readonly PropPresentation[];
+}
 
 /** An otherwise meaningful patch cannot be applied without its known wall.
  * The knowledge hook recovers via a snapshot; no partial event is installed. */
@@ -171,7 +197,13 @@ export function applyStructuralRecords(
  */
 export function applyConcealmentRevealed(
   atlas: GetAtlasResponse,
-  event: ConcealmentRevealed
+  event: Pick<
+    SecretPatch,
+    | 'structuralWalls'
+    | 'structuralDoors'
+    | 'structuralWallOpeningsReplacements'
+    | 'propPresentations'
+  >
 ): GetAtlasResponse {
   const next = applyStructuralRecords(
     atlas,
@@ -189,12 +221,6 @@ export function applyConcealmentRevealed(
     ...next,
     propPresentations: presentations,
   });
-}
-function revealAdditions(event: RegionRevealed): {
-  segments: AtlasSegment[];
-  sealed: Position[];
-} {
-  return { segments: event.segments, sealed: event.sealed };
 }
 const cellKey = (p: Position): string => `${p.x},${p.y}`;
 /** Concatenate, dropping anything already present under `key`. */
@@ -224,84 +250,9 @@ const pairKey = (a?: Position, b?: Position): string => {
 };
 
 /**
- * The atlas this recipient should hold after a region reveal.
- *
- * Everything additive is appended and de-duplicated, so a wall already
- * drawn for another reason is drawn once and stays drawn. `sealed` alone
- * is replaced within the revealed region's cells, per the relation in
- * this module's header.
- */
-export function applyRegionRevealed(
-  atlas: GetAtlasResponse,
-  event: RegionRevealed
-): GetAtlasResponse {
-  if (!event.region) return atlas;
-  // Own incoming legacy rows just as the structural commit owns its records.
-  event = clone(RegionRevealedSchema, event);
-  const region = event.region!;
-  const { segments, sealed } = revealAdditions(event);
-  const next = clone(GetAtlasResponseSchema, atlas);
-
-  // The region's own cells are the patch for `cells`, and the region
-  // entry is what makes those cells OWNED rather than scenery.
-  next.cells = appendNew(
-    next.cells,
-    [...region.cells, ...(event.scenery ?? [])],
-    cellKey
-  );
-  next.regions = next.regions.some((r) => r.id === region.id)
-    ? next.regions.map((r) => (r.id === region.id ? region : r))
-    : [...next.regions, region];
-  next.props = appendNew(
-    next.props,
-    event.props,
-    (p) => p.id || `${p.ref}:${p.at ? cellKey(p.at) : ''}`
-  );
-  next.doorways = appendNew(
-    next.doorways,
-    event.doorways ?? [],
-    (d) => `${d.connection}:${pairKey(d.from, d.to)}`
-  );
-  next.placed = appendNew(next.placed, event.placed ?? [], (p) => p.id);
-  next.exits = appendNew(next.exits, event.exits ?? [], (e) => e.id);
-  next.boundaries = appendNew(next.boundaries, event.boundaries, (b) =>
-    pairKey(b.from, b.to)
-  );
-  next.segments = appendNew(next.segments, segments, segmentKey);
-
-  // THE FIXED STRUCTURAL RECORDS UPSERT BY ID, not append. A known wall can
-  // gain a newly revealed cut, so its whole record is replaced.
-  const structured = applyStructuralRecords(
-    next,
-    event.structuralWalls,
-    event.structuralDoors,
-    event.structuralWallOpeningsReplacements
-  );
-  next.structuralWalls = structured.structuralWalls;
-  next.structuralDoors = structured.structuralDoors;
-  next.propPresentations = applyPropPresentations(
-    atlas.propPresentations,
-    event.propPresentations,
-    next.structuralDoors
-  );
-
-  // THE ONE FIELD THAT IS NOT AN APPEND. Every cell of the revealed
-  // region drops out of `sealed` first — it was footing under a wall
-  // this member could see, and it is that room's own floor now — and
-  // the event's own list goes back in.
-  const revealed = new Set(region.cells.map(cellKey));
-  next.sealed = appendNew(
-    next.sealed.filter((c) => !revealed.has(cellKey(c))),
-    sealed,
-    cellKey
-  );
-  return next;
-}
-
-/**
  * Union partial regions into the held ones BY ID (fog of war, rpg-project#586).
  *
- * A `CellsRevealed` region carries only the cells of that region this
+ * A cells patch's region carries only the cells of that region this
  * recipient newly learned, so replacing the held region by id — what a room
  * reveal does — would truncate it to the latest slice. The held cells stay,
  * the new ones are appended once, and the incoming record's other fields
@@ -327,8 +278,8 @@ function unionRegions(
 }
 
 /**
- * The atlas this recipient should hold after a CELLS_REVEALED beat — the
- * per-cell successor to `applyRegionRevealed` (fog of war, rpg-project#586).
+ * The atlas this recipient should hold after learning cells (fog of war,
+ * rpg-project#586).
  *
  * Every record is upserted by identity, so applying the same beat twice is a
  * no-op and a wall sent twice draws once:
@@ -344,9 +295,11 @@ function unionRegions(
  */
 export function applyCellsRevealed(
   atlas: GetAtlasResponse,
-  event: CellsRevealed
+  patch: CellsPatch
 ): GetAtlasResponse {
-  event = clone(CellsRevealedSchema, event);
+  // Own the incoming rows: nothing the caller holds can later mutate the
+  // returned cache.
+  const event = structuredClone(patch);
   const next = clone(GetAtlasResponseSchema, atlas);
   const owned = event.regions.flatMap((r) => r.cells);
 
@@ -389,32 +342,5 @@ export function applyCellsRevealed(
     event.sealed,
     cellKey
   );
-  return next;
-}
-
-/**
- * The atlas after a door reveal: its doorways appear, and the boundaries
- * it carries REPLACE whatever stood on the door's own edges — that is
- * the synthetic wall the masquerade put there, and an empty list means
- * it simply comes off.
- *
- * Nothing here touches segments. The wall the door stands in was
- * presented whole, so the gap appears the moment the doorway does, out
- * of `segmentsToWallRuns` and the geometry it already has.
- */
-export function applyDoorRevealed(
-  atlas: GetAtlasResponse,
-  event: DoorRevealed
-): GetAtlasResponse {
-  event = clone(DoorRevealedSchema, event);
-  const next = clone(GetAtlasResponseSchema, atlas);
-  next.doorways = appendNew(next.doorways, event.doorways, (d) =>
-    pairKey(d.from, d.to)
-  );
-  const atDoor = new Set(event.doorways.map((d) => pairKey(d.from, d.to)));
-  next.boundaries = [
-    ...next.boundaries.filter((b) => !atDoor.has(pairKey(b.from, b.to))),
-    ...event.boundaries,
-  ];
   return next;
 }

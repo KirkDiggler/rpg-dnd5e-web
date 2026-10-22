@@ -11,11 +11,6 @@ import {
   type DiceThrowPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
 import {
-  EventKind,
-  EventSchema,
-  type Event as SessionEvent,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
   VendorStockMode,
@@ -140,14 +135,16 @@ const hoisted = vi.hoisted(() => ({
     applyReveal: vi.fn(),
   },
   moveFn: vi.fn(),
+  // The v1 stream RPCs, mocked only so a test can prove they are never
+  // called (rpg-dnd5e-web#1305).
   streamEventsFn: vi.fn(),
+  getStoryFn: vi.fn(),
   streamRecordFn: vi.fn(),
   getRecordFn: vi.fn(),
   streamActsFn: vi.fn(),
   getStoryActsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
   publishDiceThrowFn: vi.fn(),
-  getStoryFn: vi.fn(),
   getViewFn: vi.fn(),
   getKnowledgeFn: vi.fn(),
   getRosterFn: vi.fn(),
@@ -488,7 +485,7 @@ function readyDyingTurn() {
   });
 }
 
-function fakeStream(events: SessionEvent[]) {
+function fakeStream<T>(events: T[]) {
   return {
     [Symbol.asyncIterator]: async function* () {
       for (const entry of events) yield entry;
@@ -560,19 +557,6 @@ function recordStream(messages: unknown[], signal?: AbortSignal) {
   };
 }
 
-function deferredStream(events: SessionEvent[]) {
-  const gate = deferred<void>();
-  return {
-    stream: {
-      [Symbol.asyncIterator]: async function* () {
-        await gate.promise;
-        for (const entry of events) yield entry;
-      },
-    },
-    release: () => gate.resolve(),
-  };
-}
-
 function actStream() {
   const queue: unknown[] = [];
   let wake: (() => void) | null = null;
@@ -616,7 +600,7 @@ function liveActs() {
   return stream;
 }
 
-/** Acts held until `release`, as `deferredStream` holds v1 beats. */
+/** Acts held until `release`. */
 function deferredActs(acts: Act[]) {
   const stream = liveActs();
   return { release: () => stream.push(...acts) };
@@ -750,21 +734,6 @@ function stateAct(change: StateKind, party: string): Act {
   } as Act['body']);
 }
 
-let nextSeq = 1n;
-function event(
-  kind: EventKind,
-  body: SessionEvent['body'] = { case: undefined },
-  seq?: bigint
-): SessionEvent {
-  return create(EventSchema, {
-    session: 'enc-1',
-    seq: seq ?? nextSeq++,
-    kind,
-    body,
-    payload: new Uint8Array(),
-  });
-}
-
 function readyScene() {
   hoisted.atlasResult.atlas = pointyAtlas();
   hoisted.atlasResult.loading = false;
@@ -825,7 +794,6 @@ function renderView(
 }
 
 beforeEach(() => {
-  nextSeq = 1n;
   nextActId = 1;
   hoisted.lastCanvasProps.current = null;
   Object.assign(hoisted.characterResult, {
@@ -857,10 +825,8 @@ beforeEach(() => {
     hoisted.getCharacterFn,
     hoisted.getCharacterHookFn,
     hoisted.moveFn,
-    hoisted.streamEventsFn,
     hoisted.streamDiceThrowsFn,
     hoisted.publishDiceThrowFn,
-    hoisted.getStoryFn,
     hoisted.getViewFn,
     hoisted.getKnowledgeFn,
     hoisted.dungeonSceneHookFn,
@@ -882,7 +848,6 @@ beforeEach(() => {
     mock.mockReset();
   }
 
-  hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
   hoisted.streamRecordFn.mockReset();
   hoisted.streamRecordFn.mockImplementation(
     (_req: unknown, options?: { signal?: AbortSignal }) =>
@@ -904,7 +869,6 @@ beforeEach(() => {
     restarted: false,
   });
   hoisted.streamDiceThrowsFn.mockReturnValue(fakeStream([]));
-  hoisted.getStoryFn.mockResolvedValue({ entries: [] });
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
   hoisted.getRosterFn.mockResolvedValue({
     members: [
@@ -990,31 +954,6 @@ beforeEach(() => {
   });
 });
 
-const struck = () =>
-  event(EventKind.STRUCK, {
-    case: 'struck',
-    value: {
-      attacker: 'skeleton-1',
-      target: 'char-1',
-      roll: 16,
-      total: 20,
-      against: 16,
-      damage: 7,
-      presentationId: 'presentation_skeleton-strike',
-      attack: {
-        ref: 'dnd5e:weapons:shortsword',
-        name: 'Shortsword',
-        damageType: DamageType.PIERCING,
-      },
-      critical: false,
-    },
-  } as SessionEvent['body']);
-
-const turnEnded = (member = 'skeleton-1', next = 'char-1') =>
-  event(EventKind.TURN_ENDED, {
-    case: 'turnEnded',
-    value: { member, next },
-  } as SessionEvent['body']);
 describe('SessionEncounterView production combat integration', () => {
   it('joins responsive desktop categories, map picks and explicit CAST confirmation without remounting the map', async () => {
     let resizeEncounter: ((width: number, height: number) => void) | undefined;
@@ -3326,29 +3265,8 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
   });
 
-  it('ingests an actor Attack response/event immediately while Story stays concealed pending explicit dice release', async () => {
+  it('ingests an actor Attack response immediately while Story stays concealed pending explicit dice release', async () => {
     readyTurn();
-    const localStrike = deferredStream([
-      event(
-        EventKind.STRUCK,
-        {
-          case: 'struck',
-          value: {
-            attacker: 'char-1',
-            target: 'skeleton-1',
-            roll: 17,
-            total: 20,
-            against: 13,
-            damage: 6,
-            attack: attackDeclaration().attack,
-            critical: false,
-            presentationId: 'presentation_actor-strike',
-          },
-        } as SessionEvent['body'],
-        7n
-      ),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(localStrike.stream);
     hoisted.attackFn.mockResolvedValue({
       seq: 7n,
       roll: 17,
@@ -3374,7 +3292,6 @@ describe('SessionEncounterView production combat integration', () => {
 
     await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
-    localStrike.release();
     // The Debug panel reads the record stream now (rpg-project#628), so it
     // is no probe of the v1 ingest; Story staying concealed is the claim.
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
@@ -4112,18 +4029,6 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('coalesces a stream burst into one CharacterData/Turn/Afford/View refresh', async () => {
     readyTurn();
-    const burst = deferredStream([
-      event(EventKind.FIGHT_STARTED, {
-        case: 'fightStarted',
-        value: { members: ['char-1', 'skeleton-1'] },
-      } as SessionEvent['body']),
-      event(EventKind.DOWNED, {
-        case: 'downed',
-        value: { member: 'skeleton-1' },
-      } as SessionEvent['body']),
-      turnEnded(),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(burst.stream);
     const burstActs = deferredActs([
       clockAct(ClockMark.FIGHT_FORMED),
       stateAct(StateKind.DOWNED, 'skeleton-1'),
@@ -4140,7 +4045,6 @@ describe('SessionEncounterView production combat integration', () => {
 
     const privateRefresh = new Promise(() => {});
     hoisted.getCharacterDataFn.mockReturnValue(privateRefresh);
-    burst.release();
     burstActs.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
@@ -4364,8 +4268,6 @@ describe('SessionEncounterView production combat integration', () => {
         participant('char-1'),
       ],
     });
-    const burst = deferredStream([struck(), turnEnded()]);
-    hoisted.streamEventsFn.mockReturnValue(burst.stream);
     const burstActs = deferredActs([
       makeAct(Family.ACT, {
         case: 'attack',
@@ -4384,7 +4286,6 @@ describe('SessionEncounterView production combat integration', () => {
     vi.useFakeTimers();
     try {
       await act(async () => {
-        burst.release();
         burstActs.release();
         // The act stream delivers what it received on its next macrotask,
         // and the refreshes it schedules follow; 50ms is well inside the
@@ -6265,22 +6166,34 @@ describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', 
   });
 
   it('goes quiet again when the member drops it', async () => {
-    const beats = deferredStream([
-      event(EventKind.HELD, {
-        case: 'held',
-        value: { holder: 'char-1', prop: 'heirloom' },
-      } as SessionEvent['body']),
-      event(EventKind.DROPPED, {
-        case: 'dropped',
-        value: { member: 'char-1', prop: 'heirloom', at: { x: 0, y: 0 } },
-      } as SessionEvent['body']),
-    ]);
     readyScene();
-    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    const stream = liveActs();
     renderView();
     await screen.findByTestId('session-combat-leave-button');
 
-    beats.release();
+    stream.push(
+      makeAct(Family.ACT, {
+        case: 'hold',
+        value: {
+          by: memberParty('char-1'),
+          prop: { kind: PartyKind.PROP, id: 'heirloom' },
+        },
+      } as Act['body'])
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave (drops the heirloom)')
+    );
+    stream.push(
+      makeAct(Family.ACT, {
+        case: 'drop',
+        value: {
+          by: memberParty('char-1'),
+          prop: { kind: PartyKind.PROP, id: 'heirloom' },
+        },
+      } as Act['body'])
+    );
     await waitFor(() =>
       expect(
         screen.getByTestId('session-combat-leave-button').textContent
