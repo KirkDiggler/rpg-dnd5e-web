@@ -89,7 +89,11 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 
 **Verification:** Source and targeted provider-test evidence, followed by a live status/afford read. Contract changes, if necessary, develop outside-in and merge with released provider tags inside-out. New RPCs must include API role-policy classification/tests. This checkpoint is incomplete until required facts have owners and testable interfaces.
 
-## T3 — Live HUD composition and character/action presentation (after T2)
+## T3 — Live HUD composition and character/action presentation (category work after T2)
+
+**Execution ruling:** Existing public identity/status relocation and HUD geometry do not consume the unresolved category/use contracts. Implement those portions now for the operator's live early view; keep passive classification, portraits and Quick Items visibly incomplete. This does not waive T2 or relabel unclassified conditions.
+
+**Early-view checkpoint:** The operator started this worktree on port 3002 and is creating a character. Preserve that server/session. The dock now places existing identity, HP/AC/movement and supplied informational status rows together. No condition is newly classified as passive. Public identity currently uses the existing initials fallback, not fixture model art.
 
 **Owner:** web. **Files:** modify `CombatExperience.tsx`, its CSS module and `types.ts`; `DesktopStatusSection.tsx`/CSS/tests; `DesktopActionSection.tsx`, `DesktopActionSurface.tsx`/CSS/tests; `desktopHotbarGroups.ts`/tests; `liveActionPresentation.ts`/tests; `SessionEncounterView.tsx`/tests. Proposed focused helpers: `RosterPortraitProvider.tsx`, `CharacterBenefits.tsx` and tests under combat-experience.
 
@@ -112,6 +116,8 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 - [ ] Reuse the approved inspection shell; wire only real intents. Verify nested inspection and focus restoration.
 
 ## T5 — Just Happened/history/Debug composition (wire-ready; after layout seam chosen)
+
+**Early-view checkpoint:** `JustHappenedPreview.tsx` uses the existing recent-selection categories and released player-facing story, at three rows. `StoryLogModeSwitch.tsx` supplies accessible History/Debug tabs for the desktop mode; the existing legacy/mobile mode remains unchanged. StoryLog preserves the existing record visibility callback, roll-reveal source and real RecordPanel. Opening a recent row goes to its history row; Escape restores the trigger; opening the HUD reader starts on History. Added `StoryLogHud.test.tsx` covers typed acts, raw-record separation, keyboard tabs, visibility/focus and empty state. Existing real session-controller and action suites remain in the gate. Source-level tests and the component fixture on :3002 are not a substitute for the operator's joined live check.
 
 **Owner:** web. **Files:** `StoryLog.tsx`, `StoryLogDetails.test.tsx`, `StoryLog.module.css`, `CombatExperience.tsx`, `useCombatPresentation.test.tsx`, `SessionEncounterView.test.tsx`.
 

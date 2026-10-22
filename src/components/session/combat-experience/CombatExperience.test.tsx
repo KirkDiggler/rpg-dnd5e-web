@@ -169,6 +169,12 @@ describe('CombatExperience shared production shell', () => {
     });
     const view = render(<CombatExperience {...desktop} />);
     const status = screen.getByTestId('desktop-status-section');
+    expect(status.textContent).toContain('Aldric Vale');
+    expect(
+      status.contains(
+        screen.getByRole('group', { name: 'Effects and resources' })
+      )
+    ).toBe(true);
     expect(status.textContent).toContain('22/28');
     expect(status.textContent).toContain('18');
     expect(status.textContent).toContain('25 ft');

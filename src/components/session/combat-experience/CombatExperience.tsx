@@ -586,7 +586,8 @@ export function CombatExperience({
           onModeChange={onLogModeChange}
           result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
-          initialCollapsed={Boolean(storyFeedback)}
+          initialCollapsed={desktopHotbar || Boolean(storyFeedback)}
+          compactPreview={desktopHotbar}
           announceUpdates={!noticesEnabled}
         />
 
@@ -611,7 +612,7 @@ export function CombatExperience({
           )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
-          {(!desktopHotbar || statuses.length > 0) && (
+          {!desktopHotbar && (
             <div
               className={styles.identityRow}
               role="group"
@@ -737,6 +738,21 @@ export function CombatExperience({
             desktopStatus={
               desktopHotbar ? (
                 <DesktopStatusSection
+                  identity={
+                    <>
+                      <div className={styles.viewerPortrait}>
+                        {portraitOf(viewerName)}
+                      </div>
+                      <div className={styles.viewerIdentity}>
+                        <strong>{viewerName}</strong>
+                        <span>
+                          {characterData
+                            ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
+                            : labelOf(viewerClassRefId)}
+                        </span>
+                      </div>
+                    </>
+                  }
                   hitPoints={hp}
                   hpPercent={hpPercent}
                   armor={characterData?.armorClassDetail}
@@ -755,6 +771,17 @@ export function CombatExperience({
                   privateStatusMessage={privateStatusMessage}
                   onRetry={onRetryPrivateStatus}
                 >
+                  {statuses.length > 0 && (
+                    <div
+                      className={styles.desktopCharacterEffects}
+                      role="group"
+                      aria-label="Effects and resources"
+                    >
+                      {statuses.map((status) => (
+                        <StatusBadge key={status.key} status={status} />
+                      ))}
+                    </div>
+                  )}
                   <DesktopEffects
                     declaration={effectSource}
                     targetMember={

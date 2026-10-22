@@ -1049,7 +1049,7 @@ describe('SessionEncounterView production combat integration', () => {
       );
       const canvas = screen.getByTestId('session-canvas');
       expect(
-        screen.getByRole('button', { name: 'Expand combat log' })
+        screen.getByRole('button', { name: 'Just happened' })
       ).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
       expect(screen.getByText('Leveled spells')).toBeTruthy();

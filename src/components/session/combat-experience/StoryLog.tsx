@@ -1,5 +1,6 @@
 import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -18,8 +19,10 @@ import { isCombatDebugEnabled } from './diagnostics';
 import { foldLogRows, type LogRow } from './foldLogRows';
 import { ActForm } from './forms/ActForm';
 import { FormShell } from './forms/FormShell';
+import { JustHappenedPreview } from './JustHappenedPreview';
 import { RecentActs } from './RecentActs';
 import { RecordPanel } from './RecordPanel';
+import { StoryLogModeSwitch } from './StoryLogModeSwitch';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -46,6 +49,8 @@ export interface StoryLogProps {
   initialCollapsed?: boolean;
   /** Avoid duplicate speech when the same released rows have a live notice surface. */
   announceUpdates?: boolean;
+  /** Desktop HUD: recent released outcomes open the same history/debug reader. */
+  compactPreview?: boolean;
 }
 
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
@@ -182,6 +187,7 @@ export function StoryLog({
   diagnosticsEnabled = false,
   initialCollapsed = false,
   announceUpdates = true,
+  compactPreview = false,
 }: StoryLogProps) {
   const debugEnabled = isCombatDebugEnabled(
     diagnosticsEnabled,
@@ -206,7 +212,7 @@ export function StoryLog({
   const [recentShown, setRecentShown] = useState(false);
   // The recent panel's click: scroll the log to that act's row, or to the
   // folded walk row that holds it.
-  const scrollToRow = (id: string) => {
+  const scrollToRow = useCallback((id: string): void => {
     const el = scrollRef.current;
     if (!el) return;
     const target = Array.from(
@@ -219,7 +225,7 @@ export function StoryLog({
     if (!target) return;
     setPinnedToBottom(false);
     target.scrollIntoView?.({ block: 'nearest' });
-  };
+  }, []);
   const [collapsedChoice, setCollapsed] = useState<boolean | null>(null);
   // Container measurement may enable desktop after mount. Follow its default
   // until the player chooses; subsequent resize never overrides that choice.
@@ -231,6 +237,22 @@ export function StoryLog({
   const expandButton = useRef<HTMLButtonElement>(null);
   const collapseButton = useRef<HTMLButtonElement>(null);
   const focusAfterToggle = useRef(false);
+  const pendingStoryId = useRef<string | null>(null);
+  const openHistory = (id?: string): void => {
+    if (compactPreview) {
+      onModeChange('story');
+      savedScrollTop.current = undefined;
+      setPinnedToBottom(true);
+    }
+    pendingStoryId.current = id ?? null;
+    focusAfterToggle.current = true;
+    setCollapsed(false);
+  };
+  const closeHistory = (): void => {
+    savedScrollTop.current = scrollRef.current?.scrollTop;
+    focusAfterToggle.current = true;
+    setCollapsed(true);
+  };
 
   useLayoutEffect(() => {
     if (focusAfterToggle.current) {
@@ -239,6 +261,11 @@ export function StoryLog({
     }
     const el = scrollRef.current;
     if (!el || collapsed) return;
+    if (pendingStoryId.current && visibleMode === 'story') {
+      scrollToRow(pendingStoryId.current);
+      pendingStoryId.current = null;
+      return;
+    }
     if (savedScrollTop.current !== undefined) {
       el.scrollTop = savedScrollTop.current;
       savedScrollTop.current = undefined;
@@ -259,6 +286,7 @@ export function StoryLog({
     visibleMode,
     pinnedToBottom,
     collapsed,
+    scrollToRow,
   ]);
 
   // THE RECORD STREAMS ONLY WHILE IT IS SHOWN: Debug visible and the log
@@ -291,28 +319,39 @@ export function StoryLog({
   return (
     <aside
       data-testid="session-combat-log"
-      className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''} ${wideDebug ? styles.storyLogWide : ''}`}
+      className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''} ${wideDebug ? styles.storyLogWide : ''} ${compactPreview ? styles.hudStoryLog : ''}`}
       aria-label="Story log"
+      onKeyDown={(event) => {
+        if (compactPreview && !collapsed && event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          closeHistory();
+        }
+      }}
     >
       <button
         type="button"
         className={styles.logTab}
         hidden={!collapsed}
-        aria-label="Expand combat log"
+        aria-label={compactPreview ? 'Just happened' : 'Expand combat log'}
         ref={expandButton}
         aria-expanded={false}
         aria-controls={feedId}
-        onClick={() => {
-          focusAfterToggle.current = true;
-          setCollapsed(false);
-        }}
+        onClick={() => openHistory()}
       >
-        ◀ Log
+        {compactPreview ? 'Just happened ›' : '◀ Log'}
       </button>
+      {compactPreview && collapsed && (
+        <JustHappenedPreview story={story} onSelect={openHistory} />
+      )}
       <header hidden={collapsed}>
         <div>
           <span className={styles.panelEyebrow}>
-            {visibleMode === 'story' ? 'Encounter story' : 'Developer stream'}
+            {compactPreview
+              ? 'Encounter history'
+              : visibleMode === 'story'
+                ? 'Encounter story'
+                : 'Developer stream'}
           </span>
           <strong>
             {visibleMode === 'story' ? 'What happened' : 'The record'}
@@ -350,17 +389,23 @@ export function StoryLog({
             ref={collapseButton}
             aria-expanded={true}
             aria-controls={feedId}
-            onClick={() => {
-              savedScrollTop.current = scrollRef.current?.scrollTop;
-              focusAfterToggle.current = true;
-              setCollapsed(true);
-            }}
+            onClick={closeHistory}
           >
-            ▶
+            {compactPreview ? '×' : '▶'}
           </button>
         </div>
       </header>
 
+      {compactPreview && (
+        <StoryLogModeSwitch
+          hud
+          debugEnabled={debugEnabled}
+          mode={visibleMode}
+          onModeChange={onModeChange}
+          panelId={feedId}
+          hidden={collapsed}
+        />
+      )}
       {visibleMode === 'story' && recentShown && !collapsed && (
         <RecentActs story={story} onSelect={scrollToRow} />
       )}
@@ -372,7 +417,8 @@ export function StoryLog({
           className={styles.storyEntries}
           id={feedId}
           hidden={collapsed}
-          role="log"
+          role={compactPreview ? 'tabpanel' : 'log'}
+          aria-labelledby={compactPreview ? `${feedId}-story-tab` : undefined}
           aria-live={announceUpdates ? 'polite' : 'off'}
           aria-relevant="additions"
         >
@@ -397,7 +443,9 @@ export function StoryLog({
           className={styles.debugFeed}
           id={feedId}
           hidden={collapsed}
-          aria-label="Raw debug feed"
+          aria-label={compactPreview ? undefined : 'Raw debug feed'}
+          role={compactPreview ? 'tabpanel' : undefined}
+          aria-labelledby={compactPreview ? `${feedId}-debug-tab` : undefined}
           aria-live="off"
         >
           {record ? (
@@ -410,25 +458,15 @@ export function StoryLog({
         </div>
       )}
 
-      {debugEnabled && (
-        <footer hidden={collapsed}>
-          <button
-            type="button"
-            className={visibleMode === 'story' ? '' : styles.quietButton}
-            aria-pressed={visibleMode === 'story'}
-            onClick={() => onModeChange('story')}
-          >
-            Story
-          </button>
-          <button
-            type="button"
-            className={visibleMode === 'debug' ? '' : styles.quietButton}
-            aria-pressed={visibleMode === 'debug'}
-            onClick={() => onModeChange('debug')}
-          >
-            Debug
-          </button>
-        </footer>
+      {!compactPreview && (
+        <StoryLogModeSwitch
+          hud={false}
+          debugEnabled={debugEnabled}
+          mode={visibleMode}
+          onModeChange={onModeChange}
+          panelId={feedId}
+          hidden={collapsed}
+        />
       )}
     </aside>
   );

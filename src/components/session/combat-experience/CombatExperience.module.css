@@ -2863,22 +2863,41 @@ button.diceDrawerCue:focus-visible {
   grid-row: 3;
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
+  grid-template-columns: 190px minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
   min-width: 0;
   margin: 12px 24px;
-  padding: 6px 8px;
-  border: 1px solid #746044;
-  border-top: 2px solid #b79862;
-  border-radius: 8px 8px 4px 4px;
-  background: linear-gradient(
-    180deg,
-    rgba(24, 33, 38, 0.76),
-    rgba(11, 17, 22, 0.84)
-  );
+  padding: 16px 20px;
+  border: 1px solid #3a4b5b;
+  border-radius: 10px;
+  background: rgb(21 30 40 / 80%);
   box-shadow: 0 8px 28px #0008;
   pointer-events: auto;
+}
+.combatExperience[data-desktop-hotbar='true'] .desktopDock .viewerPortrait {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid #3a4b5b;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.combatExperience[data-desktop-hotbar='true'] .desktopDock .viewerIdentity {
+  display: flex;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.combatExperience[data-desktop-hotbar='true']
+  .desktopDock
+  .viewerIdentity
+  strong {
+  font:
+    600 12px/1.4 Inter,
+    system-ui,
+    sans-serif;
 }
 .desktopDockActions {
   min-width: 0;
@@ -2957,6 +2976,122 @@ button.diceDrawerCue:focus-visible {
 .combatExperience[data-desktop-hotbar='true']
   .storyLog:not(.storyLogCollapsed)::before {
   display: none;
+}
+
+/* The approved desktop HUD: the reader floats without resizing the map/dock. */
+.combatExperience[data-desktop-hotbar='true'] .storyLog.hudStoryLog {
+  position: absolute;
+  z-index: 40;
+  top: 120px;
+  left: 24px;
+  right: auto;
+  bottom: auto;
+  grid-area: auto;
+  margin: 0;
+  width: min(560px, calc(100% - 48px));
+  height: auto;
+  max-height: min(560px, calc(100% - 160px));
+  border: 1px solid #3a4b5b;
+  border-radius: 8px;
+  background: rgb(21 30 40 / 97%);
+  box-shadow: 0 8px 28px #0005;
+}
+.combatExperience[data-desktop-hotbar='true']
+  .storyLog.hudStoryLog.storyLogWide {
+  width: min(900px, calc(100% - 48px));
+}
+.combatExperience[data-desktop-hotbar='true']
+  .storyLog.hudStoryLog.storyLogCollapsed {
+  width: min(310px, calc(100% - 48px));
+  height: auto;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
+.hudStoryLog > .logTab {
+  width: 100%;
+  text-align: left;
+  min-height: 0 !important;
+  padding: 6px 0 10px;
+  background: transparent;
+  color: #dce4e7;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 4px #000;
+}
+.hudStoryLog > header strong {
+  font-family: Inter, system-ui, sans-serif;
+}
+.hudRecent {
+  display: grid;
+  gap: 5px;
+}
+.hudRecent > button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-left: 2px solid #516775;
+  border-radius: 3px;
+  background: rgb(17 26 35 / 76%);
+  color: #edf3f7;
+  cursor: pointer;
+  text-align: left;
+  font:
+    12px/1.45 Inter,
+    system-ui,
+    sans-serif;
+}
+.hudRecent > button:hover {
+  background: rgb(32 44 57 / 90%);
+}
+.hudRecent > button:focus-visible {
+  outline: 2px solid #9cdbdf;
+  outline-offset: 2px;
+}
+.hudRecent > p {
+  margin: 0;
+  padding: 8px 10px;
+  color: #abbac7;
+  background: rgb(17 26 35 / 76%);
+  font-size: 11px;
+  border-radius: 3px;
+}
+.hudStoryLog > .hudLogTabs {
+  justify-content: flex-start;
+  padding: 8px 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--sc-line);
+}
+.hudStoryLog > .hudLogTabs button {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 5px 12px;
+  font:
+    500 12px/1.4 Inter,
+    system-ui,
+    sans-serif;
+  text-transform: none;
+  letter-spacing: normal;
+  background: transparent;
+  color: #abbac7;
+}
+.hudStoryLog > .hudLogTabs button[aria-selected='true'] {
+  background: #30404e;
+  color: #edf3f7;
+}
+.desktopCharacterEffects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.desktopCharacterEffects .effectBadge {
+  font-size: 10px;
+  padding: 3px 5px;
+  white-space: normal;
 }
 
 /* The recent panel (rpg-dnd5e-web#1301): toast-size forms over the log. */

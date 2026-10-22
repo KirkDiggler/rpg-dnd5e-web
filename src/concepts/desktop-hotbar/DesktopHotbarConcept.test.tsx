@@ -147,8 +147,8 @@ describe('DesktopHotbarConcept', () => {
 
   it('debug mode says a fixture has no session record (web#1305)', () => {
     render(<DesktopHotbarConcept />);
-    fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Debug' }));
     expect(
       screen.getByText('No session record for this view.')
     ).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe('DesktopHotbarConcept', () => {
       const notices = screen.getByTestId('story-notices');
       expect(notices).toBeEmptyDOMElement();
       expect(
-        screen.getByRole('button', { name: 'Expand combat log' })
+        screen.getByRole('button', { name: 'Just happened' })
       ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Next event' }));
       expect(
@@ -176,17 +176,14 @@ describe('DesktopHotbarConcept', () => {
       expect(notices).toHaveTextContent('Aldric turns the blow aside. Miss.');
       act(() => vi.advanceTimersByTime(6000));
       expect(notices).toBeEmptyDOMElement();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Expand combat log' })
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
       const history = screen.getByTestId('session-combat-log');
       expect(
         within(history).getByText('Skeleton Guard attacks Aldric')
       ).toBeInTheDocument();
-      expect(within(history).getByRole('log')).toHaveAttribute(
-        'aria-live',
-        'off'
-      );
+      expect(
+        within(history).getByRole('tabpanel', { name: 'History' })
+      ).toHaveAttribute('aria-live', 'off');
       fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));
       expect(notices).toBeEmptyDOMElement();
     } finally {
