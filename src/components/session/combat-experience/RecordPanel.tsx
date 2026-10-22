@@ -20,6 +20,18 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
     () => filterRecord(feed.rows, filter),
     [feed.rows, filter]
   );
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  // Persist the clamp so a cleared/restarted buffer cannot resurrect an old page.
+  if (page !== currentPage) setPage(currentPage);
+  const start = currentPage * pageSize;
+  const pageRows = rows.slice(start, start + pageSize);
+  const changeFilter = (next: RecordFilter) => {
+    setFilter(next);
+    setPage(0);
+  };
   const narrowed = filter.act !== '' || filter.beat !== '';
   return (
     <div className={styles.panel}>
@@ -30,7 +42,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
             aria-label="Filter by act id"
             value={filter.act}
             placeholder="e.g. move:01…"
-            onChange={(e) => setFilter({ ...filter, act: e.target.value })}
+            onChange={(e) => changeFilter({ ...filter, act: e.target.value })}
           />
         </label>
         <label>
@@ -39,20 +51,67 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
             aria-label="Filter by beat"
             value={filter.beat}
             placeholder="e.g. answered"
-            onChange={(e) => setFilter({ ...filter, beat: e.target.value })}
+            onChange={(e) => changeFilter({ ...filter, beat: e.target.value })}
           />
         </label>
         {narrowed && (
           <button
             type="button"
-            onClick={() => setFilter({ act: '', beat: '' })}
+            onClick={() => changeFilter({ act: '', beat: '' })}
           >
             Clear
           </button>
         )}
-        <span className={styles.count} aria-live="off">
-          {rows.length}/{feed.rows.length}
+        <span
+          className={styles.count}
+          aria-live="off"
+          title="Matching / loaded record beats"
+        >
+          {rows.length}/{feed.rows.length} loaded
         </span>
+        <nav
+          className={styles.pagination}
+          aria-label="Record pages"
+          title="Pages of the loaded record buffer"
+        >
+          <label className={styles.pageSize}>
+            Rows
+            <select
+              aria-label="Record rows per page"
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            >
+              {[10, 25, 50].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className={styles.range}>
+            {rows.length ? start + 1 : 0}–{start + pageRows.length} of{' '}
+            {rows.length}
+          </span>
+          <button
+            type="button"
+            aria-label="Previous record page"
+            disabled={currentPage === 0}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            aria-label="Next record page"
+            disabled={currentPage === pageCount - 1}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            Next
+          </button>
+        </nav>
       </div>
       {feed.notice && (
         <div className={styles.notice} role="status">
@@ -60,14 +119,21 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
         </div>
       )}
       <ol className={styles.rows} aria-label="Record">
-        {rows.map((row) => (
+        {pageRows.map((row) => (
           <RecordRowView
             key={row.id}
             row={row}
-            onAct={(act) => setFilter({ ...filter, act })}
+            onAct={(act) => changeFilter({ ...filter, act })}
           />
         ))}
       </ol>
+      {rows.length === 0 && (
+        <p className={styles.empty}>
+          {feed.rows.length === 0
+            ? 'No record beats received.'
+            : 'No records match these filters.'}
+        </p>
+      )}
     </div>
   );
 }

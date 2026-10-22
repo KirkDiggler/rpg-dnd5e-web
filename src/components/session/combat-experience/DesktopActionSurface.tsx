@@ -1,3 +1,4 @@
+import { ActionCostMark } from '@/components/ui/inspection/ActionCostMark';
 import {
   useCallback,
   useEffect,
@@ -423,7 +424,10 @@ export function DesktopActionSurface({
                 />
               </div>
               <div>
-                <small>{slotLabel(inspected.slot)}</small>
+                <small className={styles.inspectionCost}>
+                  <ActionCostMark slot={inspected.slot} />
+                  {slotLabel(inspected.slot)}
+                </small>
                 <strong>{tooltip.title}</strong>
               </div>
               <button

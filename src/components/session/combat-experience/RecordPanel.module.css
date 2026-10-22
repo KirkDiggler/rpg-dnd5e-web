@@ -41,6 +41,42 @@
   border-radius: 4px;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  padding-top: 0.3rem;
+}
+.filters .pageSize {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+.panel .pagination select,
+.panel .pagination button {
+  padding: 0.2rem 0.4rem;
+  background: #152126;
+  color: inherit;
+  font: inherit;
+  border: 1px solid var(--sc-line, rgba(173, 195, 202, 0.18));
+  border-radius: 4px;
+}
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.range {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.empty {
+  margin: 0.5rem 0;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
 .count {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;

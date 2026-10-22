@@ -1,0 +1,28 @@
+.action-cost-mark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+  vertical-align: middle;
+  font: 700 12px/1 sans-serif;
+}
+.action-cost-mark[data-slot='action'] > span {
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+.action-cost-mark[data-slot='bonus'] > span {
+  width: 12px;
+  height: 11px;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.action-cost-mark[data-slot='reaction'] > span {
+  width: 10px;
+  height: 10px;
+  background: currentColor;
+  border-radius: 50%;
+}
