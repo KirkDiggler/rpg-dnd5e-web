@@ -26,6 +26,7 @@ import {
   type AnswerCellShape,
   type AnswerEntryShape,
   type AnswerSelectorShape,
+  type AnswerWaypointShape,
   type AnswerWhenCondition,
   type AnswerWhenDeed,
   type AnswerWhenShape,
@@ -189,6 +190,33 @@ export function cellPhrase(cell: AnswerCellShape): string {
   return `{q: ${cell.q}, r: ${cell.r}}`;
 }
 
+/** A waypoint in the file's own spelling, its pause included when it
+ * states one: `{q: -7, r: 9, wait: 2, facing: se}`. */
+export function waypointPhrase(waypoint: AnswerWaypointShape): string {
+  const pause = [
+    ...(waypoint.wait !== undefined ? [`wait: ${waypoint.wait}`] : []),
+    ...(waypoint.facing !== undefined ? [`facing: ${waypoint.facing}`] : []),
+  ];
+  return pause.length === 0
+    ? cellPhrase(waypoint)
+    : `{q: ${waypoint.q}, r: ${waypoint.r}, ${pause.join(', ')}}`;
+}
+
+/** Where a route stands and which way it faces there (rpg-project#624):
+ * "2 rounds facing se at {q: -7, r: 9}". A waypoint with no wait is walked
+ * through, so it says nothing. */
+function pausesPhrase(route: readonly AnswerWaypointShape[]): string {
+  const stands = route
+    .filter((waypoint) => (waypoint.wait ?? 0) > 0)
+    .map((waypoint) => {
+      const rounds =
+        waypoint.wait === 1 ? '1 round' : `${waypoint.wait} rounds`;
+      const facing = waypoint.facing ? ` facing ${waypoint.facing}` : '';
+      return `${rounds}${facing} at ${cellPhrase(waypoint)}`;
+    });
+  return stands.length === 0 ? '' : `, standing ${joinAnd(stands)}`;
+}
+
 /** A route's length in words: "1 cell", "4 cells". */
 function cellsPhrase(count: number): string {
   return count === 1 ? '1 cell' : `${count} cells`;
@@ -204,7 +232,7 @@ export function selectorPhrase(
   if (cell !== undefined) return cellPhrase(cell);
   const route = selectorRoute(selector);
   if (route !== undefined)
-    return `a route through ${cellsPhrase(route.length)}`;
+    return `a route through ${cellsPhrase(route.length)}${pausesPhrase(route)}`;
   if (selector === 'enemy') return 'the enemy';
   if (selector === 'attacker') return `whoever hit ${verb('object', subject)}`;
   if (selector === 'actor') return 'whoever did it';
@@ -299,7 +327,7 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
     if (cell !== undefined) return `${word} at ${cellPhrase(cell)}`;
     const route = selectorRoute(selector);
     if (route !== undefined)
-      return `${word} path ${route.map(cellPhrase).join(' ')}`;
+      return `${word} path ${route.map(waypointPhrase).join(' ')}`;
   }
   return word;
 }

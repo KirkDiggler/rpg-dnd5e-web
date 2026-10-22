@@ -77,6 +77,7 @@ import {
   whenIsOneConditionRefusal,
   whenShapeRefusal,
 } from '@/author/answerVocabulary';
+import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
 
 /** One cell of the room, as its walkable hexes are written: axial. */
 export interface AnswerCellShape {
@@ -84,13 +85,25 @@ export interface AnswerCellShape {
   r: number;
 }
 
+/** One waypoint of a route: a cell, and optionally the PAUSE there
+ * (rpg-project#624, the engine's `decodeWaypoint`): `wait`, the whole rounds
+ * the walker stands on it before walking on, and `facing`, the compass word
+ * it faces while it stands. Walking, it faces its step; a facing without a
+ * wait is refused, because the facing is the stand's. Absent keys stay
+ * absent, so an unpaused route reads and writes exactly as it always did. */
+export interface AnswerWaypointShape extends AnswerCellShape {
+  wait?: number;
+  facing?: string;
+}
+
 /** A selector as written: one of the sealed words (`sound` among them), an
  * authored cell `{ at: { q, r } }`, or an authored route `{ path: [{ q, r },
- * …] }` (rpg-toolkit#2063). A mapping names exactly one of the two. */
+ * …] }` (rpg-toolkit#2063), each waypoint optionally stating its pause. A
+ * mapping names exactly one of the two. */
 export type AnswerSelectorShape =
   | string
   | { at: AnswerCellShape }
-  | { path: AnswerCellShape[] };
+  | { path: AnswerWaypointShape[] };
 
 /** The cell a selector names, if it names one. */
 export function selectorCell(
@@ -104,7 +117,7 @@ export function selectorCell(
 /** The route a selector names, if it names one. */
 export function selectorRoute(
   selector: AnswerSelectorShape | undefined
-): AnswerCellShape[] | undefined {
+): AnswerWaypointShape[] | undefined {
   return typeof selector === 'object' && 'path' in selector
     ? selector.path
     : undefined;
@@ -682,7 +695,7 @@ function validateAnswerSelector(
     let at: AnswerCellShape | null = null;
     const rawPath = value[ANSWER_PATH_SELECTOR.key];
     const waypoints = Array.isArray(rawPath) ? (rawPath as unknown[]) : [];
-    const route: AnswerCellShape[] = [];
+    const route: AnswerWaypointShape[] = [];
     let offsetWaypoint = false;
     for (const key of Object.keys(value)) {
       if (!SELECTOR_MAPPING_KEYS.includes(key))
@@ -692,7 +705,7 @@ function validateAnswerSelector(
       if (key === ANSWER_PATH_SELECTOR.key)
         waypoints.forEach((waypoint, i) => {
           if (isMapping(waypoint))
-            route.push(hexCell(waypoint, `${path}.path[${i}]`));
+            route.push(routeWaypoint(waypoint, `${path}.path[${i}]`));
           else offsetWaypoint = true;
         });
     }
@@ -745,6 +758,54 @@ function hexCell(
   // Written q then r, the order the engine's fixture and the room's own
   // walkable hexes use, so the bytes re-emit in that order.
   return { q: value.q as number, r: value.r as number };
+}
+
+/** The engine's `decodeWaypoint` and the dialect's waypoint checks
+ * (`grammar.go`, rpg-project#624), in its sentences: a strict `{ q, r }`
+ * plus an optional `facing` word and `wait` count. The decode refusals are
+ * said at the waypoint, the dialect's at the key it judges. Keys are kept in
+ * the file's order — q, r, then the pause — so the bytes re-emit as written. */
+function routeWaypoint(
+  value: Record<string, unknown>,
+  path: string
+): AnswerWaypointShape {
+  // DECODE, in the file's key order as the engine reads it: each pause key
+  // must be a word or a whole number; then the cell, strictly.
+  const cell: Record<string, unknown> = {};
+  const pause: { wait?: number; facing?: string } = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (key === 'facing') {
+      if (typeof v !== 'string')
+        fail(
+          path,
+          `a waypoint's facing is a word, one of ${FACING_NAMES.join('|')}`
+        );
+      pause.facing = v;
+    } else if (key === 'wait') {
+      if (typeof v !== 'number' || !Number.isInteger(v))
+        fail(path, "a waypoint's wait is a whole number of rounds");
+      pause.wait = v;
+    } else cell[key] = v;
+  }
+  const out: AnswerWaypointShape = { ...hexCell(cell, path), ...pause };
+  // THE DIALECT: the placement's vocabulary, the facing is the stand's, and
+  // a stand is not negative.
+  if (pause.facing !== undefined && !isValidFacing(pause.facing))
+    fail(
+      `${path}.facing`,
+      `"${pause.facing}" is not a compass direction: a facing is one of ${FACING_NAMES.join('|')}`
+    );
+  if (pause.facing !== undefined && !pause.wait)
+    fail(
+      `${path}.facing`,
+      'a facing is taken while standing; give the waypoint a wait'
+    );
+  if (pause.wait !== undefined && pause.wait < 0)
+    fail(
+      `${path}.wait`,
+      `a wait is how many rounds the walker stands here, and ${pause.wait} is negative`
+    );
+  return out;
 }
 
 /** The row's own path, from a selector's `…time[i].<word>`. */
