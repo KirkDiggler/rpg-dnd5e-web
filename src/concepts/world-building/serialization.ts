@@ -174,7 +174,9 @@ function prop(
   if (input.kind !== 'prop') throw new Error(`${field}.kind must be prop.`);
   const assetRef = string(input.assetRef, `${field}.assetRef`, 160);
   if (!WORLD_BUILDING_CATALOG_BY_REF.has(assetRef)) {
-    throw new Error(`${field}.assetRef is not in the local prop catalog.`);
+    throw new Error(
+      `${field}.assetRef ${JSON.stringify(assetRef)} is not in the local prop catalog.`
+    );
   }
   return {
     id: string(input.id, `${field}.id`, 120),

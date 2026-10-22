@@ -102,6 +102,50 @@ describe('room authoring draft', () => {
     ).toEqual(ROOM_WORKSPACE_STEPS[2]);
   });
 
+  it('expands a radius off the presets to the next larger preset, never a smaller one', () => {
+    const draft = {
+      ...createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      workspace: { hexRadius: 9, horizontalLimit: 20 },
+    };
+    expect(expandRoomWorkspace(draft).workspace).toEqual(
+      ROOM_WORKSPACE_STEPS[1]
+    );
+    const large = {
+      ...draft,
+      workspace: { hexRadius: 20, horizontalLimit: 40 },
+    };
+    expect(expandRoomWorkspace(large)).toBe(large);
+  });
+
+  /** THE FRAME STATES ITS SCALE (rpg-dnd5e-web#1311). Before, The Watch
+   * Post's `coordinateFrame: {hexRadius: 1}` was refused with "Unsupported
+   * room coordinate frame." The engine reads only hexRadius. */
+  it('reads a frame that states only its scale, and names a frame word it cannot draw in', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const envelope = (coordinateFrame: unknown) =>
+      JSON.stringify({
+        kind: 'rpg-room-authoring-draft',
+        version: ROOM_DRAFT_ENVELOPE_VERSION,
+        draft: { ...draft, coordinateFrame },
+      });
+    expect(parseRoomDraftJson(envelope({ hexRadius: 1 }))).toEqual(draft);
+    expect(() =>
+      parseRoomDraftJson(
+        envelope({ hexRadius: 1, horizontalPlane: 'world-xy' })
+      )
+    ).toThrow(
+      'Unsupported room coordinate frame: horizontalPlane must be "world-xz", and this file says "world-xy".'
+    );
+    expect(() => parseRoomDraftJson(envelope({ hexRadius: 2 }))).toThrow(
+      'Unsupported room coordinate frame: hexRadius must be 1, and this file says 2.'
+    );
+    expect(() =>
+      parseRoomDraftJson(envelope({ horizontalPlane: 'world-xz' }))
+    ).toThrow(
+      'Unsupported room coordinate frame: hexRadius is required, and it must be 1.'
+    );
+  });
+
   it('migrates a version 1 small draft without moving or clipping authored data', () => {
     const current = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const legacyDraft = {
