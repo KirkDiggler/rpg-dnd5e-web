@@ -46,6 +46,26 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('portrait capture readiness', () => {
+  it.each([
+    [0, Math.PI / 2],
+    [Math.PI, (3 * Math.PI) / 2],
+  ])(
+    'faces right while preserving the asset forward correction %s',
+    (forwardCorrection, expectedFacing) => {
+      const current = { ...source(), facingRotation: forwardCorrection };
+      render(
+        <PortraitCapture
+          source={current}
+          onComplete={vi.fn()}
+          onError={vi.fn()}
+          onRootError={vi.fn()}
+        />
+      );
+      expect(model().facingRotation).toBe(expectedFacing);
+      expect(current.facingRotation).toBe(forwardCorrection);
+    }
+  );
+
   it('waits for every requested accessory and outfit before capture', () => {
     const current = source();
     render(

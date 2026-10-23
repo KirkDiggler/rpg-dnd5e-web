@@ -98,8 +98,9 @@ scope regenerates them. Failed keys remain failed while present; remounting the
 provider (or removing and later restoring that key) retries. This is not a durable
 portrait service or a cache across game sessions.
 
-The current recipe produces 128×128 standing-body thumbnails with the shared
-renderer’s framing and lighting. It does not include equipped-item attachments,
+The current recipe produces 128×128 right-facing standing-body thumbnails with
+an asset-corrected portrait-only rotation and the shared renderer’s framing and
+lighting. It leaves in-game facing unchanged. It does not include equipped-item attachments,
 map lighting, combat pose, wounds or a target-dependent presentation. A head-and-
 shoulders crop or a different resolution is a presentation change, not new rules
 or a new character RPC.

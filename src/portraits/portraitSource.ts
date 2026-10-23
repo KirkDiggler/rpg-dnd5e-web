@@ -15,7 +15,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
 /** Bump when capture lighting, framing or pose changes. Images are mount-local. */
-export const PORTRAIT_RECIPE = 'standing-portrait-v1';
+export const PORTRAIT_RECIPE = 'right-facing-standing-portrait-v2';
 
 export interface PortraitSource {
   readonly status: 'model';
