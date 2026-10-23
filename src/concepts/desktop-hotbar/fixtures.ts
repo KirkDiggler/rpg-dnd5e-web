@@ -352,7 +352,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
         classRef: undefined,
         resources: [
           create(ResourceViewSchema, {
-            key: 'spell_slots_1',
+            key: 'spell_slot_level_1',
             name: '1st-level Spell Slots',
             current: id === 'spent-slots' ? 0 : 2,
             maximum: 2,
@@ -441,6 +441,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
               ref: { module: 'dnd5e', type: 'features', id: 'second_wind' },
               name: 'Second Wind',
               detail: 'Supplied feature detail',
+              resourceKey: 'second_wind',
             },
           ],
           conditions: [
@@ -466,6 +467,62 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
           resources: [
             { key: 'hit_dice', name: 'Hit Dice', current: 1, maximum: 1 },
             { key: 'second_wind', name: 'Second Wind', current: 1, maximum: 1 },
+          ],
+        }),
+      },
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'bard-status-layout',
+        label: 'Bard status',
+        description:
+          'Linked feature/resources and compact status icons. Layout fixture only.',
+        viewerName: 'Bard fixture',
+        viewerClassRefId: 'bard',
+        authorityFresh: true,
+        characterData: create(CharacterDataSchema, {
+          level: 1,
+          hitPoints: { current: 10, max: 10 },
+          armorClassDetail: { total: 13, note: 'Supplied fixture AC' },
+          baseSpeedFeet: 30,
+          features: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'features',
+                id: 'bardic_inspiration',
+              },
+              name: 'Bardic Inspiration',
+              detail: 'An owned feature with the supplied Inspiration pool.',
+              resourceKey: 'inspiration',
+            },
+          ],
+          conditions: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'opportunity_attack',
+              },
+              name: 'Opportunity Attack',
+              detail: 'Provider-authored reaction explanation.',
+            },
+          ],
+          resources: [
+            {
+              key: 'inspiration',
+              name: 'Bardic Inspiration',
+              current: 3,
+              maximum: 3,
+            },
+            { key: 'hit_dice', name: 'Hit Dice', current: 1, maximum: 1 },
+            {
+              key: 'spell_slot_level_1',
+              name: '1st-level Spell Slots',
+              current: 2,
+              maximum: 2,
+            },
           ],
         }),
       },

@@ -15,6 +15,7 @@ import {
 } from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
+import { CharacterStatusRail } from './CharacterStatusRail';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts.tsx';
 import { DesktopEffects } from './DesktopEffects';
@@ -782,17 +783,16 @@ export function CombatExperience({
                   privateStatusMessage={privateStatusMessage}
                   onRetry={onRetryPrivateStatus}
                 >
-                  {statuses.length > 0 && (
-                    <div
-                      className={styles.desktopCharacterEffects}
-                      tabIndex={0}
-                      role="group"
-                      aria-label="Effects and resources"
-                    >
-                      {statuses.map((status) => (
-                        <StatusBadge key={status.key} status={status} />
-                      ))}
-                    </div>
+                  {presentedCharacter && (
+                    <CharacterStatusRail
+                      key={viewerMember}
+                      character={presentedCharacter}
+                      privateStatus={privateStatus}
+                      memberNames={memberNames}
+                      notes={statuses.filter(
+                        (status) => status.key === 'life-state'
+                      )}
+                    />
                   )}
                   <DesktopEffects
                     hideWhenEmpty

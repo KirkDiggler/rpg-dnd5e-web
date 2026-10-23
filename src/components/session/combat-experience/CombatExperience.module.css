@@ -3122,25 +3122,6 @@ button.diceDrawerCue:focus-visible {
   background: #30404e;
   color: #edf3f7;
 }
-.desktopCharacterEffects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 10px;
-  max-height: 84px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-.desktopCharacterEffects:focus-visible {
-  outline: 2px solid #9cdbdf;
-  outline-offset: 3px;
-}
-.desktopCharacterEffects .effectBadge {
-  font-size: 10px;
-  padding: 3px 5px;
-  white-space: normal;
-}
-
 /* The recent panel (rpg-dnd5e-web#1301): toast-size forms over the log. */
 .recentActs {
   display: grid;

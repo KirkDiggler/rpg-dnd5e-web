@@ -157,15 +157,24 @@ describe('DesktopHotbarConcept', () => {
       within(header).getByRole('button', { name: /Sneak/ })
     ).toBeInTheDocument();
     const status = screen.getByTestId('desktop-status-section');
-    for (const fact of [
-      'Fighter fixture',
-      '13/13',
+    expect(status).toHaveTextContent('Fighter fixture');
+    expect(status).toHaveTextContent('13/13');
+    for (const name of [
+      'Second Wind',
       'Great Weapon Fighting',
       'Opportunity Attack',
-      'Hit Dice 1/1',
-      'Second Wind 1/1',
+      'Hit Dice',
     ])
-      expect(status).toHaveTextContent(fact);
+      expect(
+        within(status).getByRole('button', { name: `Inspect ${name}` })
+      ).toBeInTheDocument();
+    fireEvent.click(
+      within(status).getByRole('button', { name: 'Inspect Hit Dice' })
+    );
+    expect(screen.getByRole('dialog', { name: 'Hit Dice' })).toHaveTextContent(
+      '1/1'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close inspection' }));
     expect(screen.queryByTestId('desktop-effects')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Longsword' })).toBeNull();
   });
