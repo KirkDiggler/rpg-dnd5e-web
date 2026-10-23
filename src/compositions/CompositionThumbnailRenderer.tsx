@@ -57,7 +57,9 @@ class CaptureBoundary extends Component<
 function CaptureFrame({
   onCapture,
   onError,
+  ready,
 }: {
+  ready: boolean;
   onCapture: (image: string) => void;
   onError: (error: unknown) => void;
 }) {
@@ -67,10 +69,14 @@ function CaptureFrame({
 
   useEffect(() => {
     invalidate();
-  }, [invalidate]);
+  }, [invalidate, ready]);
 
   useFrame(() => {
     if (captured.current) return;
+    if (!ready) {
+      frames.current = 0;
+      return;
+    }
     frames.current += 1;
     // Bounds fits during layout. Give the fitted camera and loaded materials an
     // additional frame before reading the preserved drawing buffer.
@@ -117,6 +123,7 @@ interface ThumbnailCaptureRequestProps {
   children: ReactNode;
   requestKey: string;
   fitBounds: boolean;
+  ready: boolean;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
 }
@@ -126,6 +133,7 @@ function ThumbnailCaptureRequest({
   children,
   requestKey,
   fitBounds,
+  ready,
   onComplete,
   onError,
 }: ThumbnailCaptureRequestProps) {
@@ -175,7 +183,7 @@ function ThumbnailCaptureRequest({
           // no inferred geometry box; it uses the reset capture camera.
           <group dispose={null}>{children}</group>
         )}
-        <CaptureFrame onCapture={complete} onError={fail} />
+        <CaptureFrame ready={ready} onCapture={complete} onError={fail} />
       </Suspense>
     </CaptureBoundary>
   );
@@ -307,6 +315,9 @@ export interface ThumbnailRendererProps {
   /** Defaults to the existing static/composition auto-frame behavior. Skinned
    * character producers use the stable reset camera instead. */
   fitBounds?: boolean;
+  /** Nested asset producers hold capture until their attachments are complete.
+   * The existing request timeout still bounds a producer that never becomes ready. */
+  ready?: boolean;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
   onRootError: (message: string) => void;
@@ -322,6 +333,7 @@ export function ThumbnailRenderer({
   children,
   requestKey,
   fitBounds = true,
+  ready = true,
   onComplete,
   onError,
   onRootError,
@@ -353,6 +365,7 @@ export function ThumbnailRenderer({
           key={requestKey}
           requestKey={requestKey}
           fitBounds={fitBounds}
+          ready={ready}
           onComplete={onComplete}
           onError={onError}
         >
