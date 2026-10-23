@@ -1,0 +1,91 @@
+.summary h3 {
+  margin: 0;
+  font:
+    600 14px/1.4 Inter,
+    system-ui,
+    sans-serif;
+  color: #edf3f7;
+}
+.outcome {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #abbac7;
+}
+.outcome[data-tone='success'] {
+  color: #9cddb5;
+}
+.outcome[data-tone='danger'] {
+  color: #efa39e;
+}
+.rolls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 13px;
+}
+.roll {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #3a4b5b;
+  border-left: 3px solid #8bbddd;
+  border-radius: 5px;
+  background: #22334166;
+  color: #b4d8ea;
+}
+.roll[data-kind='damage'] {
+  border-left-color: #b9bdc4;
+  background: #202a3466;
+  color: #edf3f7;
+}
+.roll[data-kind='damage'][data-tone='success'] {
+  border-left-color: #77cda5;
+  background: #15372a66;
+  color: #9cddb5;
+}
+.roll[data-kind='damage'][data-tone='danger'] {
+  border-left-color: #df8f89;
+  background: #40252766;
+  color: #efa39e;
+}
+.roll > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.roll > header > span {
+  font-size: 11px;
+  font-weight: 600;
+}
+.roll small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: #abbac7;
+}
+.total {
+  font-size: 20px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.roll code {
+  display: block;
+  margin-top: 5px;
+  font:
+    11px/1.5 ui-monospace,
+    monospace;
+  color: #d5dee4;
+  overflow-wrap: anywhere;
+}
+.roll .missing {
+  font-size: 11px;
+  font-weight: 400;
+  color: #abbac7;
+}
+.multiplier {
+  margin-top: 5px;
+}
+.summary > .roll {
+  margin-top: 13px;
+}

@@ -3158,10 +3158,6 @@ button.diceDrawerCue:focus-visible {
   --sc-muted: #abbac7;
   --sc-text: #edf3f7;
 }
-.hudRecentSummary [data-form='recent-summary'] > span {
-  color: #e6c884;
-  font-size: 10px;
-}
 .hudRecent > button:hover .hudRecentWho {
   text-decoration: underline;
   text-underline-offset: 3px;

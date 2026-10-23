@@ -3,6 +3,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActSchema,
   AttackOutcome,
+  DamageType,
   Family,
   PartyKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -55,6 +56,73 @@ export const RECENT_IDENTITY_SAMPLES = buildActStory(
         },
       },
     }),
+    create(ActSchema, {
+      session: 'fixture',
+      id: 'reminder-hit',
+      family: Family.ACT,
+      verb: 'attack',
+      body: {
+        case: 'attack',
+        value: {
+          by: member('aldric'),
+          to: member('zombie'),
+          attack: {
+            ref: 'dnd5e:weapons:maul',
+            name: 'Maul',
+            damageType: DamageType.BLUDGEONING,
+          },
+          outcome: AttackOutcome.HIT,
+          damage: 9,
+          roll: {
+            expression: '1d20 + 5',
+            total: 18,
+            against: 13,
+            terms: [{ count: 1, dieSize: 20, faces: [13] }],
+            modifiers: [{ value: 5, source: 'Attack modifier' }],
+          },
+          damageComponents: [
+            {
+              source: 'Maul',
+              damageType: DamageType.BLUDGEONING,
+              roll: {
+                expression: '2d6 + 3',
+                total: 9,
+                terms: [{ count: 2, dieSize: 6, faces: [2, 4] }],
+                modifiers: [{ value: 3, source: 'Strength' }],
+              },
+            },
+          ],
+        },
+      },
+    }),
+    create(ActSchema, {
+      session: 'fixture',
+      id: 'reminder-incoming',
+      family: Family.ACT,
+      verb: 'attack',
+      body: {
+        case: 'attack',
+        value: {
+          by: member('zombie'),
+          to: member('aldric'),
+          attack: {
+            ref: 'fixture:attacks:slam',
+            name: 'Slam',
+            damageType: DamageType.BLUDGEONING,
+          },
+          outcome: AttackOutcome.HIT,
+          damage: 3,
+          roll: { expression: '1d20 + 3', total: 17, against: 16 },
+          damageComponents: [
+            {
+              source: 'Slam',
+              damageType: DamageType.BLUDGEONING,
+              roll: { expression: '1d6 + 1', total: 3 },
+            },
+          ],
+        },
+      },
+    }),
   ].map((act) => ({
     act,
     index: 0,
@@ -68,6 +136,7 @@ export const RECENT_IDENTITY_SAMPLES = buildActStory(
       'skeleton-guard': 'Skeleton guard',
       aldric: 'Aldric',
       mira: 'Mira',
+      zombie: 'Zombie',
     },
   }
 );

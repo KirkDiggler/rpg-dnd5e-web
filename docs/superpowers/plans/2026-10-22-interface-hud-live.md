@@ -125,7 +125,7 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 
 **Owner:** web. **Files:** `StoryLog.tsx`, `StoryLogDetails.test.tsx`, `StoryLog.module.css`, `CombatExperience.tsx`, `useCombatPresentation.test.tsx`, `SessionEncounterView.test.tsx`.
 
-**Approved reminder refinement:** Just Happened rows show an event-type icon and the actor/subject name only. `recentEventIdentity` reads typed act parties (including the attacker on a miss, not the defender leading the sentence). Hover/focus uses the existing describer/form renderer for item, target and roll-free outcome context; click retains the original story-row identity and opens that row in History. No narration parsing, raw-record fallback or toast-policy change. Typed attack/speech/cast samples exercise the shared component in the free-roam layout fixture.
+**Approved reminder refinement:** Just Happened rows show an event-type icon and the actor/subject name only. `recentEventIdentity` reads typed act parties (including the attacker on a miss, not the defender leading the sentence). Hover/focus separates the existing describer's headline and outcome into readable lines, followed by labelled supplied roll cards. Attack/check rolls use cool styling; damage uses the same incoming-danger/outgoing-success tone as the feed. Component rolls and supplied multipliers remain separate from applied damage; absent breakdowns are not reconstructed. Click retains the original story-row identity and opens that row in History. No narration parsing, raw-record fallback or toast-policy change. Typed attack/speech/cast samples exercise the shared component in the free-roam layout fixture.
 
 **Interface:** `revealedStory` remains the player-facing source; `record` and `onRecordShownChange` remain the diagnostic source/subscription gate. Display mode and collapse state are UI state only.
 
@@ -140,7 +140,7 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 - Place the conversation choice panel lower-center above the action bar, separate from Just Happened, and use the new panel styling rather than the placeholder green list.
 - Close History/Debug on outside clicks; preserve deliberate focus and command semantics.
 - Reconcile weapon-card typography (especially undersized effect labels).
-- Make supplied rolls prominent in the short story panel as well as readable history. Preserve the existing release/settlement gate; do not derive roll results.
+- Implemented tooltip roll refinement: prominent attack/damage roll cards, supplied expressions/totals, separate outcome line and existing red/green perspective. The existing release/settlement gate is preserved; no reconstructed roll results. Richer readable-history polish remains separate.
 - The supplied “Operation aborted” snippet is coding-terminal progress output (including “Editing scoped source docs”), not evidence of a gameplay failure. Its cause is unconfirmed; do not invent a game/API regression from it.
 
 ## T6 — Joined live verification and publication
