@@ -149,13 +149,23 @@ describe('DesktopHotbarConcept', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Free-roam layout' }));
     const header = screen.getByTestId('session-location-header');
-    expect(header).toContainElement(screen.getByTestId('faction-legend'));
     expect(
-      within(header).getByRole('button', { name: 'Short rest' })
+      within(header).getByRole('button', { name: 'Back' })
+    ).toBeInTheDocument();
+    expect(header).not.toContainElement(screen.getByTestId('faction-legend'));
+    expect(
+      within(header).queryByLabelText('Share discoveries with party')
+    ).toBeNull();
+    const summary = screen.getByText('Explore', { selector: 'summary' });
+    const explore = summary.closest('details')!;
+    fireEvent.click(summary);
+    expect(
+      within(explore).getByRole('button', { name: 'Short rest' })
     ).toBeInTheDocument();
     expect(
-      within(header).getByRole('button', { name: /Sneak/ })
+      within(explore).getByRole('button', { name: /Sneak/ })
     ).toBeInTheDocument();
+    expect(within(explore).getByTestId('faction-legend')).toBeVisible();
     const status = screen.getByTestId('desktop-status-section');
     expect(status).toHaveTextContent('Fighter fixture');
     expect(status).toHaveTextContent('13/13');

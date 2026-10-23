@@ -30,8 +30,28 @@ const roster = new Map([
       ] as const
   ),
 ]);
-/** Same controls/legend as the session header, with explicit no-command callbacks. */
+/** Same session controls, with explicit no-command callbacks. */
 export function DesktopHudNavigationFixture({
+  world,
+  onPreview,
+  backOnly = false,
+}: {
+  world: boolean;
+  onPreview: (label: string) => void;
+  backOnly?: boolean;
+}) {
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => onPreview('Back')}>
+        Back
+      </Button>
+      {!backOnly && (
+        <DesktopHudToolsFixture world={world} onPreview={onPreview} />
+      )}
+    </>
+  );
+}
+export function DesktopHudToolsFixture({
   world,
   onPreview,
 }: {
@@ -40,9 +60,6 @@ export function DesktopHudNavigationFixture({
 }) {
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => onPreview('Back')}>
-        Back
-      </Button>
       {world && (
         <Button
           variant="ghost"

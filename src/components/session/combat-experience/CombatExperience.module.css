@@ -2481,27 +2481,57 @@ button.diceDrawerCue:focus-visible {
   cursor: pointer;
   font-size: 10px;
 }
-.organizedExplore > .actionGroup {
+.organizedExplore > .exploreContent {
   position: absolute;
   left: 0;
   bottom: calc(100% + 6px);
   width: max-content;
-  max-width: calc(100cqw - 36px);
-  flex-wrap: wrap;
-  padding: 8px;
-  border: 0;
-  border-left: 2px solid var(--sc-gold);
-  border-radius: 0;
-  background: rgba(10, 17, 20, 0.62);
+  max-width: min(360px, calc(100cqw - 36px));
+  max-height: min(420px, 65cqh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #3a4b5b;
+  border-radius: 8px;
+  background: rgb(21 30 40 / 97%);
 }
 .organizedExplore .actionOffer {
   background: rgba(31, 45, 49, 0.28);
 }
-.organizedExplore:not([open]) > .actionGroup {
+.organizedExplore:not([open]) > .exploreContent {
   display: none;
 }
 .organizedExplore .groupLabel {
   display: none;
+}
+.exploreExtras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  font:
+    12px/1.4 Inter,
+    system-ui,
+    sans-serif;
+}
+.exploreExtras label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.exploreExtras > [aria-label='sides'] {
+  flex-basis: 100%;
+}
+.exploreContent .actionGroup {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.exploreContent .actionOffer {
+  max-width: 100%;
+  white-space: normal;
 }
 
 /* Fill the chosen preview frame, not the browser behind the phone frame. */
@@ -2900,6 +2930,9 @@ button.diceDrawerCue:focus-visible {
     system-ui,
     sans-serif;
 }
+.desktopDock:has(.organizedExplore[open]) {
+  z-index: 45;
+}
 .desktopDockActions {
   min-width: 0;
 }
@@ -2979,10 +3012,17 @@ button.diceDrawerCue:focus-visible {
   display: none;
 }
 
-/* One wrapping header owns navigation, location and the faction key. */
+/* Quiet desktop corners; the turn rail is centered and scene tools live in Explore. */
+.combatExperience[data-desktop-hotbar='true'] .initiative {
+  left: 50%;
+  right: auto;
+  width: min(600px, 54cqw);
+  transform: translateX(-50%);
+}
+/* The location header still measures its own height for the recent feed. */
 .combatExperience[data-desktop-hotbar='true'] .roomLabel {
   left: 24px;
-  max-width: min(520px, calc(50% - 120px));
+  max-width: min(280px, calc(23% - 36px));
 }
 .combatExperience[data-desktop-hotbar='true'] .roomLabelWithNavigation {
   flex-direction: column;
@@ -3042,7 +3082,8 @@ button.diceDrawerCue:focus-visible {
 }
 .combatExperience[data-desktop-hotbar='true']
   .storyLog.hudStoryLog.storyLogCollapsed {
-  width: min(310px, calc(100% - 48px));
+  width: max-content;
+  max-width: min(310px, calc(100% - 48px));
   height: auto;
   overflow: visible;
   background: transparent;
@@ -3067,19 +3108,25 @@ button.diceDrawerCue:focus-visible {
 }
 .hudRecent {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  min-width: 0;
   gap: 5px;
 }
 .hudRecent > button {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 8px 12px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 0;
   border: 0;
-  border-left: 2px solid #516775;
-  border-radius: 3px;
-  background: rgb(17 26 35 / 76%);
+  background: transparent;
   color: #edf3f7;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 5px #000b;
   cursor: pointer;
   text-align: left;
   font:
@@ -3092,6 +3139,7 @@ button.diceDrawerCue:focus-visible {
   place-items: center;
   flex: 0 0 18px;
   color: #b1c6d4;
+  filter: drop-shadow(0 1px 2px #000);
 }
 .hudRecentWho {
   min-width: 0;
@@ -3114,8 +3162,9 @@ button.diceDrawerCue:focus-visible {
   color: #e6c884;
   font-size: 10px;
 }
-.hudRecent > button:hover {
-  background: rgb(32 44 57 / 90%);
+.hudRecent > button:hover .hudRecentWho {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .hudRecent > button:focus-visible {
   outline: 2px solid #9cdbdf;
@@ -3123,11 +3172,10 @@ button.diceDrawerCue:focus-visible {
 }
 .hudRecent > p {
   margin: 0;
-  padding: 8px 10px;
+  padding: 4px 0;
   color: #abbac7;
-  background: rgb(17 26 35 / 76%);
+  text-shadow: 0 1px 3px #000;
   font-size: 11px;
-  border-radius: 3px;
 }
 .hudStoryLog > .hudLogTabs {
   justify-content: flex-start;

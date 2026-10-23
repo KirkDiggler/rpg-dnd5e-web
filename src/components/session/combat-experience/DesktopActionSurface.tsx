@@ -1,4 +1,5 @@
 import { ActionCostMark } from '@/components/ui/inspection/ActionCostMark';
+import { useHoverCardWheel } from '@/components/ui/inspection/useHoverCardWheel';
 import {
   useCallback,
   useEffect,
@@ -80,8 +81,17 @@ export function DesktopActionSurface({
     setPointerInCard(false);
     groupsRef.current?.focus();
   }, []);
-  // Keep the named reader during pointer travel across the map, not on a timer.
-  // Other dock controls and deliberate outside clicks end that reading session.
+  const inspectedTrigger = useCallback(
+    () =>
+      Array.from(
+        surfaceRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[data-offer-id]'
+        ) ?? []
+      ).find((node) => node.dataset.offerId === inspectedId) ?? null,
+    [inspectedId]
+  );
+  useHoverCardWheel(Boolean(inspectedId), inspectedTrigger, readerRef);
+  // Hover is transient. Scrolling over the icon reads the card without pinning it.
   useEffect(() => {
     if (!inspectedId) return;
     const otherControl = (event: Event): void => {
@@ -98,8 +108,16 @@ export function DesktopActionSurface({
         setInspectedId(null);
     };
     const pointerOver = (event: PointerEvent): void => {
-      if (event.pointerType === 'mouse' || event.pointerType === 'pen')
-        otherControl(event);
+      if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (readerRef.current?.parentElement?.contains(target)) return;
+      if (
+        surfaceRef.current?.contains(target) &&
+        target.closest('[data-offer-id]')
+      )
+        return;
+      setInspectedId(null);
     };
     const outsidePress = (event: PointerEvent): void => {
       if (
@@ -240,7 +258,10 @@ export function DesktopActionSurface({
       data-embedded={embedded}
       data-editing={editing}
       data-rows={rows}
-      onPointerLeave={() => setPointerInCard(false)}
+      onPointerLeave={() => {
+        setPointerInCard(false);
+        setInspectedId(null);
+      }}
       onBlur={(event) => {
         if (
           !event.currentTarget.contains(event.relatedTarget) &&

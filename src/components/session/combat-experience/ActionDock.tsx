@@ -331,6 +331,7 @@ export interface ActionDockProps {
    * are offered in every clock state. What gates them is the TURN, not the
    * dock: see `standingActionsBlocked`. */
   standingActions?: readonly StandingAction[];
+  explorationControls?: ReactNode;
 }
 
 /**
@@ -564,6 +565,7 @@ function ActionDockContents({
   onCancelSelection,
   onEndTurn,
   standingActions = [],
+  explorationControls,
 }: ActionDockProps) {
   // THE STANDING VERBS ARE DRAWN IN EVERY CLOCK STATE, which is the whole
   // of Kirk's second walk finding: every one of his four runs was inside a
@@ -628,6 +630,7 @@ function ActionDockContents({
   const standing =
     actionPresentation?.mode === 'organized-hud'
       ? (standingGroup ||
+          explorationControls ||
           centerControl ||
           equipmentControl ||
           movementHint) && (
@@ -636,10 +639,17 @@ function ActionDockContents({
             role="group"
             aria-label="Map utilities"
           >
-            {standingGroup && (
+            {(standingGroup || explorationControls) && (
               <details className={styles.organizedExplore}>
                 <summary>Explore</summary>
-                {standingGroup}
+                <div className={styles.exploreContent}>
+                  {standingGroup}
+                  {explorationControls && (
+                    <div className={styles.exploreExtras}>
+                      {explorationControls}
+                    </div>
+                  )}
+                </div>
               </details>
             )}
             {centerControl}

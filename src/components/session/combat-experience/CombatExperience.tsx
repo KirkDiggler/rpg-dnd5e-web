@@ -182,6 +182,7 @@ export function CombatExperience({
   location,
   navigationControls,
   navigationSupplement,
+  explorationControls,
   sceneNotice,
   pacingNotice,
   renderMap,
@@ -839,6 +840,7 @@ export function CombatExperience({
             onCancelSelection={onCancelSelection}
             onEndTurn={onEndTurn}
             standingActions={standingActions}
+            explorationControls={explorationControls}
           />
         </div>
         {actionPresentation?.mode === 'organized-hud' && (

@@ -136,6 +136,45 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('keeps scene settings in Explore without applying action gates to them', () => {
+    const sharing = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          authorityFresh: false,
+          actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+          navigationControls: <button>Back</button>,
+          explorationControls: (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Share discoveries"
+                  onChange={sharing}
+                />
+                Share discoveries
+              </label>
+              <span>Faction key</span>
+            </>
+          ),
+        })}
+      />
+    );
+    expect(
+      within(screen.getByTestId('session-location-header')).queryByLabelText(
+        'Share discoveries'
+      )
+    ).toBeNull();
+    const explore = screen.getByText('Explore').closest('details')!;
+    fireEvent.click(within(explore).getByText('Explore'));
+    const toggle = within(explore).getByRole('checkbox', {
+      name: 'Share discoveries',
+    });
+    expect((toggle as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(sharing).toHaveBeenCalledOnce();
+    expect(within(explore).getByText('Faction key')).toBeTruthy();
+  });
   it('inspects the selected zero-effect attack and leaves idle without an arbitrary action context', () => {
     const attack = create(DeclarationSchema, {
       ...fresh.declarations.find((offer) => offer.verb === Verb.ATTACK)!,

@@ -258,6 +258,8 @@ interface CombatExperienceBaseProps {
   navigationControls?: ReactNode;
   /** Read-only header content, e.g. the roster's faction legend. */
   navigationSupplement?: ReactNode;
+  /** Caller-owned settings/actions; their own controls retain availability semantics. */
+  explorationControls?: ReactNode;
   /** Readable operation feedback; distinct from action/roll pacing authority. */
   sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */

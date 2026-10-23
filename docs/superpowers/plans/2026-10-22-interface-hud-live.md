@@ -107,6 +107,8 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 - [ ] Add named cases: explicit appearance override; unavailable model; stale/private-status failure; unknown category; absent spell metadata; unavailable offer refresh; cast-option/target cancellation; world/turn clocks.
 - [ ] Implement and run focused component/controller tests, plus real-route viewport checks.
 
+**Approved cleanup checkpoint:** Desktop turn order is centered; top-left retains Back/location. Existing discovery-sharing, rest/sneak controls and the faction key move into Explore without adopting action-budget gates or changing callbacks; mobile retains its previous placement. Recent reminder rows keep the reference's 12px type but use content-sized, backgroundless text/icons with text shadows. Hover-card wheel routing consumes scrolling over the trigger or reader (including at boundaries), preserves browser zoom, and hover readers dismiss on leave rather than remaining pinned. Explicit inspection/history actions are separate.
+
 ## T4 — Inventory and Quick Items integration (after T2; may follow T3)
 
 **Owner:** web plus explicitly named provider task if T2 requires one. **Files:** `src/components/game/equipment/{EquipmentPopover.tsx,InventoryLight.tsx,EquipmentSlots.tsx,equipmentTypes.ts}` and their tests; caller `SessionEncounterView.tsx`; proposed reusable inspection components under `src/components/ui/inspection/` and item presentation helpers under equipment.
@@ -132,6 +134,14 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 - [ ] Add real-component assertions for default history, keyboard tabs/Escape, debug visibility callbacks, retained cursor, delayed story reveal and record/story separation.
 - [ ] Implement using the existing StoryLog/RecordPanel path and T1 pagination.
 - [ ] Run log/controller/record tests and browser-check overlap and scrolling at 1440/1024.
+
+### Operator notes queued after the current cleanup cycle
+
+- Place the conversation choice panel lower-center above the action bar, separate from Just Happened, and use the new panel styling rather than the placeholder green list.
+- Close History/Debug on outside clicks; preserve deliberate focus and command semantics.
+- Reconcile weapon-card typography (especially undersized effect labels).
+- Make supplied rolls prominent in the short story panel as well as readable history. Preserve the existing release/settlement gate; do not derive roll results.
+- The supplied “Operation aborted” snippet is coding-terminal progress output (including “Editing scoped source docs”), not evidence of a gameplay failure. Its cause is unconfirmed; do not invent a game/API regression from it.
 
 ## T6 — Joined live verification and publication
 

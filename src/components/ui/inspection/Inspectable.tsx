@@ -3,6 +3,8 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { X } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import './inspection.css';
+import { useHoverCardDismiss } from './useHoverCardDismiss';
+import { useHoverCardWheel } from './useHoverCardWheel';
 
 export interface InspectableProps {
   label: string;
@@ -27,6 +29,14 @@ export function Inspectable({
   const [open, setOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useHoverCardWheel(summaryOpen && !open, triggerRef, summaryRef);
+  useHoverCardDismiss(
+    summaryOpen && !open,
+    triggerRef,
+    summaryRef,
+    setSummaryOpen
+  );
   const suppressSummary = useRef(false);
   const pointerDown = useRef(false);
 
@@ -81,6 +91,7 @@ export function Inspectable({
           </Dialog.Trigger>
           <Tooltip.Portal container={portalContainer ?? undefined}>
             <Tooltip.Content
+              ref={summaryRef}
               className="inspection-summary"
               side="top"
               align="start"

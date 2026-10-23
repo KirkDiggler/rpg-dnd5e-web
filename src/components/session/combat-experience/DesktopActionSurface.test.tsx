@@ -369,9 +369,9 @@ describe('DesktopActionSurface', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
     expect(select).not.toHaveBeenCalled();
     fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
-  it('keeps the named reader across empty-space transit, with inert scroll, click and close', () => {
+  it('scrolls the hover reader from the icon without selection and dismisses on leaving', () => {
     const select = vi.fn();
     const cancel = vi.fn();
     render(
@@ -388,23 +388,26 @@ describe('DesktopActionSurface', () => {
     fireEvent(screen.getByRole('button', { name: 'Cure Wounds' }), enter);
     const reader = screen.getByRole('tooltip');
     expect(document.activeElement).toBe(focus);
-    fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
-    const transit = new MouseEvent('pointerover', { bubbles: true });
-    Object.defineProperty(transit, 'pointerType', { value: 'mouse' });
-    fireEvent(document.body, transit);
-    expect(screen.getByRole('tooltip')).toBe(reader);
+    Object.defineProperties(reader, {
+      scrollHeight: { value: 900 },
+      clientHeight: { value: 200 },
+    });
+    const wheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 120,
+    });
+    fireEvent(screen.getByRole('button', { name: 'Cure Wounds' }), wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(reader.scrollTop).toBe(120);
     fireEvent.pointerEnter(reader);
-    fireEvent.wheel(reader, { deltaY: 300 });
+    fireEvent.wheel(reader, { deltaY: 80 });
+    expect(reader.scrollTop).toBe(200);
     fireEvent.click(reader);
     expect(screen.getByRole('tooltip')).toBe(reader);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close action information' })
-    );
+    fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
     expect(screen.queryByRole('tooltip')).toBeNull();
-    expect(document.activeElement).toHaveAttribute(
-      'aria-label',
-      'Action sections'
-    );
+    expect(document.activeElement).toBe(focus);
     fireEvent.focus(screen.getByRole('button', { name: 'Cure Wounds' }));
     fireEvent.keyDown(screen.getByRole('tooltip'), { key: 'Escape' });
     expect(screen.queryByRole('tooltip')).toBeNull();

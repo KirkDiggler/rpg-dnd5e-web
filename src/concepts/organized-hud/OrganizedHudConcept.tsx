@@ -37,6 +37,7 @@ import {
 import {
   DesktopHudFactionFixture,
   DesktopHudNavigationFixture,
+  DesktopHudToolsFixture,
 } from '../desktop-hotbar/DesktopHudNavigationFixture';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
 import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
@@ -493,6 +494,7 @@ export function OrganizedHudConcept({
           navigationControls={
             iconExperiment ? (
               <DesktopHudNavigationFixture
+                backOnly={desktopMode}
                 world={fixture.clock === ClockKind.WORLD}
                 onPreview={(label) =>
                   setIntent(`${label} preview only — no intent sent`)
@@ -501,7 +503,22 @@ export function OrganizedHudConcept({
             ) : undefined
           }
           navigationSupplement={
-            iconExperiment ? <DesktopHudFactionFixture /> : undefined
+            iconExperiment && !desktopMode ? (
+              <DesktopHudFactionFixture />
+            ) : undefined
+          }
+          explorationControls={
+            iconExperiment && desktopMode ? (
+              <>
+                <DesktopHudToolsFixture
+                  world={fixture.clock === ClockKind.WORLD}
+                  onPreview={(label) =>
+                    setIntent(`${label} preview only — no intent sent`)
+                  }
+                />
+                <DesktopHudFactionFixture />
+              </>
+            ) : undefined
           }
           actionPresentation={{
             mode: 'organized-hud',

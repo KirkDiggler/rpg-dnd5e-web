@@ -21,7 +21,7 @@ import { authoredWords } from './holdingBeat';
 
 export interface FactionLegendProps {
   roster: ReadonlyMap<string, PublicMemberInfo>;
-  /** Let the HUD header own placement instead of competing map overlays. */
+  /** Let a HUD container own placement instead of competing map overlays. */
   inline?: boolean;
 }
 

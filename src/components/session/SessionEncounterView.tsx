@@ -1810,6 +1810,66 @@ function SessionEncounterScope({
       </CenteredCard>
     );
   } else if (canDrawScene) {
+    // Placement only: these retain their own state, refusals and real callbacks.
+    const sessionTools = (
+      <>
+        {turnClock === ClockKind.WORLD && runEnded === null && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setRestError(null);
+              setRestOpen(true);
+            }}
+          >
+            Short rest
+          </Button>
+        )}
+        {snapshot?.discoverySharing !== undefined && (
+          <label
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <input
+              type="checkbox"
+              aria-label="Share discoveries with party"
+              checked={snapshot.discoverySharing}
+              disabled={
+                sharingPending ||
+                !member ||
+                snapshot?.discoverySharing === undefined ||
+                runEnded !== null
+              }
+              onChange={(event) => {
+                if (!member) return;
+                void setSharing({
+                  session: sessionId,
+                  member,
+                  sharing: event.target.checked,
+                })
+                  .then(() => refetchAtlas())
+                  .catch(() => undefined);
+              }}
+            />
+            Share discoveries
+          </label>
+        )}
+        {/* Free-roam mode; the pressed state is still the server's view. */}
+        {turnClock === ClockKind.WORLD && snapshot?.view && (
+          <SneakToggle
+            sneaking={snapshot.view.sneaking}
+            disabled={sneakDeclaring || !member || runEnded !== null}
+            onChange={(next) => {
+              if (!member) return;
+              setSneakDeclaring(true);
+              void setSneaking({ session: sessionId, member, sneaking: next })
+                .then(() => refetchView())
+                .catch(() => undefined)
+                .finally(() => setSneakDeclaring(false));
+            }}
+          />
+        )}
+      </>
+    );
     content = (
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <div
@@ -1835,76 +1895,15 @@ function SessionEncounterScope({
                 <Button variant="ghost" size="sm" onClick={onBack}>
                   Back
                 </Button>
-                {turnClock === ClockKind.WORLD && runEnded === null && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setRestError(null);
-                      setRestOpen(true);
-                    }}
-                  >
-                    Short rest
-                  </Button>
-                )}
-                {snapshot?.discoverySharing !== undefined && (
-                  <label
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      aria-label="Share discoveries with party"
-                      checked={snapshot.discoverySharing}
-                      disabled={
-                        sharingPending ||
-                        !member ||
-                        snapshot?.discoverySharing === undefined ||
-                        runEnded !== null
-                      }
-                      onChange={(event) => {
-                        if (!member) return;
-                        void setSharing({
-                          session: sessionId,
-                          member,
-                          sharing: event.target.checked,
-                        })
-                          .then(() => refetchAtlas())
-                          .catch(() => undefined);
-                      }}
-                    />
-                    Share discoveries
-                  </label>
-                )}
-                {/* SNEAKING IS A FREE-ROAM MODE (rpg-project#606, R1): absent
-                    on the turn clock, and absent until the view has been read,
-                    because the pressed state is the server's (R6). */}
-                {turnClock === ClockKind.WORLD && snapshot?.view && (
-                  <SneakToggle
-                    sneaking={snapshot.view.sneaking}
-                    disabled={sneakDeclaring || !member || runEnded !== null}
-                    onChange={(next) => {
-                      if (!member) return;
-                      setSneakDeclaring(true);
-                      void setSneaking({
-                        session: sessionId,
-                        member,
-                        sneaking: next,
-                      })
-                        .then(() => refetchView())
-                        .catch(() => undefined)
-                        .finally(() => setSneakDeclaring(false));
-                    }}
-                  />
-                )}
+                {!desktopHotbar && sessionTools}
               </>
             }
-            navigationSupplement={
+            explorationControls={
               desktopHotbar ? (
-                <FactionLegend roster={roster} inline />
+                <>
+                  {sessionTools}
+                  <FactionLegend roster={roster} inline />
+                </>
               ) : undefined
             }
             sceneNotice={
