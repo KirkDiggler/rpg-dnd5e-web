@@ -39,6 +39,7 @@ import {
   ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_PATH_SELECTOR,
+  ANSWER_SEARCH,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
   ANSWER_TRIGGER_KEYS,
@@ -60,6 +61,7 @@ import {
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  searchDistanceRefusal,
   SELECTOR_MAPPING_KEYS,
   selectorWordLegalOn,
   spanRefusal,
@@ -288,6 +290,9 @@ export interface AnswerWordDoc {
   value?: string;
   /** The selector on `attack`/`toward`/`away`. */
   selector?: AnswerSelectorDoc;
+  /** `search`'s authored distance (rpg-project#668 R4); absent is the
+   * engine's six, kept absent so the file re-emits its own bytes. */
+  distance?: number;
 }
 
 /** One share of a faction's `temper:` mix — a word and how much of the die it
@@ -1511,6 +1516,33 @@ function answerWordValue(
   if (shape === 'selector') {
     return { word, selector: answerSelector(raw, path, orientation, word) };
   }
+  if (shape === 'search') {
+    // `dungeonspec.SearchSpec.UnmarshalYAML` refuses BY HAND, so unlike
+    // `flee`/`hold` an unknown key inside it is the engine's refusal too.
+    if (!isRecord(raw)) {
+      throw new DungeonParseError(
+        `${path}: \`search\` is { distance: N }, or {} for ${ANSWER_SEARCH.defaultDistance} cells`
+      );
+    }
+    for (const key of Object.keys(raw)) {
+      if (!ANSWER_SEARCH.bodyKeys.includes(key)) {
+        throw new DungeonParseError(
+          `${path}: "${key}" is not a key \`search\` reads: it reads distance`
+        );
+      }
+    }
+    if (raw.distance === undefined || raw.distance === null) return { word };
+    const distance = raw.distance;
+    if (typeof distance !== 'number' || !Number.isInteger(distance)) {
+      throw new DungeonParseError(`${path}.distance: expected a whole number`);
+    }
+    if (distance < ANSWER_SEARCH.minimumDistance) {
+      throw new DungeonParseError(
+        `${path}: ${searchDistanceRefusal(distance)}`
+      );
+    }
+    return { word, distance };
+  }
   // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
   // scalar or a sequence body is a decode error there and is refused here.
   // A MAPPING IS ACCEPTED WHATEVER IS IN IT, because the engine accepts it:
@@ -2264,6 +2296,9 @@ function answerWordText(word: AnswerWordDoc, o: Orientation): string {
   if (word.value !== undefined) return `${word.word}: ${scalar(word.value)}`;
   if (word.selector !== undefined) {
     return `${word.word}: ${selectorText(word.selector, o)}`;
+  }
+  if (word.distance !== undefined) {
+    return `${word.word}: { distance: ${word.distance} }`;
   }
   return `${word.word}: {}`;
 }

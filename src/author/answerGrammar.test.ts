@@ -86,7 +86,7 @@ const ENGINE_WORD_LEGALITY: Readonly<Record<string, readonly string[]>> = {
   failure: ['fact', 'flee'],
   // rpg-project#569 R6: `fact` joined `time` — an alarm is a loud fact,
   // audience the hearers (`grammar.go` `wordLegality`, B2).
-  time: ['fact', 'hold', 'attack', 'toward', 'away'],
+  time: ['fact', 'hold', 'attack', 'toward', 'away', 'search'],
 };
 /** The keys of the transcription that are TABLE triggers; the rest are an
  * option's verdicts. */
@@ -126,6 +126,10 @@ describe('the front room snapshot carries the shipped grammar', () => {
       {
         when: { kind: 'enemy', band: 'remembered' },
         word: { word: 'toward', selector: { word: 'enemy' } },
+      },
+      {
+        when: { kind: 'enemy', band: 'lost' },
+        word: { word: 'hold' },
       },
       {
         when: { kind: 'enemy', band: 'none' },
@@ -280,9 +284,10 @@ describe('a word is legal on some triggers and not others', () => {
         );
       }
     }
-    // 1 social-only word (`flee`) x 1 time trigger + 4 time words x 2
-    // verdicts — `fact` is legal on both since rpg-project#569 R6.
-    expect(checked).toBe(9);
+    // 1 social-only word (`flee`) x 1 time trigger + 5 time words x 2
+    // verdicts — `fact` is legal on both since rpg-project#569 R6, and
+    // `search` joined the time words (rpg-project#668).
+    expect(checked).toBe(11);
   });
 
   it('refuses a scalar or sequence body on a word that carries nothing', () => {
@@ -337,13 +342,13 @@ describe('the `when` shape', () => {
     );
   });
 
-  it('refuses an enemy band outside the four', () => {
+  it('refuses an enemy band outside the five', () => {
     expect(() =>
       parseDungeon(
         mutated(TIME_REACH, TIME_REACH.replace('enemy: reach', 'enemy: nearby'))
       )
     ).toThrow(
-      /`enemy: nearby` is not a condition this build reads: they are reach, seen, remembered, none/
+      /`enemy: nearby` is not a condition this build reads: they are reach, seen, remembered, lost, none/
     );
   });
 
@@ -370,7 +375,7 @@ describe('the `when` shape', () => {
   });
 
   it('carries the shape the declaration seals', () => {
-    expect(ANSWER_WHEN.enemyBands).toHaveLength(4);
+    expect(ANSWER_WHEN.enemyBands).toHaveLength(5);
     expect(ANSWER_WHEN.deeds).toHaveLength(4);
   });
 
@@ -383,7 +388,7 @@ describe('the `when` shape', () => {
         mutated(TIME_REACH, TIME_REACH.replace('enemy: reach', 'enemy: [1, 2]'))
       )
     ).toThrow(
-      /`enemy: ` is not a condition this build reads: they are reach, seen, remembered, none/
+      /`enemy: ` is not a condition this build reads: they are reach, seen, remembered, lost, none/
     );
   });
 
@@ -656,7 +661,7 @@ describe('the hearing rows', () => {
       /a `when` with no condition in it is on the table always — omit it/
     );
     expect(refused('{ when: { not: [{ enemy: seen }] }, hold: {} }')).toThrow(
-      /a `when` is one of \{ enemy: reach \| seen \| remembered \| none \}/
+      /a `when` is one of \{ enemy: reach \| seen \| remembered \| lost \| none \}/
     );
   });
 

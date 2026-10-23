@@ -42,6 +42,7 @@ import {
   ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_PATH_SELECTOR,
+  ANSWER_SEARCH,
   ANSWER_SOUND_KINDS,
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
@@ -61,6 +62,7 @@ import {
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  searchDistanceRefusal,
   SELECTOR_MAPPING_KEYS,
   selectorShapeRefusal,
   selectorWordLegalOn,
@@ -227,6 +229,14 @@ export interface AnswerEntryShape {
   attack?: AnswerSelectorShape;
   toward?: AnswerSelectorShape;
   away?: AnswerSelectorShape;
+  /** `search: { distance }` (rpg-project#668 R4); distance absent is the
+   * engine's six, carried absent so the file's bytes round-trip. */
+  search?: AnswerSearchShape;
+}
+
+/** `search`'s body as written: `{}` or `{ distance: N }`. */
+export interface AnswerSearchShape {
+  distance?: number;
 }
 
 /** An `on:` block as written: trigger key to the entries on it. An empty list
@@ -425,6 +435,8 @@ function validateAnswerEntry(
       if (word === 'attack') entry.attack = selector;
       else if (word === 'toward') entry.toward = selector;
       else if (word === 'away') entry.away = selector;
+    } else if (shape === 'search') {
+      entry.search = validateAnswerSearch(raw, `${path}.${word}`);
     } else {
       // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
       // scalar or a sequence is refused; a MAPPING IS ACCEPTED, because the
@@ -461,6 +473,34 @@ function validateAnswerEntry(
   }
 
   return entry;
+}
+
+/** `search: { distance }` — `dungeonspec.SearchSpec.UnmarshalYAML`: a
+ * mapping, reading `distance` and nothing else, the distance a whole number
+ * counted from 1. */
+export function validateAnswerSearch(
+  value: unknown,
+  path: string
+): AnswerSearchShape {
+  if (!isMapping(value))
+    fail(
+      path,
+      `\`search\` is { distance: N }, or {} for ${ANSWER_SEARCH.defaultDistance} cells`
+    );
+  for (const key of Object.keys(value)) {
+    if (!ANSWER_SEARCH.bodyKeys.includes(key))
+      fail(path, `"${key}" is not a key \`search\` reads: it reads distance`);
+  }
+  const search: AnswerSearchShape = {};
+  if (value.distance !== undefined && value.distance !== null) {
+    const distance = value.distance;
+    if (typeof distance !== 'number' || !Number.isInteger(distance))
+      fail(`${path}.distance`, 'expected a whole number');
+    if (distance < ANSWER_SEARCH.minimumDistance)
+      fail(path, searchDistanceRefusal(distance));
+    search.distance = distance;
+  }
+  return search;
 }
 
 /** A `when:` — ONE condition as a single mapping, or a LIST of them every
