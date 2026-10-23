@@ -142,6 +142,18 @@ describe('the draft as a file (rpg-project#578)', () => {
         { q: -2, r: 10 },
       ],
     });
+    // Pursuit (rpg-project#668): both gate tables walk to the remembered
+    // cell and search six on once it is lost.
+    const rows = Object.values(read.scope.tables ?? {}).flatMap(
+      (t) => t.time ?? []
+    );
+    expect(
+      rows.filter(
+        (row) =>
+          row.search?.distance === 6 &&
+          JSON.stringify(row.when) === '{"enemy":"lost"}'
+      )
+    ).toHaveLength(2);
     const importDocument = vi.fn().mockReturnValue(true);
     expect(importDraftYaml(yaml, { importDocument })).toEqual({
       ok: true,

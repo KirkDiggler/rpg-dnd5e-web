@@ -17,7 +17,7 @@
  * eligible, which one fires and what a selector resolves to stay the
  * engine's.
  */
-import { answerWord } from '@/author/answerVocabulary';
+import { ANSWER_SEARCH, answerWord } from '@/author/answerVocabulary';
 import {
   isNotCondition,
   selectorCell,
@@ -43,6 +43,7 @@ const VERBS = {
   attack: { I: 'attack', it: 'attacks' },
   walk: { I: 'walk', it: 'walks' },
   hold: { I: 'hold', it: 'holds' },
+  search: { I: 'search', it: 'searches' },
   flee: { I: 'flee', it: 'flees' },
   raise: { I: 'raise', it: 'raises' },
   object: { I: 'me', it: 'it' },
@@ -57,10 +58,11 @@ export function roundsPhrase(n: number): string {
   return n === 1 ? '1 round' : `${n} rounds`;
 }
 
-/** One enemy band, the four exclusive answers to "where is the enemy". */
+/** One enemy band, the five exclusive answers to "where is the enemy". */
 export function enemyBandPhrase(band: string): string {
   if (band === 'none') return 'no enemy is seen or remembered';
   if (band === 'reach') return 'an enemy is in reach';
+  if (band === 'lost') return 'an enemy is lost where it was last seen';
   return `an enemy is ${band}`;
 }
 
@@ -68,6 +70,7 @@ export function enemyBandPhrase(band: string): string {
 function notEnemyBandPhrase(band: string): string {
   if (band === 'none') return 'an enemy is seen or remembered';
   if (band === 'reach') return 'no enemy is in reach';
+  if (band === 'lost') return 'no enemy is lost';
   return `no enemy is ${band}`;
 }
 
@@ -272,6 +275,8 @@ export function wordPhrase(
   if (entry.toward !== undefined) return towardPhrase(entry.toward, subject);
   if (entry.away !== undefined)
     return `${verb('walk', subject)} away from ${selectorPhrase(entry.away, subject)}`;
+  if (entry.search !== undefined)
+    return `${verb('search', subject)} ${entry.search.distance ?? ANSWER_SEARCH.defaultDistance} cells on, then give${subject === 'it' ? 's' : ''} up`;
   return undefined;
 }
 
@@ -321,6 +326,10 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
   if (shape === 'string') return `${word} ${String(value)}`;
   if (shape === 'selector' && typeof value === 'string')
     return `${word} ${value}`;
+  if (shape === 'search') {
+    const distance = (value as { distance?: number } | undefined)?.distance;
+    return distance === undefined ? word : `${word} ${distance}`;
+  }
   if (shape === 'selector') {
     const selector = value as AnswerSelectorShape;
     const cell = selectorCell(selector);

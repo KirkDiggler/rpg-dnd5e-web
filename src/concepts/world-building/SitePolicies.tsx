@@ -25,6 +25,7 @@
  * gives it. Nothing restates a word.
  */
 import {
+  ANSWER_SEARCH,
   ANSWER_SELECTOR_WORDS,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
@@ -905,6 +906,32 @@ export function AnswerEntryRow({
               aria-label={`${word} for ${label} entry`}
               value={typeof value === 'string' ? value : ''}
               onChange={(event) => onCommit(withWordValue(event.target.value))}
+            />
+          </label>
+        )}
+        {spec?.value === 'search' && (
+          // `search: { distance }` (rpg-project#668 R4): cells on from the
+          // lost cell. The engine's six shows when the file names none; an
+          // entry that is not a whole number of at least one is not written.
+          <label className="wb-entry-target">
+            <span>Cells</span>
+            <input
+              type="number"
+              min={ANSWER_SEARCH.minimumDistance}
+              aria-label={`Cells for ${label} entry`}
+              value={
+                isMapping(value) && typeof value.distance === 'number'
+                  ? value.distance
+                  : ANSWER_SEARCH.defaultDistance
+              }
+              onChange={(event) => {
+                const distance = Number(event.target.value);
+                if (
+                  Number.isInteger(distance) &&
+                  distance >= ANSWER_SEARCH.minimumDistance
+                )
+                  onCommit(withWordValue({ distance }));
+              }}
             />
           </label>
         )}
