@@ -73,8 +73,10 @@ function RollCard({
 /** Read resolved values, never recreate a roll from a weapon or applied damage. */
 export function RecentEventSummary({
   entry,
+  showDescription = true,
 }: {
   entry: CombatExperienceStoryExchange;
+  showDescription?: boolean;
 }) {
   const context = entry.describeContext;
   const act = entry.act;
@@ -89,8 +91,8 @@ export function RecentEventSummary({
       : '';
   return (
     <div className={styles.summary}>
-      <h3>{description?.headline ?? entry.headline}</h3>
-      {(description?.outcome ?? entry.detail) && (
+      {showDescription && <h3>{description?.headline ?? entry.headline}</h3>}
+      {showDescription && (description?.outcome ?? entry.detail) && (
         <p className={styles.outcome} data-tone={entry.tone}>
           {description?.outcome ?? entry.detail}
         </p>

@@ -83,7 +83,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function damageWord(type: DamageType | undefined): string {
+export function damageWord(type: DamageType | undefined): string {
   if (type === undefined || type === DamageType.UNSPECIFIED) return '';
   return (DamageType[type] ?? '').toLowerCase();
 }

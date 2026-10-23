@@ -1,12 +1,11 @@
 import type { CSSProperties } from 'react';
-import { ActForm } from './forms/ActForm';
-import { FormShell } from './forms/FormShell';
+import { StoryNoticeContent } from './StoryNoticeContent';
 import styles from './StoryNotices.module.css';
 import type { StoryNotice } from './useStoryNotices';
 
 /**
- * The toasts: each the toast-size form of its act (#1301), the describer's
- * one line. A held toast (fired in a fight) shows until the viewer's next
+ * Damage-first presentation of the same released acts selected by policy.
+ * A held toast (fired in a fight) shows until the viewer's next
  * act and does not fade on a timer.
  */
 export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
@@ -14,11 +13,12 @@ export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
     <section
       className={styles.notices}
       aria-label="Recent activity"
+      tabIndex={entries.length ? 0 : undefined}
       aria-live="polite"
       aria-relevant="additions text"
       data-testid="story-notices"
     >
-      {entries.map((entry) => (
+      {[...entries].reverse().map((entry) => (
         <article
           key={entry.id}
           className={styles.notice}
@@ -32,23 +32,7 @@ export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
             } as CSSProperties
           }
         >
-          {entry.act && entry.describeContext ? (
-            <ActForm
-              act={entry.act}
-              size="toast"
-              context={entry.describeContext}
-            />
-          ) : (
-            <FormShell
-              size="toast"
-              kind="story"
-              lines={{
-                eyebrow: entry.eyebrow,
-                headline: entry.headline,
-                outcome: entry.detail || undefined,
-              }}
-            />
-          )}
+          <StoryNoticeContent entry={entry} />
         </article>
       ))}
     </section>

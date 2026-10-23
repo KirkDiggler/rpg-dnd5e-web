@@ -1,5 +1,5 @@
-import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import { buildActionTooltip } from '@/components/session/combat-experience/actionTooltip';
+import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import type {
   DesktopHotbarLayout,
   HotbarRows,
@@ -41,6 +41,10 @@ import {
   DesktopHudSneakFixture,
   DesktopHudToolsFixture,
 } from '../desktop-hotbar/DesktopHudNavigationFixture';
+import {
+  HEALING_TOAST_SAMPLE,
+  RECENT_IDENTITY_SAMPLES,
+} from '../desktop-hotbar/recentStoryFixtures';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
 import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
 import { ORGANIZED_HUD_PROFILES } from './fixtures';
@@ -160,12 +164,12 @@ export function OrganizedHudConcept({
     profile.fixtures[0]!;
   const storyScope = `${profile.id}:${fixture.id}`;
   const demoEntries = demoStory.scope === storyScope ? demoStory.entries : [];
-  const nextEvent = (): void => {
+  const nextEvent = (previewSample?: CombatExperienceStoryExchange): void => {
     const id = `hotbar-demo:${++demoSequence.current}`;
     setDemoStory((current) => {
       const entries = current.scope === storyScope ? current.entries : [];
       const samples = profile.storySamples ?? [];
-      const sample = samples[entries.length % samples.length];
+      const sample = previewSample ?? samples[entries.length % samples.length];
       return sample
         ? {
             scope: storyScope,
@@ -435,11 +439,36 @@ export function OrganizedHudConcept({
           )}
           {iconExperiment && profile.storySamples?.length ? (
             <div role="group" aria-label="Activity preview">
-              <button type="button" onClick={nextEvent}>
+              <button type="button" onClick={() => nextEvent()}>
                 Next event
               </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[3])}
+              >
+                Preview hit toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[4])}
+              >
+                Preview incoming toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[0])}
+              >
+                Preview miss toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(HEALING_TOAST_SAMPLE)}
+              >
+                Preview healing toast
+              </button>
               <small>
-                Sample narration only · six seconds on screen, retained in Log.
+                Authored examples only · normal toast lifetime · retained in
+                History.
               </small>
             </div>
           ) : null}

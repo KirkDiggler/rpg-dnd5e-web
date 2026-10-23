@@ -150,3 +150,44 @@ export const RECENT_IDENTITY_SAMPLES = buildActStory(
     },
   }
 );
+
+export const HEALING_TOAST_SAMPLE = buildActStory(
+  [
+    {
+      act: create(ActSchema, {
+        session: 'fixture',
+        id: 'toast-healing',
+        family: Family.ACT,
+        verb: 'activate',
+        body: {
+          case: 'activate',
+          value: {
+            by: member('aldric'),
+            ability: { name: 'Healing' },
+            results: [
+              {
+                kind: 'healed',
+                target: member('aldric'),
+                amount: 6,
+                requested: 6,
+                before: 4,
+                after: 10,
+                roll: {
+                  expression: '1d8 + 2',
+                  total: 6,
+                  dice: [4],
+                  modifiers: [{ source: 'bonus', value: 2 }],
+                },
+              },
+            ],
+          },
+        },
+      }),
+      index: 0,
+      seq: 1n,
+      source: 'live',
+      visible: true,
+    },
+  ],
+  { viewerMember: 'aldric', memberNames: { aldric: 'Aldric' } }
+)[0]!;

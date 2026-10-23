@@ -4,6 +4,8 @@
 
 **Case file:** https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1320
 
+**Merge-scope amendment (operator, 2026-10-23):** Finish the existing HUD with readable, damage-first toasts; inventory makeover, portraits and further presentation work may follow separately. Their incomplete tasks below remain follow-ups, not claims of completion or gates on this narrower slice. Toast event eligibility and release timing remain unchanged. The checked toast implementation plan is [in the case file](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1320#issuecomment-6375334061). The early-view checkpoint does not replace full CI, review and the live walkthrough.
+
 **Authority:** Operator approval in the interface-looks conversation: keep the current visual slice, add Debug and loaded-record pagination, then implement it in the game. The local reference remains `../interface-looks/src/concepts/interface-looks/`; it is not a production dependency.
 
 **Architecture:** Keep `SessionEncounterView` as the live data/intent owner and `CombatExperience` as the composition root. Adapt the existing desktop action, equipment, story and record surfaces; do not mount `InterfaceLooksConcept` in a session. Promote only reusable presentation, with generated messages and existing callbacks at its boundaries.
