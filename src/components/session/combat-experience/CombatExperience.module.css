@@ -3070,8 +3070,11 @@ button.diceDrawerCue:focus-visible {
   gap: 5px;
 }
 .hudRecent > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 0;
   border-left: 2px solid #516775;
   border-radius: 3px;
@@ -3083,6 +3086,33 @@ button.diceDrawerCue:focus-visible {
     12px/1.45 Inter,
     system-ui,
     sans-serif;
+}
+.hudRecentIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 18px;
+  color: #b1c6d4;
+}
+.hudRecentWho {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.hudRecent > button[data-tone='danger'] .hudRecentIcon {
+  color: #e8a29a;
+}
+.hudRecent > button[data-tone='success'] .hudRecentIcon {
+  color: #9bd0b6;
+}
+.hudRecentSummary {
+  --sc-muted: #abbac7;
+  --sc-text: #edf3f7;
+}
+.hudRecentSummary [data-form='recent-summary'] > span {
+  color: #e6c884;
+  font-size: 10px;
 }
 .hudRecent > button:hover {
   background: rgb(32 44 57 / 90%);

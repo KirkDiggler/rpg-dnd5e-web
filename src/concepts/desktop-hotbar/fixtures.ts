@@ -27,6 +27,7 @@ import {
 import { ORGANIZED_HUD_PROFILES } from '../organized-hud/fixtures';
 import type { HudConceptProfile } from '../organized-hud/OrganizedHudConcept';
 import { SESSION_COMBAT_FIXTURES } from '../session-combat/fixtures';
+import { RECENT_IDENTITY_SAMPLES } from './recentStoryFixtures';
 
 const base = ORGANIZED_HUD_PROFILES[0].fixtures[0]!;
 const refused = (text: string) =>
@@ -418,6 +419,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
     ...martial,
     id: 'live-world-layout',
     label: 'Free-roam layout',
+    storySamples: RECENT_IDENTITY_SAMPLES,
     desktopIcons: {},
     fixtures: [
       {

@@ -123,6 +123,8 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 
 **Owner:** web. **Files:** `StoryLog.tsx`, `StoryLogDetails.test.tsx`, `StoryLog.module.css`, `CombatExperience.tsx`, `useCombatPresentation.test.tsx`, `SessionEncounterView.test.tsx`.
 
+**Approved reminder refinement:** Just Happened rows show an event-type icon and the actor/subject name only. `recentEventIdentity` reads typed act parties (including the attacker on a miss, not the defender leading the sentence). Hover/focus uses the existing describer/form renderer for item, target and roll-free outcome context; click retains the original story-row identity and opens that row in History. No narration parsing, raw-record fallback or toast-policy change. Typed attack/speech/cast samples exercise the shared component in the free-roam layout fixture.
+
 **Interface:** `revealedStory` remains the player-facing source; `record` and `onRecordShownChange` remain the diagnostic source/subscription gate. Display mode and collapse state are UI state only.
 
 **Behavior/proof:** Compact last-three outcomes, expandable History/Debug tabs, approved translucent history background and readable taller Debug panel. Render existing event forms rather than formatting raw debug payloads. Debug starts/stops the existing hook only when shown; closing/reopening retains its transport cursor. Existing roll settlement continues to delay unreleased outcomes; raw records never leak into player history. No new toast behavior.
