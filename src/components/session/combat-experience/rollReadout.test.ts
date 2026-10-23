@@ -3,6 +3,24 @@ import { RollSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session
 import { describe, expect, it } from 'vitest';
 import { rollReadout } from './rollReadout';
 describe('rollReadout', () => {
+  it.each(['AC', 'DC'] as const)('labels a supplied %s target', (target) => {
+    expect(
+      rollReadout(
+        create(RollSchema, {
+          expression: '1d20 + 4',
+          total: 13,
+          against: 16,
+          dice: [9],
+        }),
+        target
+      )
+    ).toBe(`1d20 (9) + 4 = 13 < ${target} 16`);
+  });
+  it('does not invent an absent target', () => {
+    expect(
+      rollReadout(create(RollSchema, { expression: '1d20', total: 9 }), 'AC')
+    ).toBe('1d20 = 9');
+  });
   it('shows a supplied face inline and compares supplied totals', () => {
     expect(
       rollReadout(

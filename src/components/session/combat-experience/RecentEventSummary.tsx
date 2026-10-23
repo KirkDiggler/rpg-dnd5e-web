@@ -31,7 +31,12 @@ function RollCard({
   source?: string;
   multiplier?: number;
 }) {
-  const formula = roll ? rollReadout(roll) : undefined;
+  const formula = roll
+    ? rollReadout(
+        roll,
+        kind === 'attack' ? 'AC' : kind === 'save' ? 'DC' : undefined
+      )
+    : undefined;
   return (
     <section
       className={styles.roll}
@@ -53,7 +58,9 @@ function RollCard({
           <span className={styles.missing}>Not supplied</span>
         )}
       </header>
-      {kind !== 'bonus' && formula && <code>{formula}</code>}
+      {kind !== 'bonus' && formula && (
+        <code>{formula.replace(/\b(AC|DC) /g, '$1\u00a0')}</code>
+      )}
       {multiplier !== undefined && (
         <small className={styles.multiplier}>
           Applied multiplier ×{multiplier}
