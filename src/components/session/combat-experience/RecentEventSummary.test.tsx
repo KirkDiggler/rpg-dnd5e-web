@@ -2,9 +2,11 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActSchema,
   AttackOutcome,
+  DamageComponentSchema,
   DamageType,
   Family,
   PartyKind,
+  RollSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -52,6 +54,51 @@ function entry(incoming = false, withDamage = true) {
   )[0]!;
 }
 describe('recent result summary', () => {
+  it('renders a supplied flat ability contribution as a signed bonus strip, not another roll', () => {
+    const value = entry();
+    if (value.act?.body.case !== 'attack') throw Error('fixture');
+    const attack = value.act.body.value;
+    attack.damageComponents[0].source = 'weapon';
+    attack.damageComponents[0].roll = create(RollSchema, {
+      expression: '2d8',
+      dice: [3, 4],
+      total: 7,
+    });
+    attack.damageComponents.push(
+      create(DamageComponentSchema, {
+        source: 'ability',
+        roll: {
+          expression: '2',
+          total: 2,
+          modifiers: [{ source: 'ability', value: 2 }],
+        },
+      })
+    );
+    render(<RecentEventSummary entry={value} />);
+    const bonus = screen.getByRole('group', { name: 'Damage bonus · ability' });
+    expect(bonus).toHaveAttribute('data-kind', 'bonus');
+    expect(bonus).toHaveTextContent('+2');
+    expect(bonus.querySelector('code')).toBeNull();
+    expect(
+      screen.getByRole('group', { name: 'Damage roll · weapon' })
+    ).toHaveAttribute('data-kind', 'damage');
+  });
+  it('does not classify by the source name or guess from missing dice detail', () => {
+    const value = entry();
+    if (value.act?.body.case !== 'attack') throw Error('fixture');
+    value.act.body.value.damageComponents[0].source = 'ability';
+    value.act.body.value.damageComponents[0].roll = create(RollSchema, {
+      expression: '1d6 + 2',
+      total: 5,
+      modifiers: [{ source: 'ability', value: 2 }],
+    });
+    render(<RecentEventSummary entry={value} />);
+    expect(screen.getByRole('group', { name: 'Damage roll' })).toHaveAttribute(
+      'data-kind',
+      'damage'
+    );
+    expect(screen.queryByRole('group', { name: /Damage bonus/ })).toBeNull();
+  });
   it('separates headline, outcome and supplied attack/damage rolls', () => {
     render(<RecentEventSummary entry={entry()} />);
     expect(

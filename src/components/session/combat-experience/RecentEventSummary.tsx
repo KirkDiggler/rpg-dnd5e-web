@@ -11,6 +11,15 @@ import {
 import styles from './RecentEventSummary.module.css';
 import type { CombatExperienceStoryExchange } from './types';
 
+/** A literal/modifier-only payload is flat; missing dice detail alone is not proof. */
+function isFlatContribution(roll: Roll | undefined): boolean {
+  if (!roll || roll.dice.length || roll.terms.length || roll.of) return false;
+  const expression = roll.expression.trim();
+  return (
+    /^[+-]?\d+$/.test(expression) || (!expression && roll.modifiers.length > 0)
+  );
+}
+
 function RollCard({
   label,
   roll,
@@ -21,7 +30,7 @@ function RollCard({
 }: {
   label: string;
   roll?: Roll;
-  kind: 'attack' | 'damage' | 'save';
+  kind: 'attack' | 'damage' | 'save' | 'bonus';
   tone: CombatExperienceStoryExchange['tone'];
   source?: string;
   multiplier?: number;
@@ -45,12 +54,14 @@ function RollCard({
           {source && <small>{source}</small>}
         </span>
         {roll ? (
-          <strong className={styles.total}>{roll.total}</strong>
+          <strong className={styles.total}>
+            {kind === 'bonus' && roll.total > 0 ? `+${roll.total}` : roll.total}
+          </strong>
         ) : (
           <span className={styles.missing}>Not supplied</span>
         )}
       </header>
-      {formula && <code>{formula}</code>}
+      {kind !== 'bonus' && formula && <code>{formula}</code>}
       {multiplier !== undefined && (
         <small className={styles.multiplier}>
           Applied multiplier ×{multiplier}
@@ -105,21 +116,30 @@ export function RecentEventSummary({
               tone={entry.tone}
             />
           )}
-          {attack.damageComponents.map((part, index) => (
-            <RollCard
-              key={index}
-              label="Damage roll"
-              roll={part.roll}
-              kind="damage"
-              tone={entry.tone}
-              source={
-                attack.damageComponents.length > 1
-                  ? part.source || `Component ${index + 1}`
-                  : undefined
-              }
-              multiplier={part.multiplier}
-            />
-          ))}
+          {attack.damageComponents.map((part, index) => {
+            const flat = isFlatContribution(part.roll);
+            return (
+              <RollCard
+                key={index}
+                label={
+                  flat
+                    ? part.roll!.total < 0
+                      ? 'Damage modifier'
+                      : 'Damage bonus'
+                    : 'Damage roll'
+                }
+                roll={part.roll}
+                kind={flat ? 'bonus' : 'damage'}
+                tone={entry.tone}
+                source={
+                  attack.damageComponents.length > 1
+                    ? part.source || `Component ${index + 1}`
+                    : undefined
+                }
+                multiplier={part.multiplier}
+              />
+            );
+          })}
           {attack.outcome === AttackOutcome.HIT &&
             attack.damageComponents.length === 0 && (
               <RollCard label="Damage roll" kind="damage" tone={entry.tone} />

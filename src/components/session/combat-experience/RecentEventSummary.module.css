@@ -48,6 +48,31 @@
   background: #40252766;
   color: #efa39e;
 }
+.roll[data-kind='bonus'] {
+  grid-column: 1 / -1;
+  padding: 6px 10px;
+  border: 1px solid #566674;
+  border-radius: 999px;
+  background: transparent;
+  color: #d5dee4;
+}
+.roll[data-kind='bonus'][data-tone='success'] {
+  border-color: #77cda566;
+  color: #9cddb5;
+}
+.roll[data-kind='bonus'][data-tone='danger'] {
+  border-color: #df8f8966;
+  color: #efa39e;
+}
+.roll[data-kind='bonus'] header > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+}
+.roll[data-kind='bonus'] .total {
+  font-size: 16px;
+}
 .roll > header {
   display: flex;
   justify-content: space-between;
