@@ -17,6 +17,7 @@ import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
 import { OffHandAttachmentConcept } from './off-hand-attachment/OffHandAttachmentConcept';
 import { OrganizedHudConcept } from './organized-hud/OrganizedHudConcept';
+import { PortraitProviderConcept } from './portrait-provider/PortraitProviderConcept';
 import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
 import { SessionTombConcept } from './session-tomb/SessionTombConcept';
 import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
@@ -39,6 +40,7 @@ type ConceptPage =
   | 'weapon-attachment'
   | 'off-hand-attachment'
   | 'organized-hud'
+  | 'portrait-provider'
   | 'desktop-hotbar'
   | 'dungeon-builder'
   | 'asset-anchor-lab'
@@ -62,6 +64,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'weapon-attachment', label: 'Weapon Attachment' },
   { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'organized-hud', label: 'Organized HUD' },
+  { id: 'portrait-provider', label: 'Portrait Provider' },
   { id: 'desktop-hotbar', label: 'Desktop Hotbar' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
@@ -168,6 +171,7 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
         {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
         {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {activePage === 'organized-hud' && <OrganizedHudConcept />}
+        {activePage === 'portrait-provider' && <PortraitProviderConcept />}
         {activePage === 'desktop-hotbar' && <DesktopHotbarConcept />}
         {activePage === 'action-information' && <ActionInformationConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
