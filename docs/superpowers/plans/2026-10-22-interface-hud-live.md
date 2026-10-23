@@ -137,7 +137,7 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 
 ### Operator notes queued after the current cleanup cycle
 
-- Implemented conversation placement: `ConversationPanel` uses the existing dock targeting host, centered over the action area and clear of Just Happened. It retains `speakTargetsOf` / `speakLinesFor`, the member/prop target distinction and the existing opaque-option callback. Choice rows match the new panel styling, support keyboard selection, and never expose unavailable lines. A labelled no-RPC conversation fixture exercises both steps.
+- Implemented conversation placement: `ConversationPanel` uses the existing dock targeting host, centered over the whole view immediately above the dock. Its width follows content within 280–420px, rather than reserving 560px or offsetting for the portrait column. It retains `speakTargetsOf` / `speakLinesFor`, the member/prop target distinction and the existing opaque-option callback. Choice rows match the new panel styling, support keyboard selection, and never expose unavailable lines. A labelled no-RPC conversation fixture exercises both steps.
 - Implemented desktop History/Debug outside-pointer dismissal. Inside interactions remain open; outside clicks keep their own focus/command behavior and stop the existing Debug subscription through its unchanged visibility callback.
 - Reconcile weapon-card typography (especially undersized effect labels).
 - Implemented tooltip roll refinement: prominent attack/damage roll cards, supplied expressions/totals, separate outcome line and existing red/green perspective. The existing release/settlement gate is preserved; no reconstructed roll results. Richer readable-history polish remains separate.

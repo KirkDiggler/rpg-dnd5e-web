@@ -1,15 +1,13 @@
 .position {
   display: flex;
   justify-content: center;
-  padding-left: calc(
-    var(--desktop-status-width, 260px) + var(--desktop-column-gap, 22px) + 8px
-  );
-  padding-right: 8px;
+  padding-inline: 8px;
   pointer-events: none;
 }
 .panel {
-  width: min(560px, 100%);
-  min-width: 0;
+  width: max-content;
+  min-width: min(280px, 100%);
+  max-width: min(420px, 100%);
   max-height: min(
     340px,
     calc(100cqh - var(--desktop-dock-height, 220px) - 36px)
@@ -65,6 +63,7 @@
   color: #edf3f7;
   font: inherit;
   text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .panel .choice:hover {
