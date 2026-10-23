@@ -24,7 +24,12 @@ export const RECENT_IDENTITY_SAMPLES = buildActStory(
           to: member('aldric'),
           attack: { ref: 'dnd5e:weapons:longsword', name: 'Longsword' },
           outcome: AttackOutcome.MISS,
-          roll: { expression: '1d20 + 4', total: 13, against: 16 },
+          roll: {
+            expression: '1d20 + 4',
+            total: 13,
+            against: 16,
+            terms: [{ count: 1, dieSize: 20, faces: [9] }],
+          },
         },
       },
     }),

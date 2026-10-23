@@ -2,13 +2,9 @@ import {
   AttackOutcome,
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-import {
-  describeAct,
-  formatRollBreakdown,
-  formatRollFormula,
-  formatRollShort,
-} from './describeAct';
+import { describeAct, formatRollFormula } from './describeAct';
 import styles from './RecentEventSummary.module.css';
+import { rollReadout } from './rollReadout';
 import type { CombatExperienceStoryExchange } from './types';
 
 /** A literal/modifier-only payload is flat; missing dice detail alone is not proof. */
@@ -35,11 +31,7 @@ function RollCard({
   source?: string;
   multiplier?: number;
 }) {
-  const formula = roll
-    ? roll.expression
-      ? formatRollShort(roll)
-      : formatRollBreakdown(roll)
-    : undefined;
+  const formula = roll ? rollReadout(roll) : undefined;
   return (
     <section
       className={styles.roll}

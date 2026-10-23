@@ -111,7 +111,7 @@ describe('recent result summary', () => {
     const attack = screen.getByRole('group', { name: 'Attack roll' }),
       damage = screen.getByRole('group', { name: 'Damage roll' });
     expect(attack).toHaveAttribute('data-kind', 'attack');
-    expect(attack).toHaveTextContent('1d20 + 5 = 18 vs 13');
+    expect(attack).toHaveTextContent('1d20 + 5 = 18 > 13');
     expect(damage).toHaveAttribute('data-kind', 'damage');
     expect(damage).toHaveAttribute('data-tone', 'success');
     expect(damage).toHaveTextContent('2d6 + 3 = 9');
