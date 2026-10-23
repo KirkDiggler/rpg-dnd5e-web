@@ -5,6 +5,7 @@ import {
   LifeState,
   Standing,
   TargetKind,
+  Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useRef, useState, type CSSProperties } from 'react';
@@ -374,6 +375,7 @@ export function CombatExperience({
     desktopHotbar &&
     phase === 'targeting' &&
     (!targetingDeclaration ||
+      targetingDeclaration.verb === Verb.SPEAK ||
       targetingDeclaration.targetKind === TargetKind.MEMBER);
   // Action information exists independently of effects. No unrelated offer
   // supplies a default context while the player has nothing selected.

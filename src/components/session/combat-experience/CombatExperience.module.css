@@ -2889,14 +2889,16 @@ button.diceDrawerCue:focus-visible {
 /* The desktop bar owns the full width and the auto-sized bottom grid row.
    Story/JSON fills the remaining row above it, never the action controls. */
 .desktopDock {
+  --desktop-status-width: 260px;
+  --desktop-column-gap: 22px;
   position: relative;
   z-index: 6;
   grid-row: 3;
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: var(--desktop-status-width) minmax(0, 1fr);
   align-items: center;
-  gap: 22px;
+  gap: var(--desktop-column-gap);
   min-width: 0;
   margin: 12px 24px;
   padding: 12px 16px;

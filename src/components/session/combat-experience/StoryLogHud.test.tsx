@@ -6,6 +6,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import '@testing-library/jest-dom/vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -114,6 +115,28 @@ describe('live HUD history', () => {
       'aria-selected',
       'true'
     );
+  });
+  it('closes on an outside pointer press without stealing focus or swallowing the clicked action', () => {
+    const shown = vi.fn(),
+      clicked = vi.fn();
+    render(
+      <>
+        <HudLog onRecordShownChange={shown} />
+        <button onClick={clicked}>Outside action</button>
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Debug' }));
+    fireEvent.pointerDown(screen.getByLabelText('Filter by beat'));
+    expect(screen.getByRole('tabpanel', { name: 'Debug' })).toBeVisible();
+    const outside = screen.getByRole('button', { name: 'Outside action' });
+    act(() => outside.focus());
+    fireEvent.pointerDown(outside);
+    fireEvent.click(outside);
+    expect(screen.queryByRole('tabpanel', { name: 'Debug' })).toBeNull();
+    expect(outside).toHaveFocus();
+    expect(clicked).toHaveBeenCalledOnce();
+    expect(shown).toHaveBeenLastCalledWith(false);
   });
   it('supports keyboard navigation between History and Debug tabs', () => {
     render(<HudLog />);

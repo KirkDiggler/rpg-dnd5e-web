@@ -188,6 +188,29 @@ describe('DesktopHotbarConcept', () => {
     expect(screen.queryByTestId('desktop-effects')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Longsword' })).toBeNull();
   });
+  it('walks the conversation target and line steps in the dock-hosted shared panel', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Free-roam layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speak' }));
+    expect(screen.getByTestId('desktop-targeting-host')).toContainElement(
+      screen.getByRole('region', { name: 'Conversation' })
+    );
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Speak targets' })).getAllByRole(
+        'button'
+      )[0]
+    );
+    expect(
+      screen.queryByText('A hidden password that must not appear.')
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: '“We are here for the feast.”' })
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('greet-opaque');
+    expect(screen.getByRole('status')).toHaveTextContent('no RPC was sent');
+    expect(screen.queryByRole('region', { name: 'Conversation' })).toBeNull();
+  });
   it('debug mode says a fixture has no session record (web#1305)', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));

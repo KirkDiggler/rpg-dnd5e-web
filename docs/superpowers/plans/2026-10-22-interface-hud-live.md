@@ -137,8 +137,8 @@ The operator-owned scope question is whether this HUD slice must introduce consu
 
 ### Operator notes queued after the current cleanup cycle
 
-- Place the conversation choice panel lower-center above the action bar, separate from Just Happened, and use the new panel styling rather than the placeholder green list.
-- Close History/Debug on outside clicks; preserve deliberate focus and command semantics.
+- Implemented conversation placement: `ConversationPanel` uses the existing dock targeting host, centered over the action area and clear of Just Happened. It retains `speakTargetsOf` / `speakLinesFor`, the member/prop target distinction and the existing opaque-option callback. Choice rows match the new panel styling, support keyboard selection, and never expose unavailable lines. A labelled no-RPC conversation fixture exercises both steps.
+- Implemented desktop History/Debug outside-pointer dismissal. Inside interactions remain open; outside clicks keep their own focus/command behavior and stop the existing Debug subscription through its unchanged visibility callback.
 - Reconcile weapon-card typography (especially undersized effect labels).
 - Implemented tooltip roll refinement: prominent attack/damage roll cards, supplied expressions/totals, separate outcome line and existing red/green perspective. The existing release/settlement gate is preserved; no reconstructed roll results. Richer readable-history polish remains separate.
 - The supplied “Operation aborted” snippet is coding-terminal progress output (including “Editing scoped source docs”), not evidence of a gameplay failure. Its cause is unconfirmed; do not invent a game/API regression from it.

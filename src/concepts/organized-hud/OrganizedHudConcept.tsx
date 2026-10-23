@@ -14,6 +14,7 @@ import type {
   ActionIconPresentation,
   OrganizedActionPresentation,
 } from '@/components/session/combat-experience/organizedActionPresentation';
+import { speakLinesFor } from '@/components/session/combat-experience/speakOptions';
 import type {
   CombatExperienceLogMode,
   CombatExperiencePresentationState,
@@ -278,6 +279,14 @@ export function OrganizedHudConcept({
     const snapshot = targetingSnapshot.current;
     if (snapshot.desktopMode !== desktopMode || snapshot.scope !== storyScope)
       return;
+    const speaking = snapshot.inputFor(snapshot.state).declaration;
+    if (speaking?.verb === Verb.SPEAK) {
+      const target = { case: 'memberId' as const, value: member };
+      if (speakLinesFor(speaking, target).length === 0) return;
+      setState((current) => ({ ...current, speakTarget: target }));
+      setIntent('Conversation target selected — no line sent.');
+      return;
+    }
     if (desktopMode) {
       const input = snapshot.inputFor(snapshot.state);
       const next = toggleMemberTarget(input, member);
@@ -614,6 +623,21 @@ export function OrganizedHudConcept({
           onCancelCastOption={cancel}
           onCancelSelection={cancel}
           onTargetClick={selectTarget}
+          onChooseSpeakTarget={(target) =>
+            setState((current) => ({ ...current, speakTarget: target }))
+          }
+          onSpeakOption={(optionId) => {
+            const current = targetingSnapshot.current;
+            const matches = speakLinesFor(
+              current.inputFor(current.state).declaration,
+              current.state.speakTarget
+            ).filter((option) => option.optionId === optionId);
+            if (matches.length !== 1) return;
+            setIntent(
+              `Fixture-only line ${optionId}: ${matches[0].line}; no RPC was sent.`
+            );
+            setState(EMPTY);
+          }}
           onConfirmTargets={confirmTargets}
           onEndTurn={(declaration) =>
             setIntent(

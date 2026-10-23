@@ -15,6 +15,7 @@ import {
 } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
+import { ConversationPanel } from './ConversationPanel';
 import { MapFirstTargeting } from './MapFirstTargeting';
 import {
   memberTargetingView,
@@ -22,7 +23,7 @@ import {
   type MemberTargetingInput,
 } from './memberTargeting';
 import type { SelectedCombatExperience } from './selection';
-import { speakLinesFor, speakTargetsOf } from './speakOptions';
+import { speakTargetsOf } from './speakOptions';
 import type {
   CombatExperienceMapRenderProps,
   CombatExperiencePhase,
@@ -227,11 +228,6 @@ export function TargetSurface({
     declaration.targetKind === TargetKind.CELL;
   const speakTargets =
     phase === 'targeting' && isSpeak ? speakTargetsOf(declaration) : [];
-  const speakLines = speakTarget ? speakLinesFor(declaration, speakTarget) : [];
-  const speakTargetName = (target: SpeakTarget): string =>
-    target.case === 'memberId'
-      ? memberNames.get(target.value) || target.value
-      : target.value;
   const availableTargets =
     phase === 'targeting' && isSpeak
       ? speakTargets
@@ -374,76 +370,19 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {phase === 'targeting' && isSpeak && (
-        <div className={styles.contextPrompt} data-phase="targeting">
-          <span className={styles.turnPromptKicker}>{armedName} armed</span>
-          {speakTarget && speakLines.length > 0 ? (
-            <>
-              {/* THE SECOND STEP: the chosen target's AVAILABLE lines, in the
-                  order the server sent them. A gated line is not drawn — the
-                  offer already hid it, and a greyed row would tell the player
-                  a line exists their character has no way to know about. */}
-              <strong>
-                What do you say to {speakTargetName(speakTarget)}?
-              </strong>
-              <ul
-                className={styles.targetList}
-                aria-label={`Lines for ${speakTargetName(speakTarget)}`}
-              >
-                {speakLines.map((option) => (
-                  <li key={option.optionId}>
-                    <button
-                      type="button"
-                      className={styles.targetChoice}
-                      onClick={() => onSpeakOption?.(option.optionId)}
-                    >
-                      {option.line ? `“${option.line}”` : option.optionId}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {onChooseSpeakTarget && (
-                <button
-                  type="button"
-                  className={styles.targetChoice}
-                  onClick={() => onChooseSpeakTarget(null)}
-                >
-                  Speak to someone else
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <strong>Choose who to speak to</strong>
-              <ul className={styles.targetList} aria-label="Speak targets">
-                {speakTargets.map((target) => (
-                  <li key={`${target.case}:${target.value}`}>
-                    <button
-                      type="button"
-                      className={styles.targetChoice}
-                      onClick={() =>
-                        target.case === 'memberId'
-                          ? onTargetClick(target.value)
-                          : onChooseSpeakTarget?.(target)
-                      }
-                    >
-                      {speakTargetName(target)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {onCancelSelection && (
-            <button
-              type="button"
-              className={styles.targetChoice}
-              onClick={onCancelSelection}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+      {phase === 'targeting' && isSpeak && declaration && (
+        <ConversationPanel
+          declaration={declaration}
+          memberNames={memberNames}
+          target={speakTarget}
+          docked={Boolean(mapFirst)}
+          host={mapFirstHost}
+          onHeightChange={onMapFirstHeightChange}
+          onTargetClick={onTargetClick}
+          onChooseTarget={onChooseSpeakTarget}
+          onSpeakOption={onSpeakOption}
+          onCancel={onCancelSelection}
+        />
       )}
       {!mapFirstActive &&
         phase === 'targeting' &&

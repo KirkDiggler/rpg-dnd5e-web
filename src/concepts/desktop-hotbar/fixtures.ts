@@ -420,7 +420,9 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
     id: 'live-world-layout',
     label: 'Free-roam layout',
     storySamples: RECENT_IDENTITY_SAMPLES,
-    desktopIcons: {},
+    desktopIcons: {
+      'conversation-offer': { src: '', fallback: '❝', tone: 'blue' },
+    },
     fixtures: [
       {
         ...SESSION_COMBAT_FIXTURES.find(
@@ -471,6 +473,54 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
             { key: 'second_wind', name: 'Second Wind', current: 1, maximum: 1 },
           ],
         }),
+      },
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'conversation-layout',
+        label: 'Conversation',
+        description:
+          'Available dialogue choices and a hidden unavailable line; no live speech is sent.',
+        viewerName: 'Conversation fixture',
+        viewerClassRefId: 'fighter',
+        authorityFresh: true,
+        declarations: [
+          create(DeclarationSchema, {
+            id: 'conversation-offer',
+            verb: Verb.SPEAK,
+            slot: Slot.NONE,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-guard', available: true }],
+            speakOptions: [
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'greet-opaque',
+                line: 'We are here for the feast.',
+                available: true,
+              },
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'ask-opaque',
+                line: 'Who is in charge here?',
+                available: true,
+              },
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'secret-opaque',
+                line: 'A hidden password that must not appear.',
+                available: false,
+              },
+              {
+                target: { case: 'propId', value: 'altar' },
+                optionId: 'pray-opaque',
+                line: 'Grant us passage.',
+                available: true,
+              },
+            ],
+          }),
+        ],
       },
       {
         ...SESSION_COMBAT_FIXTURES.find(

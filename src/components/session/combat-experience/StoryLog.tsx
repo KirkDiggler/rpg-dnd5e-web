@@ -206,6 +206,7 @@ export function StoryLog({
   // One ref serves both feeds: `visibleMode` renders exactly one of them, so
   // the ref only ever holds the mounted container, and the mode itself is a
   // dependency so switching feeds re-pins the newly mounted one.
+  const rootRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const rows = useMemo(() => foldLogRows(story), [story]);
@@ -253,6 +254,22 @@ export function StoryLog({
     focusAfterToggle.current = true;
     setCollapsed(true);
   };
+
+  useEffect(() => {
+    if (!compactPreview || collapsed) return;
+    const outside = (event: PointerEvent): void => {
+      if (
+        !(event.target instanceof Node) ||
+        rootRef.current?.contains(event.target)
+      )
+        return;
+      savedScrollTop.current = scrollRef.current?.scrollTop;
+      focusAfterToggle.current = false;
+      setCollapsed(true);
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [compactPreview, collapsed]);
 
   useLayoutEffect(() => {
     if (focusAfterToggle.current) {
@@ -318,6 +335,7 @@ export function StoryLog({
 
   return (
     <aside
+      ref={rootRef}
       data-testid="session-combat-log"
       className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''} ${wideDebug ? styles.storyLogWide : ''} ${compactPreview ? styles.hudStoryLog : ''}`}
       aria-label="Story log"
