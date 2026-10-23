@@ -56,12 +56,16 @@ import {
   EMPTY_TRIGGER_REFUSAL,
   entryDoesOneThingRefusal,
   HEARING_SENTENCES,
+  isSearchHeading,
   isSelectorWord,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  SEARCH_SHAPE_REFUSAL,
   searchDistanceRefusal,
+  searchHeadingRefusal,
+  searchKeyRefusal,
   SELECTOR_MAPPING_KEYS,
   selectorWordLegalOn,
   spanRefusal,
@@ -77,6 +81,7 @@ import {
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
+  type SearchHeading,
 } from './answerVocabulary';
 import {
   MONSTERS,
@@ -293,6 +298,9 @@ export interface AnswerWordDoc {
   /** `search`'s authored distance (rpg-project#668 R4); absent is the
    * engine's six, kept absent so the file re-emits its own bytes. */
   distance?: number;
+  /** `search`'s authored heading (rpg-project#679 R10); absent is the
+   * engine's `went`, kept absent so the file re-emits its own bytes. */
+  heading?: SearchHeading;
 }
 
 /** One share of a faction's `temper:` mix — a word and how much of the die it
@@ -1520,28 +1528,37 @@ function answerWordValue(
     // `dungeonspec.SearchSpec.UnmarshalYAML` refuses BY HAND, so unlike
     // `flee`/`hold` an unknown key inside it is the engine's refusal too.
     if (!isRecord(raw)) {
-      throw new DungeonParseError(
-        `${path}: \`search\` is { distance: N }, or {} for ${ANSWER_SEARCH.defaultDistance} cells`
-      );
+      throw new DungeonParseError(`${path}: ${SEARCH_SHAPE_REFUSAL}`);
     }
     for (const key of Object.keys(raw)) {
       if (!ANSWER_SEARCH.bodyKeys.includes(key)) {
-        throw new DungeonParseError(
-          `${path}: "${key}" is not a key \`search\` reads: it reads distance`
-        );
+        throw new DungeonParseError(`${path}: ${searchKeyRefusal(key)}`);
       }
     }
-    if (raw.distance === undefined || raw.distance === null) return { word };
-    const distance = raw.distance;
-    if (typeof distance !== 'number' || !Number.isInteger(distance)) {
-      throw new DungeonParseError(`${path}.distance: expected a whole number`);
+    const out: AnswerWordDoc = { word };
+    if (raw.distance !== undefined && raw.distance !== null) {
+      const distance = raw.distance;
+      if (typeof distance !== 'number' || !Number.isInteger(distance)) {
+        throw new DungeonParseError(
+          `${path}.distance: expected a whole number`
+        );
+      }
+      if (distance < ANSWER_SEARCH.minimumDistance) {
+        throw new DungeonParseError(
+          `${path}: ${searchDistanceRefusal(distance)}`
+        );
+      }
+      out.distance = distance;
     }
-    if (distance < ANSWER_SEARCH.minimumDistance) {
-      throw new DungeonParseError(
-        `${path}: ${searchDistanceRefusal(distance)}`
-      );
+    if (raw.heading !== undefined && raw.heading !== null) {
+      if (!isSearchHeading(raw.heading)) {
+        throw new DungeonParseError(
+          `${path}: ${searchHeadingRefusal(raw.heading)}`
+        );
+      }
+      out.heading = raw.heading;
     }
-    return { word, distance };
+    return out;
   }
   // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
   // scalar or a sequence body is a decode error there and is refused here.
@@ -2297,8 +2314,12 @@ function answerWordText(word: AnswerWordDoc, o: Orientation): string {
   if (word.selector !== undefined) {
     return `${word.word}: ${selectorText(word.selector, o)}`;
   }
-  if (word.distance !== undefined) {
-    return `${word.word}: { distance: ${word.distance} }`;
+  if (word.distance !== undefined || word.heading !== undefined) {
+    const body = [
+      word.distance !== undefined ? `distance: ${word.distance}` : undefined,
+      word.heading !== undefined ? `heading: ${word.heading}` : undefined,
+    ].filter((part) => part !== undefined);
+    return `${word.word}: { ${body.join(', ')} }`;
   }
   return `${word.word}: {}`;
 }

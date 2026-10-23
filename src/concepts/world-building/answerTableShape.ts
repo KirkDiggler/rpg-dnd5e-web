@@ -57,12 +57,16 @@ import {
   EMPTY_TRIGGER_REFUSAL,
   entryDoesOneThingRefusal,
   HEARING_SENTENCES,
+  isSearchHeading,
   isSelectorWord,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  SEARCH_SHAPE_REFUSAL,
   searchDistanceRefusal,
+  searchHeadingRefusal,
+  searchKeyRefusal,
   SELECTOR_MAPPING_KEYS,
   selectorShapeRefusal,
   selectorWordLegalOn,
@@ -78,6 +82,7 @@ import {
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
+  type SearchHeading,
 } from '@/author/answerVocabulary';
 import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
 
@@ -234,9 +239,12 @@ export interface AnswerEntryShape {
   search?: AnswerSearchShape;
 }
 
-/** `search`'s body as written: `{}` or `{ distance: N }`. */
+/** `search`'s body as written: `{}`, `{ distance: N }`, `{ heading: H }` or
+ * both. Each key absent is the engine's default (six, `went`), carried absent
+ * so the file's bytes round-trip. */
 export interface AnswerSearchShape {
   distance?: number;
+  heading?: SearchHeading;
 }
 
 /** An `on:` block as written: trigger key to the entries on it. An empty list
@@ -475,21 +483,17 @@ function validateAnswerEntry(
   return entry;
 }
 
-/** `search: { distance }` — `dungeonspec.SearchSpec.UnmarshalYAML`: a
- * mapping, reading `distance` and nothing else, the distance a whole number
- * counted from 1. */
+/** `search: { distance, heading }` — `dungeonspec.SearchSpec.UnmarshalYAML`:
+ * a mapping, reading `distance` and `heading` and nothing else, the distance a
+ * whole number counted from 1 and the heading one of the sealed four. */
 export function validateAnswerSearch(
   value: unknown,
   path: string
 ): AnswerSearchShape {
-  if (!isMapping(value))
-    fail(
-      path,
-      `\`search\` is { distance: N }, or {} for ${ANSWER_SEARCH.defaultDistance} cells`
-    );
+  if (!isMapping(value)) fail(path, SEARCH_SHAPE_REFUSAL);
   for (const key of Object.keys(value)) {
     if (!ANSWER_SEARCH.bodyKeys.includes(key))
-      fail(path, `"${key}" is not a key \`search\` reads: it reads distance`);
+      fail(path, searchKeyRefusal(key));
   }
   const search: AnswerSearchShape = {};
   if (value.distance !== undefined && value.distance !== null) {
@@ -499,6 +503,11 @@ export function validateAnswerSearch(
     if (distance < ANSWER_SEARCH.minimumDistance)
       fail(path, searchDistanceRefusal(distance));
     search.distance = distance;
+  }
+  if (value.heading !== undefined && value.heading !== null) {
+    if (!isSearchHeading(value.heading))
+      fail(path, searchHeadingRefusal(value.heading));
+    search.heading = value.heading;
   }
   return search;
 }

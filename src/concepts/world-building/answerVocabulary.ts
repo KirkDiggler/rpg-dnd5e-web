@@ -276,8 +276,22 @@ export function wordPhrase(
   if (entry.away !== undefined)
     return `${verb('walk', subject)} away from ${selectorPhrase(entry.away, subject)}`;
   if (entry.search !== undefined)
-    return `${verb('search', subject)} ${entry.search.distance ?? ANSWER_SEARCH.defaultDistance} cells on, then give${subject === 'it' ? 's' : ''} up`;
+    return `${verb('search', subject)} ${entry.search.distance ?? ANSWER_SEARCH.defaultDistance} cells on, ${headingPhrase(entry.search.heading ?? ANSWER_SEARCH.defaultHeading)}, then give${subject === 'it' ? 's' : ''} up`;
   return undefined;
+}
+
+/** Which way a search walks, in prose (rpg-project#679 R10). */
+function headingPhrase(heading: string): string {
+  switch (heading) {
+    case 'faced':
+      return 'the way they faced';
+    case 'left':
+      return 'a quarter left of the way they went';
+    case 'right':
+      return 'a quarter right of the way they went';
+    default:
+      return 'the way they went';
+  }
 }
 
 /** A trigger's heading in prose. */
@@ -327,8 +341,10 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
   if (shape === 'selector' && typeof value === 'string')
     return `${word} ${value}`;
   if (shape === 'search') {
-    const distance = (value as { distance?: number } | undefined)?.distance;
-    return distance === undefined ? word : `${word} ${distance}`;
+    const body = value as { distance?: number; heading?: string } | undefined;
+    return [word, body?.distance, body?.heading]
+      .filter((part) => part !== undefined)
+      .join(' ');
   }
   if (shape === 'selector') {
     const selector = value as AnswerSelectorShape;
