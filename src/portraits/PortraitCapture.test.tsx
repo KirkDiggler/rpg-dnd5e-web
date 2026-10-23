@@ -47,10 +47,10 @@ afterEach(cleanup);
 
 describe('portrait capture readiness', () => {
   it.each([
-    [0, Math.PI / 2],
-    [Math.PI, (3 * Math.PI) / 2],
+    [0, Math.PI / 3],
+    [Math.PI, (4 * Math.PI) / 3],
   ])(
-    'faces right while preserving the asset forward correction %s',
+    'faces toward the viewer and slightly right, preserving asset correction %s',
     (forwardCorrection, expectedFacing) => {
       const current = { ...source(), facingRotation: forwardCorrection };
       render(

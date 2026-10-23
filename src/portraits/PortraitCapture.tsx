@@ -93,9 +93,9 @@ function PortraitCaptureRequest({
     >
       <ClassCharacterModel
         url={source.url}
-        // Turn toward screen-right in the thumbnail camera, without changing
-        // the source asset's forward correction or the character's map facing.
-        facingRotation={source.facingRotation + Math.PI / 2}
+        // A three-quarter portrait: toward the viewer, slightly screen-right.
+        // Preserve the source asset's forward correction and map facing.
+        facingRotation={source.facingRotation + Math.PI / 3}
         isMoving={false}
         isDownedVariant={false}
         accessories={source.accessories}
