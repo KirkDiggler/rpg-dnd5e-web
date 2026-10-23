@@ -1811,6 +1811,20 @@ function SessionEncounterScope({
     );
   } else if (canDrawScene) {
     // Placement only: these retain their own state, refusals and real callbacks.
+    const sneakControl = turnClock === ClockKind.WORLD && snapshot?.view && (
+      <SneakToggle
+        sneaking={snapshot.view.sneaking}
+        disabled={sneakDeclaring || !member || runEnded !== null}
+        onChange={(next) => {
+          if (!member) return;
+          setSneakDeclaring(true);
+          void setSneaking({ session: sessionId, member, sneaking: next })
+            .then(() => refetchView())
+            .catch(() => undefined)
+            .finally(() => setSneakDeclaring(false));
+        }}
+      />
+    );
     const sessionTools = (
       <>
         {turnClock === ClockKind.WORLD && runEnded === null && (
@@ -1853,21 +1867,7 @@ function SessionEncounterScope({
             Share discoveries
           </label>
         )}
-        {/* Free-roam mode; the pressed state is still the server's view. */}
-        {turnClock === ClockKind.WORLD && snapshot?.view && (
-          <SneakToggle
-            sneaking={snapshot.view.sneaking}
-            disabled={sneakDeclaring || !member || runEnded !== null}
-            onChange={(next) => {
-              if (!member) return;
-              setSneakDeclaring(true);
-              void setSneaking({ session: sessionId, member, sneaking: next })
-                .then(() => refetchView())
-                .catch(() => undefined)
-                .finally(() => setSneakDeclaring(false));
-            }}
-          />
-        )}
+        {!desktopHotbar && sneakControl}
       </>
     );
     content = (
@@ -1898,6 +1898,7 @@ function SessionEncounterScope({
                 {!desktopHotbar && sessionTools}
               </>
             }
+            actionUtilityControls={desktopHotbar ? sneakControl : undefined}
             explorationControls={
               desktopHotbar ? (
                 <>

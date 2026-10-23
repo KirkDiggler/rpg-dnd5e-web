@@ -38,6 +38,7 @@ import {
 import {
   DesktopHudFactionFixture,
   DesktopHudNavigationFixture,
+  DesktopHudSneakFixture,
   DesktopHudToolsFixture,
 } from '../desktop-hotbar/DesktopHudNavigationFixture';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
@@ -516,10 +517,22 @@ export function OrganizedHudConcept({
               <DesktopHudFactionFixture />
             ) : undefined
           }
+          actionUtilityControls={
+            iconExperiment &&
+            desktopMode &&
+            fixture.clock === ClockKind.WORLD ? (
+              <DesktopHudSneakFixture
+                onPreview={(label) =>
+                  setIntent(`${label} preview only — no intent sent`)
+                }
+              />
+            ) : undefined
+          }
           explorationControls={
             iconExperiment && desktopMode ? (
               <>
                 <DesktopHudToolsFixture
+                  includeSneak={false}
                   world={fixture.clock === ClockKind.WORLD}
                   onPreview={(label) =>
                     setIntent(`${label} preview only — no intent sent`)

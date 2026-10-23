@@ -136,6 +136,32 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('places a supplied sneak control directly under actions, outside Explore and action gates', () => {
+    const toggle = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          authorityFresh: false,
+          actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+          actionUtilityControls: (
+            <button aria-pressed={true} onClick={toggle}>
+              Sneaking
+            </button>
+          ),
+          explorationControls: <span>Other scene tools</span>,
+        })}
+      />
+    );
+    const control = screen.getByRole('button', { name: 'Sneaking' });
+    expect(
+      screen.getByRole('group', { name: 'Map utilities' }).contains(control)
+    ).toBe(true);
+    expect(control.closest('details')).toBeNull();
+    expect(control.getAttribute('aria-pressed')).toBe('true');
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(control);
+    expect(toggle).toHaveBeenCalledOnce();
+  });
   it('keeps scene settings in Explore without applying action gates to them', () => {
     const sharing = vi.fn();
     render(

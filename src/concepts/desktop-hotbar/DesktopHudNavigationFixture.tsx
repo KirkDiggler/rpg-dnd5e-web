@@ -54,9 +54,11 @@ export function DesktopHudNavigationFixture({
 export function DesktopHudToolsFixture({
   world,
   onPreview,
+  includeSneak = true,
 }: {
   world: boolean;
   onPreview: (label: string) => void;
+  includeSneak?: boolean;
 }) {
   return (
     <>
@@ -77,14 +79,23 @@ export function DesktopHudToolsFixture({
         />
         Share discoveries
       </label>
-      {world && (
-        <SneakToggle
-          sneaking={false}
-          disabled={false}
-          onChange={() => onPreview('Sneak')}
-        />
+      {world && includeSneak && (
+        <DesktopHudSneakFixture onPreview={onPreview} />
       )}
     </>
+  );
+}
+export function DesktopHudSneakFixture({
+  onPreview,
+}: {
+  onPreview: (label: string) => void;
+}) {
+  return (
+    <SneakToggle
+      sneaking={false}
+      disabled={false}
+      onChange={() => onPreview('Sneak')}
+    />
   );
 }
 export function DesktopHudFactionFixture() {

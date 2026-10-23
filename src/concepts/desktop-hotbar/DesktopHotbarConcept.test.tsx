@@ -162,9 +162,12 @@ describe('DesktopHotbarConcept', () => {
     expect(
       within(explore).getByRole('button', { name: 'Short rest' })
     ).toBeInTheDocument();
+    expect(within(explore).queryByRole('button', { name: 'Sneak' })).toBeNull();
+    const sneak = screen.getByRole('button', { name: 'Sneak' });
+    expect(sneak.closest('details')).toBeNull();
     expect(
-      within(explore).getByRole('button', { name: /Sneak/ })
-    ).toBeInTheDocument();
+      screen.getByRole('group', { name: 'Map utilities' })
+    ).toContainElement(sneak);
     expect(within(explore).getByTestId('faction-legend')).toBeVisible();
     const status = screen.getByTestId('desktop-status-section');
     expect(status).toHaveTextContent('Fighter fixture');

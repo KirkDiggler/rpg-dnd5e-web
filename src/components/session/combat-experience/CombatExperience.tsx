@@ -184,6 +184,7 @@ export function CombatExperience({
   navigationControls,
   navigationSupplement,
   explorationControls,
+  actionUtilityControls,
   sceneNotice,
   pacingNotice,
   renderMap,
@@ -843,6 +844,7 @@ export function CombatExperience({
             onEndTurn={onEndTurn}
             standingActions={standingActions}
             explorationControls={explorationControls}
+            actionUtilityControls={actionUtilityControls}
           />
         </div>
         {actionPresentation?.mode === 'organized-hud' && (

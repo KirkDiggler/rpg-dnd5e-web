@@ -332,6 +332,7 @@ export interface ActionDockProps {
    * dock: see `standingActionsBlocked`. */
   standingActions?: readonly StandingAction[];
   explorationControls?: ReactNode;
+  actionUtilityControls?: ReactNode;
 }
 
 /**
@@ -566,6 +567,7 @@ function ActionDockContents({
   onEndTurn,
   standingActions = [],
   explorationControls,
+  actionUtilityControls,
 }: ActionDockProps) {
   // THE STANDING VERBS ARE DRAWN IN EVERY CLOCK STATE, which is the whole
   // of Kirk's second walk finding: every one of his four runs was inside a
@@ -630,6 +632,7 @@ function ActionDockContents({
   const standing =
     actionPresentation?.mode === 'organized-hud'
       ? (standingGroup ||
+          actionUtilityControls ||
           explorationControls ||
           centerControl ||
           equipmentControl ||
@@ -639,6 +642,11 @@ function ActionDockContents({
             role="group"
             aria-label="Map utilities"
           >
+            {actionUtilityControls && (
+              <div className={styles.actionUtilityControls}>
+                {actionUtilityControls}
+              </div>
+            )}
             {(standingGroup || explorationControls) && (
               <details className={styles.organizedExplore}>
                 <summary>Explore</summary>

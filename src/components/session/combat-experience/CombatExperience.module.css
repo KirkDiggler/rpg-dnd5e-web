@@ -2463,6 +2463,24 @@ button.diceDrawerCue:focus-visible {
   gap: 5px;
   pointer-events: auto;
 }
+.actionUtilityControls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.actionUtilityControls button {
+  min-height: 32px;
+  padding: 5px 8px;
+  font:
+    500 11px/1.3 Inter,
+    system-ui,
+    sans-serif;
+}
+.actionUtilityControls button[aria-pressed='true'] {
+  border-color: #9cdbdf;
+  color: #9cdbdf;
+  background: #9cdbdf18;
+}
 .organizedExplore {
   position: relative;
   z-index: 12;
