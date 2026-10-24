@@ -22,7 +22,7 @@ describe('the reference front room is a pinned snapshot of the server’s file',
     // ONE text WHEN IT WAS TAKEN. A formatter or a hand-edit breaks that
     // silently, and no other test would notice — so the bytes are pinned.
     // The hash does NOT prove the copy still matches upstream: the server
-    // moves on and this is a snapshot at `29206a48`, not the live file.
+    // moves on and this is a snapshot at `78818a8`, not the live file.
     expect(
       createHash('sha256').update(REFERENCE_FRONT_ROOM_YAML).digest('hex')
     ).toBe(REFERENCE_FRONT_ROOM_SHA256);

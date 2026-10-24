@@ -59,14 +59,14 @@ export type AnswerApplicability = (typeof ANSWER_APPLICABILITY)[number];
 /** One word of the outcome vocabulary. `value` is the shape of what the
  * word carries beside it: `fact` carries an opaque id, `flee`/`hold` are
  * written `{}` and carry nothing, `attack`/`toward`/`away` carry a
- * selector. */
+ * selector, and `search` carries `{ distance }` ([ANSWER_SEARCH]). */
 export interface AnswerWordSpec {
   /** Imperative wording for the sentence editor: “do [Attack]”. */
   readonly commandLabel: string;
   readonly key: string;
   readonly label: string;
   readonly help: string;
-  readonly value: 'none' | 'string' | 'selector';
+  readonly value: 'none' | 'string' | 'selector' | 'search';
   /** The trigger groups this word is legal on — `AnswerSpec`'s
    * `wordLegality`. A word written under a group it is not in is refused with
    * the engine's own sentence ([answerWordRefusal]).
@@ -136,7 +136,32 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
     value: 'selector',
     legalOn: ['time'],
   },
+  {
+    // rpg-project#668 R4: `encounter`'s `search`, eligible only under
+    // `enemy: lost`.
+    key: 'search',
+    label: 'Searches',
+    commandLabel: 'Search',
+    help: 'Walks on from where it lost its enemy, the way that enemy was heading, for `distance` cells (6 when omitted), then gives up — and its `enemy: none` rows take it home.',
+    value: 'search',
+    legalOn: ['time'],
+  },
 ]);
+
+/** `search: { distance }` (rpg-project#668 R4) — `dungeonspec.SearchSpec`.
+ * `distance` is cells, counted from 1; omitted is the engine's six. The body
+ * reads `distance` and nothing else, refused by name. */
+export const ANSWER_SEARCH = Object.freeze({
+  bodyKeys: Object.freeze(['distance']),
+  defaultDistance: 6,
+  minimumDistance: 1,
+});
+
+/** `dungeonspec`'s refusal for a search that walks nowhere — mind/behavior's
+ * own sentence. */
+export function searchDistanceRefusal(distance: number): string {
+  return `\`search\` distance ${distance}: a search walks at least one cell`;
+}
 
 /** One trigger: the verb and its verdict, or `time`. Every social key is
  * `<verb>` or `<verb>_failed`, so the next social verb adds keys rather than
@@ -237,7 +262,7 @@ export const ANSWER_TRIGGER_KEYS: readonly string[] = Object.freeze(
 export interface AnswerWhenSpec {
   /** Which triggers a `when` may appear under — always `time`. */
   readonly legalOn: AnswerApplicability;
-  /** The four exclusive enemy bands, in the engine's own order. Exactly one
+  /** The five exclusive enemy bands, in the engine's own order. Exactly one
    * holds at any moment, so an author writes one entry per band. */
   readonly enemyBands: readonly string[];
   /** The four deeds a `when` may read, in the engine's past tense. */
@@ -281,7 +306,8 @@ export interface AnswerScopeSpec {
 
 export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
   legalOn: 'time',
-  enemyBands: Object.freeze(['reach', 'seen', 'remembered', 'none']),
+  // `lost` (rpg-project#668 R3): went to the remembered cell, found nobody.
+  enemyBands: Object.freeze(['reach', 'seen', 'remembered', 'lost', 'none']),
   deeds: Object.freeze(['attacked', 'intimidated', 'persuaded', 'fled']),
   minimumWithin: 1,
   bodyKeys: Object.freeze(['within', 'on', 'as']),

@@ -103,12 +103,13 @@ describe('the draft as a file (rpg-project#578)', () => {
 
   /**
    * THE SHIPPED CASTLE OPENS (rpg-project#605 D1, rpg-toolkit#2063). A verbatim
-   * copy of rpg-api `content/the-mad-king.yaml` at 0248749 (rpg-project#623,
-   * #624): its patrols walk `toward: { path: [{ q, r }, …] }`, the gate
-   * guards stand two rounds at each gate-side corner with a facing
-   * (`{ q, r, wait, facing }`), and its reserves walk `toward: { at: { q, r }
-   * }`. The engine reads it, so the studio's import must — the web never
-   * refuses what the engine accepts (#1119).
+   * copy of rpg-api `content/the-mad-king.yaml` at the QA castle
+   * (rpg-project#639): the gate guards walk mirrored loops whose posts stand a
+   * round with a facing (`{ q, r, wait, facing }`), the far room's guards walk
+   * `toward: { at: { q, r } }` to the yard inside the gate, and the turned
+   * garrison marches the same way on the throne room. The engine reads it, so
+   * the studio's import must — the web never refuses what the engine accepts
+   * (#1119). Reading a waypoint's wait and facing is #1314's (S1).
    *
    * BEFORE rpg-dnd5e-web#1311 the operator's Open from server said: `Could
    * not import: Site table gate-patrol.time[5].toward.path[0]: field wait not
@@ -126,14 +127,33 @@ describe('the draft as a file (rpg-project#578)', () => {
       (t.time ?? []).map((row) => row.toward)
     );
     expect(selectors).toContainEqual({ at: { q: 10, r: -19 } });
+    expect(selectors).toContainEqual({ at: { q: -2, r: 4 } });
     expect(selectors).toContainEqual({
       path: [
-        { q: -7, r: 9, wait: 2, facing: 'se' },
-        { q: -1, r: 9, wait: 2, facing: 'sw' },
-        { q: -3, r: 12 },
-        { q: -9, r: 12 },
+        { q: -5, r: 8, wait: 1, facing: 'ne' },
+        { q: -5, r: 10, wait: 1, facing: 'se' },
+        { q: -7, r: 10 },
       ],
     });
+    expect(selectors).toContainEqual({
+      path: [
+        { q: -2, r: 8, wait: 1, facing: 'nw' },
+        { q: -4, r: 10, wait: 1, facing: 'sw' },
+        { q: -2, r: 10 },
+      ],
+    });
+    // Pursuit (rpg-project#668): both gate tables walk to the remembered
+    // cell and search six on once it is lost.
+    const rows = Object.values(read.scope.tables ?? {}).flatMap(
+      (t) => t.time ?? []
+    );
+    expect(
+      rows.filter(
+        (row) =>
+          row.search?.distance === 6 &&
+          JSON.stringify(row.when) === '{"enemy":"lost"}'
+      )
+    ).toHaveLength(2);
     const importDocument = vi.fn().mockReturnValue(true);
     expect(importDraftYaml(yaml, { importDocument })).toEqual({
       ok: true,
@@ -161,7 +181,7 @@ describe('the draft as a file (rpg-project#578)', () => {
       opened.key
     );
     // The pause survives the save in the file's own spelling.
-    expect(saved).toMatch(/- q: -7\n\s+r: 9\n\s+wait: 2\n\s+facing: se\n/);
+    expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
     expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({

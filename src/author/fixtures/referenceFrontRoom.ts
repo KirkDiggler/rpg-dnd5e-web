@@ -2,9 +2,10 @@
  * The reference front room — a PINNED SNAPSHOT of the server's file.
  *
  * `reference-front-room.yaml` beside this module is a verbatim copy of
- * `rpg-api/content/reference-front-room.yaml` **as it stood at `29206a48`** (rpg-api#1099's pushed head, where the
- * goblin's priced checks became two options — rpg-project#569)
- * (`rpg-api` `origin/dev` tip `de83ffd6`, PR #1005). It is not a conversion
+ * `rpg-api/content/reference-front-room.yaml` **as it stood at `78818a8`** (the
+ * pursuit branch's head, where the bandits answer the new `enemy: lost` band
+ * with `hold` — rpg-project#668; the copy before it was `29206a48`, where the
+ * goblin's priced checks became two options — rpg-project#569). It is not a conversion
  * and not this module's idea of what the room should be, so the builder's
  * fixture and the server's fixture were one text when it was taken.
  *
@@ -44,17 +45,17 @@ import referenceFrontRoomYaml from './reference-front-room.yaml?raw';
  * `reference-tomb.yaml` is pinned.
  *
  * It does NOT pin the copy to the server's file, and it never did: the hash
- * proves the bytes are the ones taken at `29206a48`, so the test keeps
+ * proves the bytes are the ones taken at `78818a8`, so the test keeps
  * passing after upstream moves. That is a property of any hash-pinned
  * snapshot, and it is why the reconciliation is carried by an issue rather
  * than by this constant. */
 export const REFERENCE_FRONT_ROOM_YAML = referenceFrontRoomYaml;
 
-/** sha256 of the pinned snapshot taken at `29206a48` — NOT a hash of the file
+/** sha256 of the pinned snapshot taken at `78818a8` — NOT a hash of the file
  * the API ships today. Re-pin it in the same change that reconciles the copy
  * with upstream. */
 export const REFERENCE_FRONT_ROOM_SHA256 =
-  '10279c757782bc11af84332b5b305d82288482e8d38513c8bdc06a1b44df6da4';
+  '9192b66d8b8ab1b7c9f522e20e59834209d7754a2245421dab5cff99e8142bba';
 
 export function referenceFrontRoomDoc(): DungeonDoc {
   return parseDungeon(REFERENCE_FRONT_ROOM_YAML);

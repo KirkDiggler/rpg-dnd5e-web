@@ -59,4 +59,31 @@ describe('answer-entry sentence', () => {
     expect(commit).toHaveBeenLastCalledWith({ ...entry, weight: 5 });
     expect(screen.getByText(/not execution order/)).toBeTruthy();
   });
+
+  it('shows a search’s cells, the engine’s six when none is written, and commits a new distance', () => {
+    const commit = vi.fn();
+    const searching = { when: { enemy: 'lost' as const }, search: {} };
+    render(
+      <ul>
+        <AnswerEntryRow
+          trigger="time"
+          entry={searching}
+          onCommit={commit}
+          onRemove={() => {}}
+        />
+      </ul>
+    );
+    const cells = screen.getByLabelText(
+      'Cells for time entry'
+    ) as HTMLInputElement;
+    expect(cells.value).toBe('6');
+    fireEvent.change(cells, { target: { value: '4' } });
+    expect(commit).toHaveBeenLastCalledWith({
+      ...searching,
+      search: { distance: 4 },
+    });
+    commit.mockClear();
+    fireEvent.change(cells, { target: { value: '0' } });
+    expect(commit).not.toHaveBeenCalled();
+  });
 });

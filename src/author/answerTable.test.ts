@@ -138,6 +138,7 @@ describe('the vocabulary declaration is the single source', () => {
       'attack',
       'toward',
       'away',
+      'search',
     ]);
   });
 
@@ -157,6 +158,7 @@ describe('the vocabulary declaration is the single source', () => {
       'attack',
       'toward',
       'away',
+      'search',
     ]);
     // A trigger this build does not roll offers nothing at all.
     expect(answerWordsForTrigger('attacked')).toEqual([]);
@@ -167,6 +169,7 @@ describe('the vocabulary declaration is the single source', () => {
       'reach',
       'seen',
       'remembered',
+      'lost',
       'none',
     ]);
     expect(ANSWER_WHEN.deeds).toEqual([
