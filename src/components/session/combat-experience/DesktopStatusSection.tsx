@@ -14,6 +14,8 @@ export interface DesktopStatusSectionProps {
   privateStatusMessage?: string;
   onRetry?: () => void;
   children?: ReactNode;
+  /** Caller-owned public identity; no class/model inference in this status view. */
+  identity?: ReactNode;
 }
 
 /** Fixed read-only facts. This section never enters an action/order/page list. */
@@ -28,6 +30,7 @@ export function DesktopStatusSection({
   privateStatusMessage,
   onRetry,
   children,
+  identity,
 }: DesktopStatusSectionProps) {
   return (
     <section
@@ -35,7 +38,11 @@ export function DesktopStatusSection({
       aria-label="Character status"
       data-testid="desktop-status-section"
     >
-      <h3>Status</h3>
+      {identity ? (
+        <div className={styles.identity}>{identity}</div>
+      ) : (
+        <h3>Status</h3>
+      )}
       <div className={styles.health}>
         <div>
           <span>HP</span>

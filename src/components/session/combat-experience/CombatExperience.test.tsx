@@ -136,6 +136,71 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('places a supplied sneak control directly under actions, outside Explore and action gates', () => {
+    const toggle = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          authorityFresh: false,
+          actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+          actionUtilityControls: (
+            <button aria-pressed={true} onClick={toggle}>
+              Sneaking
+            </button>
+          ),
+          explorationControls: <span>Other scene tools</span>,
+        })}
+      />
+    );
+    const control = screen.getByRole('button', { name: 'Sneaking' });
+    expect(
+      screen.getByRole('group', { name: 'Map utilities' }).contains(control)
+    ).toBe(true);
+    expect(control.closest('details')).toBeNull();
+    expect(control.getAttribute('aria-pressed')).toBe('true');
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(control);
+    expect(toggle).toHaveBeenCalledOnce();
+  });
+  it('keeps scene settings in Explore without applying action gates to them', () => {
+    const sharing = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          authorityFresh: false,
+          actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+          navigationControls: <button>Back</button>,
+          explorationControls: (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Share discoveries"
+                  onChange={sharing}
+                />
+                Share discoveries
+              </label>
+              <span>Faction key</span>
+            </>
+          ),
+        })}
+      />
+    );
+    expect(
+      within(screen.getByTestId('session-location-header')).queryByLabelText(
+        'Share discoveries'
+      )
+    ).toBeNull();
+    const explore = screen.getByText('Explore').closest('details')!;
+    fireEvent.click(within(explore).getByText('Explore'));
+    const toggle = within(explore).getByRole('checkbox', {
+      name: 'Share discoveries',
+    });
+    expect((toggle as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(sharing).toHaveBeenCalledOnce();
+    expect(within(explore).getByText('Faction key')).toBeTruthy();
+  });
   it('inspects the selected zero-effect attack and leaves idle without an arbitrary action context', () => {
     const attack = create(DeclarationSchema, {
       ...fresh.declarations.find((offer) => offer.verb === Verb.ATTACK)!,
@@ -159,8 +224,8 @@ describe('CombatExperience shared production shell', () => {
     view.rerender(
       <CombatExperience {...props} presentationState={emptyState} />
     );
-    expect(inspection.queryByRole('button', { name: /Inspect/ })).toBeNull();
-    expect(inspection.getByText('Select an action to inspect')).toBeTruthy();
+    expect(screen.queryByTestId('desktop-effects')).toBeNull();
+    expect(screen.queryByText('Select an action to inspect')).toBeNull();
   });
 
   it('moves desktop HP/AC/movement into one fixed status section and restores the original header without opt-in', () => {
@@ -169,6 +234,12 @@ describe('CombatExperience shared production shell', () => {
     });
     const view = render(<CombatExperience {...desktop} />);
     const status = screen.getByTestId('desktop-status-section');
+    expect(status.textContent).toContain('Aldric Vale');
+    expect(
+      status.contains(
+        screen.getByRole('group', { name: 'Effects and resources' })
+      )
+    ).toBe(true);
     expect(status.textContent).toContain('22/28');
     expect(status.textContent).toContain('18');
     expect(status.textContent).toContain('25 ft');

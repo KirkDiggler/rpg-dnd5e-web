@@ -1,12 +1,18 @@
 .notices {
   position: absolute;
   z-index: 5;
-  top: 96px;
+  top: var(--hud-story-top, 96px);
   left: 50%;
   transform: translateX(-50%);
   display: grid;
-  width: min(480px, calc(100% - 48px));
+  width: min(390px, calc(100% - 48px));
+  max-height: calc(
+    100% - var(--hud-story-top, 96px) - var(--desktop-dock-height, 220px) - 24px
+  );
+  overflow: auto;
+  overscroll-behavior: contain;
   gap: 8px;
+  /* Transient feedback must not intercept map targeting or movement. */
   pointer-events: none;
   font-family: Inter, system-ui, sans-serif;
 }
@@ -29,6 +35,52 @@
 }
 .notice[data-tone='danger'] {
   border-left-color: #dd9489;
+}
+.content {
+  display: grid;
+  gap: 5px;
+}
+.notice .result {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.notice .result span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.notice .amount {
+  font-size: 36px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.notice[data-tone='danger'] .result,
+.notice [data-result-kind='damaged'] .result {
+  color: #ffa799;
+}
+.notice[data-tone='success'] .result,
+.notice [data-result-kind='healed'] .result {
+  color: #95e1b8;
+}
+.notice .participants {
+  color: #edf3f7;
+}
+.notice [data-kind] {
+  padding: 6px 8px;
+}
+.notice [data-kind] strong {
+  font-size: 19px;
+}
+.notice [data-kind='bonus'] strong {
+  font-size: 14px;
+}
+.notice h3 {
+  margin: 0;
+  font-size: 14px;
 }
 .context {
   display: block;
