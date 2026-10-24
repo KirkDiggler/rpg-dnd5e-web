@@ -1,0 +1,122 @@
+.rail {
+  margin-top: 9px;
+  min-width: 0;
+}
+.icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 84px;
+  padding: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+.slot {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+}
+.rail [data-tone='gold'],
+.details [data-tone='gold'] {
+  --icon-color: #d6b573;
+}
+.rail [data-tone='green'],
+.details [data-tone='green'] {
+  --icon-color: #77cda5;
+}
+.rail [data-tone='blue'],
+.details [data-tone='blue'] {
+  --icon-color: #8bbddd;
+}
+.rail [data-tone='violet'],
+.details [data-tone='violet'] {
+  --icon-color: #b09ddb;
+}
+.rail .icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #586674;
+  border-radius: 5px;
+  background: #101820b8;
+  color: var(--icon-color);
+  cursor: pointer;
+}
+.rail .icon:hover {
+  border-color: var(--icon-color);
+  background: #25333f;
+}
+.rail .icon:focus-visible {
+  outline: 2px solid #9cdbdf;
+  outline-offset: 1px;
+}
+.slot[data-status-tone='danger'] .icon {
+  border-color: #c87e7e;
+}
+.count {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  min-width: 10px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #091018ed;
+  color: #edf3f7;
+  font:
+    700 9px/1.35 Inter,
+    system-ui,
+    sans-serif;
+}
+.details > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.detailArt {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+}
+.details header strong {
+  display: block;
+  font-size: 14px;
+  color: #e6c884;
+}
+.details small,
+.source {
+  color: #abbac7;
+  font-size: 11px;
+}
+.details p {
+  margin: 11px 0 0;
+  line-height: 1.5;
+}
+.details dl {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #3a4b5b;
+}
+.details dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.details dt {
+  color: #abbac7;
+  font-size: 12px;
+}
+.details dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.missing {
+  color: #d4bb92;
+}

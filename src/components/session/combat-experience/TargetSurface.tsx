@@ -6,7 +6,7 @@ import {
   Verb,
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ActionInformationContent } from './ActionInformationContent';
 import {
   buildActionTooltip,
@@ -15,6 +15,7 @@ import {
 } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
+import { ConversationPanel } from './ConversationPanel';
 import { MapFirstTargeting } from './MapFirstTargeting';
 import {
   memberTargetingView,
@@ -22,7 +23,7 @@ import {
   type MemberTargetingInput,
 } from './memberTargeting';
 import type { SelectedCombatExperience } from './selection';
-import { speakLinesFor, speakTargetsOf } from './speakOptions';
+import { speakTargetsOf } from './speakOptions';
 import type {
   CombatExperienceMapRenderProps,
   CombatExperiencePhase,
@@ -48,6 +49,9 @@ export interface TargetSurfaceProps {
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
   navigationControls?: React.ReactNode;
+  navigationSupplement?: React.ReactNode;
+  /** Presentation geometry only: bottom edge of the complete header stack. */
+  onHeaderBottomChange?: (bottom: number) => void;
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
   /** Who an armed Speak is aimed at, once picked (rpg-project#569). */
@@ -83,6 +87,8 @@ export function TargetSurface({
   memberNames,
   location,
   navigationControls,
+  navigationSupplement,
+  onHeaderBottomChange,
   renderMap,
   onTargetClick,
   speakTarget,
@@ -92,6 +98,18 @@ export function TargetSurface({
   onCancelSelection,
   hoveredTarget,
 }: TargetSurfaceProps) {
+  const header = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = header.current;
+    if (!node || !onHeaderBottomChange) return;
+    const measure = (): void =>
+      onHeaderBottomChange(node.offsetTop + node.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onHeaderBottomChange]);
   const declaration = selection?.declaration;
   // SPEAK HAS ITS OWN TWO STEPS (rpg-project#569): who, then which line. Its
   // targets and lines come from `speak_options`, which can name a prop — a
@@ -210,11 +228,6 @@ export function TargetSurface({
     declaration.targetKind === TargetKind.CELL;
   const speakTargets =
     phase === 'targeting' && isSpeak ? speakTargetsOf(declaration) : [];
-  const speakLines = speakTarget ? speakLinesFor(declaration, speakTarget) : [];
-  const speakTargetName = (target: SpeakTarget): string =>
-    target.case === 'memberId'
-      ? memberNames.get(target.value) || target.value
-      : target.value;
   const availableTargets =
     phase === 'targeting' && isSpeak
       ? speakTargets
@@ -300,6 +313,8 @@ export function TargetSurface({
       )}
       <div className={styles.mapVignette} aria-hidden="true" />
       <div
+        ref={header}
+        data-testid="session-location-header"
         className={`${styles.roomLabel} ${navigationControls ? styles.roomLabelWithNavigation : ''}`}
       >
         {navigationControls && (
@@ -309,6 +324,7 @@ export function TargetSurface({
           <span title={location.name}>{location.name}</span>
           <small>{location.area}</small>
         </div>
+        {navigationSupplement}
       </div>
       {pacingNotice && (
         <div className={styles.contextPrompt} data-phase="pacing">
@@ -354,76 +370,19 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {phase === 'targeting' && isSpeak && (
-        <div className={styles.contextPrompt} data-phase="targeting">
-          <span className={styles.turnPromptKicker}>{armedName} armed</span>
-          {speakTarget && speakLines.length > 0 ? (
-            <>
-              {/* THE SECOND STEP: the chosen target's AVAILABLE lines, in the
-                  order the server sent them. A gated line is not drawn — the
-                  offer already hid it, and a greyed row would tell the player
-                  a line exists their character has no way to know about. */}
-              <strong>
-                What do you say to {speakTargetName(speakTarget)}?
-              </strong>
-              <ul
-                className={styles.targetList}
-                aria-label={`Lines for ${speakTargetName(speakTarget)}`}
-              >
-                {speakLines.map((option) => (
-                  <li key={option.optionId}>
-                    <button
-                      type="button"
-                      className={styles.targetChoice}
-                      onClick={() => onSpeakOption?.(option.optionId)}
-                    >
-                      {option.line ? `“${option.line}”` : option.optionId}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {onChooseSpeakTarget && (
-                <button
-                  type="button"
-                  className={styles.targetChoice}
-                  onClick={() => onChooseSpeakTarget(null)}
-                >
-                  Speak to someone else
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <strong>Choose who to speak to</strong>
-              <ul className={styles.targetList} aria-label="Speak targets">
-                {speakTargets.map((target) => (
-                  <li key={`${target.case}:${target.value}`}>
-                    <button
-                      type="button"
-                      className={styles.targetChoice}
-                      onClick={() =>
-                        target.case === 'memberId'
-                          ? onTargetClick(target.value)
-                          : onChooseSpeakTarget?.(target)
-                      }
-                    >
-                      {speakTargetName(target)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {onCancelSelection && (
-            <button
-              type="button"
-              className={styles.targetChoice}
-              onClick={onCancelSelection}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+      {phase === 'targeting' && isSpeak && declaration && (
+        <ConversationPanel
+          declaration={declaration}
+          memberNames={memberNames}
+          target={speakTarget}
+          docked={Boolean(mapFirst)}
+          host={mapFirstHost}
+          onHeightChange={onMapFirstHeightChange}
+          onTargetClick={onTargetClick}
+          onChooseTarget={onChooseSpeakTarget}
+          onSpeakOption={onSpeakOption}
+          onCancel={onCancelSelection}
+        />
       )}
       {!mapFirstActive &&
         phase === 'targeting' &&

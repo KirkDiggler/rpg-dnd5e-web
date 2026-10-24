@@ -5,9 +5,10 @@ import {
   LifeState,
   Standing,
   TargetKind,
+  Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { propLabel } from '../holdingAffordances';
 import {
   authoredWords as exitWords,
@@ -15,6 +16,7 @@ import {
 } from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
+import { CharacterStatusRail } from './CharacterStatusRail';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts.tsx';
 import { DesktopEffects } from './DesktopEffects';
@@ -180,6 +182,9 @@ export function CombatExperience({
   localWorldDieSettledPresentationId,
   location,
   navigationControls,
+  navigationSupplement,
+  explorationControls,
+  actionUtilityControls,
   sceneNotice,
   pacingNotice,
   renderMap,
@@ -221,6 +226,7 @@ export function CombatExperience({
     null
   );
   const [targetingHeight, setTargetingHeight] = useState(0);
+  const [headerBottom, setHeaderBottom] = useState(0);
   const scrollInitiative = (direction: -1 | 1) => {
     const order = initiativeScroll.current;
     if (order)
@@ -370,6 +376,7 @@ export function CombatExperience({
     desktopHotbar &&
     phase === 'targeting' &&
     (!targetingDeclaration ||
+      targetingDeclaration.verb === Verb.SPEAK ||
       targetingDeclaration.targetKind === TargetKind.MEMBER);
   // Action information exists independently of effects. No unrelated offer
   // supplies a default context while the player has nothing selected.
@@ -424,6 +431,13 @@ export function CombatExperience({
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
       data-desktop-hotbar={desktopHotbar ? 'true' : undefined}
+      style={
+        desktopHotbar
+          ? ({
+              '--hud-story-top': `${Math.max(120, headerBottom + 14)}px`,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
@@ -470,6 +484,8 @@ export function CombatExperience({
             memberNames={memberNames}
             location={location}
             navigationControls={navigationControls}
+            navigationSupplement={navigationSupplement}
+            onHeaderBottomChange={desktopHotbar ? setHeaderBottom : undefined}
             renderMap={renderMap}
             hoveredTarget={hoveredTarget}
             onTargetClick={onTargetClick}
@@ -586,7 +602,8 @@ export function CombatExperience({
           onModeChange={onLogModeChange}
           result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
-          initialCollapsed={Boolean(storyFeedback)}
+          initialCollapsed={desktopHotbar || Boolean(storyFeedback)}
+          compactPreview={desktopHotbar}
           announceUpdates={!noticesEnabled}
         />
 
@@ -611,7 +628,7 @@ export function CombatExperience({
           )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
-          {(!desktopHotbar || statuses.length > 0) && (
+          {!desktopHotbar && (
             <div
               className={styles.identityRow}
               role="group"
@@ -737,6 +754,21 @@ export function CombatExperience({
             desktopStatus={
               desktopHotbar ? (
                 <DesktopStatusSection
+                  identity={
+                    <>
+                      <div className={styles.viewerPortrait}>
+                        {portraitOf(viewerName)}
+                      </div>
+                      <div className={styles.viewerIdentity}>
+                        <strong>{viewerName}</strong>
+                        <span>
+                          {characterData
+                            ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
+                            : labelOf(viewerClassRefId)}
+                        </span>
+                      </div>
+                    </>
+                  }
                   hitPoints={hp}
                   hpPercent={hpPercent}
                   armor={characterData?.armorClassDetail}
@@ -755,7 +787,19 @@ export function CombatExperience({
                   privateStatusMessage={privateStatusMessage}
                   onRetry={onRetryPrivateStatus}
                 >
+                  {presentedCharacter && (
+                    <CharacterStatusRail
+                      key={viewerMember}
+                      character={presentedCharacter}
+                      privateStatus={privateStatus}
+                      memberNames={memberNames}
+                      notes={statuses.filter(
+                        (status) => status.key === 'life-state'
+                      )}
+                    />
+                  )}
                   <DesktopEffects
+                    hideWhenEmpty
                     declaration={effectSource}
                     targetMember={
                       effectSource?.id === presentationState.armedDeclarationId
@@ -799,6 +843,8 @@ export function CombatExperience({
             onCancelSelection={onCancelSelection}
             onEndTurn={onEndTurn}
             standingActions={standingActions}
+            explorationControls={explorationControls}
+            actionUtilityControls={actionUtilityControls}
           />
         </div>
         {actionPresentation?.mode === 'organized-hud' && (

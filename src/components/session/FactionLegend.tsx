@@ -21,9 +21,11 @@ import { authoredWords } from './holdingBeat';
 
 export interface FactionLegendProps {
   roster: ReadonlyMap<string, PublicMemberInfo>;
+  /** Let a HUD container own placement instead of competing map overlays. */
+  inline?: boolean;
 }
 
-export function FactionLegend({ roster }: FactionLegendProps) {
+export function FactionLegend({ roster, inline = false }: FactionLegendProps) {
   const colors = factionColors(roster);
   if (colors.size === 0) return null;
   const counts = sideCounts(roster);
@@ -32,17 +34,19 @@ export function FactionLegend({ roster }: FactionLegendProps) {
       data-testid="faction-legend"
       aria-label="sides"
       style={{
-        position: 'absolute',
-        left: 8,
-        top: 8,
+        position: inline ? 'static' : 'absolute',
+        left: inline ? undefined : 8,
+        top: inline ? undefined : 8,
         zIndex: 5,
         display: 'flex',
+        flexWrap: inline ? 'wrap' : undefined,
+        maxWidth: inline ? '100%' : undefined,
         gap: 10,
         padding: '4px 8px',
         borderRadius: 6,
         background: 'rgba(0, 0, 0, 0.55)',
         color: '#e5e7eb',
-        fontSize: 12,
+        fontSize: inline ? 10 : 12,
         pointerEvents: 'none',
       }}
     >

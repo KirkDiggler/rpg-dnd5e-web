@@ -1,7 +1,5 @@
-import {
-  Slot,
-  type Declaration,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { ActionCostMark } from '@/components/ui/inspection/ActionCostMark';
+import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   useCallback,
   useEffect,
@@ -24,15 +22,6 @@ import {
 } from './desktopHotbarLayout';
 import type { ActionIconPresentation } from './organizedActionPresentation';
 
-function costMark(slot: Slot): string {
-  return slot === Slot.ACTION
-    ? 'A'
-    : slot === Slot.BONUS
-      ? 'B'
-      : slot === Slot.REACTION
-        ? 'R'
-        : '—';
-}
 function bandMinimum(
   band: HotbarBand,
   favorites: readonly string[],
@@ -169,7 +158,7 @@ function OfferGrid({
                   </span>
                 )}
                 <span className={styles.cost} aria-hidden="true">
-                  {costMark(declaration.slot)}
+                  <ActionCostMark slot={declaration.slot} />
                 </span>
                 {declaration.options.length > 0 && (
                   <span className={styles.choiceMark} aria-hidden="true">

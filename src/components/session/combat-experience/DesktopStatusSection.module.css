@@ -6,6 +6,13 @@
   color: #eee9dd;
   font-family: Inter, system-ui, sans-serif;
 }
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
 .status > h3 {
   display: flex;
   align-items: center;
