@@ -26,6 +26,8 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { ORGANIZED_HUD_PROFILES } from '../organized-hud/fixtures';
 import type { HudConceptProfile } from '../organized-hud/OrganizedHudConcept';
+import { SESSION_COMBAT_FIXTURES } from '../session-combat/fixtures';
+import { RECENT_IDENTITY_SAMPLES } from './recentStoryFixtures';
 
 const base = ORGANIZED_HUD_PROFILES[0].fixtures[0]!;
 const refused = (text: string) =>
@@ -351,7 +353,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
         classRef: undefined,
         resources: [
           create(ResourceViewSchema, {
-            key: 'spell_slots_1',
+            key: 'spell_slot_level_1',
             name: '1st-level Spell Slots',
             current: id === 'spent-slots' ? 0 : 2,
             maximum: 2,
@@ -412,5 +414,170 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       dash: CLERIC_ICONS.dash!,
       dodge: CLERIC_ICONS.dodge!,
     },
+  },
+  {
+    ...martial,
+    id: 'live-world-layout',
+    label: 'Free-roam layout',
+    storySamples: RECENT_IDENTITY_SAMPLES,
+    desktopIcons: {
+      'conversation-offer': { src: '', fallback: '❝', tone: 'blue' },
+    },
+    fixtures: [
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'live-world-layout',
+        label: 'Live layout regression',
+        description:
+          'Free-roam navigation and a populated status column. Layout fixture only; no live commands.',
+        viewerName: 'Fighter fixture',
+        viewerClassRefId: 'fighter',
+        authorityFresh: true,
+        characterData: create(CharacterDataSchema, {
+          level: 1,
+          hitPoints: { current: 13, max: 13 },
+          armorClassDetail: { total: 11, note: 'Supplied fixture AC' },
+          baseSpeedFeet: 30,
+          features: [
+            {
+              ref: { module: 'dnd5e', type: 'features', id: 'second_wind' },
+              name: 'Second Wind',
+              detail: 'Supplied feature detail',
+              resourceKey: 'second_wind',
+            },
+          ],
+          conditions: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'fighting_style_great_weapon_fighting',
+              },
+              name: 'Great Weapon Fighting',
+              detail: 'Supplied fighting-style detail',
+            },
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'opportunity_attack',
+              },
+              name: 'Opportunity Attack',
+              detail: 'Supplied condition detail',
+            },
+          ],
+          resources: [
+            { key: 'hit_dice', name: 'Hit Dice', current: 1, maximum: 1 },
+            { key: 'second_wind', name: 'Second Wind', current: 1, maximum: 1 },
+          ],
+        }),
+      },
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'conversation-layout',
+        label: 'Conversation',
+        description:
+          'Available dialogue choices and a hidden unavailable line; no live speech is sent.',
+        viewerName: 'Conversation fixture',
+        viewerClassRefId: 'fighter',
+        authorityFresh: true,
+        declarations: [
+          create(DeclarationSchema, {
+            id: 'conversation-offer',
+            verb: Verb.SPEAK,
+            slot: Slot.NONE,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-guard', available: true }],
+            speakOptions: [
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'greet-opaque',
+                line: 'We are here for the feast.',
+                available: true,
+              },
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'ask-opaque',
+                line: 'Who is in charge here?',
+                available: true,
+              },
+              {
+                target: { case: 'memberId', value: 'skeleton-guard' },
+                optionId: 'secret-opaque',
+                line: 'A hidden password that must not appear.',
+                available: false,
+              },
+              {
+                target: { case: 'propId', value: 'altar' },
+                optionId: 'pray-opaque',
+                line: 'Grant us passage.',
+                available: true,
+              },
+            ],
+          }),
+        ],
+      },
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'bard-status-layout',
+        label: 'Bard status',
+        description:
+          'Linked feature/resources and compact status icons. Layout fixture only.',
+        viewerName: 'Bard fixture',
+        viewerClassRefId: 'bard',
+        authorityFresh: true,
+        characterData: create(CharacterDataSchema, {
+          level: 1,
+          hitPoints: { current: 10, max: 10 },
+          armorClassDetail: { total: 13, note: 'Supplied fixture AC' },
+          baseSpeedFeet: 30,
+          features: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'features',
+                id: 'bardic_inspiration',
+              },
+              name: 'Bardic Inspiration',
+              detail: 'An owned feature with the supplied Inspiration pool.',
+              resourceKey: 'inspiration',
+            },
+          ],
+          conditions: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'opportunity_attack',
+              },
+              name: 'Opportunity Attack',
+              detail: 'Provider-authored reaction explanation.',
+            },
+          ],
+          resources: [
+            {
+              key: 'inspiration',
+              name: 'Bardic Inspiration',
+              current: 3,
+              maximum: 3,
+            },
+            { key: 'hit_dice', name: 'Hit Dice', current: 1, maximum: 1 },
+            {
+              key: 'spell_slot_level_1',
+              name: '1st-level Spell Slots',
+              current: 2,
+              maximum: 2,
+            },
+          ],
+        }),
+      },
+    ],
   },
 ];

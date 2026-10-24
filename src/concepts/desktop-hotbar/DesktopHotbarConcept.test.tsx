@@ -145,10 +145,79 @@ describe('DesktopHotbarConcept', () => {
     expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
   });
 
+  it('reproduces free-roam navigation and a populated status column without fabricating actions', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Free-roam layout' }));
+    const header = screen.getByTestId('session-location-header');
+    expect(
+      within(header).getByRole('button', { name: 'Back' })
+    ).toBeInTheDocument();
+    expect(header).not.toContainElement(screen.getByTestId('faction-legend'));
+    expect(
+      within(header).queryByLabelText('Share discoveries with party')
+    ).toBeNull();
+    const summary = screen.getByText('Explore', { selector: 'summary' });
+    const explore = summary.closest('details')!;
+    fireEvent.click(summary);
+    expect(
+      within(explore).getByRole('button', { name: 'Short rest' })
+    ).toBeInTheDocument();
+    expect(within(explore).queryByRole('button', { name: 'Sneak' })).toBeNull();
+    const sneak = screen.getByRole('button', { name: 'Sneak' });
+    expect(sneak.closest('details')).toBeNull();
+    expect(
+      screen.getByRole('group', { name: 'Map utilities' })
+    ).toContainElement(sneak);
+    expect(within(explore).getByTestId('faction-legend')).toBeVisible();
+    const status = screen.getByTestId('desktop-status-section');
+    expect(status).toHaveTextContent('Fighter fixture');
+    expect(status).toHaveTextContent('13/13');
+    for (const name of [
+      'Second Wind',
+      'Great Weapon Fighting',
+      'Opportunity Attack',
+      'Hit Dice',
+    ])
+      expect(
+        within(status).getByRole('button', { name: `Inspect ${name}` })
+      ).toBeInTheDocument();
+    fireEvent.click(
+      within(status).getByRole('button', { name: 'Inspect Hit Dice' })
+    );
+    expect(screen.getByRole('dialog', { name: 'Hit Dice' })).toHaveTextContent(
+      '1/1'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close inspection' }));
+    expect(screen.queryByTestId('desktop-effects')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Longsword' })).toBeNull();
+  });
+  it('walks the conversation target and line steps in the dock-hosted shared panel', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Free-roam layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speak' }));
+    expect(screen.getByTestId('desktop-targeting-host')).toContainElement(
+      screen.getByRole('region', { name: 'Conversation' })
+    );
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Speak targets' })).getAllByRole(
+        'button'
+      )[0]
+    );
+    expect(
+      screen.queryByText('A hidden password that must not appear.')
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: '“We are here for the feast.”' })
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('greet-opaque');
+    expect(screen.getByRole('status')).toHaveTextContent('no RPC was sent');
+    expect(screen.queryByRole('region', { name: 'Conversation' })).toBeNull();
+  });
   it('debug mode says a fixture has no session record (web#1305)', () => {
     render(<DesktopHotbarConcept />);
-    fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Debug' }));
     expect(
       screen.getByText('No session record for this view.')
     ).toBeInTheDocument();
@@ -167,7 +236,7 @@ describe('DesktopHotbarConcept', () => {
       const notices = screen.getByTestId('story-notices');
       expect(notices).toBeEmptyDOMElement();
       expect(
-        screen.getByRole('button', { name: 'Expand combat log' })
+        screen.getByRole('button', { name: 'Just happened' })
       ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Next event' }));
       expect(
@@ -176,17 +245,14 @@ describe('DesktopHotbarConcept', () => {
       expect(notices).toHaveTextContent('Aldric turns the blow aside. Miss.');
       act(() => vi.advanceTimersByTime(6000));
       expect(notices).toBeEmptyDOMElement();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Expand combat log' })
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
       const history = screen.getByTestId('session-combat-log');
       expect(
         within(history).getByText('Skeleton Guard attacks Aldric')
       ).toBeInTheDocument();
-      expect(within(history).getByRole('log')).toHaveAttribute(
-        'aria-live',
-        'off'
-      );
+      expect(
+        within(history).getByRole('tabpanel', { name: 'History' })
+      ).toHaveAttribute('aria-live', 'off');
       fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));
       expect(notices).toBeEmptyDOMElement();
     } finally {

@@ -1,5 +1,5 @@
-import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import { buildActionTooltip } from '@/components/session/combat-experience/actionTooltip';
+import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import type {
   DesktopHotbarLayout,
   HotbarRows,
@@ -14,6 +14,7 @@ import type {
   ActionIconPresentation,
   OrganizedActionPresentation,
 } from '@/components/session/combat-experience/organizedActionPresentation';
+import { speakLinesFor } from '@/components/session/combat-experience/speakOptions';
 import type {
   CombatExperienceLogMode,
   CombatExperiencePresentationState,
@@ -34,6 +35,16 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  DesktopHudFactionFixture,
+  DesktopHudNavigationFixture,
+  DesktopHudSneakFixture,
+  DesktopHudToolsFixture,
+} from '../desktop-hotbar/DesktopHudNavigationFixture';
+import {
+  HEALING_TOAST_SAMPLE,
+  RECENT_IDENTITY_SAMPLES,
+} from '../desktop-hotbar/recentStoryFixtures';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
 import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
 import { ORGANIZED_HUD_PROFILES } from './fixtures';
@@ -153,12 +164,12 @@ export function OrganizedHudConcept({
     profile.fixtures[0]!;
   const storyScope = `${profile.id}:${fixture.id}`;
   const demoEntries = demoStory.scope === storyScope ? demoStory.entries : [];
-  const nextEvent = (): void => {
+  const nextEvent = (previewSample?: CombatExperienceStoryExchange): void => {
     const id = `hotbar-demo:${++demoSequence.current}`;
     setDemoStory((current) => {
       const entries = current.scope === storyScope ? current.entries : [];
       const samples = profile.storySamples ?? [];
-      const sample = samples[entries.length % samples.length];
+      const sample = previewSample ?? samples[entries.length % samples.length];
       return sample
         ? {
             scope: storyScope,
@@ -273,6 +284,14 @@ export function OrganizedHudConcept({
     const snapshot = targetingSnapshot.current;
     if (snapshot.desktopMode !== desktopMode || snapshot.scope !== storyScope)
       return;
+    const speaking = snapshot.inputFor(snapshot.state).declaration;
+    if (speaking?.verb === Verb.SPEAK) {
+      const target = { case: 'memberId' as const, value: member };
+      if (speakLinesFor(speaking, target).length === 0) return;
+      setState((current) => ({ ...current, speakTarget: target }));
+      setIntent('Conversation target selected — no line sent.');
+      return;
+    }
     if (desktopMode) {
       const input = snapshot.inputFor(snapshot.state);
       const next = toggleMemberTarget(input, member);
@@ -420,11 +439,36 @@ export function OrganizedHudConcept({
           )}
           {iconExperiment && profile.storySamples?.length ? (
             <div role="group" aria-label="Activity preview">
-              <button type="button" onClick={nextEvent}>
+              <button type="button" onClick={() => nextEvent()}>
                 Next event
               </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[3])}
+              >
+                Preview hit toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[4])}
+              >
+                Preview incoming toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(RECENT_IDENTITY_SAMPLES[0])}
+              >
+                Preview miss toast
+              </button>
+              <button
+                type="button"
+                onClick={() => nextEvent(HEALING_TOAST_SAMPLE)}
+              >
+                Preview healing toast
+              </button>
               <small>
-                Sample narration only · six seconds on screen, retained in Log.
+                Authored examples only · normal toast lifetime · retained in
+                History.
               </small>
             </div>
           ) : null}
@@ -486,6 +530,47 @@ export function OrganizedHudConcept({
       >
         <CombatExperience
           layout="fill-parent"
+          navigationControls={
+            iconExperiment ? (
+              <DesktopHudNavigationFixture
+                backOnly={desktopMode}
+                world={fixture.clock === ClockKind.WORLD}
+                onPreview={(label) =>
+                  setIntent(`${label} preview only — no intent sent`)
+                }
+              />
+            ) : undefined
+          }
+          navigationSupplement={
+            iconExperiment && !desktopMode ? (
+              <DesktopHudFactionFixture />
+            ) : undefined
+          }
+          actionUtilityControls={
+            iconExperiment &&
+            desktopMode &&
+            fixture.clock === ClockKind.WORLD ? (
+              <DesktopHudSneakFixture
+                onPreview={(label) =>
+                  setIntent(`${label} preview only — no intent sent`)
+                }
+              />
+            ) : undefined
+          }
+          explorationControls={
+            iconExperiment && desktopMode ? (
+              <>
+                <DesktopHudToolsFixture
+                  includeSneak={false}
+                  world={fixture.clock === ClockKind.WORLD}
+                  onPreview={(label) =>
+                    setIntent(`${label} preview only — no intent sent`)
+                  }
+                />
+                <DesktopHudFactionFixture />
+              </>
+            ) : undefined
+          }
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,
@@ -580,6 +665,21 @@ export function OrganizedHudConcept({
           onCancelCastOption={cancel}
           onCancelSelection={cancel}
           onTargetClick={selectTarget}
+          onChooseSpeakTarget={(target) =>
+            setState((current) => ({ ...current, speakTarget: target }))
+          }
+          onSpeakOption={(optionId) => {
+            const current = targetingSnapshot.current;
+            const matches = speakLinesFor(
+              current.inputFor(current.state).declaration,
+              current.state.speakTarget
+            ).filter((option) => option.optionId === optionId);
+            if (matches.length !== 1) return;
+            setIntent(
+              `Fixture-only line ${optionId}: ${matches[0].line}; no RPC was sent.`
+            );
+            setState(EMPTY);
+          }}
           onConfirmTargets={confirmTargets}
           onEndTurn={(declaration) =>
             setIntent(

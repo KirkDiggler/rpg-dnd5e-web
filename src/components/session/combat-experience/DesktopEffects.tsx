@@ -1,5 +1,6 @@
+import { useHoverCardWheel } from '@/components/ui/inspection/useHoverCardWheel';
 import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActionArt } from './ActionArt';
 import { ActionInformationContent } from './ActionInformationContent';
 import { buildActionTooltip, effectLinesFor } from './actionTooltip';
@@ -13,14 +14,17 @@ export function DesktopEffects({
   targetName,
   authorityFresh,
   icons,
+  hideWhenEmpty = false,
 }: {
   declaration?: Declaration;
   targetMember?: string | null;
   targetName?: string;
   authorityFresh: boolean;
   icons?: Readonly<Record<string, ActionIconPresentation>>;
+  hideWhenEmpty?: boolean;
 }) {
   const root = useRef<HTMLElement>(null);
+  const card = useRef<HTMLDivElement>(null);
   // UI keys are separate from provider IDs: an effect named "action" cannot
   // collide with the base-information control.
   const [hovered, setHovered] = useState<string | null>(null);
@@ -33,6 +37,16 @@ export function DesktopEffects({
   const inspecting = inspectingAction || Boolean(inspected);
   const title = inspectingAction ? tooltip?.title : inspected?.name;
   const context = tooltip?.title;
+  const inspectedTrigger = useCallback(
+    () =>
+      Array.from(
+        root.current?.querySelectorAll<HTMLButtonElement>(
+          '[data-inspection-key]'
+        ) ?? []
+      ).find((node) => node.dataset.inspectionKey === key) ?? null,
+    [key]
+  );
+  useHoverCardWheel(inspecting, inspectedTrigger, card);
   useEffect(() => {
     if ((hovered || pinned) && !inspecting) {
       setHovered(null);
@@ -75,7 +89,13 @@ export function DesktopEffects({
       if (event.pointerType === 'mouse' || event.pointerType === 'pen')
         setHovered(inspectionKey);
     },
-    onPointerLeave: (): void => setHovered(null),
+    onPointerLeave: (event: React.PointerEvent<HTMLButtonElement>): void => {
+      if (
+        !(event.relatedTarget instanceof Node) ||
+        !card.current?.contains(event.relatedTarget)
+      )
+        setHovered(null);
+    },
     onFocus: (): void => setHovered(inspectionKey),
     onBlur: (): void => setHovered(null),
     onClick: (): void => {
@@ -83,12 +103,14 @@ export function DesktopEffects({
       setHovered(null);
     },
   });
+  if (hideWhenEmpty && !declaration) return null;
   return (
     <section
       ref={root}
       className={styles.effects}
       aria-label="Action information and effects"
       data-testid="desktop-effects"
+      onPointerLeave={() => setHovered(null)}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
           setPinned(null);
@@ -144,7 +166,8 @@ export function DesktopEffects({
       {!tooltip && <small>Select an action to inspect</small>}
       {inspecting && tooltip && (
         <div
-          className={`${styles.card} ${pinned ? '' : styles.preview}`}
+          ref={card}
+          className={styles.card}
           role={pinned ? 'region' : 'tooltip'}
           aria-label={`${title} information`}
           tabIndex={pinned ? 0 : undefined}

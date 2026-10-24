@@ -192,7 +192,8 @@ describe('arming Speak on the world clock (R3)', () => {
 
     expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
     expect(screen.getByTestId('notice').textContent).toBe('none');
-    expect(screen.getByText('Speak armed')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Conversation' })).toBeTruthy();
+    expect(screen.getByText('Choose who to speak to')).toBeTruthy();
   });
 
   it('still tears down an offer the server really did withdraw', () => {
