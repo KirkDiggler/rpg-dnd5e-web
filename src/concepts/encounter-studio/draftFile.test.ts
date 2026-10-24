@@ -29,7 +29,7 @@ function actionAugmentWalkYaml(): string {
   file.room.room.monsterBindings = {
     ...file.room.room.monsterBindings,
     'goblin-1': {
-      addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
       dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
     },
   };
@@ -44,7 +44,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(
       read.draft.room.monsterBindings?.['goblin-1'] as Record<string, unknown>
     ).toMatchObject({
-      addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
       dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
     });
   });
@@ -59,7 +59,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     file.templates = {
       'guard-augment': {
         base: 'dnd5e:monsters:guard',
-        addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+        addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
         dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
       },
     };
@@ -68,7 +68,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(read.ok).toBe(true);
     if (!read.ok) return;
     expect(read.scope.templates?.['guard-augment']).toMatchObject({
-      addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
       dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
     });
   });
@@ -78,7 +78,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     file.templates = {
       'guard-augment': {
         base: 'dnd5e:monsters:guard',
-        addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+        addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
         dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
       },
     };
@@ -88,14 +88,52 @@ describe('the draft as a file (rpg-project#578)', () => {
       exportDraftYaml({ draft: opened.draft, scope: opened.scope }, opened.key)
     ) as SingleRoomFile;
     expect(saved.room.room.monsterBindings?.['goblin-1']).toMatchObject({
-      addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
       dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
     });
     expect(saved.templates?.['guard-augment']).toMatchObject({
-      addActions: ['dnd5e:weapons:shortbow', 'dnd5e:weapons:scimitar'],
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
       dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
     });
   });
+
+  it.each([
+    [
+      'binding',
+      (file: SingleRoomFile) => {
+        file.room.room.monsterBindings = {
+          ...file.room.room.monsterBindings,
+          'goblin-1': {
+            addActions: ['dnd5e:weapons:light:crossbow:extra'],
+          },
+        };
+      },
+      'Monster binding for goblin-1 addActions 0 must be a weapon reference',
+    ],
+    [
+      'template',
+      (file: SingleRoomFile) => {
+        delete file.room.room.monsterBindings;
+        file.templates = {
+          'guard-augment': {
+            base: 'dnd5e:monsters:guard',
+            addActions: ['dnd5e:weapons:light:crossbow:extra'],
+          },
+        };
+      },
+      'templates.guard-augment.addActions[0]: must be a dnd5e:weapons reference',
+    ],
+  ])(
+    'refuses the toolkit-invalid over-segmented action augment ref on a %s',
+    (site, apply, refusal) => {
+      const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
+      apply(file);
+      const read = readDraftYaml(stringify(file));
+      expect(read.ok).toBe(false);
+      if (read.ok) return;
+      expect(read.refusal).toContain(refusal);
+    }
+  );
 
   it('an actually-unknown addAction field still refuses with its field path', () => {
     const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;

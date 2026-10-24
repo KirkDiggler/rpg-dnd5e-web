@@ -1,4 +1,4 @@
-import { parseRef } from '@/utils/refs';
+import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 
 export const TEMPLATE_ABILITIES = [
@@ -127,7 +127,11 @@ export function validateMonsterTemplates(value: unknown): SiteTemplates {
         template[key] = values.map((item, index) => {
           const at = `${path}.${key}[${index}]`;
           if (typeof item !== 'string') fail(at, 'must be a string');
-          if (key !== 'skills') return typedRef(item, 'weapons', at);
+          if (key !== 'skills') {
+            if (!DND5E_WEAPON_REF_RE.test(item))
+              fail(at, 'must be a dnd5e:weapons reference');
+            return item;
+          }
           if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(item))
             fail(at, 'must be a lowercase skill id');
           return item;

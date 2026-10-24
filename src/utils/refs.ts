@@ -38,6 +38,15 @@ export interface ParsedRef {
 
 const PART = /^[A-Za-z0-9_-]+$/;
 
+/** The toolkit's `core.ParseString` acceptance set after its dungeonspec
+ * grammar has additionally required `dnd5e:weapons`. Core permits one or two
+ * id segments (four ref segments maximum), and every segment permits Unicode
+ * letters/digits plus `_` and `-`. Keep this precise carrier grammar shared by
+ * every authored weapon-action surface; catalog membership remains toolkit
+ * work, not web validation. */
+export const DND5E_WEAPON_REF_RE =
+  /^dnd5e:weapons:[\p{L}\p{Nd}_-]+(?::[\p{L}\p{Nd}_-]+)?$/u;
+
 /**
  * Parse `module:type:id`, or `null` if the string is not a ref: fewer
  * than three parts, or any part empty or carrying a character outside

@@ -6,7 +6,7 @@ import {
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import { parseRef } from '@/utils/refs';
+import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import {
   optionHoldsRefusal,
   validateAnswerTable,
@@ -893,7 +893,7 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * wire — the engine carries these refs and never interprets them — so this
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
-export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
+export const WEAPON_REF_RE = DND5E_WEAPON_REF_RE;
 const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'appearanceRef'] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
