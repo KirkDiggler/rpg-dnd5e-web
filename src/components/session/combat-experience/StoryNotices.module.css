@@ -12,7 +12,8 @@
   overflow: auto;
   overscroll-behavior: contain;
   gap: 8px;
-  pointer-events: auto;
+  /* Transient feedback must not intercept map targeting or movement. */
+  pointer-events: none;
   font-family: Inter, system-ui, sans-serif;
 }
 .notice {
