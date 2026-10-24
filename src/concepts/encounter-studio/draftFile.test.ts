@@ -147,10 +147,12 @@ describe('the draft as a file (rpg-project#578)', () => {
     const rows = Object.values(read.scope.tables ?? {}).flatMap(
       (t) => t.time ?? []
     );
+    // And they search the way the hero went (rpg-project#679), as written.
     expect(
       rows.filter(
         (row) =>
           row.search?.distance === 6 &&
+          row.search?.heading === 'went' &&
           JSON.stringify(row.when) === '{"enemy":"lost"}'
       )
     ).toHaveLength(2);
@@ -182,6 +184,8 @@ describe('the draft as a file (rpg-project#578)', () => {
     );
     // The pause survives the save in the file's own spelling.
     expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
+    // So does the search's heading (rpg-project#679): both gate guards.
+    expect(saved.match(/heading: went/g)).toHaveLength(2);
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
     expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({

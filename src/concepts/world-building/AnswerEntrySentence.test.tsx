@@ -86,4 +86,62 @@ describe('answer-entry sentence', () => {
     fireEvent.change(cells, { target: { value: '0' } });
     expect(commit).not.toHaveBeenCalled();
   });
+
+  it('shows a search’s heading, went when none is written, and edits it without dropping the cells (rpg-project#679)', () => {
+    const commit = vi.fn();
+    const searching = {
+      when: { enemy: 'lost' as const },
+      search: { distance: 6 },
+    };
+    render(
+      <ul>
+        <AnswerEntryRow
+          trigger="time"
+          entry={searching}
+          onCommit={commit}
+          onRemove={() => {}}
+        />
+      </ul>
+    );
+    const heading = screen.getByRole('combobox', {
+      name: 'Heading for time entry',
+    }) as HTMLSelectElement;
+    expect(heading.value).toBe('went');
+    expect(Array.from(heading.options).map((option) => option.value)).toEqual([
+      'went',
+      'faced',
+      'left',
+      'right',
+    ]);
+    fireEvent.change(heading, { target: { value: 'left' } });
+    expect(commit).toHaveBeenLastCalledWith({
+      ...searching,
+      search: { distance: 6, heading: 'left' },
+    });
+  });
+
+  it('keeps a written heading when the cells change', () => {
+    const commit = vi.fn();
+    const searching = {
+      when: { enemy: 'lost' as const },
+      search: { distance: 6, heading: 'went' as const },
+    };
+    render(
+      <ul>
+        <AnswerEntryRow
+          trigger="time"
+          entry={searching}
+          onCommit={commit}
+          onRemove={() => {}}
+        />
+      </ul>
+    );
+    fireEvent.change(screen.getByLabelText('Cells for time entry'), {
+      target: { value: '4' },
+    });
+    expect(commit).toHaveBeenLastCalledWith({
+      ...searching,
+      search: { distance: 4, heading: 'went' },
+    });
+  });
 });
