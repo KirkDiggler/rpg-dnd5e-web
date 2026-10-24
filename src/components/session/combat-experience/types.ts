@@ -8,6 +8,7 @@ import type {
   ClockKind,
   Declaration,
   Participant,
+  PublicMemberInfo,
   ReactChoice,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -206,6 +207,11 @@ export interface CombatExperienceMapRenderProps {
 interface CombatExperienceBaseProps {
   /** Review defaults to a fixed visual-gate frame; the production portal fills its definite-height parent. */
   layout?: CombatExperienceLayout;
+  /** Existing observer-disclosed roster; one shared portrait cache for this HUD. */
+  portraits?: {
+    scopeKey: string;
+    members: readonly PublicMemberInfo[];
+  };
   viewerMember: string;
   /** Public-roster identity. Never derive this from Turn or CharacterData. */
   viewerName: string;

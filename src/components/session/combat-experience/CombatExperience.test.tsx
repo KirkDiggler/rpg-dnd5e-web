@@ -1,8 +1,11 @@
 import { SESSION_COMBAT_FIXTURES } from '@/concepts/session-combat/fixtures';
+import type { PortraitCaptureProps } from '@/portraits/PortraitCapture';
 import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
   DeclarationSchema,
+  MemberKind,
+  PublicMemberInfoSchema,
   ReactChoice,
   ReactionRefSchema,
   Slot,
@@ -10,7 +13,7 @@ import {
   Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { CombatExperience } from './CombatExperience';
@@ -20,6 +23,13 @@ import type {
   CombatExperienceProps,
 } from './types';
 
+const capture = vi.hoisted(() => vi.fn());
+vi.mock('@/portraits/PortraitCapture', () => ({
+  PortraitCapture: (props: PortraitCaptureProps) => {
+    capture(props);
+    return null;
+  },
+}));
 const fresh = SESSION_COMBAT_FIXTURES[0]!;
 const emptyState: CombatExperiencePresentationState = {
   armedDeclarationId: null,
@@ -136,6 +146,74 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('shares public portraits between the viewer card and turn entry and clears them on scope change', () => {
+    capture.mockClear();
+    const members = [
+      create(PublicMemberInfoSchema, {
+        id: fresh.viewerMember,
+        name: 'Aldric Vale',
+        kind: MemberKind.PLAYER,
+        raceRef: 'human',
+        classRef: 'fighter',
+      }),
+      create(PublicMemberInfoSchema, {
+        id: fresh.participants[1]!.member,
+        name: fresh.participants[1]!.name,
+        kind: MemberKind.MONSTER,
+        monsterRef: 'dnd5e:monsters:skeleton',
+      }),
+      create(PublicMemberInfoSchema, {
+        id: 'remembered-off-rail',
+        name: 'Not displayed',
+        kind: MemberKind.PLAYER,
+        raceRef: 'dwarf',
+        classRef: 'fighter',
+      }),
+    ];
+    const props = propsFor(fresh, {
+      portraits: { scopeKey: 'owner/session/observer', members },
+      actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+    });
+    const view = render(<CombatExperience {...props} />);
+    const first = capture.mock.calls.at(-1)![0] as PortraitCaptureProps;
+    act(() => first.onComplete(first.source.key, 'data:image/png;base64,hero'));
+    const images = screen.getAllByRole('img', { name: 'Aldric Vale portrait' });
+    expect(images.length).toBe(2);
+    expect(images.map((image) => image.getAttribute('src'))).toEqual([
+      'data:image/png;base64,hero',
+      'data:image/png;base64,hero',
+    ]);
+    const second = capture.mock.calls.at(-1)![0] as PortraitCaptureProps;
+    expect(second.source.key).not.toBe(first.source.key);
+    act(() =>
+      second.onComplete(second.source.key, 'data:image/png;base64,monster')
+    );
+    expect(
+      screen
+        .getByRole('img', { name: `${fresh.participants[1]!.name} portrait` })
+        .getAttribute('src')
+    ).toBe('data:image/png;base64,monster');
+    expect(
+      new Set(
+        capture.mock.calls.map(
+          ([request]) => (request as PortraitCaptureProps).source.key
+        )
+      )
+    ).toEqual(new Set([first.source.key, second.source.key]));
+    view.rerender(
+      <CombatExperience
+        {...props}
+        portraits={{ scopeKey: 'different-observer', members }}
+      />
+    );
+    expect(
+      screen.queryByRole('img', { name: 'Aldric Vale portrait' })
+    ).toBeNull();
+    act(() => first.onComplete(first.source.key, 'data:image/png;base64,late'));
+    expect(
+      screen.queryByRole('img', { name: 'Aldric Vale portrait' })
+    ).toBeNull();
+  });
   it('places a supplied sneak control directly under actions, outside Explore and action gates', () => {
     const toggle = vi.fn();
     render(
