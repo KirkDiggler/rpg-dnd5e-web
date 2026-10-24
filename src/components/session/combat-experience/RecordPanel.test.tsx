@@ -179,3 +179,196 @@ describe('RecordPanel', () => {
     );
   });
 });
+
+// rpg-project#674: gate-1's table, described once, then two answers that
+// index it — the first picks the remembered chase, the second holds.
+const GATE_TABLE = row('01HF7YAU01', 'table', 'time:01HF7YAU01X', {
+  beat: 'table',
+  creature: 'gate-1',
+  option: '',
+  key: 'time',
+  temper: 'coward',
+  percents: { attack: 50, toward: 50, away: 300, flee: 300, hold: 100 },
+  rows: [
+    {
+      entry: 0,
+      when: ['enemy seen'],
+      word: 'attack',
+      selector: 'enemy',
+      weight: 1,
+      say: '',
+      fact: '',
+      search: null,
+    },
+    {
+      entry: 1,
+      when: ['enemy remembered'],
+      word: 'toward',
+      selector: 'enemy',
+      weight: 1,
+      say: '',
+      fact: '',
+      search: null,
+    },
+    {
+      entry: 2,
+      when: ['enemy lost'],
+      word: 'search',
+      selector: '',
+      weight: 1,
+      say: '',
+      fact: '',
+      search: { distance: 6, heading: 'went' },
+    },
+  ],
+});
+
+function gateAnswer(
+  id: string,
+  roll: number,
+  of: number,
+  entry: number,
+  rows: Record<string, unknown>[]
+): RecordRow {
+  return row(id, 'answered', `time:${id}X`, {
+    beat: 'answered',
+    creature: 'gate-1',
+    prop: '',
+    option: '',
+    key: 'time',
+    roll,
+    of,
+    entry,
+    temper: 'coward',
+    rows,
+  });
+}
+
+const out = (entry: number, held: boolean, affordable: boolean) => ({
+  entry,
+  held,
+  affordable,
+  weight: 0,
+  percent: 0,
+  loaded: 0,
+});
+
+const chased = gateAnswer('01HF7YAU02', 36, 50, 1, [
+  out(0, false, true),
+  {
+    entry: 1,
+    held: true,
+    affordable: true,
+    weight: 1,
+    percent: 50,
+    loaded: 50,
+  },
+  out(2, false, false),
+]);
+const searched = gateAnswer('01HF7YAU03', 12, 50, 2, [
+  out(0, false, true),
+  out(1, false, true),
+  {
+    entry: 2,
+    held: true,
+    affordable: true,
+    weight: 1,
+    percent: 50,
+    loaded: 50,
+  },
+]);
+
+describe('RecordPanel reads an answer in its table’s words', () => {
+  it('renders the pick and the roll, and every row when opened', () => {
+    render(
+      <RecordPanel
+        feed={{ rows: [GATE_TABLE, chased, searched], notice: undefined }}
+      />
+    );
+    expect(
+      screen.getByText(
+        'gate-1 · time · rolled 36 of 50 · enemy remembered → toward enemy'
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'gate-1 · time · rolled 12 of 50 · enemy lost → search 6 went'
+      )
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU02' })
+    );
+    const lines = within(
+      screen.getByRole('list', { name: 'Rows of the table' })
+    )
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+    expect(lines).toEqual([
+      '✗ enemy seen → attack enemy: condition',
+      '✓ enemy remembered → toward enemy · 1 × coward 50% = 50',
+      '✗ enemy lost → search 6 went: condition',
+    ]);
+  });
+
+  it('finds the table under a beat filter that hides it', () => {
+    render(
+      <RecordPanel feed={{ rows: [GATE_TABLE, chased], notice: undefined }} />
+    );
+    fireEvent.change(screen.getByLabelText('Filter by beat'), {
+      target: { value: 'answered' },
+    });
+    expect(shown()).toEqual(['01HF7YAU02']);
+    expect(
+      screen.getByText(
+        'gate-1 · time · rolled 36 of 50 · enemy remembered → toward enemy'
+      )
+    ).toBeTruthy();
+  });
+
+  it('reads by index and says so when no table was seen', () => {
+    render(<RecordPanel feed={{ rows: [chased], notice: undefined }} />);
+    expect(
+      screen.getByText(
+        'gate-1 · time · rolled 36 of 50 · entry 1 · table not in record'
+      )
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU02' })
+    );
+    const lines = within(
+      screen.getByRole('list', { name: 'Rows of the table' })
+    )
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+    expect(lines).toEqual([
+      '✗ entry 0: condition',
+      '✓ entry 1 · 1 × coward 50% = 50',
+      '✗ entry 2: condition',
+    ]);
+  });
+
+  it('says unaffordable for a row whose condition held', () => {
+    const swing = gateAnswer('01HF7YAU04', 1, 50, 1, [
+      out(0, true, false),
+      {
+        entry: 1,
+        held: true,
+        affordable: true,
+        weight: 1,
+        percent: 50,
+        loaded: 50,
+      },
+      out(2, false, false),
+    ]);
+    render(
+      <RecordPanel feed={{ rows: [GATE_TABLE, swing], notice: undefined }} />
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU04' })
+    );
+    expect(
+      screen.getByText('✗ enemy seen → attack enemy: unaffordable')
+    ).toBeTruthy();
+  });
+});
