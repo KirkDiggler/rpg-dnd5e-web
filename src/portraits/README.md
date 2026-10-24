@@ -66,8 +66,10 @@ Without an explicit ref, players use the existing race/class model resolver and
 its generated customization profile. Hair, defaults, colors, roughness and outfit
 dyes use the same presentation resolvers and `ClassCharacterModel` as gameplay.
 Invalid customization refuses the portrait rather than showing a default as exact.
-Monsters/world NPCs without an explicit ref use the existing monster-model resolver;
-an unmapped identity remains unavailable. No display name selects an asset.
+Monsters/world NPCs without an explicit ref adapt the roster's full `monsterRef`
+(e.g. `dnd5e:monsters:skeleton`) through the shared `refId` parser before calling
+the existing monster-model resolver. Missing, malformed or unmapped identity
+remains unavailable. No display name selects an asset.
 
 The capture key includes the recipe version, resolved model, forward rotation,
 resolved customization and available published content identity. Generated player
@@ -79,7 +81,8 @@ is inferred for them. Bump `PORTRAIT_RECIPE` when capture presentation changes.
 ## Lifetime and rendering
 
 The provider captures once per distinct desired key using a serial queue and one
-temporary WebGL surface. Identical appearances share the completed image regardless
+mounted capture surface at a time. A new source resets the whole capture subtree,
+including its renderer; it does not reuse a WebGL context across distinct portraits. Identical appearances share the completed image regardless
 of member name/ID. It retains results only while their keys remain in the supplied
 roster. Removing a member, changing its appearance or changing scope immediately
 stops exposing its old portrait. Late completions cannot supply a different key.

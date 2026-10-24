@@ -48,7 +48,7 @@ function roster(changed: boolean): PublicMemberInfo[] {
       id: 'goblin',
       name: 'Exact goblin appearance',
       kind: MemberKind.MONSTER,
-      monsterRef: 'skeleton',
+      monsterRef: 'dnd5e:monsters:skeleton',
       appearanceRef: goblin.assetRef,
     }),
     create(PublicMemberInfoSchema, {
@@ -61,13 +61,13 @@ function roster(changed: boolean): PublicMemberInfo[] {
       id: 'skeleton',
       name: 'Legacy skeleton',
       kind: MemberKind.MONSTER,
-      monsterRef: 'skeleton',
+      monsterRef: 'dnd5e:monsters:skeleton',
     }),
     create(PublicMemberInfoSchema, {
       id: 'missing',
       name: 'Missing explicit appearance',
       kind: MemberKind.MONSTER,
-      monsterRef: 'skeleton',
+      monsterRef: 'dnd5e:monsters:skeleton',
       appearanceRef: 'missing:portrait',
     }),
   ];

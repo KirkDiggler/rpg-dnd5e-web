@@ -63,7 +63,7 @@ describe('portrait source', () => {
       create(PublicMemberInfoSchema, {
         id: 'npc',
         kind: MemberKind.WORLD,
-        monsterRef: 'skeleton',
+        monsterRef: 'dnd5e:monsters:skeleton',
         appearanceRef: appearance.assetRef,
       })
     );
@@ -82,27 +82,42 @@ describe('portrait source', () => {
         create(PublicMemberInfoSchema, {
           id: 'npc',
           kind: MemberKind.MONSTER,
-          monsterRef: 'skeleton',
+          monsterRef: 'dnd5e:monsters:skeleton',
           appearanceRef: 'missing:appearance',
         })
       )
     ).toMatchObject({ status: 'unavailable' });
   });
 
-  it('supports existing legacy monster selection only when no explicit appearance exists', () => {
+  it('adapts the full roster monster ref when no explicit appearance exists', () => {
     expect(
       resolvePortraitSource(
         create(PublicMemberInfoSchema, {
           id: 'skeleton-1',
           kind: MemberKind.MONSTER,
-          monsterRef: 'skeleton',
+          monsterRef: 'dnd5e:monsters:skeleton',
         })
       )
     ).toMatchObject({
       status: 'model',
-      url: expect.stringMatching(/skeleton/),
+      url: '/models/synty/npcs/skeleton-soldier-01.glb',
     });
   });
+
+  it.each(['', 'skeleton', 'dnd5e:monsters:'])(
+    'refuses a missing or malformed wire monster ref %j',
+    (monsterRef) => {
+      expect(
+        resolvePortraitSource(
+          create(PublicMemberInfoSchema, {
+            id: 'skeleton-1',
+            kind: MemberKind.MONSTER,
+            monsterRef,
+          })
+        )
+      ).toMatchObject({ status: 'unavailable' });
+    }
+  );
 
   it('refuses invalid hair rather than showing a successful default portrait', () => {
     const member = hero();

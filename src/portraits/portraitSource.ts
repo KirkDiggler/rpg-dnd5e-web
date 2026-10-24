@@ -9,6 +9,7 @@ import type { SkinnedAccessoryPresentation } from '@/components/hex-grid/Skinned
 import { CHARACTER_CUSTOMIZATION_PROVIDER } from '@/generated/characterCustomizationCatalog';
 import { resolveNpcAppearance } from '@/generated/npcAppearanceCatalog';
 import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
+import { refId } from '@/utils/refs';
 import {
   MemberKind,
   type PublicMemberInfo,
@@ -140,7 +141,7 @@ export function resolvePortraitSource(
   if (customized)
     return unavailable('No compatible customization profile was supplied.');
   const url = resolveMonsterModelUrl(
-    member.monsterRef,
+    refId(member.monsterRef) ?? undefined,
     undefined,
     false,
     member.id
