@@ -239,6 +239,10 @@ export interface RoomMonsterBinding extends RoomMonsterInteraction {
   on?: AnswerTableShape;
   temper?: string;
   actions?: string[];
+  /** Weapon refs added to or dropped from the inherited action list. The
+   * toolkit applies these in authored order; the studio carries them unchanged. */
+  addActions?: string[];
+  dropActions?: string[];
   /** The predicate that brings this creature into the run: it is held out of
    * every fight until this holds. Absent means the creature stands there from
    * the first frame. */
@@ -902,6 +906,8 @@ const BINDING_KEYS = [
   'on',
   'temper',
   'actions',
+  'addActions',
+  'dropActions',
   'options',
   'arrives',
   'holds',
@@ -1058,6 +1064,19 @@ function validateMonsterBindings(
         return action;
       });
     }
+    for (const key of ['addActions', 'dropActions'] as const) {
+      if (!Object.hasOwn(block, key)) continue;
+      const actions = block[key];
+      if (!Array.isArray(actions))
+        throw new Error(`Monster binding for ${id} ${key} must be a list.`);
+      parsed[key] = actions.map((action, index) => {
+        if (typeof action !== 'string' || !WEAPON_REF_RE.test(action))
+          throw new Error(
+            `Monster binding for ${id} ${key} ${index} must be a weapon reference such as dnd5e:weapons:shortbow.`
+          );
+        return action;
+      });
+    }
     // Interaction + reserve facts are CARRIED, NOT GRADED (rpg-dnd5e-web#1176):
     // the web keeps the SHAPE so the file round-trips, and the engine judges
     // what a check ref resolves to and what an `arrives` or `holds` name at
@@ -1106,6 +1125,8 @@ function validateMonsterBindings(
       parsed.on === undefined &&
       parsed.temper === undefined &&
       parsed.actions === undefined &&
+      parsed.addActions === undefined &&
+      parsed.dropActions === undefined &&
       parsed.options === undefined &&
       parsed.arrives === undefined &&
       parsed.holds === undefined
