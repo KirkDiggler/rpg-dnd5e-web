@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { GENERATED_ITEM_THUMBNAILS } from '../../../generated/itemThumbnailCatalog';
 import { EquipmentSlots } from './EquipmentSlots';
 import type { EquippedMap, ItemLike, SlotDefLike } from './equipmentTypes';
 
@@ -120,7 +121,7 @@ describe('EquipmentSlots', () => {
     ).toBeNull();
   });
 
-  it('resolves a canonical icon for a known id even when icon_key is empty (rpg-dnd5e-web#576)', () => {
+  it('renders the published weapon thumbnail when icon_key is empty', () => {
     const canonicalItems: ItemLike[] = [{ ...ITEMS[0], iconKey: '' }];
     const equipped: EquippedMap = {
       main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
@@ -137,7 +138,7 @@ describe('EquipmentSlots', () => {
     const img = socket.querySelector('img');
     expect(img).not.toBeNull();
     expect(img?.getAttribute('src')).toBe(
-      '/models/synty/ui/library/icons/weapons/ICON_SM_Wep_Sword_02_Clean.png'
+      GENERATED_ITEM_THUMBNAILS['dnd5e:item:longsword'].url
     );
     expect(img?.getAttribute('alt')).toBe('');
     expect(socket.getAttribute('title')).toContain('Longsword');
