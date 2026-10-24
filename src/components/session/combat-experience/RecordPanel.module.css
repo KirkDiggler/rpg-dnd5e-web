@@ -161,11 +161,24 @@
   font-size: 0.7rem;
 }
 
-/* An answered row's pick in its table's words (rpg-project#674). */
+/* An answered row's pick in its table's words (rpg-project#674). The id and
+   the beat name keep their width; the sentence takes the rest and wraps. */
 .reading {
   opacity: 0.85;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.toggle:has(.reading) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toggle:has(.reading) .id,
+.toggle:has(.reading) .beat {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .verdicts {
