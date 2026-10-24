@@ -35,6 +35,7 @@ import {
   answerWhenLegalOn,
   answerWord,
   answerWordsForTrigger,
+  isSearchHeading,
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
@@ -754,6 +755,17 @@ function withoutWord(entry: AnswerEntryShape): AnswerEntryShape {
 /** One entry row: its weight, its `say`, and its ONE word. Every control
  * writes what the author set; whether the entry is legal is the server's call,
  * and `when` is carried verbatim because the builder never reads it. */
+/** What each search heading means, on the select (rpg-project#679 R10). */
+const SEARCH_HEADING_LABELS: Record<
+  (typeof ANSWER_SEARCH.headings)[number],
+  string
+> = {
+  went: 'went (the way it was seen going)',
+  faced: 'faced (the way it faced)',
+  left: 'left (a quarter left of went)',
+  right: 'right (a quarter right of went)',
+};
+
 export function AnswerEntryRow({
   trigger,
   entry,
@@ -910,30 +922,66 @@ export function AnswerEntryRow({
           </label>
         )}
         {spec?.value === 'search' && (
-          // `search: { distance }` (rpg-project#668 R4): cells on from the
-          // lost cell. The engine's six shows when the file names none; an
+          // `search: { distance, heading }` (rpg-project#668 R4,
+          // rpg-project#679 R10): cells on from the lost cell, and which way.
+          // The engine's six and `went` show when the file names none; an
           // entry that is not a whole number of at least one is not written.
-          <label className="wb-entry-target">
-            <span>Cells</span>
-            <input
-              type="number"
-              min={ANSWER_SEARCH.minimumDistance}
-              aria-label={`Cells for ${label} entry`}
-              value={
-                isMapping(value) && typeof value.distance === 'number'
-                  ? value.distance
-                  : ANSWER_SEARCH.defaultDistance
-              }
-              onChange={(event) => {
-                const distance = Number(event.target.value);
-                if (
-                  Number.isInteger(distance) &&
-                  distance >= ANSWER_SEARCH.minimumDistance
-                )
-                  onCommit(withWordValue({ distance }));
-              }}
-            />
-          </label>
+          // Each control keeps the other key as written, so editing one never
+          // drops the other.
+          <>
+            <label className="wb-entry-target">
+              <span>Cells</span>
+              <input
+                type="number"
+                min={ANSWER_SEARCH.minimumDistance}
+                aria-label={`Cells for ${label} entry`}
+                value={
+                  isMapping(value) && typeof value.distance === 'number'
+                    ? value.distance
+                    : ANSWER_SEARCH.defaultDistance
+                }
+                onChange={(event) => {
+                  const distance = Number(event.target.value);
+                  if (
+                    Number.isInteger(distance) &&
+                    distance >= ANSWER_SEARCH.minimumDistance
+                  )
+                    onCommit(
+                      withWordValue({
+                        ...(isMapping(value) ? value : {}),
+                        distance,
+                      })
+                    );
+                }}
+              />
+            </label>
+            <label className="wb-entry-target">
+              <span>Heading</span>
+              <select
+                aria-label={`Heading for ${label} entry`}
+                value={
+                  isMapping(value) && isSearchHeading(value.heading)
+                    ? value.heading
+                    : ANSWER_SEARCH.defaultHeading
+                }
+                onChange={(event) => {
+                  if (isSearchHeading(event.target.value))
+                    onCommit(
+                      withWordValue({
+                        ...(isMapping(value) ? value : {}),
+                        heading: event.target.value,
+                      })
+                    );
+                }}
+              >
+                {ANSWER_SEARCH.headings.map((heading) => (
+                  <option key={heading} value={heading}>
+                    {SEARCH_HEADING_LABELS[heading]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         )}
         {spec?.value === 'selector' && isMapping(value) && (
           // A CELL OR A ROUTE IS SHOWN, NOT OFFERED (rpg-toolkit#2063): the

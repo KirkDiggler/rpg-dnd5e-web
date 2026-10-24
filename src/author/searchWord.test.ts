@@ -51,6 +51,14 @@ describe('pursuit words (rpg-project#668)', () => {
         'search: { distance: 3 }',
       ],
       ['{ when: { enemy: lost }, search: {} }', 'search: {}'],
+      [
+        '{ when: { enemy: lost }, search: { distance: 6, heading: went } }',
+        'search: { distance: 6, heading: went }',
+      ],
+      [
+        '{ when: { enemy: lost }, search: { heading: left } }',
+        'search: { heading: left }',
+      ],
     ] as const) {
       const once = emitDungeon(parseDungeon(withLost(row)));
       expect(once).toContain(written);
@@ -66,9 +74,20 @@ describe('pursuit words (rpg-project#668)', () => {
     ).toThrow(/`search` distance 0: a search walks at least one cell/);
     expect(() =>
       parseDungeon(withLost('{ when: { enemy: lost }, search: { cells: 6 } }'))
-    ).toThrow(/"cells" is not a key `search` reads: it reads distance/);
+    ).toThrow(
+      /"cells" is not a key `search` reads: it reads distance and heading/
+    );
     expect(() =>
       parseDungeon(withLost('{ when: { enemy: lost }, search: 6 }'))
-    ).toThrow(/`search` is \{ distance: N \}, or \{\} for 6 cells/);
+    ).toThrow(
+      /`search` is \{ distance: N, heading: went \}, or \{\} for 6 cells the way they went/
+    );
+    expect(() =>
+      parseDungeon(
+        withLost('{ when: { enemy: lost }, search: { heading: backwards } }')
+      )
+    ).toThrow(
+      /`search` heading "backwards": a search follows went, faced, left or right/
+    );
   });
 });

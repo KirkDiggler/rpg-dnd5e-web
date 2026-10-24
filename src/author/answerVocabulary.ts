@@ -142,26 +142,56 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
     key: 'search',
     label: 'Searches',
     commandLabel: 'Search',
-    help: 'Walks on from where it lost its enemy, the way that enemy was heading, for `distance` cells (6 when omitted), then gives up — and its `enemy: none` rows take it home.',
+    help: 'Walks on from where it lost its enemy for `distance` cells (6 when omitted), along `heading` — went (the way the enemy was seen going, the default), faced (the way it faced), left or right (a quarter turn off went) — then gives up, and its `enemy: none` rows take it home.',
     value: 'search',
     legalOn: ['time'],
   },
 ]);
 
-/** `search: { distance }` (rpg-project#668 R4) — `dungeonspec.SearchSpec`.
- * `distance` is cells, counted from 1; omitted is the engine's six. The body
- * reads `distance` and nothing else, refused by name. */
+/** `search: { distance, heading }` (rpg-project#668 R4, rpg-project#679
+ * R10) — `dungeonspec.SearchSpec`. `distance` is cells, counted from 1;
+ * omitted is the engine's six. `heading` is one of the sealed four — `went`
+ * (the way the quarry was seen going), `faced`, `left`, `right` — and omitted
+ * is the engine's `went`. The body reads those two keys and nothing else,
+ * refused by name. */
 export const ANSWER_SEARCH = Object.freeze({
-  bodyKeys: Object.freeze(['distance']),
+  bodyKeys: Object.freeze(['distance', 'heading']),
   defaultDistance: 6,
   minimumDistance: 1,
+  headings: Object.freeze(['went', 'faced', 'left', 'right'] as const),
+  defaultHeading: 'went' as const,
 });
+
+/** One of the sealed search headings (mind/behavior `SearchHeading`). */
+export type SearchHeading = (typeof ANSWER_SEARCH.headings)[number];
+
+/** Whether a value is one of the sealed search headings. */
+export function isSearchHeading(value: unknown): value is SearchHeading {
+  return (
+    typeof value === 'string' &&
+    (ANSWER_SEARCH.headings as readonly string[]).includes(value)
+  );
+}
 
 /** `dungeonspec`'s refusal for a search that walks nowhere — mind/behavior's
  * own sentence. */
 export function searchDistanceRefusal(distance: number): string {
   return `\`search\` distance ${distance}: a search walks at least one cell`;
 }
+
+/** `dungeonspec`'s refusal for a heading outside the sealed four —
+ * mind/behavior's own sentence (Go's %q quotes the word). */
+export function searchHeadingRefusal(heading: unknown): string {
+  return `\`search\` heading ${JSON.stringify(String(heading))}: a search follows went, faced, left or right`;
+}
+
+/** `dungeonspec`'s refusal for a key `search` does not read. */
+export function searchKeyRefusal(key: string): string {
+  return `"${key}" is not a key \`search\` reads: it reads distance and heading`;
+}
+
+/** `dungeonspec`'s refusal for a `search` that is not a mapping. */
+export const SEARCH_SHAPE_REFUSAL = `\`search\` is { distance: N, heading: went }, or {} for ${ANSWER_SEARCH.defaultDistance} cells the way they went`;
 
 /** One trigger: the verb and its verdict, or `time`. Every social key is
  * `<verb>` or `<verb>_failed`, so the next social verb adds keys rather than
