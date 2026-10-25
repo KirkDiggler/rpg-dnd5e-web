@@ -216,6 +216,7 @@ function SessionEncounterScope({
     refetchRoster,
     acceptAct: acceptKnowledgeAct,
   } = useSessionKnowledge(sessionId, member);
+  const portraitMembers = useMemo(() => [...roster.values()], [roster]);
   const wherePosition = snapshot?.where?.position ?? null;
   const currentRegionName = useMemo(
     () =>
@@ -1888,6 +1889,13 @@ function SessionEncounterScope({
             />
           )}
           <CombatExperience
+            portraits={{
+              scopeKey:
+                playerId && sessionId && member
+                  ? JSON.stringify([playerId, sessionId, member])
+                  : '',
+              members: portraitMembers,
+            }}
             layout="fill-parent"
             actionPresentation={actionPresentation}
             navigationControls={

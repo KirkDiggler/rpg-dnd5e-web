@@ -109,6 +109,27 @@ map lighting, combat pose, wounds or a target-dependent presentation. A head-and
 shoulders crop or a different resolution is a presentation change, not new rules
 or a new character RPC.
 
+## Live HUD consumer
+
+`SessionEncounterView` passes its existing public roster and the authenticated
+player/session/observer tuple to `CombatExperience.portraits`. The HUD mounts one
+provider for the character card and turn strip. It requests only the viewer and,
+on the turn clock, the displayed participants; remembered off-rail creatures do
+not consume capture work. No private character-sheet appearance fills a roster
+gap.
+
+`MemberPortrait` consumes the member ID and preserves the provider's named
+loading/unavailable/error states with an initials fallback. It also handles image
+decode failure, keyed by the image and appearance identity, so a changed image can
+recover. The character card crops the shared image to the head and upper body;
+turn entries retain the full-body framing, with no extra capture. Existing
+active/concentration/downed indicators and visible names remain owned by the HUD. These images are not equipment-loadout portraits.
+
+The provider lab's **Show HUD integration** button (or `?concept=portrait-provider&hud=1`)
+uses the actual HUD with the same generated roster fixtures and capture provider.
+Its appearance/scope controls never change a saved character. Initial capture
+cost in that lab does not replace a live encounter/roster performance check.
+
 ## Isolated preview
 
 Run the web dev server with synchronized private assets and open

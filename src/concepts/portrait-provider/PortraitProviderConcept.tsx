@@ -7,6 +7,7 @@ import {
   type PublicMemberInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useMemo, useState } from 'react';
+import { PortraitHudFixture } from '../desktop-hotbar/PortraitHudFixture';
 
 /** This lab changes supplied fixture appearances, never a player's saved sheet. */
 function roster(changed: boolean): PublicMemberInfo[] {
@@ -139,6 +140,9 @@ function ImageConsumer({
 export function PortraitProviderConcept() {
   const [changed, setChanged] = useState(false);
   const [scope, setScope] = useState(0);
+  const [showHud, setShowHud] = useState(
+    new URLSearchParams(window.location.search).get('hud') === '1'
+  );
   const members = useMemo(() => roster(changed), [changed]);
   return (
     <section style={{ color: '#e8e1ed', padding: 16 }}>
@@ -160,22 +164,39 @@ export function PortraitProviderConcept() {
         >
           Change observer scope
         </button>
+        <button
+          className="px-4 py-2 rounded bg-purple-800"
+          aria-pressed={showHud}
+          onClick={() => setShowHud((value) => !value)}
+        >
+          Show HUD integration
+        </button>
       </div>
-      <PortraitProvider scopeKey={`portrait-proof/${scope}`} members={members}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-          {members.map((member) => (
-            <ImageConsumer key={member.id} member={member} />
-          ))}
-        </div>
-        <h3 style={{ margin: '20px 0 8px' }}>
-          Second consumer · same images, no extra capture
-        </h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {members.slice(0, 5).map((member) => (
-            <ImageConsumer key={member.id} member={member} compact />
-          ))}
-        </div>
-      </PortraitProvider>
+      {showHud ? (
+        <PortraitHudFixture
+          members={members}
+          scopeKey={`portrait-hud/${scope}`}
+        />
+      ) : (
+        <PortraitProvider
+          scopeKey={`portrait-proof/${scope}`}
+          members={members}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+            {members.map((member) => (
+              <ImageConsumer key={member.id} member={member} />
+            ))}
+          </div>
+          <h3 style={{ margin: '20px 0 8px' }}>
+            Second consumer · same images, no extra capture
+          </h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {members.slice(0, 5).map((member) => (
+              <ImageConsumer key={member.id} member={member} compact />
+            ))}
+          </div>
+        </PortraitProvider>
+      )}
     </section>
   );
 }
