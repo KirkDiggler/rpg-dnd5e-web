@@ -332,6 +332,32 @@ const notFound = () => new ConnectError('no such dungeon', Code.NotFound);
 const FILE_READ_TIMEOUT_MS = 5000;
 
 describe('Site management', () => {
+  it('shows a newly saved site when returning to My World without a manual refresh', async () => {
+    setAuth('discord-token', 'player-a');
+    const { storage } = mount();
+    await settled();
+    siteOperation('world');
+    await screen.findByRole('button', { name: 'Refresh' });
+    siteOperation('save');
+    const key = defaultDraftKey(storage.document());
+    fireEvent.click(screen.getByRole('button', { name: 'Save to My World' }));
+    await answerGet(0, notFound());
+    library.listed = [
+      {
+        key,
+        name: 'Saved castle',
+        source: DungeonSource.WORLD,
+        owner: 'player-a',
+      },
+    ];
+    await answerSave(0, { errors: [] });
+    await waitFor(() => expect(status()).toBe(`Saved as ${key}`));
+    siteOperation('world');
+    expect(
+      await screen.findByRole('button', { name: `Open ${key}` })
+    ).toBeTruthy();
+  });
+
   it('opens without saving or launching and shows only the active operation', async () => {
     mount();
     await settled();
@@ -349,6 +375,38 @@ describe('Site management', () => {
     expect(site.getByRole('form', { name: 'Export draft' })).toBeTruthy();
     expect(site.queryByLabelText('Draft file to import')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Draft file' })).toBeNull();
+  });
+
+  it('abandoning and re-entering Copy cannot overwrite its remembered original', async () => {
+    const document = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(document);
+    storage.bytes.set(
+      PUBLICATION_STORAGE_KEY,
+      JSON.stringify({ roomId: document.draft.id, key: 'original' })
+    );
+    mount(document, { storage });
+    await settled();
+    siteOperation('save');
+    fireEvent.click(screen.getByRole('button', { name: 'Save a copy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+    siteOperation('save');
+    fireEvent.click(screen.getByRole('button', { name: 'Save a copy' }));
+    fireEvent.change(screen.getByLabelText('File key'), {
+      target: { value: 'original' },
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Save copy to My World',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(play().disabled).toBe(true);
+    fireEvent.submit(screen.getByRole('form', { name: 'Save to server' }));
+    expect(savePuts()).toHaveLength(0);
+    expect(sink.gets).toHaveLength(0);
+    siteOperation('save');
+    expect(keyIn(panel()).value).toBe('original');
   });
 
   it('save a copy seeds a different key without writing until Save is pressed', async () => {
@@ -384,6 +442,25 @@ describe('Site management', () => {
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     expect(savePuts()[0]!.request.key).toBe(copy);
     expect(lobby.createLobby).toHaveLength(0);
+    await answerSave(0, { errors: [] });
+    await waitFor(() => expect(status()).toBe(`Saved as ${copy}`));
+    expect(
+      screen.getByRole('button', { name: 'Save to My World' })
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+    siteOperation('save');
+    expect(keyIn(panel()).value).toBe(copy);
+    fireEvent.click(screen.getByRole('button', { name: 'Save a copy' }));
+    fireEvent.change(screen.getByLabelText('File key'), {
+      target: { value: copy },
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Save copy to My World',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
   });
 
   it('a server destination refusal is not shown as a YAML download failure', async () => {

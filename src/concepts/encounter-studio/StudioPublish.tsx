@@ -29,6 +29,7 @@ export function StudioPlayButton({
   roomId,
   panelOpen,
   onPress,
+  disabledReason,
 }: {
   publishing: StudioPublishing;
   gate: StudioPublishGate;
@@ -36,8 +37,10 @@ export function StudioPlayButton({
   roomId: string;
   panelOpen: boolean;
   onPress(): void;
+  disabledReason?: string;
 }): React.JSX.Element {
-  const reason = playUnavailableReason(gate.state, characterId);
+  const reason =
+    disabledReason ?? playUnavailableReason(gate.state, characterId);
   return (
     <>
       <button

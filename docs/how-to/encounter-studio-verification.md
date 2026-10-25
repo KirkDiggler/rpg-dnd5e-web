@@ -10,7 +10,9 @@ While a publishing transaction runs, Site navigation and close are disabled.
 
 The world save and YAML download share one file key. Save a copy proposes a
 different key, refuses the source key, and still uses the server's existing
-collision/overwrite check. Opening an owned site remembers its destination;
+collision/overwrite check. Leaving an unsaved copy restores the previous
+destination; a successful copy becomes the saved destination. Re-entering Copy
+must not permit the original key, including via Play. Opening an owned site remembers its destination;
 references and other members' sites get a fresh destination. YAML import asks
 before replacing the draft and can be undone. Failures leave the draft intact.
 

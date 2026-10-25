@@ -360,7 +360,10 @@ function StudioSurface({
   const [siteOperation, setSiteOperation] = useState<SiteOperation | null>(
     null
   );
-  const [copySourceKey, setCopySourceKey] = useState<string | null>(null);
+  const [copyOrigin, setCopyOrigin] = useState<{
+    sourceKey: string;
+    returnKey: string;
+  } | null>(null);
   /** Save and Play (R15–R18): the publishing hook World Builder uses, hosted
    * here so the draft file and the server save share its one key. The
    * owner's lock is its busy boundary; the preview asks the server only
@@ -432,18 +435,35 @@ function StudioSurface({
     const record = { roomId: savedFor.roomId, key: savedFor.key };
     writePublication(storage, record);
     setRemembered(record);
-  }, [publishSaver.status, savedFor, storage]);
+    // A successful copy is now this draft's saved destination. Abandoned
+    // proposals are restored by changeSiteOperation instead.
+    if (siteOperation === 'copy') {
+      setCopyOrigin(null);
+      setSiteOperation('save');
+    }
+  }, [publishSaver.status, savedFor, storage, siteOperation]);
   /** Open from the server (R24, S7): the world's encounters and the
    * references, listed only while the panel is open and the server accepts
    * authoring. */
   const library = useDungeonLibrary({
-    enabled: siteOperation !== null && gate.state === 'live',
+    enabled:
+      (siteOperation === 'world' ||
+        siteOperation === 'references' ||
+        siteOperation === 'copy') &&
+      gate.state === 'live',
   });
   const changeSiteOperation = (next: SiteOperation | null): void => {
     if (publishing.busy || next === siteOperation) return;
     publishing.cancelOverwrite();
+    if (siteOperation === 'copy' && copyOrigin) {
+      setPublishKey(copyOrigin.returnKey);
+      setCopyOrigin(null);
+    }
     if (next === 'copy') {
-      setCopySourceKey(publishing.key.trim());
+      setCopyOrigin({
+        sourceKey: rememberedKey ?? publishing.key.trim(),
+        returnKey: publishing.key.trim(),
+      });
       setPublishKey(
         freshKeyFor(
           session.document,
@@ -502,8 +522,11 @@ function StudioSurface({
     currentRefusals(publishing, gate.state),
     session.document
   );
+  const copyKeyRefused =
+    siteOperation === 'copy' && copyOrigin?.sourceKey === publishing.key.trim();
   const pressPlay = (): void => {
-    setSiteOperation('save');
+    if (copyKeyRefused) return;
+    if (siteOperation !== 'copy') setSiteOperation('save');
     void publishing.saveAndPlay();
   };
   const [renaming, setRenaming] = useState(false);
@@ -805,6 +828,11 @@ function StudioSurface({
             characterId={playCharacter}
             roomId={draftId}
             panelOpen={siteOperation !== null}
+            disabledReason={
+              copyKeyRefused
+                ? 'Choose a different key for the copy.'
+                : undefined
+            }
             onPress={pressPlay}
           />
         </div>
@@ -857,7 +885,9 @@ function StudioSurface({
           {(siteOperation === 'save' || siteOperation === 'copy') && (
             <StudioPublish
               copy={siteOperation === 'copy'}
-              copySourceKey={siteOperation === 'copy' ? copySourceKey : null}
+              copySourceKey={
+                siteOperation === 'copy' ? copyOrigin?.sourceKey : null
+              }
               publishing={publishing}
               gate={gate}
               characterId={playCharacter}
