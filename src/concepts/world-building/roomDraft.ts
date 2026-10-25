@@ -6,7 +6,7 @@ import {
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import { parseRef } from '@/utils/refs';
+import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import {
   optionHoldsRefusal,
   validateAnswerTable,
@@ -239,6 +239,10 @@ export interface RoomMonsterBinding extends RoomMonsterInteraction {
   on?: AnswerTableShape;
   temper?: string;
   actions?: string[];
+  /** Weapon refs added to or dropped from the inherited action list. The
+   * toolkit applies these in authored order; the studio carries them unchanged. */
+  addActions?: string[];
+  dropActions?: string[];
   /** The predicate that brings this creature into the run: it is held out of
    * every fight until this holds. Absent means the creature stands there from
    * the first frame. */
@@ -889,7 +893,7 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * wire — the engine carries these refs and never interprets them — so this
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
-export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
+export const WEAPON_REF_RE = DND5E_WEAPON_REF_RE;
 const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'appearanceRef'] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
@@ -902,6 +906,8 @@ const BINDING_KEYS = [
   'on',
   'temper',
   'actions',
+  'addActions',
+  'dropActions',
   'options',
   'arrives',
   'holds',
@@ -1058,6 +1064,19 @@ function validateMonsterBindings(
         return action;
       });
     }
+    for (const key of ['addActions', 'dropActions'] as const) {
+      if (!Object.hasOwn(block, key)) continue;
+      const actions = block[key];
+      if (!Array.isArray(actions))
+        throw new Error(`Monster binding for ${id} ${key} must be a list.`);
+      parsed[key] = actions.map((action, index) => {
+        if (typeof action !== 'string' || !WEAPON_REF_RE.test(action))
+          throw new Error(
+            `Monster binding for ${id} ${key} ${index} must be a weapon reference such as dnd5e:weapons:shortbow.`
+          );
+        return action;
+      });
+    }
     // Interaction + reserve facts are CARRIED, NOT GRADED (rpg-dnd5e-web#1176):
     // the web keeps the SHAPE so the file round-trips, and the engine judges
     // what a check ref resolves to and what an `arrives` or `holds` name at
@@ -1106,6 +1125,8 @@ function validateMonsterBindings(
       parsed.on === undefined &&
       parsed.temper === undefined &&
       parsed.actions === undefined &&
+      parsed.addActions === undefined &&
+      parsed.dropActions === undefined &&
       parsed.options === undefined &&
       parsed.arrives === undefined &&
       parsed.holds === undefined

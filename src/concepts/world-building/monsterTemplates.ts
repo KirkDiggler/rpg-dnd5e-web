@@ -1,4 +1,4 @@
-import { parseRef } from '@/utils/refs';
+import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 
 export const TEMPLATE_ABILITIES = [
@@ -20,6 +20,10 @@ export interface MonsterTemplate {
   proficiency?: number;
   skills?: string[];
   actions?: string[];
+  /** Weapon refs added to or dropped from the base stat block's actions.
+   * Their authored order is significant to the toolkit and is preserved. */
+  addActions?: string[];
+  dropActions?: string[];
   experience?: number;
 }
 export type SiteTemplates = Record<string, MonsterTemplate>;
@@ -32,6 +36,8 @@ const KEYS = [
   'proficiency',
   'skills',
   'actions',
+  'addActions',
+  'dropActions',
   'experience',
 ];
 function fail(path: string, message: string): never {
@@ -109,14 +115,23 @@ export function validateMonsterTemplates(value: unknown): SiteTemplates {
           fail(`${path}.${key}`, 'must be a nonnegative representable integer');
         template[key] = number;
       }
-    for (const key of ['skills', 'actions'] as const)
+    for (const key of [
+      'skills',
+      'actions',
+      'addActions',
+      'dropActions',
+    ] as const)
       if (Object.hasOwn(block, key)) {
         const values = block[key];
         if (!Array.isArray(values)) fail(`${path}.${key}`, 'must be a list');
         template[key] = values.map((item, index) => {
           const at = `${path}.${key}[${index}]`;
           if (typeof item !== 'string') fail(at, 'must be a string');
-          if (key === 'actions') return typedRef(item, 'weapons', at);
+          if (key !== 'skills') {
+            if (!DND5E_WEAPON_REF_RE.test(item))
+              fail(at, 'must be a dnd5e:weapons reference');
+            return item;
+          }
           if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(item))
             fail(at, 'must be a lowercase skill id');
           return item;

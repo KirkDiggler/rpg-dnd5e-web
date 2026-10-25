@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { parse, stringify } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { encodeSingleRoomDungeon } from '../world-building/singleRoomDungeon';
 import { renderScope } from '../world-building/siteScope';
@@ -12,7 +13,151 @@ import {
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 
+type SingleRoomFile = {
+  templates?: Record<string, unknown>;
+  room: {
+    room: {
+      monsterBindings?: Record<string, unknown>;
+    };
+  };
+};
+
+function actionAugmentWalkYaml(): string {
+  const file = parse(
+    exportDraftYaml(createPopulatedStudioDocument(), 'action-augment-walk')
+  ) as SingleRoomFile;
+  file.room.room.monsterBindings = {
+    ...file.room.room.monsterBindings,
+    'goblin-1': {
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+      dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
+    },
+  };
+  return stringify(file);
+}
+
 describe('the draft as a file (rpg-project#578)', () => {
+  it('import accepts a binding with addActions/dropActions (action-augment-walk shape)', () => {
+    const read = readDraftYaml(actionAugmentWalkYaml());
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(
+      read.draft.room.monsterBindings?.['goblin-1'] as Record<string, unknown>
+    ).toMatchObject({
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+      dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
+    });
+  });
+
+  it('import accepts a template with addActions/dropActions', () => {
+    const file = parse(
+      exportDraftYaml(
+        createPopulatedStudioDocument(),
+        'action-augment-template'
+      )
+    ) as SingleRoomFile;
+    file.templates = {
+      'guard-augment': {
+        base: 'dnd5e:monsters:guard',
+        addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+        dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
+      },
+    };
+
+    const read = readDraftYaml(stringify(file));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.scope.templates?.['guard-augment']).toMatchObject({
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+      dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
+    });
+  });
+
+  it('round trip preserves addActions/dropActions verbatim in authored order', () => {
+    const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
+    file.templates = {
+      'guard-augment': {
+        base: 'dnd5e:monsters:guard',
+        addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+        dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
+      },
+    };
+    const opened = readDraftYaml(stringify(file));
+    if (!opened.ok) throw new Error(opened.refusal);
+    const saved = parse(
+      exportDraftYaml({ draft: opened.draft, scope: opened.scope }, opened.key)
+    ) as SingleRoomFile;
+    expect(saved.room.room.monsterBindings?.['goblin-1']).toMatchObject({
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+      dropActions: ['dnd5e:weapons:dagger', 'dnd5e:weapons:club'],
+    });
+    expect(saved.templates?.['guard-augment']).toMatchObject({
+      addActions: ['dnd5e:weapons:light_crossbow', 'dnd5e:weapons:scimitar'],
+      dropActions: ['dnd5e:weapons:club', 'dnd5e:weapons:dagger'],
+    });
+  });
+
+  it.each([
+    [
+      'binding',
+      (file: SingleRoomFile) => {
+        file.room.room.monsterBindings = {
+          ...file.room.room.monsterBindings,
+          'goblin-1': {
+            addActions: ['dnd5e:weapons:light:crossbow:extra'],
+          },
+        };
+      },
+      'Monster binding for goblin-1 addActions 0 must be a weapon reference',
+    ],
+    [
+      'template',
+      (file: SingleRoomFile) => {
+        delete file.room.room.monsterBindings;
+        file.templates = {
+          'guard-augment': {
+            base: 'dnd5e:monsters:guard',
+            addActions: ['dnd5e:weapons:light:crossbow:extra'],
+          },
+        };
+      },
+      'templates.guard-augment.addActions[0]: must be a dnd5e:weapons reference',
+    ],
+  ])(
+    'refuses the toolkit-invalid over-segmented action augment ref on a %s',
+    (_site, apply, refusal) => {
+      const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
+      apply(file);
+      const read = readDraftYaml(stringify(file));
+      expect(read.ok).toBe(false);
+      if (read.ok) return;
+      expect(read.refusal).toContain(refusal);
+    }
+  );
+
+  it('an actually-unknown addAction field still refuses with its field path', () => {
+    const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
+    file.room.room.monsterBindings = {
+      ...file.room.room.monsterBindings,
+      'goblin-1': { addAction: ['dnd5e:weapons:shortbow'] },
+    };
+    expect(readDraftYaml(stringify(file))).toEqual({
+      ok: false,
+      refusal:
+        'Could not import: Monster binding for goblin-1 has an unsupported field: addAction.',
+    });
+  });
+
+  it('nothing-stated files without action augmentation import and export byte-identically to today', () => {
+    const document = createPopulatedStudioDocument();
+    const today = exportDraftYaml(document, 'nothing-stated');
+    const opened = readDraftYaml(today);
+    if (!opened.ok) throw new Error(opened.refusal);
+    expect(
+      exportDraftYaml({ draft: opened.draft, scope: opened.scope }, opened.key)
+    ).toBe(today);
+  });
+
   it("export writes exactly encodeSingleRoomDungeon's bytes", () => {
     const document = createCastleS4Document();
     expect(exportDraftYaml(document, 'mad-king')).toBe(
