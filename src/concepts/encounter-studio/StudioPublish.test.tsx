@@ -258,13 +258,37 @@ async function settled(): Promise<void> {
 }
 
 const play = (): HTMLButtonElement =>
-  screen.getByRole('button', { name: 'Save & Play' });
+  screen.getByRole('button', { name: 'Play' });
 const status = (): string =>
   document.querySelector('.es-publish-status')?.textContent ?? '';
-const panel = () =>
-  within(screen.getByRole('region', { name: 'Save and Play' }));
-const draftPanel = () =>
-  within(screen.getByRole('region', { name: 'Draft file' }));
+function siteOperation(
+  operation: 'save' | 'download' | 'import' | 'world' | 'references'
+): void {
+  if (!screen.queryByRole('region', { name: 'Site management' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+  const group = within(
+    screen.getByRole('group', {
+      name: operation === 'save' || operation === 'download' ? 'Save' : 'Open',
+    })
+  );
+  const name = {
+    save: 'My World',
+    download: 'Download YAML',
+    import: 'Import YAML',
+    world: 'My World',
+    references: 'References',
+  }[operation];
+  const button = group.getByRole('button', { name });
+  if (button.getAttribute('aria-pressed') !== 'true') fireEvent.click(button);
+}
+const panel = () => {
+  siteOperation('save');
+  return within(screen.getByRole('region', { name: 'Save and Play' }));
+};
+const draftPanel = () => {
+  siteOperation('download');
+  return within(screen.getByRole('region', { name: 'Draft file' }));
+};
 const keyIn = (scope: ReturnType<typeof panel>): HTMLInputElement =>
   scope.getByLabelText('File key') as HTMLInputElement;
 /** Real saves only; the live preview also calls putDungeon (validate-only). */
@@ -307,13 +331,111 @@ const notFound = () => new ConnectError('no such dungeon', Code.NotFound);
  * default 1 s wait of `findBy` is a race there, not a bound. */
 const FILE_READ_TIMEOUT_MS = 5000;
 
+describe('Site management', () => {
+  it('opens without saving or launching and shows only the active operation', async () => {
+    mount();
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    const site = within(
+      screen.getByRole('region', { name: 'Site management' })
+    );
+    expect(site.getByRole('form', { name: 'Save to server' })).toBeTruthy();
+    expect(savePuts()).toHaveLength(0);
+    expect(lobby.createLobby).toHaveLength(0);
+    fireEvent.click(site.getByRole('button', { name: 'Import YAML' }));
+    expect(site.getByLabelText('Draft file to import')).toBeTruthy();
+    expect(site.queryByRole('form', { name: 'Save to server' })).toBeNull();
+    fireEvent.click(site.getByRole('button', { name: 'Download YAML' }));
+    expect(site.getByRole('form', { name: 'Export draft' })).toBeTruthy();
+    expect(site.queryByLabelText('Draft file to import')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Draft file' })).toBeNull();
+  });
+
+  it('save a copy seeds a different key without writing until Save is pressed', async () => {
+    const document = createCastleS4Document();
+    mount(document);
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    const original = (screen.getByLabelText('File key') as HTMLInputElement)
+      .value;
+    fireEvent.click(screen.getByRole('button', { name: 'Save a copy' }));
+    const copy = (screen.getByLabelText('File key') as HTMLInputElement).value;
+    expect(copy).not.toBe(original);
+    expect(savePuts()).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText('File key'), {
+      target: { value: original },
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Save copy to My World',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.submit(screen.getByRole('form', { name: 'Save to server' }));
+    expect(sink.gets).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText('File key'), {
+      target: { value: copy },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save copy to My World' })
+    );
+    await answerGet(0, notFound());
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    expect(savePuts()[0]!.request.key).toBe(copy);
+    expect(lobby.createLobby).toHaveLength(0);
+  });
+
+  it('a server destination refusal is not shown as a YAML download failure', async () => {
+    mount();
+    await settled();
+    siteOperation('save');
+    await waitFor(() =>
+      expect(sink.puts.some((put) => put.request.validateOnly)).toBe(true)
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    await act(async () =>
+      preview.deferred.reject(
+        new ConnectError(
+          'that key is a reference; save it under your own key',
+          Code.PermissionDenied
+        )
+      )
+    );
+    expect(
+      await screen.findByText(
+        'that key is a reference; save it under your own key'
+      )
+    ).toBeTruthy();
+    siteOperation('download');
+    expect(
+      screen.queryByText('that key is a reference; save it under your own key')
+    ).toBeNull();
+    expect(screen.getByRole('form', { name: 'Export draft' })).toBeTruthy();
+  });
+
+  it('closing Site cancels an overwrite instead of leaving an invisible armed action', async () => {
+    mount();
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save to My World' }));
+    await answerGet(0, { yaml: 'version: 4\n' });
+    expect(
+      await screen.findByRole('alertdialog', { name: /^Replace / })
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    expect(screen.queryByRole('alertdialog', { name: /^Replace / })).toBeNull();
+    expect(savePuts()).toHaveLength(0);
+  });
+});
+
 describe('S6 one key', () => {
   it('the key seeds from the room name slug on a fresh draft', async () => {
     const document = createCastleS4Document();
     mount(document);
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('download');
     expect(keyIn(draftPanel()).value).toBe(defaultDraftKey(document));
     expect(keyIn(panel()).value).toBe(defaultDraftKey(document));
     // The name's slug, not the publishing hook's room-id default.
@@ -326,8 +448,7 @@ describe('S6 one key', () => {
   it('export and publish share one key: typing in Draft file changes the key the publish row shows', async () => {
     const { storage } = mount();
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('download');
     fireEvent.change(keyIn(draftPanel()), { target: { value: 'mad-king' } });
     expect(keyIn(panel()).value).toBe('mad-king');
     fireEvent.change(keyIn(panel()), { target: { value: 'mad-king-2' } });
@@ -336,7 +457,7 @@ describe('S6 one key', () => {
       draftPanel().getByRole('button', { name: 'Download mad-king-2.yaml' })
     ).toBeTruthy();
     // The server save goes under the same key, with the export's bytes.
-    fireEvent.click(panel().getByRole('button', { name: 'Save to server' }));
+    fireEvent.click(panel().getByRole('button', { name: 'Save to My World' }));
     await answerGet(0, notFound());
     expect(sink.gets[0]!.key).toBe('mad-king-2');
     await waitFor(() => expect(savePuts()).toHaveLength(1));
@@ -351,7 +472,7 @@ describe('S6 one key', () => {
   it("an import adopts the file's key for both", async () => {
     mount(createPopulatedStudioDocument());
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    siteOperation('import');
     fireEvent.change(screen.getByLabelText('Draft file to import'), {
       target: {
         files: [
@@ -370,7 +491,7 @@ describe('S6 one key', () => {
         { timeout: FILE_READ_TIMEOUT_MS }
       )
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('save');
     await waitFor(() => expect(keyIn(panel()).value).toBe('mad-king'));
     expect(keyIn(draftPanel()).value).toBe('mad-king');
   });
@@ -383,8 +504,7 @@ describe('S6 one key', () => {
     expect(
       await screen.findByRole('alertdialog', { name: /^Replace / })
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
-    fireEvent.change(keyIn(draftPanel()), { target: { value: 'fresh-key' } });
+    fireEvent.change(keyIn(panel()), { target: { value: 'fresh-key' } });
     expect(screen.queryByRole('alertdialog', { name: /^Replace / })).toBeNull();
     expect(savePuts()).toHaveLength(0);
   });
@@ -402,7 +522,7 @@ describe('S6 Save & Play', () => {
     expect(
       screen.getByText('The server is not accepting authored encounters.')
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    siteOperation('download');
     let blob: Blob | undefined;
     vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => {
       blob = value as Blob;
@@ -420,11 +540,11 @@ describe('S6 Save & Play', () => {
       reader.readAsText(blob!);
     });
     expect(text).toBe(exportDraftYaml(storage.document(), key));
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('save');
     expect(
       (
         panel().getByRole('button', {
-          name: 'Save to server',
+          name: 'Save to My World',
         }) as HTMLButtonElement
       ).disabled
     ).toBe(true);
@@ -449,10 +569,9 @@ describe('S6 Save & Play', () => {
     await settled();
     expect(play().disabled).toBe(true);
     expect(play().title).toBe('Pick a character on Home to play.');
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('save');
     const save = panel().getByRole('button', {
-      name: 'Save to server',
+      name: 'Save to My World',
     }) as HTMLButtonElement;
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
@@ -598,8 +717,7 @@ describe('S6 Save & Play', () => {
     const document = createCastleS4Document();
     mount(document, { characterId: null });
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
+    siteOperation('save');
     await waitFor(
       () =>
         expect(
@@ -690,7 +808,10 @@ describe('S6 Save & Play', () => {
       );
     };
     rename(storage.document().draft.name, 'Renamed castle');
-    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+    siteOperation('save');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save browser recovery' })
+    );
     await waitFor(() =>
       expect(storage.document().draft.name).toBe('Renamed castle')
     );
@@ -709,7 +830,9 @@ describe('S6 Save & Play', () => {
     ).toBeTruthy();
     expect(undo.disabled).toBe(true);
     fireEvent.click(undo);
-    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save browser recovery' })
+    );
     expect(storage.document()).toEqual(captured);
     expect(screen.getByText(/^Rename refused/)).toBeTruthy();
     expect(savePuts()[0]!.request.yaml).toBe(exportDraftYaml(captured, key));
@@ -781,7 +904,7 @@ describe('S6 the saved key outlives the studio mount (T7)', () => {
     await playFresh();
     await waitFor(() => expect(first.onPlay).toHaveBeenCalledTimes(1));
     // The same room id and the same key, but a file from outside.
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    siteOperation('import');
     fireEvent.change(screen.getByLabelText('Draft file to import'), {
       target: {
         files: [
@@ -811,7 +934,7 @@ describe('S6 the saved key outlives the studio mount (T7)', () => {
     storage.bytes.set(PUBLICATION_STORAGE_KEY, '{"roomId": 7, "key"');
     mount(document, { storage });
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    siteOperation('download');
     expect(keyIn(draftPanel()).value).toBe(defaultDraftKey(document));
     fireEvent.click(play());
     await waitFor(() => expect(sink.gets).toHaveLength(1));
@@ -855,7 +978,12 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     });
   }
   async function openFromServer(key: string): Promise<void> {
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    siteOperation(
+      library.listed.find((entry) => entry.key === key)?.source ===
+        DungeonSource.SHIPPED
+        ? 'references'
+        : 'world'
+    );
     fireEvent.click(
       await openPanel().findByRole('button', { name: `Open ${key}` })
     );
@@ -869,9 +997,9 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     );
   }
   const draftKey = (): string => {
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    siteOperation('download');
     const value = keyIn(draftPanel()).value;
-    fireEvent.click(screen.getByRole('button', { name: 'Close draft file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
     return value;
   };
   const record = (storage: MemoryStorage) =>
@@ -972,7 +1100,7 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await settled();
     await openFromServer('the-cells');
     const roomId = record(storage).roomId;
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    siteOperation('world');
     fireEvent.click(
       await openPanel().findByRole('button', { name: 'Rename the-cells' })
     );
@@ -997,7 +1125,7 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await settled();
     await openFromServer('the-cells');
     expect(record(storage)?.key).toBe('the-cells');
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    siteOperation('world');
     fireEvent.click(
       await openPanel().findByRole('button', { name: 'Delete the-cells' })
     );

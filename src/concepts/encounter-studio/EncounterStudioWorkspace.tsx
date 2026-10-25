@@ -46,12 +46,12 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
-import { StudioOpen, StudioOpenButton, type OpenedFile } from './StudioOpen';
+import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioPlayButton, StudioPublish } from './StudioPublish';
 import {
   currentRefusals,
-  keyRefusalOf,
   PUBLISH_RUNNING_TITLE,
+  publishStatusText,
 } from './studioPublishing';
 import { StudioScenarios } from './StudioScenarios';
 import {
@@ -67,6 +67,7 @@ import {
   type StudioWallEditing,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
+import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
 import { StudioWallControls } from './StudioWallControls';
 import { useStudioLabels } from './useStudioLabels';
 
@@ -356,8 +357,10 @@ function StudioSurface({
   };
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
-  const [draftFileOpen, setDraftFileOpen] = useState(false);
-  const [publishOpen, setPublishOpen] = useState(false);
+  const [siteOperation, setSiteOperation] = useState<SiteOperation | null>(
+    null
+  );
+  const [copySourceKey, setCopySourceKey] = useState<string | null>(null);
   /** Save and Play (R15–R18): the publishing hook World Builder uses, hosted
    * here so the draft file and the server save share its one key. The
    * owner's lock is its busy boundary; the preview asks the server only
@@ -433,17 +436,34 @@ function StudioSurface({
   /** Open from the server (R24, S7): the world's encounters and the
    * references, listed only while the panel is open and the server accepts
    * authoring. */
-  const [openPanel, setOpenPanel] = useState(false);
   const library = useDungeonLibrary({
-    enabled: openPanel && gate.state === 'live',
+    enabled: siteOperation !== null && gate.state === 'live',
   });
+  const changeSiteOperation = (next: SiteOperation | null): void => {
+    if (publishing.busy || next === siteOperation) return;
+    publishing.cancelOverwrite();
+    if (next === 'copy') {
+      setCopySourceKey(publishing.key.trim());
+      setPublishKey(
+        freshKeyFor(
+          session.document,
+          new Set([
+            ...library.taken,
+            publishing.key.trim(),
+            ...(rememberedKey ? [rememberedKey] : []),
+          ])
+        )
+      );
+    }
+    setSiteOperation(next);
+  };
   /** Opening is the import. One's own file seeds its key as saved, so the
    * next Save and Play does not ask (R16); another member's file or a
    * reference is a copy: a fresh key and no remembered save. */
   const openFile = ({ read, key, source }: OpenedFile): void => {
     if (!session.importDocument(read.draft, read.scope)) return;
     const roomId = read.draft.id;
-    setOpenPanel(false);
+    setSiteOperation('save');
     if (source === 'mine') {
       const record = { roomId, key };
       setFileKey(record);
@@ -478,13 +498,12 @@ function StudioSurface({
     clearPublication(storage);
     setRemembered(null);
   };
-  const keyRefusal = keyRefusalOf(publishing);
   const jumps = refusalJumps(
     currentRefusals(publishing, gate.state),
     session.document
   );
   const pressPlay = (): void => {
-    setPublishOpen(true);
+    setSiteOperation('save');
     void publishing.saveAndPlay();
   };
   const [renaming, setRenaming] = useState(false);
@@ -766,33 +785,26 @@ function StudioSurface({
         </nav>
         <div className="es-save">
           <span className="es-local-state">
-            <span className="es-local">LOCAL DRAFT</span>
+            <span className="es-local">BROWSER RECOVERY</span>
             <span role="status">{session.saveStatus}</span>
           </span>
-          <button type="button" onClick={session.saveLocalDraft}>
-            {session.autosaveBlocked
-              ? 'Replace unreadable local draft'
-              : 'Save local draft'}
-          </button>
           <button
             type="button"
-            aria-expanded={draftFileOpen}
-            aria-controls="studio-draft-file"
-            onClick={() => setDraftFileOpen(!draftFileOpen)}
+            aria-expanded={siteOperation !== null}
+            aria-controls="studio-site"
+            disabled={publishing.busy}
+            onClick={() =>
+              changeSiteOperation(siteOperation === null ? 'save' : null)
+            }
           >
-            Draft file
+            Site
           </button>
-          <StudioOpenButton
-            gate={gate.state}
-            panelOpen={openPanel}
-            onPress={() => setOpenPanel(!openPanel)}
-          />
           <StudioPlayButton
             publishing={publishing}
             gate={gate}
             characterId={playCharacter}
             roomId={draftId}
-            panelOpen={publishOpen}
+            panelOpen={siteOperation !== null}
             onPress={pressPlay}
           />
         </div>
@@ -804,44 +816,60 @@ function StudioSurface({
           this draft.
         </p>
       )}
-      {draftFileOpen && (
-        <div id="studio-draft-file">
-          <StudioDraftFile
-            session={session}
-            draftKey={publishing.key}
-            onKeyChange={publishing.setKey}
-            keyRefusal={keyRefusal}
-            onFileKey={adoptFileKey}
-            onOpenServer={() => setPublishOpen(true)}
-            onClose={() => setDraftFileOpen(false)}
-          />
-        </div>
-      )}
-      {openPanel && (
-        <div id="studio-open">
-          <StudioOpen
-            library={library}
-            gate={gate.state}
-            publishing={session.publishing.busy}
-            onOpen={openFile}
-            onRenamed={renamedOnServer}
-            onDeleted={deletedOnServer}
-            onClose={() => setOpenPanel(false)}
-          />
-        </div>
-      )}
-      {publishOpen && (
-        <div id="studio-publish">
-          <StudioPublish
-            publishing={publishing}
-            gate={gate}
-            characterId={playCharacter}
-            jumps={jumps}
-            nameOf={refusalNounName}
-            onJump={jumpTo}
-            onClose={() => setPublishOpen(false)}
-          />
-        </div>
+      {siteOperation !== null && (
+        <StudioSitePanel
+          name={session.document.draft.name}
+          status={publishStatusText(publishing, draftId)}
+          operation={siteOperation}
+          busy={publishing.busy}
+          onOperation={changeSiteOperation}
+          onClose={() => changeSiteOperation(null)}
+          recovery={
+            <button type="button" onClick={session.saveLocalDraft}>
+              {session.autosaveBlocked
+                ? 'Replace unreadable local draft'
+                : 'Save browser recovery'}
+            </button>
+          }
+        >
+          {(siteOperation === 'world' || siteOperation === 'references') && (
+            <StudioOpen
+              key={siteOperation}
+              source={siteOperation}
+              library={library}
+              gate={gate.state}
+              publishing={session.publishing.busy}
+              onOpen={openFile}
+              onRenamed={renamedOnServer}
+              onDeleted={deletedOnServer}
+            />
+          )}
+          {(siteOperation === 'import' || siteOperation === 'download') && (
+            <StudioDraftFile
+              key={siteOperation}
+              mode={siteOperation === 'import' ? 'import' : 'export'}
+              session={session}
+              draftKey={publishing.key}
+              onKeyChange={publishing.setKey}
+              onFileKey={adoptFileKey}
+            />
+          )}
+          {(siteOperation === 'save' || siteOperation === 'copy') && (
+            <StudioPublish
+              copy={siteOperation === 'copy'}
+              copySourceKey={siteOperation === 'copy' ? copySourceKey : null}
+              publishing={publishing}
+              gate={gate}
+              characterId={playCharacter}
+              jumps={jumps}
+              nameOf={refusalNounName}
+              onJump={(target) => {
+                changeSiteOperation(null);
+                jumpTo(target);
+              }}
+            />
+          )}
+        </StudioSitePanel>
       )}
       {session.notice !== null && (
         <div className="es-warning" role="alert">

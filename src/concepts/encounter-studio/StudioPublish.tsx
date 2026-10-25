@@ -46,10 +46,10 @@ export function StudioPlayButton({
         title={reason ?? undefined}
         aria-describedby={reason ? 'studio-play-reason' : undefined}
         aria-expanded={panelOpen}
-        aria-controls="studio-publish"
+        aria-controls="studio-site"
         onClick={onPress}
       >
-        Save &amp; Play
+        Play
       </button>
       <span aria-live="polite" className="es-publish-status">
         {publishStatusText(publishing, roomId)}
@@ -78,7 +78,9 @@ export interface StudioPublishProps {
   nameOf(target: RefusalTarget): string;
   /** The surface routes a jump to the selection or home section. */
   onJump(target: RefusalTarget): void;
-  onClose(): void;
+  onClose?(): void;
+  copy?: boolean;
+  copySourceKey?: string | null;
 }
 
 /** The panel the header's Save & Play opens, under the header beside the
@@ -91,6 +93,8 @@ export function StudioPublish({
   nameOf,
   onJump,
   onClose,
+  copy = false,
+  copySourceKey = null,
 }: StudioPublishProps): React.JSX.Element {
   const {
     key,
@@ -107,7 +111,11 @@ export function StudioPublish({
     if (overwritePending) replaceRef.current?.focus();
   }, [overwritePending]);
   const serverReason = serverUnavailableReason(gate.state);
-  const keyRefusal = keyRefusalOf(publishing);
+  const copyRefusal =
+    copy && copySourceKey === key.trim()
+      ? 'Choose a different key for the copy. The original must stay unchanged.'
+      : null;
+  const keyRefusal = copyRefusal ?? keyRefusalOf(publishing);
   const saveFailed =
     saver.status === 'error' && !keyRefusal
       ? `Save failed: ${saver.message ?? 'the server did not answer'}. Your draft is unchanged.`
@@ -117,12 +125,18 @@ export function StudioPublish({
       className="es-draft-file-panel es-publish-panel"
       aria-label="Save and Play"
     >
+      <h3>{copy ? 'Save a copy' : 'Save to My World'}</h3>
+      <p className="es-help">
+        {copy
+          ? 'Save this site under a different key. The original stays unchanged.'
+          : 'Save this site to your world. Download YAML instead to keep a file on your computer.'}
+      </p>
       <form
         aria-label="Save to server"
         className="es-buttons"
         onSubmit={(event) => {
           event.preventDefault();
-          void publishing.save();
+          if (!copyRefusal) void publishing.save();
         }}
       >
         <label className="es-field">
@@ -140,12 +154,17 @@ export function StudioPublish({
             onChange={(event) => setKey(event.target.value)}
           />
         </label>
-        <button type="submit" disabled={busy || serverReason !== null}>
-          Save to server
+        <button
+          type="submit"
+          disabled={busy || serverReason !== null || copyRefusal !== null}
+        >
+          {copy ? 'Save copy to My World' : 'Save to My World'}
         </button>
-        <button type="button" onClick={onClose}>
-          Close Save and Play
-        </button>
+        {onClose && (
+          <button type="button" onClick={onClose}>
+            Close Save and Play
+          </button>
+        )}
         {keyRefusal && (
           <span role="alert" className="es-warning">
             {keyRefusal}
@@ -164,7 +183,7 @@ export function StudioPublish({
       )}
       {!serverReason && characterId === null && (
         <p className="es-help">
-          {NO_CHARACTER_SENTENCE} Save to server still saves the file.
+          {NO_CHARACTER_SENTENCE} You can still save to My World.
         </p>
       )}
       {overwritePending && (

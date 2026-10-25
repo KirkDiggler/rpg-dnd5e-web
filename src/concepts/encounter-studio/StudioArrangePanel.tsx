@@ -275,6 +275,27 @@ function SelectedArrange({
                 Move creature
               </button>
             )}
+            <button
+              type="button"
+              disabled={session.publishing.busy || preview}
+              onClick={() => {
+                if (
+                  !session.commitArrange({
+                    kind: 'actor-remove',
+                    target: selection.target,
+                  })
+                )
+                  setError(
+                    'Could not remove this placement. Select it again or check the document notice.'
+                  );
+              }}
+            >
+              Remove from board
+            </button>
+            <p className="es-help">
+              Removes this placement only. The cast member remains available;
+              Undo restores the placement.
+            </p>
           </>
         )}
         {selection.kind === 'label' && region && (

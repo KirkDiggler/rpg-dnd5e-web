@@ -27,7 +27,11 @@ import {
   type MonsterTemplate,
   type SiteTemplates,
 } from './monsterTemplates';
-import { setRoomMonsterAppearance, type RoomDraftDocument } from './roomDraft';
+import {
+  removeRoomMonster,
+  setRoomMonsterAppearance,
+  type RoomDraftDocument,
+} from './roomDraft';
 import type { IdFactory } from './types';
 
 const MONSTER_PREFIX = 'dnd5e:monsters:';
@@ -45,6 +49,29 @@ export const RULEBOOK_MONSTER_REFS: readonly string[] = [
 
 export function rulebookMonsterName(ref: string): string {
   return ref === HUMAN_REF ? 'Human' : paletteNameForRef(ref);
+}
+
+/** A presentation capability, not rulebook validation: only configured standard
+ * monsters have a rules-default model. Templates still need an explicit look. */
+export function hasStandardCastLook(member: CastMember): boolean {
+  return (
+    member.source === 'rulebook' &&
+    PALETTE_MONSTERS.some((entry) => entry.ref === member.ref)
+  );
+}
+
+/** Empty picker value means no appearance override. Check at arm AND commit. */
+export function castPlacementAppearanceAvailable(
+  member: CastMember,
+  appearanceRef: string
+): boolean {
+  const modelRef = member.defaults?.modelRef;
+  if (!modelRef && appearanceRef === '') return hasStandardCastLook(member);
+  return NPC_APPEARANCE_FAMILIES.some(
+    (family) =>
+      (modelRef === undefined || family.ref === modelRef) &&
+      family.looks.some((look) => look.assetRef === appearanceRef)
+  );
 }
 
 export interface CastMember {
@@ -256,7 +283,10 @@ export function saveCastMember(
       throw new Error(
         `Default faction ${faction} is not a faction in this encounter.`
       );
-    if (!families.some((family) => family.ref === modelRef))
+    if (
+      modelRef !== undefined &&
+      !families.some((family) => family.ref === modelRef)
+    )
       throw new Error(`Default look ${modelRef} is not a published NPC model.`);
     const entries = next.draft.scene.creaturePalette ?? [];
     const index = entries.findIndex((entry) => entry.ref === input.ref);
@@ -264,7 +294,7 @@ export function saveCastMember(
       id: index >= 0 ? entries[index]!.id : idFactory(),
       name,
       ref: input.ref,
-      modelRef,
+      ...(modelRef !== undefined ? { modelRef } : {}),
       ...(faction !== undefined ? { faction } : {}),
     };
     next = withPalette(
@@ -275,6 +305,29 @@ export function saveCastMember(
     );
   }
   return next;
+}
+
+/** Removing a placement does not remove its cast membership. Imported bare
+ * rulebook placements first retain their member as presentation defaults. */
+export function removeCastPlacement(
+  document: Readonly<RoomDraftDocument>,
+  id: string,
+  idFactory: IdFactory
+): RoomDraftDocument {
+  const actor = document.draft.room.monsterDeclarations.find(
+    (entry) => entry.id === id
+  );
+  if (!actor) return document as RoomDraftDocument;
+  const member = castMemberOf(document, actor.ref)!;
+  const retained =
+    member.source === 'rulebook' && !member.defaults
+      ? saveCastMember(
+          document,
+          { ref: member.ref, defaults: { name: member.name } },
+          idFactory
+        )
+      : document;
+  return { ...retained, draft: removeRoomMonster(retained.draft, id) };
 }
 
 /** Rename a template member's id: the template key (kept in its place),

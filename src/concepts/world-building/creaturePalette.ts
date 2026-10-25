@@ -7,7 +7,8 @@ export interface CreaturePaletteEntry {
   id: string;
   name: string;
   ref: string;
-  modelRef: string;
+  /** Absent uses the standard monster appearance; never changes its rules ref. */
+  modelRef?: string;
   /** The cast member's default faction, stamped onto a new placement's
    * binding (rpg-project#575 decision 1). Studio presentation only: the
    * toolkit carries room.scene through unread. */
@@ -46,13 +47,18 @@ export function validateCreaturePalette(
       parseRef(entry.ref)?.type !== 'monsters'
     )
       throw new Error(`${path}.ref must be a monster reference.`);
-    if (typeof entry.modelRef !== 'string' || !parseRef(entry.modelRef))
+    if (
+      Object.hasOwn(entry, 'modelRef') &&
+      (typeof entry.modelRef !== 'string' || !parseRef(entry.modelRef))
+    )
       throw new Error(`${path}.modelRef must be an appearance reference.`);
     return {
       id,
       name: entry.name as string,
       ref: entry.ref,
-      modelRef: entry.modelRef,
+      ...(Object.hasOwn(entry, 'modelRef')
+        ? { modelRef: entry.modelRef as string }
+        : {}),
       ...(Object.hasOwn(entry, 'faction')
         ? { faction: entry.faction as string }
         : {}),

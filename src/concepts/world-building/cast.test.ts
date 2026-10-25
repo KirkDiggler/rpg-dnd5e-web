@@ -90,6 +90,50 @@ function looksOf(document: RoomDraftDocument): (string | undefined)[] {
 }
 
 describe('the cast', () => {
+  it('keeps a named standard monster without creating a stat block or forcing a look', () => {
+    const before = emptyCast();
+    const added = saveCastMember(
+      before,
+      {
+        ref: 'dnd5e:monsters:thug',
+        defaults: { name: 'Thugger' },
+      },
+      idFactory
+    );
+    expect(added.scope.templates).toEqual(before.scope.templates);
+    expect(castOf(validateRoomDocument(added))).toEqual([
+      expect.objectContaining({
+        ref: 'dnd5e:monsters:thug',
+        name: 'Thugger',
+        source: 'rulebook',
+      }),
+    ]);
+    expect(added.draft.scene.creaturePalette?.[0]).not.toHaveProperty(
+      'modelRef'
+    );
+    const disguised = saveCastMember(
+      added,
+      {
+        ref: 'dnd5e:monsters:thug',
+        defaults: { name: 'Thugger', modelRef: SOLDIER },
+      },
+      idFactory
+    );
+    expect(disguised.draft.scene.creaturePalette?.[0]).toMatchObject({
+      ref: 'dnd5e:monsters:thug',
+      modelRef: SOLDIER,
+    });
+    const restored = saveCastMember(
+      disguised,
+      {
+        ref: 'dnd5e:monsters:thug',
+        defaults: { name: 'Thugger' },
+      },
+      idFactory
+    );
+    expect(restored).toEqual(added);
+  });
+
   it('a template, a recipe on it and two placements are one member', () => {
     const document = guardCast();
     const cast = castOf(document);

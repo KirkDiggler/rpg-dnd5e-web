@@ -230,7 +230,7 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
       expect.any(Function)
     );
     // No character: the surface says so on the one control.
-    const play = screen.getByRole('button', { name: 'Save & Play' });
+    const play = screen.getByRole('button', { name: 'Play' });
     expect((play as HTMLButtonElement).disabled).toBe(true);
     expect(play.getAttribute('title')).toBe(
       'Pick a character on Home to play.'
@@ -244,7 +244,7 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
       />
     );
     expect(
-      (screen.getByRole('button', { name: 'Save & Play' }) as HTMLButtonElement)
+      (screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement)
         .disabled
     ).toBe(false);
     // While the owner reports a publish in flight, leaving is refused.
@@ -430,13 +430,15 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     const { rerender } = render(
       <EncounterStudioWorkspace compositionSource={source} />
     );
-    expect(screen.getByText('LOCAL DRAFT')).toBeTruthy();
+    expect(screen.getByText('BROWSER RECOVERY')).toBeTruthy();
     expect(screen.getByText('Unreadable current draft bytes')).toBeTruthy();
     expect(
       screen.getByText(/overwrites the unreadable stored data/)
     ).toBeTruthy();
+    click('Site');
     click('Replace unreadable local draft');
     expect(observed.session.saveLocalDraft).toHaveBeenCalledTimes(1);
+    click('Close Site');
     observed.session = {
       ...observed.session,
       notice: 'Storage quota exceeded',
@@ -464,7 +466,8 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     observed.session = { ...observed.session!, canRedo: true };
     rerender(<EncounterStudioWorkspace compositionSource={source} />);
     click('Redo');
-    click('Save local draft');
+    click('Site');
+    click('Save browser recovery');
     expect(observed.session.redo).toHaveBeenCalledTimes(1);
     expect(observed.session.saveLocalDraft).toHaveBeenCalledTimes(1);
   });
