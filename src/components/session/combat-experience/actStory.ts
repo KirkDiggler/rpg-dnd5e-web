@@ -99,6 +99,14 @@ export interface CombatStoryFact {
   readonly listenerAt?: HeardCell;
 }
 
+function isOthersTurnEnd(act: Act, viewer: string | undefined): boolean {
+  return (
+    act.body.case === 'clock' &&
+    act.body.value.mark === ClockMark.TURN_ENDED &&
+    act.body.value.turn?.member?.id !== viewer
+  );
+}
+
 /** One act's row id: its session, its record id and its place in the run. */
 export function actStoryId(act: Act, index: number): string {
   return `${act.session.length}:${act.session}:${act.id}#${index}`;
@@ -158,6 +166,10 @@ export function buildActStory(
       speakers.set(act.act, act.body.value.by.id);
     }
     if (!fact.visible) continue;
+    // Another member's turn ending writes no line: the turn order at the top
+    // shows it (rpg-project#685). The viewer's own turn end still logs, and
+    // the record panel keeps every beat.
+    if (isOthersTurnEnd(act, context.viewerMember)) continue;
     // R36 is proposed: hide the idle hold pick here until the fold drops it.
     if (isIdleHoldPick(act)) continue;
     const line = describeAct(act, context);

@@ -1,5 +1,8 @@
 import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import {
+  ClockMark,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
 import {
@@ -9,7 +12,9 @@ import {
   type QueuedBeat,
 } from '../monsterBeatQueue';
 import { participantNameMap } from '../participantNames';
+import type { TurnBeat } from '../useTurnOrderFollow';
 import { actStoryId } from './actStory';
+import { fightIncludes } from './toastPolicy';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
@@ -23,6 +28,9 @@ export interface UseCombatStoryPacingArgs {
   memberNames?: ReadonlyMap<string, string>;
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
+  /** Told whose driven turn the story is playing, each turn it passes on,
+   * and when it rests: the turn order follows it (rpg-project#685). */
+  onTurnBeat?: (beat: TurnBeat) => void;
 }
 
 export interface UseCombatStoryPacingResult {
@@ -47,6 +55,31 @@ function emptyScopedPacing(token: PacingScopeToken): ScopedPacingState {
   return { token, hiddenIds: new Set(), notice: null };
 }
 
+/** Records who a live clock act names as in the viewer's fight. */
+function learnFight(act: Act, member: string, named: Set<string>): void {
+  if (act.body.case !== 'clock') return;
+  const clock = act.body.value;
+  switch (clock.mark) {
+    case ClockMark.FIGHT_FORMED:
+      if (fightIncludes(act, member)) {
+        for (const p of clock.fight?.order ?? []) named.add(p.id);
+      }
+      return;
+    case ClockMark.FIGHT_DISSOLVED:
+      if (fightIncludes(act, member)) named.clear();
+      return;
+    case ClockMark.JOINED:
+      if (clock.member?.id) named.add(clock.member.id);
+      return;
+    case ClockMark.TURN_ENDED:
+      if (clock.turn?.member?.id) named.add(clock.turn.member.id);
+      if (clock.turn?.next?.id) named.add(clock.turn.next.id);
+      return;
+    default:
+      return;
+  }
+}
+
 /**
  * A presentation-only cursor for another member's live turn.
  *
@@ -61,6 +94,7 @@ export function useCombatStoryPacing({
   memberNames,
   story,
   result,
+  onTurnBeat,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
     () => Object.freeze({ member }),
@@ -80,6 +114,23 @@ export function useCombatStoryPacing({
   const memberNamesRef = useRef(memberNames);
   participantsRef.current = participants;
   memberNamesRef.current = memberNames;
+  const onTurnBeatRef = useRef(onTurnBeat);
+  onTurnBeatRef.current = onTurnBeat;
+  /** Fight members the live clock acts named since the last snapshot could
+   * (a fight forming, a join, a turn passing); a dissolve forgets them. */
+  const namedInFightRef = useRef(new Set<string>());
+
+  const tell = useCallback(
+    (beat: TurnBeat) => {
+      if (activeTokenRef.current !== token) return;
+      onTurnBeatRef.current?.(beat);
+    },
+    [token]
+  );
+  const rest = useCallback(() => {
+    drainingRef.current = false;
+    tell({ type: 'idle' });
+  }, [tell]);
 
   const namesNow = useCallback(() => {
     const names = new Map(memberNamesRef.current ?? []);
@@ -96,6 +147,7 @@ export function useCombatStoryPacing({
     drainingRef.current = false;
     announcedActorRef.current = null;
     sawBeatRef.current = false;
+    namedInFightRef.current = new Set();
   }, []);
 
   const setNoticeForScope = useCallback(
@@ -148,13 +200,14 @@ export function useCombatStoryPacing({
       if (activeTokenRef.current !== token) return;
       const step = nextBeatStep(queueRef.current, announcedActorRef.current);
       if (step.type === 'idle') {
-        drainingRef.current = false;
         setNoticeForScope(null);
+        rest();
         return;
       }
 
       if (step.type === 'announce') {
         announcedActorRef.current = step.actor;
+        tell({ type: 'playing', actor: step.actor });
         sawBeatRef.current = false;
         const name = namesNow().get(step.actor);
         setNoticeForScope(`${name ?? step.actor}'s turn.`);
@@ -182,10 +235,11 @@ export function useCombatStoryPacing({
         }
         announcedActorRef.current = null;
         sawBeatRef.current = false;
+        tell({ type: 'passed', act: beat.act });
         scheduleForScope(() => {
           setNoticeForScope(null);
           if (queueRef.current.length > 0) drainQueue();
-          else drainingRef.current = false;
+          else rest();
         });
         return;
       }
@@ -193,11 +247,13 @@ export function useCombatStoryPacing({
       if (queueRef.current.length > 0) {
         scheduleForScope(drainQueue);
       } else {
-        drainingRef.current = false;
+        rest();
       }
     },
     [
       namesNow,
+      rest,
+      tell,
       scheduleForScope,
       setNoticeForScope,
       token,
@@ -210,9 +266,13 @@ export function useCombatStoryPacing({
       if (activeTokenRef.current !== token || metadata.source !== 'live') {
         return;
       }
-      const paced = run.flatMap((act, index) =>
-        needsPacing(act, member) ? [{ act, index }] : []
-      );
+      const named = namedInFightRef.current;
+      const paced = run.flatMap((act, index) => {
+        learnFight(act, member, named);
+        const fight = new Set(named);
+        for (const p of participantsRef.current) fight.add(p.member);
+        return needsPacing(act, member, fight) ? [{ act, index }] : [];
+      });
       if (paced.length === 0) return;
       queueRef.current.push(...paced);
       updateHiddenIdsForScope((current) => {

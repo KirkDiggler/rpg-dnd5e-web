@@ -44,19 +44,30 @@ const downed = () =>
 const beat = (a: ReturnType<typeof act>): QueuedBeat => ({ act: a, index: 0 });
 
 describe('beatActor / needsPacing', () => {
-  it('paces another member’s walk, swing and turn end', () => {
+  const FIGHT = new Set([MEMBER, 'goblin']);
+
+  it('paces another fight member’s walk, swing and turn end', () => {
     expect(beatActor(walk('goblin'))).toBe('goblin');
     expect(beatActor(swing('goblin'))).toBe('goblin');
     expect(beatActor(turnEnded('goblin', MEMBER))).toBe('goblin');
-    expect(needsPacing(walk('goblin'), MEMBER)).toBe(true);
-    expect(needsPacing(swing('goblin'), MEMBER)).toBe(true);
-    expect(needsPacing(turnEnded('goblin', MEMBER), MEMBER)).toBe(true);
+    expect(needsPacing(walk('goblin'), MEMBER, FIGHT)).toBe(true);
+    expect(needsPacing(swing('goblin'), MEMBER, FIGHT)).toBe(true);
+    expect(needsPacing(turnEnded('goblin', MEMBER), MEMBER, FIGHT)).toBe(true);
   });
 
   it('never paces the local player, or an act with no paced actor', () => {
-    expect(needsPacing(walk(MEMBER), MEMBER)).toBe(false);
-    expect(needsPacing(swing(MEMBER), MEMBER)).toBe(false);
-    expect(needsPacing(downed(), MEMBER)).toBe(false);
+    expect(needsPacing(walk(MEMBER), MEMBER, FIGHT)).toBe(false);
+    expect(needsPacing(swing(MEMBER), MEMBER, FIGHT)).toBe(false);
+    expect(needsPacing(downed(), MEMBER, FIGHT)).toBe(false);
+  });
+
+  it('a world-pace walk or swing by somebody outside the fight is not a turn (rpg-project#685)', () => {
+    expect(needsPacing(walk('commoner'), MEMBER, FIGHT)).toBe(false);
+    expect(needsPacing(swing('commoner'), MEMBER, FIGHT)).toBe(false);
+    // A turn end is the fight's own clock: it is always a turn.
+    expect(needsPacing(turnEnded('commoner', MEMBER), MEMBER, FIGHT)).toBe(
+      true
+    );
   });
 });
 
