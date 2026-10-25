@@ -81,9 +81,10 @@ import {
 import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
-import { defaultDraftKey, exportDraftYaml } from './draftFile';
+import { defaultDraftKey, exportDraftYaml, readDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import {
+  createEmptyCastDocument,
   createGuardCastDocument,
   GUARD,
   SOLDIER,
@@ -104,6 +105,7 @@ import {
   createUnresolvedRegionLightingDocument,
 } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import referenceCastleYaml from './fixtures/the-mad-king.yaml?raw';
 import {
   clientToWorld,
   createLayoutTransform,
@@ -335,7 +337,9 @@ it('saves a reusable creature without a position, then places independent looks 
   let screen = within(
     page.getByRole('region', { name: 'Encounter configuration' })
   );
-  // Cast is the Encounter home's default section.
+  // Cast is the Encounter home's default section. This existing rules-editor
+  // regression deliberately enters advanced editing.
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced editor' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add a cast member' }));
   fireEvent.change(screen.getByLabelText('Cast member id'), {
     target: { value: 'town_guard' },
@@ -510,19 +514,17 @@ it('the palette lists every cast member, including a rulebook member, and opens 
       .getAllByRole('button')
       .map((node) => node.textContent)
   ).toEqual(['Goblin', 'Skeleton']);
-  // A member without a default look is listed but cannot be armed.
+  // Standard monsters use the existing rules-default appearance.
   expect(palette.getByRole('status').textContent).toBe(
-    'Choose a default look in the cast to place it.'
+    'Standard monster look.'
   );
   expect(
     (palette.getByRole('button', { name: 'Place on map' }) as HTMLButtonElement)
       .disabled
-  ).toBe(true);
+  ).toBe(false);
   fireEvent.click(palette.getByRole('button', { name: 'Configure creatures' }));
   expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: 'Add a cast member' })
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Add monster' })).toBeTruthy();
   expect(storage.document()).toEqual(before);
 });
 
@@ -1695,15 +1697,15 @@ describe('Encounter Studio joined document boundary', () => {
     switchTo('Layout');
     fireEvent.click(button('Undo'));
     fireEvent.click(button('Redo'));
-    fireEvent.click(button('Save local draft'));
+    fireEvent.click(button('Site'));
+    fireEvent.click(button('Save browser recovery'));
     expect(
       screen.queryByRole('button', {
         name: /Publish|Validate with server/,
       })
     ).toBeNull();
-    // Save & Play is the studio's one publishing control (S6); switching
-    // views never presses it.
-    expect(screen.getByRole('button', { name: 'Save & Play' })).toBeTruthy();
+    // Play remains separate from Site and switching views never presses it.
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
     for (const call of Object.values(services))
       expect(call).not.toHaveBeenCalled();
     expect(source.writer!.createComposition).not.toHaveBeenCalled();
@@ -1725,6 +1727,7 @@ describe('Encounter Studio joined document boundary', () => {
     );
     await settled();
     expect(screen.getByText(/Autosave is paused/)).not.toBeNull();
+    fireEvent.click(button('Site'));
     expect(button('Replace unreadable local draft')).not.toBeNull();
     gesture(zero, two);
     expect(cells()).toEqual(['0,0', '2,0']);
@@ -1760,7 +1763,8 @@ describe('Encounter Studio joined document boundary', () => {
     act(() => viewport().onTransformCommit(next));
     expect(viewport().scene).toEqual(next);
     switchTo('Layout');
-    fireEvent.click(button('Save local draft'));
+    fireEvent.click(button('Site'));
+    fireEvent.click(button('Save browser recovery'));
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(goodBytes);
     fireEvent.click(button('Undo'));
     switchTo('3D');
@@ -5375,9 +5379,14 @@ describe('S4 concealments through the real owner', () => {
 });
 
 describe('S4 the draft as a file through the real owner', () => {
+  const openFileOperation = (label: 'Import YAML' | 'Download YAML'): void => {
+    if (!screen.queryByRole('region', { name: 'Site management' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    fireEvent.click(screen.getByRole('button', { name: label }));
+  };
   const fileInput = (): HTMLInputElement => {
     if (!screen.queryByLabelText('Draft file to import'))
-      fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+      openFileOperation('Import YAML');
     return screen.getByLabelText('Draft file to import') as HTMLInputElement;
   };
   const choose = async (name: string, text: string): Promise<void> => {
@@ -5416,7 +5425,9 @@ describe('S4 the draft as a file through the real owner', () => {
       .mockImplementation(function (this: HTMLAnchorElement) {
         name = this.download;
       });
-    fireEvent.click(screen.getByRole('button', { name: /^Download / }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Download .*\.yaml$/ })
+    );
     create.mockRestore();
     revoke.mockRestore();
     click.mockRestore();
@@ -5432,7 +5443,7 @@ describe('S4 the draft as a file through the real owner', () => {
     const storage = new MemoryStorage(createCastleS4Document());
     mount(storage);
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    openFileOperation('Download YAML');
     const key = screen.getByLabelText('File key') as HTMLInputElement;
     expect(key.value).toBe(defaultDraftKey(storage.document()));
     fireEvent.change(key, { target: { value: 'mad-king' } });
@@ -5471,11 +5482,12 @@ describe('S4 the draft as a file through the real owner', () => {
       exportDraftYaml(createCastleS4Document(), 'mad-king')
     );
     fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+    openFileOperation('Download YAML');
     expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
       'mad-king'
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Close draft file' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+    openFileOperation('Download YAML');
     expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
       'mad-king'
     );
@@ -5820,7 +5832,7 @@ describe('S1 the cast through the real owner', () => {
     await settled();
     fireEvent.click(button('Encounter'));
     fireEvent.click(member('Guard'));
-    fireEvent.click(button('Delete Guard'));
+    fireEvent.click(button('Delete cast member'));
     expect(storage.document().scope).not.toHaveProperty('templates');
     fireEvent.click(button('Build'));
     expect(
@@ -5857,6 +5869,7 @@ describe('S1 the cast through the real owner', () => {
     await settled();
     fireEvent.click(button('Encounter'));
     fireEvent.click(member('Guard'));
+    fireEvent.click(button('Advanced editor'));
     fireEvent.change(screen.getByLabelText('Cast member id'), {
       target: { value: 'gate-guard' },
     });
@@ -5881,6 +5894,72 @@ describe('S1 the cast through the real owner', () => {
       'dnd5e:monsters:gate-guard',
     ]);
   });
+});
+
+it('the imported castle cast can place using existing looks without inventing cast defaults', async () => {
+  const read = readDraftYaml(referenceCastleYaml);
+  if (!read.ok) throw new Error(read.refusal);
+  // Keep the imported templates and exact king appearance, but use a small
+  // room for this owner test. Full castle geometry is exercised in the browser.
+  const original = createEmptyCastDocument();
+  original.scope.templates = read.scope.templates;
+  original.draft.room.monsterDeclarations = read.draft.room.monsterDeclarations
+    .filter((entry) => entry.ref === 'dnd5e:monsters:mad-king')
+    .map((entry) => ({ ...entry, startingCell: { location: { q: 0, r: 0 } } }));
+  const storage = new MemoryStorage(original);
+  mount(storage);
+  await settled();
+  switchTo('3D');
+  fireEvent.click(button('Monsters & NPCs'));
+  const palette = within(
+    screen.getByRole('region', { name: 'Monsters and NPCs palette' })
+  );
+  const members = within(palette.getByRole('list', { name: 'Cast' }));
+  // Every imported member's picker is covered by StudioCreaturePalette.test;
+  // this real-owner check drives the screenshot's Mad King all the way to disk.
+  fireEvent.click(members.getByRole('button', { name: 'The Mad King' }));
+  expect(
+    (palette.getByRole('button', { name: 'Place on map' }) as HTMLButtonElement)
+      .disabled
+  ).toBe(false);
+  expect(storage.document()).toEqual(original);
+  fireEvent.click(palette.getByRole('button', { name: 'Place on map' }));
+  act(() => viewport().roomAuthoring!.onPlaceMonster!({ q: 1, r: 0 }));
+  const placed = storage.document().draft.room.monsterDeclarations.at(-1)!;
+  expect(placed).toMatchObject({
+    ref: 'dnd5e:monsters:mad-king',
+    appearanceRef: 'dnd5e:npcs:kingdom:prince-01',
+    startingCell: { location: { q: 1, r: 0 } },
+  });
+  expect(storage.document().draft.scene.creaturePalette).toEqual(
+    original.draft.scene.creaturePalette
+  );
+  expect(storage.document().scope.templates).toEqual(original.scope.templates);
+  fireEvent.click(button('Undo'));
+  expect(storage.document()).toEqual(original);
+});
+
+it('Remove from board uses the selected NPC inspector and keeps the cast', async () => {
+  const original = createGuardCastDocument();
+  const storage = new MemoryStorage(original);
+  mount(storage);
+  await settled();
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({
+      kind: 'actor',
+      id: 'gate-1',
+    })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Remove from board' }));
+  expect(
+    storage.document().draft.room.monsterDeclarations.map((entry) => entry.id)
+  ).toEqual(['gate-2']);
+  expect(storage.document().draft.scene.creaturePalette).toEqual(
+    original.draft.scene.creaturePalette
+  );
+  fireEvent.click(button('Undo'));
+  expect(storage.document()).toEqual(original);
 });
 
 describe('S1 placing a cast member stamps its defaults', () => {
@@ -5926,6 +6005,85 @@ describe('S1 placing a cast member stamps its defaults', () => {
     return document;
   };
 
+  it.each([
+    'thug',
+    'goblin',
+    'goblin-boss',
+    'skeleton',
+    'skeleton-captain',
+    'zombie',
+    'bandit',
+  ])(
+    'places a standard %s without an appearance override or a new template',
+    (kind) => {
+      const document = withGuardRecipe();
+      const owner = castOwner(document);
+      const ref = `dnd5e:monsters:${kind}`;
+      act(() => {
+        expect(
+          owner.session.cast.save({ ref, defaults: { name: 'Named creature' } })
+        ).toBe(true);
+      });
+      const before = owner.session.document;
+      const id = owner.place(ref, '', 0)!;
+      expect(owner.session.document.draft.room.monsterDeclarations).toEqual([
+        { id, ref, startingCell: { location: { q: 0, r: 0 } } },
+      ]);
+      expect(owner.session.document.scope.templates).toEqual(
+        document.scope.templates
+      );
+      const file = exportDraftYaml(owner.session.document, 'standard-cast');
+      expect(file).not.toContain('appearance_ref:');
+      const reopened = readDraftYaml(file);
+      if (!reopened.ok) throw new Error(reopened.refusal);
+      expect(reopened.draft.scene.creaturePalette).toEqual(
+        owner.session.document.draft.scene.creaturePalette
+      );
+      expect(reopened.draft.room.monsterDeclarations).toEqual(
+        owner.session.document.draft.room.monsterDeclarations
+      );
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      act(() => owner.session.redo());
+      expect(
+        owner.session.document.draft.room.monsterDeclarations[0]
+      ).not.toHaveProperty('appearanceRef');
+    }
+  );
+
+  it('a zombie can look human without changing its rules or existing placements', () => {
+    const owner = castOwner(withGuardRecipe());
+    const ref = 'dnd5e:monsters:zombie';
+    act(() => {
+      expect(
+        owner.session.cast.save({ ref, defaults: { name: 'Villager' } })
+      ).toBe(true);
+    });
+    const first = owner.place(ref, '', 0)!;
+    act(() => {
+      expect(
+        owner.session.cast.save({
+          ref,
+          defaults: {
+            name: 'Villager',
+            modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+          },
+        })
+      ).toBe(true);
+    });
+    const second = owner.place(ref, LOOK, 1)!;
+    expect(owner.session.document.draft.room.monsterDeclarations).toEqual([
+      { id: first, ref, startingCell: { location: { q: 0, r: 0 } } },
+      {
+        id: second,
+        ref,
+        appearanceRef: LOOK,
+        startingCell: { location: { q: 1, r: 0 } },
+      },
+    ]);
+    expect(owner.session.document.scope.templates).not.toHaveProperty('zombie');
+  });
+
   it('placing writes the ref, the chosen look and the name in one history entry', () => {
     const owner = castOwner(withGuardRecipe());
     const before = owner.session.document;
@@ -5945,6 +6103,107 @@ describe('S1 placing a cast member stamps its defaults', () => {
     act(() => owner.session.undo());
     expect(owner.session.document).toEqual(before);
     expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('keeps an imported rulebook cast member when its last placement is removed', () => {
+    const document = withGuardRecipe();
+    document.draft.room.monsterDeclarations = [
+      {
+        id: 'last-skeleton',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 0, r: 0 } },
+      },
+    ];
+    const owner = castOwner(document);
+    act(() => {
+      expect(owner.session.creatures.select('last-skeleton')).toBe(true);
+    });
+    act(() => {
+      expect(
+        owner.session.commitArrange({
+          kind: 'actor-remove',
+          target: { kind: 'actor', id: 'last-skeleton' },
+        })
+      ).toBe(true);
+    });
+    expect(owner.session.document.draft.room.monsterDeclarations).toEqual([]);
+    expect(owner.session.document.draft.scene.creaturePalette).toContainEqual(
+      expect.objectContaining({
+        ref: 'dnd5e:monsters:skeleton',
+        name: 'Skeleton',
+      })
+    );
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(document);
+  });
+
+  it('removes only the selected NPC, retains its cast and restores bindings and looks with Undo', () => {
+    const owner = castOwner(withGuardRecipe());
+    const first = owner.place(GUARD, LOOK, 0)!;
+    const second = owner.place(GUARD, LOOK, 1)!;
+    act(() => {
+      expect(owner.session.creatures.select(first)).toBe(true);
+    });
+    const staleRemove = owner.session.commitArrange;
+    act(() => {
+      expect(owner.session.creatures.select(second)).toBe(true);
+    });
+    const before = owner.session.document;
+    act(() => {
+      expect(
+        staleRemove({
+          kind: 'actor-remove',
+          target: { kind: 'actor', id: first },
+        })
+      ).toBe(false);
+    });
+    expect(owner.session.document).toEqual(before);
+    act(() => {
+      owner.session.publishing.setBusy(true);
+    });
+    act(() => {
+      expect(
+        owner.session.commitArrange({
+          kind: 'actor-remove',
+          target: { kind: 'actor', id: second },
+        })
+      ).toBe(false);
+    });
+    expect(owner.session.document).toEqual(before);
+    act(() => {
+      owner.session.publishing.setBusy(false);
+    });
+    act(() => {
+      expect(
+        owner.session.commitArrange({
+          kind: 'actor-remove',
+          target: { kind: 'actor', id: second },
+        })
+      ).toBe(true);
+    });
+    expect(
+      owner.session.document.draft.room.monsterDeclarations.map(
+        (entry) => entry.id
+      )
+    ).toEqual([first]);
+    expect(
+      owner.session.document.draft.room.monsterBindings
+    ).not.toHaveProperty(second);
+    expect(owner.session.document.draft.scene.creaturePalette).toEqual(
+      before.draft.scene.creaturePalette
+    );
+    expect(owner.session.document.scope.templates).toEqual(
+      before.scope.templates
+    );
+    expect(owner.session.arrange).toBeNull();
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    act(() => owner.session.redo());
+    expect(
+      owner.session.document.draft.room.monsterDeclarations.map(
+        (entry) => entry.id
+      )
+    ).toEqual([first]);
   });
 
   it('placing stamps the default faction onto the binding', () => {
@@ -5995,14 +6254,14 @@ describe('S1 placing a cast member stamps its defaults', () => {
     });
   });
 
-  it('a member without a default look cannot be armed', () => {
+  it('a member without a default look still refuses an unavailable placement appearance', () => {
     const owner = castOwner(createPopulatedStudioDocument());
     const before = owner.session.document;
     act(() => {
       expect(
         owner.session.creatures.armPlacement(
           'dnd5e:monsters:goblin',
-          'dnd5e:npcs:kingdom:soldier-male-01'
+          'dnd5e:npcs:unpublished:missing'
         )
       ).toBe(false);
     });

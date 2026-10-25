@@ -14,9 +14,8 @@ type Thumbnail =
  * Presentation cache only: never document, never storage. */
 const THUMBNAILS = new Map<string, Thumbnail>();
 
-const FAMILIES = NPC_APPEARANCE_FAMILIES.filter(
-  (family) => family.defaultLook.look
-);
+// One-look appearances are choices too; palette metadata is not a prerequisite.
+const FAMILIES = NPC_APPEARANCE_FAMILIES;
 
 /** A pick-from-list of the published NPC appearance families, each with a
  * thumbnail of its default look. Thumbnails are captured one at a time on a

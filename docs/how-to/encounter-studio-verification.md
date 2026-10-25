@@ -1,5 +1,57 @@
 # Verify Encounter Studio
 
+## Site management
+
+The header's **Site** button opens one management surface without saving or
+launching. **Open** offers My World, References and Import YAML; **Save** offers
+My World, Save a copy and Download YAML. Only the active operation is shown.
+Switching operations or closing Site cancels an unconfirmed server overwrite.
+While a publishing transaction runs, Site navigation and close are disabled.
+
+The world save and YAML download share one file key. Save a copy proposes a
+different key, refuses the source key, and still uses the server's existing
+collision/overwrite check. Leaving an unsaved copy restores the previous
+destination; a successful copy becomes the saved destination. Re-entering Copy
+must not permit the original key, including via Play. Opening an owned site remembers its destination;
+references and other members' sites get a fresh destination. YAML import asks
+before replacing the draft and can be undone. Failures leave the draft intact.
+
+**Play** is a separate header action; it still saves before launching and shows
+any confirmation or error inside Site. Saving does not require a character.
+**Browser recovery** is local-only, not a world save. Its explicit save button
+lives in Site's footer; YAML operations remain available when the server is off.
+
+Check at desktop and narrow widths: open Site, switch among the six operations,
+confirm only one form is shown, download/import a YAML file, and verify copy
+saving does not change the original destination. Use a disposable context and
+only test-owned world files for writes. Cast and selected-NPC controls are not
+part of this change.
+
+## Cast appearances
+
+Encounter → Cast offers a member list and one focused appearance editor. **Add
+monster** uses the configured standard monster choices; a cast name or changed
+look does not create a template or change the rules ref. A zombie can use a human
+appearance. **Use standard monster look** removes the default look override.
+Existing placements retain their own appearances; new placements use the edited
+default. One-look appearances are available alongside families with style/skin
+choices. The **Advanced editor** retains the existing stat-block/equipment
+controls; their rulebook capabilities are unchanged.
+
+Build → 3D → Monsters & NPCs places cast members. A standard monster needs no
+explicit look: its declaration omits appearanceRef. Imported cast members without
+default looks offer **Appearance for this placement**, using the looks already
+placed in that site; placing does not add or change cast defaults. Check the
+reference castle's existing cast, not only a newly added standard monster. In a selected NPC's inspector,
+**Remove from board** removes that placement, not its cast member. Undo restores
+its position, bindings, name and look. Props retain their existing controls.
+
+Verify: add a zombie, name it, choose a human look, Apply, and inspect a YAML
+roundtrip for unchanged zombie ref and no new template. Add and place a skeleton
+using its standard look, remove it with the inspector action, then Undo. Confirm
+that cast membership and siblings survive removal. Use the same disposable-context
+rules below; do not replace an operator's local draft.
+
 ## Current boundary
 
 Home → **Encounter Studio** opens a local draft in **Layout**. Home → **World

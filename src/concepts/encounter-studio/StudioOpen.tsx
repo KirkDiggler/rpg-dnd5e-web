@@ -23,7 +23,7 @@ import {
 } from './studioPublishing';
 
 export const EMPTY_WORLD_SENTENCE =
-  'Nothing saved in this world yet. Save and Play saves here.';
+  'Nothing saved in this world yet. Save to My World saves here.';
 
 export type OpenedFile = {
   read: Extract<DraftFileRead, { ok: true }>;
@@ -68,7 +68,8 @@ export interface StudioOpenProps {
   onOpen(opened: OpenedFile): void;
   onRenamed(from: string, to: string): void;
   onDeleted(key: string): void;
-  onClose(): void;
+  onClose?(): void;
+  source?: 'world' | 'references';
 }
 
 type Asking =
@@ -83,6 +84,7 @@ export function StudioOpen({
   onRenamed,
   onDeleted,
   onClose,
+  source,
 }: StudioOpenProps): React.JSX.Element {
   const [asking, setAsking] = useState<Asking | null>(null);
   const [renaming, setRenaming] = useState<{
@@ -307,9 +309,11 @@ export function StudioOpen({
       aria-label="Open from server"
     >
       <div className="es-buttons">
-        <button type="button" onClick={onClose}>
-          Close Open
-        </button>
+        {onClose && (
+          <button type="button" onClick={onClose}>
+            Close Open
+          </button>
+        )}
         {library.status === 'ready' && (
           <button type="button" onClick={() => void library.refetch()}>
             Refresh
@@ -336,18 +340,36 @@ export function StudioOpen({
           {!library.sourcesKnown && (
             <p className="es-help">{OWNERS_NOT_ON_SERVER_SENTENCE}</p>
           )}
-          <h3 id="studio-open-world">This world</h3>
-          {library.world.length === 0 ? (
-            <p className="es-help">{EMPTY_WORLD_SENTENCE}</p>
-          ) : (
-            <ul className="es-open-list" aria-labelledby="studio-open-world">
-              {library.world.map((summary) => row(summary, true))}
-            </ul>
+          {source !== 'references' && (
+            <>
+              <h3 id="studio-open-world">My World</h3>
+              {library.world.length === 0 ? (
+                <p className="es-help">{EMPTY_WORLD_SENTENCE}</p>
+              ) : (
+                <ul
+                  className="es-open-list"
+                  aria-labelledby="studio-open-world"
+                >
+                  {library.world.map((summary) => row(summary, true))}
+                </ul>
+              )}
+            </>
           )}
-          <h3 id="studio-open-references">References</h3>
-          <ul className="es-open-list" aria-labelledby="studio-open-references">
-            {library.references.map((summary) => row(summary, false))}
-          </ul>
+          {source !== 'world' && (
+            <>
+              <h3 id="studio-open-references">References</h3>
+              <p className="es-help">
+                Open a reference as a starting point. Saving creates your own
+                copy.
+              </p>
+              <ul
+                className="es-open-list"
+                aria-labelledby="studio-open-references"
+              >
+                {library.references.map((summary) => row(summary, false))}
+              </ul>
+            </>
+          )}
         </>
       )}
     </section>

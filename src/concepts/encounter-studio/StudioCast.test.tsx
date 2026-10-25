@@ -34,7 +34,7 @@ vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
 /** A stateful stand-in for the owner: each cast intent is one transaction
  * over the same pure edits the owner commits, recorded in history, and the
  * edited member becomes the one selection, as the owner does. */
-function harness(initial: RoomDraftDocument) {
+function harness(initial: RoomDraftDocument, advanced = true) {
   const history: RoomDraftDocument[] = [initial];
   let ids = 0;
   const select = vi.fn(() => true);
@@ -94,6 +94,8 @@ function harness(initial: RoomDraftDocument) {
     return <StudioCast session={session} onShowPlacement={select} />;
   }
   render(<Harness />);
+  if (advanced)
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced editor' }));
   return {
     history,
     select,
@@ -114,6 +116,46 @@ const change = (label: string, value: string): void => {
 afterEach(cleanup);
 
 describe('StudioCast', () => {
+  it('adds a named zombie to the cast and changes only its appearance to human', () => {
+    const { latest } = harness(createEmptyCastDocument(), false);
+    fireEvent.click(button('Add monster'));
+    change('Monster', 'dnd5e:monsters:zombie');
+    change('Cast name', 'Quiet villager');
+    fireEvent.click(button('Add to cast'));
+    expect(latest().scope.templates).toBeUndefined();
+    expect(latest().draft.scene.creaturePalette).toEqual([
+      { id: 'recipe-1', name: 'Quiet villager', ref: 'dnd5e:monsters:zombie' },
+    ]);
+    fireEvent.click(button('Change appearance'));
+    expect(screen.getByRole('radio', { name: 'King 01' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Peasant Male' }));
+    fireEvent.click(button('Apply appearance'));
+    expect(latest().draft.scene.creaturePalette?.[0]).toMatchObject({
+      ref: 'dnd5e:monsters:zombie',
+      modelRef: 'dnd5e:npcs:kingdom:peasant-male-01',
+      name: 'Quiet villager',
+    });
+    expect(latest().scope.templates).toBeUndefined();
+    fireEvent.click(button('Use standard monster look'));
+    fireEvent.click(button('Apply appearance'));
+    expect(latest().draft.scene.creaturePalette?.[0]).not.toHaveProperty(
+      'modelRef'
+    );
+  });
+
+  it('editing a template appearance preserves its hidden default name and all rules', () => {
+    const document = createGuardCastDocument();
+    document.draft.scene.creaturePalette![0]!.name = 'Gate sentry';
+    const { latest } = harness(document, false);
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Change appearance'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Peasant Male' }));
+    fireEvent.click(button('Apply appearance'));
+    expect(latest().draft.scene.creaturePalette?.[0]?.name).toBe('Gate sentry');
+    expect(latest().scope).toEqual(document.scope);
+    expect(latest().draft.room).toEqual(document.draft.room);
+  });
+
   it('lists each member with its source and placement count', () => {
     let document = placeCastMember(
       createGuardCastDocument(),
