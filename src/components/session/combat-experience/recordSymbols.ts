@@ -266,7 +266,7 @@ function verdictLines(
   const line =
     v.held && v.affordable
       ? `${lead}✓ ${what} · ${v.weight} × ${word}${v.percent}% = ${v.loaded}`
-      : `${lead}✗ ${what}: ${v.held ? 'unaffordable' : 'condition'}`;
+      : `${lead}✗ ${what}: ${!v.held ? 'condition' : v.rows ? 'nothing inside eligible' : 'unaffordable'}`;
   return [
     line,
     ...(v.rows ?? []).flatMap((inner) =>

@@ -105,6 +105,27 @@ describe('an answer into a group reads level by level', () => {
     ]);
   });
 
+  it('a group out of the roll because nothing inside could fire says so', () => {
+    const empty = {
+      ...answeredBeat,
+      path: [0],
+      entry: 0,
+      rows: [
+        verdict(0, 100),
+        {
+          ...verdict(1, 0),
+          held: true,
+          affordable: false,
+          rows: [verdict(0, 0), verdict(1, 0)],
+        },
+      ],
+    };
+    const table = symbolsOf(feed([tableBeat, empty])).get('1');
+    expect(readAnswer(answeredOf(empty)!, table).lines[1]).toBe(
+      '✗ always → pursuer {distance 6, heading went}: nothing inside eligible'
+    );
+  });
+
   it('a beat from before groups reads its entry as a path of one', () => {
     const flat = {
       ...answeredBeat,
