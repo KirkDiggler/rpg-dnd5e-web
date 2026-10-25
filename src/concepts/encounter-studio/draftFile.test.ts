@@ -125,7 +125,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     ],
   ])(
     'refuses the toolkit-invalid over-segmented action augment ref on a %s',
-    (site, apply, refusal) => {
+    (_site, apply, refusal) => {
       const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
       apply(file);
       const read = readDraftYaml(stringify(file));
