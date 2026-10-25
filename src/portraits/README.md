@@ -121,8 +121,9 @@ gap.
 `MemberPortrait` consumes the member ID and preserves the provider's named
 loading/unavailable/error states with an initials fallback. It also handles image
 decode failure, keyed by the image and appearance identity, so a changed image can
-recover. Existing active/concentration/downed indicators and visible names remain
-owned by the HUD. These images are not equipment-loadout portraits.
+recover. The character card crops the shared image to the head and upper body;
+turn entries retain the full-body framing, with no extra capture. Existing
+active/concentration/downed indicators and visible names remain owned by the HUD. These images are not equipment-loadout portraits.
 
 The provider lab's **Show HUD integration** button (or `?concept=portrait-provider&hud=1`)
 uses the actual HUD with the same generated roster fixtures and capture provider.

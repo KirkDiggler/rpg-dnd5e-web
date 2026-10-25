@@ -668,7 +668,11 @@ function CombatExperienceContent({
               }
             >
               <div className={styles.viewerPortrait}>
-                <MemberPortrait memberId={viewerMember} name={viewerName} />
+                <MemberPortrait
+                  memberId={viewerMember}
+                  name={viewerName}
+                  framing="portrait"
+                />
               </div>
               <div className={styles.viewerIdentity}>
                 <strong>{viewerName}</strong>
@@ -791,6 +795,7 @@ function CombatExperienceContent({
                         <MemberPortrait
                           memberId={viewerMember}
                           name={viewerName}
+                          framing="portrait"
                         />
                       </div>
                       <div className={styles.viewerIdentity}>

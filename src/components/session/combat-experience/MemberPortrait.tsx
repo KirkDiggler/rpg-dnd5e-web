@@ -6,9 +6,11 @@ import styles from './MemberPortrait.module.css';
 export function MemberPortrait({
   memberId,
   name,
+  framing = 'body',
 }: {
   memberId: string;
   name: string;
+  framing?: 'body' | 'portrait';
 }): ReactElement {
   const portrait = usePortrait(memberId);
   const [failed, setFailed] = useState<{ key: string; image: string } | null>(
@@ -20,14 +22,18 @@ export function MemberPortrait({
     failed.image === portrait.image;
   if (portrait.status === 'ready' && !decodeFailed)
     return (
-      <img
-        key={portrait.image}
-        className={styles.image}
-        src={portrait.image}
-        alt={`${name} portrait`}
-        draggable={false}
-        onError={() => setFailed({ key: portrait.key, image: portrait.image })}
-      />
+      <span className={styles.frame} data-framing={framing}>
+        <img
+          key={portrait.image}
+          className={styles.image}
+          src={portrait.image}
+          alt={`${name} portrait`}
+          draggable={false}
+          onError={() =>
+            setFailed({ key: portrait.key, image: portrait.image })
+          }
+        />
+      </span>
     );
   const status = decodeFailed ? 'error' : portrait.status;
   const message = decodeFailed

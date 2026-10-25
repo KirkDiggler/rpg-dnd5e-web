@@ -179,6 +179,11 @@ describe('CombatExperience shared production shell', () => {
     act(() => first.onComplete(first.source.key, 'data:image/png;base64,hero'));
     const images = screen.getAllByRole('img', { name: 'Aldric Vale portrait' });
     expect(images.length).toBe(2);
+    expect(
+      images
+        .map((image) => image.parentElement?.getAttribute('data-framing'))
+        .sort()
+    ).toEqual(['body', 'portrait']);
     expect(images.map((image) => image.getAttribute('src'))).toEqual([
       'data:image/png;base64,hero',
       'data:image/png;base64,hero',
