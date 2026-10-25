@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
+import { wordRowsOf } from '../world-building/bundles';
 import { encodeSingleRoomDungeon } from '../world-building/singleRoomDungeon';
 import { renderScope } from '../world-building/siteScope';
 import {
@@ -268,9 +269,17 @@ describe('the draft as a file (rpg-project#578)', () => {
     const read = readDraftYaml(yaml);
     if (!read.ok) throw new Error(read.refusal);
     expect(read.key).toBe('the-mad-king');
-    const selectors = Object.values(read.scope.tables ?? {}).flatMap((t) =>
-      (t.time ?? []).map((row) => row.toward)
+    // THE GATE GUARDS ARE THREE `use:` LINES (rpg-project#670): their
+    // pursuit, their alarm and their loop are bundles, resolved here into the
+    // rows the engine rolls — which are the rows the castle wrote flat before.
+    const gate = read.scope.tables?.['gate-patrol']?.time ?? [];
+    expect(
+      gate.filter((row) => row.use !== undefined).map((row) => row.use)
+    ).toEqual(['pursuer', 'alarm-reactor', 'patrol']);
+    const rows = Object.values(read.scope.tables ?? {}).flatMap((t) =>
+      wordRowsOf(read.scope.bundles, t.time ?? [], 'time')
     );
+    const selectors = rows.map((row) => row.toward);
     expect(selectors).toContainEqual({ at: { q: 10, r: -19 } });
     expect(selectors).toContainEqual({ at: { q: -2, r: 4 } });
     expect(selectors).toContainEqual({
@@ -287,12 +296,9 @@ describe('the draft as a file (rpg-project#578)', () => {
         { q: -2, r: 10 },
       ],
     });
-    // Pursuit (rpg-project#668): both gate tables walk to the remembered
-    // cell and search six on once it is lost.
-    const rows = Object.values(read.scope.tables ?? {}).flatMap(
-      (t) => t.time ?? []
-    );
-    // And they search the way the hero went (rpg-project#679), as written.
+    // Pursuit (rpg-project#668), through the pursuer bundle: both gate
+    // tables walk to the remembered cell and search six on the way the hero
+    // went (rpg-project#679), the bundle's defaults filled.
     expect(
       rows.filter(
         (row) =>
@@ -329,8 +335,13 @@ describe('the draft as a file (rpg-project#578)', () => {
     );
     // The pause survives the save in the file's own spelling.
     expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
-    // So does the search's heading (rpg-project#679): both gate guards.
-    expect(saved.match(/heading: went/g)).toHaveLength(2);
+    // The three `use:` lines survive the save, on both gate guards, and the
+    // bundles they name keep their `$name` placeholders (rpg-project#670).
+    expect(saved.match(/use: pursuer/g)).toHaveLength(2);
+    expect(saved.match(/use: alarm-reactor/g)).toHaveLength(2);
+    expect(saved.match(/use: patrol/g)).toHaveLength(2);
+    expect(saved).toContain('heading: $heading');
+    expect(saved).toMatch(/params:\n\s+path: null/);
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
     expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({

@@ -39,6 +39,7 @@
 
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
+  ANSWER_AS_WORDS,
   ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_PATH_SELECTOR,
@@ -56,11 +57,14 @@ import {
   EMPTY_FACT_REFUSAL,
   EMPTY_TRIGGER_REFUSAL,
   entryDoesOneThingRefusal,
+  GROUP_SENTENCES,
   HEARING_SENTENCES,
   isSearchHeading,
   isSelectorWord,
   missingSpanRefusal,
   noneWordBodyRefusal,
+  patternOf,
+  patternRegExp,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
   SEARCH_SHAPE_REFUSAL,
@@ -237,6 +241,23 @@ export interface AnswerEntryShape {
   /** `search: { distance }` (rpg-project#668 R4); distance absent is the
    * engine's six, carried absent so the file's bytes round-trip. */
   search?: AnswerSearchShape;
+  /** `use: <bundle>` makes this row a GROUP (rpg-project#670): its answer is
+   * the named bundle's rows, declared once under the root `bundles:`. A
+   * `use:` row carries `weight`, `when`, `with` and `as` and no word. */
+  use?: string;
+  /** The bundle's parameters for this use, by name, carried as written: each
+   * replaces every `$name` in the bundle's rows, whole. */
+  with?: Record<string, unknown>;
+  /** The temperament word the group counts as — one of attack, toward, away,
+   * flee or hold — or absent for none, which loads at 100. */
+  as?: string;
+}
+
+/** Whether a row is a group: it uses a bundle. */
+export function isUseEntry(
+  entry: AnswerEntryShape
+): entry is AnswerEntryShape & { use: string } {
+  return entry.use !== undefined;
 }
 
 /** `search`'s body as written: `{}`, `{ distance: N }`, `{ heading: H }` or
@@ -261,6 +282,9 @@ const ENTRY_KEYS: readonly string[] = Object.freeze([
   'say',
   'when',
   ...ANSWER_WORD_KEYS,
+  'use',
+  'with',
+  'as',
 ]);
 
 /** The engine reads a raw node here, so a non-scalar `enemy:` reaches it as
@@ -372,6 +396,14 @@ function validateAnswerEntry(
     );
   }
 
+  // A GROUP ROW IS ITS OWN SHAPE (rpg-project#670): no word of its own.
+  if (value.use !== undefined && value.use !== null)
+    return validateUseEntry(value, path, trigger);
+  if (value.with !== undefined && value.with !== null)
+    fail(`${path}.with`, GROUP_SENTENCES.withWithoutUse());
+  if (value.as !== undefined && value.as !== null)
+    fail(`${path}.as`, GROUP_SENTENCES.asWithoutUse());
+
   // The words are found by ASKING THE VOCABULARY, not by listing keys here: a
   // word the engine adds is read by this loop with no change.
   const words = ANSWER_WORD_KEYS.filter(
@@ -405,6 +437,13 @@ function validateAnswerEntry(
   // author wrote the key, so they meant to teach something.
   if (words.includes('fact') && value.fact === '')
     fail(`${path}.fact`, EMPTY_FACT_REFUSAL);
+  // A ROW TEACHES ONE FACT, BY NAME (rpg-project#684 L2).
+  if (
+    words.includes('fact') &&
+    typeof value.fact === 'string' &&
+    patternOf(value.fact) !== undefined
+  )
+    fail(`${path}.fact`, GROUP_SENTENCES.patternTaught(value.fact));
 
   if (words.length > ANSWER_ENTRY_RULES.maximumWords)
     fail(path, entryDoesOneThingRefusal(words));
@@ -481,6 +520,83 @@ function validateAnswerEntry(
   }
 
   return entry;
+}
+
+/** The words a group row may NOT carry, in `behavior.Answer.words`' order:
+ * every outcome word, the search, the line and the fact. */
+const GROUP_CARRIED_KEYS: readonly string[] = Object.freeze([
+  'hold',
+  'attack',
+  'toward',
+  'away',
+  'flee',
+  'search',
+  'say',
+  'fact',
+]);
+
+/**
+ * A `use:` row (rpg-project#670): `{ use, with?, weight?, when?, as? }`.
+ *
+ * What a row can be told FROM THE ROW ALONE is refused here, in the engine's
+ * order: the weight, a social `when`, a word carried, then `as`. Whether the
+ * bundle exists, whether the parameters fit it, and what its rows say are the
+ * DOCUMENT's questions — asked by `groupRefusals` with the engine's sentences,
+ * and refused by the engine at its own door — because a form builder never
+ * resolves a name at decode (`TablesPanel`'s rule for a `table:`).
+ */
+function validateUseEntry(
+  value: Record<string, unknown>,
+  path: string,
+  trigger: string
+): AnswerEntryShape {
+  if (typeof value.use !== 'string')
+    fail(`${path}.use`, 'expected a bundle name');
+  if (value.use === '') fail(`${path}.use`, GROUP_SENTENCES.noBundleNamed());
+  const entry: AnswerEntryShape = { use: value.use };
+  if (value.weight !== undefined && value.weight !== null) {
+    const weight = value.weight;
+    if (typeof weight !== 'number' || !Number.isInteger(weight))
+      fail(`${path}.weight`, 'expected a whole number');
+    entry.weight = weight;
+    if (weight < ANSWER_ENTRY_RULES.minimumWeight)
+      fail(`${path}.weight`, weightRefusal(weight));
+  }
+  if (value.when !== undefined && value.when !== null) {
+    entry.when = validateAnswerWhen(value.when, `${path}.when`, path);
+    const refusal = answerWhenRefusal(trigger);
+    if (refusal) fail(`${path}.when`, refusal);
+  }
+  if (value.with !== undefined && value.with !== null) {
+    if (!isMapping(value.with))
+      fail(`${path}.with`, 'expected a map of parameter to value');
+    entry.with = value.with;
+  }
+  const carried = GROUP_CARRIED_KEYS.filter(
+    (key) => value[key] !== undefined && value[key] !== null
+  );
+  if (carried.length > 0) fail(path, GROUP_SENTENCES.carries(carried));
+  if (value.as !== undefined && value.as !== null) {
+    const as = scalarText(value.as);
+    if (!ANSWER_AS_WORDS.includes(as)) fail(path, GROUP_SENTENCES.asWord(as));
+    entry.as = as;
+  }
+  return entry;
+}
+
+/**
+ * A bundle's rows, judged AS ROWS of `trigger` once a use has substituted its
+ * parameters (rpg-project#670), in authored order: the bundle's order is the
+ * group's, and the engine rolls it as written.
+ */
+export function validateAnswerRows(
+  rows: readonly unknown[],
+  path: string,
+  trigger: string
+): AnswerEntryShape[] {
+  return rows.map((row, index) =>
+    validateAnswerEntry(row, `${path}[${index}]`, trigger)
+  );
 }
 
 /** `search: { distance, heading }` — `dungeonspec.SearchSpec.UnmarshalYAML`:
@@ -571,6 +687,13 @@ function validateWhenCondition(
       fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
     const id = scalarText(fact);
     if (id === '') fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
+    // A PATTERN OVER FACT IDS (rpg-project#670 R16): one that does not
+    // compile is mind/behavior's, at the row; whether it matches a fact this
+    // file sets is the document's question (`groupRefusals`).
+    const pattern = patternOf(id);
+    if (pattern === '') fail(path, GROUP_SENTENCES.factEmptyPattern());
+    if (pattern !== undefined && patternRegExp(pattern) === undefined)
+      fail(rowPath, wrap(GROUP_SENTENCES.notAPattern('`fact`', id)));
     return { fact: id };
   }
 
@@ -636,7 +759,19 @@ function validateHeard(
     value.kind === undefined || value.kind === null
       ? ''
       : scalarText(value.kind);
-  if (kind !== '' && !ANSWER_SOUND_KINDS.includes(kind))
+  // A PATTERN IS JUDGED AGAINST THE SOUNDS A FILE CAN MAKE
+  // (rpg-project#684 L3), in `decodeHeard`'s order: empty, then matching
+  // nothing. One that does not compile is mind/behavior's, at the row.
+  const pattern = patternOf(kind);
+  if (pattern !== undefined) {
+    if (pattern === '')
+      fail(`${path}.kind`, GROUP_SENTENCES.heardEmptyPattern());
+    const re = patternRegExp(pattern);
+    if (re === undefined)
+      fail(rowPath, wrap(GROUP_SENTENCES.notAPattern('`heard` kind', kind)));
+    if (!ANSWER_SOUND_KINDS.some((k) => re.test(k)))
+      fail(`${path}.kind`, GROUP_SENTENCES.heardPatternNoSound(kind));
+  } else if (kind !== '' && !ANSWER_SOUND_KINDS.includes(kind))
     fail(`${path}.kind`, HEARING_SENTENCES.unknownSoundKind(kind));
   const raw = value.within;
   if (

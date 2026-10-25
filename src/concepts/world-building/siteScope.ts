@@ -85,6 +85,24 @@ export interface SiteFaction {
  * instead of six times. */
 export type SiteTables = Record<string, AnswerTableShape>;
 
+/** One named group of rows at the root, keyed by its id in
+ * [SiteScope.bundles] (rpg-project#670, R12): a behaviour authored once and
+ * used as one row, `use: <id>`, on any table.
+ *
+ * THE ROWS ARE CARRIED AS WRITTEN, `$name` placeholders and all, because
+ * they are not rows until a use substitutes its parameters: `$distance` is
+ * not a distance. `bundles.ts` resolves a use into the rows it makes, and
+ * judges them there by the one answer grammar.
+ *
+ * A PARAMETER WITH NO DEFAULT is written `name: ~` and carried as `null`. */
+export interface SiteBundle {
+  params?: Record<string, unknown>;
+  rows: unknown[];
+}
+
+/** The site's `bundles:`, by id. */
+export type SiteBundles = Record<string, SiteBundle>;
+
 /** How two factions stand, and the predicate that flips hostile/neutral.
  * The published encounter grammar refuses `until` only for allied. */
 export interface SiteDisposition {
@@ -98,6 +116,9 @@ export interface SiteDisposition {
 export interface SiteScope {
   /** Authored stat blocks; the engine derives their live numbers. */
   templates?: SiteTemplates;
+  /** The named groups of rows this site declared, used as one `use:` row
+   * wherever a table wants them (rpg-project#670). */
+  bundles?: SiteBundles;
   /** The answer tables this site declared, keyed by id — the shared thing a
    * faction or a binding NAMES rather than copies (rpg-toolkit#1897). */
   tables?: SiteTables;
@@ -375,6 +396,7 @@ function isStance(word: string): word is Stance {
  * `SiteScope` and NOT to this list is invisible to every one of them. */
 export const SCOPE_KEYS = [
   'templates',
+  'bundles',
   'tables',
   'factions',
   'dispositions',
@@ -572,6 +594,36 @@ export function validateSiteScenarios(value: unknown): SiteScenarios {
  * a table that names a trigger and lists nothing under it, at the table's own
  * path, so `{}` is caught there. What this refuses is the id, because an id
  * nothing can name is the one defect with no other home. */
+export function validateSiteBundles(value: unknown): SiteBundles {
+  if (!isMapping(value)) fail('Site bundles', 'must be a map');
+  const bundles: SiteBundles = {};
+  for (const [id, body] of Object.entries(value)) {
+    const path = `Site bundle ${id}`;
+    if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as pursuer');
+    if (!isMapping(body)) fail(path, 'must be { params, rows }');
+    for (const key of Object.keys(body)) {
+      if (key !== 'params' && key !== 'rows')
+        fail(path, `unknown key "${key}" — a bundle is { params, rows }`);
+    }
+    const bundle: SiteBundle = { rows: [] };
+    if (body.params !== undefined && body.params !== null) {
+      if (!isMapping(body.params))
+        fail(`${path}.params`, 'must be a map of parameter to its default');
+      bundle.params = { ...body.params };
+    }
+    // AN EMPTY BUNDLE IS NOT REFUSED HERE, for `validateSiteTables`' reason:
+    // the engine refuses it at the bundle's own path, and the studio shows
+    // that sentence on the bundle (`groupRefusals`).
+    if (body.rows !== undefined && body.rows !== null) {
+      if (!Array.isArray(body.rows))
+        fail(`${path}.rows`, 'must be a list of rows');
+      bundle.rows = [...body.rows];
+    }
+    bundles[id] = bundle;
+  }
+  return bundles;
+}
+
 export function validateSiteTables(value: unknown): SiteTables {
   if (!isMapping(value)) fail('Site tables', 'must be a map');
   const tables: SiteTables = {};
@@ -716,6 +768,10 @@ export function validateSiteScope(
   if (Object.hasOwn(raw, 'templates')) {
     const templates = validateMonsterTemplates(raw.templates);
     if (Object.keys(templates).length) scope.templates = templates;
+  }
+  if (Object.hasOwn(raw, 'bundles')) {
+    const bundles = validateSiteBundles(raw.bundles);
+    if (Object.keys(bundles).length > 0) scope.bundles = bundles;
   }
   // THE TABLES FIRST, because both a faction and a monster binding may NAME
   // one, and a name cannot be judged before the universe it names exists — the

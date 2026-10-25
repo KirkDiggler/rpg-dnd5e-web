@@ -950,3 +950,138 @@ function editDistance(a: string, b: string): number {
   }
   return d[a.length][b.length];
 }
+
+// ---------------------------------------------------------------------------
+// THE GROUP SENTENCES (rpg-project#670, S3 bundles) — ONE TABLE.
+//
+// A `use:` row is a GROUP: its answer is a named bundle's rows, declared once
+// under the root `bundles:`. Every sentence is the engine's, word for word, at
+// rpg-toolkit#2128 (`dungeonspec/bundles.go`, `grammar.go`, `spec.go`) and the
+// `mind/behavior` v0.12.0 it pins (`Answer.Validate`'s group arm) — minus the
+// `(line N)` suffix and the sentinel the engine trims for the form.
+// ---------------------------------------------------------------------------
+
+/** The words a group's `as` may name: the five a temperament carries a
+ * percent for (`behavior.AsWords`). Omitted is none, which loads at 100. */
+export const ANSWER_AS_WORDS: readonly string[] = Object.freeze([
+  'attack',
+  'toward',
+  'away',
+  'flee',
+  'hold',
+]);
+
+/** How deep groups nest (`behavior.MaxGroupDepth`). */
+export const MAX_GROUP_DEPTH = 8;
+
+/** "a and b", "a, b and c" — `behavior.andList`. */
+function andListOf(words: readonly string[]): string {
+  if (words.length < 2) return words.join('');
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
+/** A bundle's parameters, for a refusal: "it takes distance, heading". */
+function paramsListOf(params: readonly string[]): string {
+  return params.length === 0
+    ? 'it takes none'
+    : `it takes ${params.join(', ')}`;
+}
+
+export const GROUP_SENTENCES = Object.freeze({
+  /** `bundleResolver.use`: `use:` with an empty name. */
+  noBundleNamed: (): string => '`use` names no bundle',
+  /** `bundleResolver.use`: a name no bundle in the file has. */
+  unknownBundle: (name: string, declared: readonly string[]): string =>
+    `\`use: ${name}\` names no bundle in this file: ${
+      declared.length === 0
+        ? 'it declares none'
+        : `it declares ${declared.join(', ')}`
+    }`,
+  /** `bundleResolver.params`: a parameter the bundle does not declare. */
+  unknownParam: (
+    bundle: string,
+    param: string,
+    params: readonly string[]
+  ): string =>
+    `bundle "${bundle}" takes no parameter \`${param}\`: ${paramsListOf(params)}`,
+  /** `bundleResolver.params`: a parameter with no default, not given. */
+  missingParam: (bundle: string, param: string): string =>
+    `bundle "${bundle}" needs \`${param}\`: it has no default, so the use gives one`,
+  /** `bundleResolver.use`: a bundle inside itself. */
+  usesItself: (bundle: string, chain: readonly string[]): string =>
+    `bundle "${bundle}" uses itself: ${[...chain, bundle].join(' → ')}; a group cannot hold the table it is in`,
+  /** `bundleResolver.use`: nested past the guard. */
+  tooDeep: (bundle: string, depth: number): string =>
+    `\`use: ${bundle}\` is a group nested ${depth} deep; groups nest at most ${MAX_GROUP_DEPTH} deep`,
+  /** `bundleResolver.bundle`: `rows` missing or empty. */
+  noRows: (): string =>
+    'a bundle holds no rows; a group is a table, and a table with no rows can never be picked',
+  /** `bundleResolver.bundle`: a `$name` the bundle does not declare. */
+  undeclaredRef: (
+    ref: string,
+    bundle: string,
+    params: readonly string[]
+  ): string =>
+    `\`$${ref}\` is not a parameter bundle "${bundle}" declares: ${paramsListOf(params)}`,
+  /** `Answer.Validate`'s group arm: a word on a `use:` row. */
+  carries: (words: readonly string[]): string =>
+    `a group carries ${andListOf(words.map((w) => `\`${w}\``))}; a group's answer is its rows, so the word goes on a row inside it`,
+  /** `Answer.Validate`'s group arm: `as` outside the five words. */
+  asWord: (word: string): string =>
+    `a group counts \`as\` "${word}"; it counts as one of attack, toward, away, flee or hold, or as nothing`,
+  /** `grammar.answerEntry`: `with` on a row that uses nothing. */
+  withWithoutUse: (): string =>
+    '`with` gives a bundle its parameters, and this row uses no bundle',
+  /** `grammar.answerEntry`: `as` on a row that uses nothing. */
+  asWithoutUse: (): string =>
+    '`as` is the word a group counts as, and this row uses no bundle',
+  /** `decodeHeard`: a pattern between empty slashes. */
+  heardEmptyPattern: (): string =>
+    '`heard: { kind: // }` is a pattern between empty slashes, and names no sound',
+  /** `decodeHeard`: a pattern no sound this build makes matches. */
+  heardPatternNoSound: (kind: string): string =>
+    `\`heard\` kind ${kind} matches no sound this file makes: they are ${ANSWER_SOUND_KINDS.join(
+      ', '
+    )}`,
+  /** `Name.validate` (mind/behavior): a pattern that does not compile. The
+   * engine appends Go's own parse error, which a browser cannot reproduce;
+   * the sentence up to it is the engine's. */
+  notAPattern: (what: string, written: string): string =>
+    `${what} ${written} is not a pattern`,
+  /** `grammar.whenPatterns`: a `fact` pattern matching no fact the file
+   * sets. */
+  factPatternNoFact: (fact: string): string =>
+    `\`fact\` ${fact} matches no fact this file sets`,
+  /** `grammar.whenPatterns`: `fact: //`. */
+  factEmptyPattern: (): string =>
+    '`fact: //` is a pattern between empty slashes, and names no fact',
+  /** `grammar.answerEntry`: a pattern on a row that TEACHES a fact. */
+  patternTaught: (fact: string): string =>
+    `a row teaches one fact by its name, and ${fact} is a pattern: a pattern only matches facts, in a \`when\``,
+});
+
+/** The pattern a written name carries between its slashes, or undefined for
+ * a literal (`dungeonspec.patternOf`): `/clang|bell/` is a pattern, anything
+ * else the name it always was. */
+export function patternOf(written: string): string | undefined {
+  return written.length >= 2 && written.startsWith('/') && written.endsWith('/')
+    ? written.slice(1, -1)
+    : undefined;
+}
+
+/** The pattern compiled to match a WHOLE authored name, as the engine anchors
+ * it (`behavior.Name.Matches`), or undefined when it does not compile. */
+export function patternRegExp(pattern: string): RegExp | undefined {
+  try {
+    return new RegExp(`^(?:${pattern})$`);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether a written name — a literal or a `/…/` pattern — names `name`. */
+export function writtenNameMatches(written: string, name: string): boolean {
+  const pattern = patternOf(written);
+  if (pattern === undefined) return written === name;
+  return patternRegExp(pattern)?.test(name) ?? false;
+}
