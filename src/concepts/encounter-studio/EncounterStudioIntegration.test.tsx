@@ -6767,3 +6767,41 @@ describe('Save and Play through the real owner (S6)', () => {
     );
   });
 });
+
+it('the castle’s gate tables read as use: lines that resolve in the studio (rpg-project#670)', async () => {
+  const read = readDraftYaml(referenceCastleYaml);
+  if (!read.ok) throw new Error(read.refusal);
+  // THE STUDIO'S OWN TREE, not a panel mounted alone: the first build drew
+  // the lines and said "names no bundle" beside each, because the studio
+  // renders outside the document root the bundles were provided at.
+  const original = createEmptyCastDocument();
+  original.scope.bundles = read.scope.bundles;
+  original.scope.tables = { 'gate-patrol': read.scope.tables!['gate-patrol'] };
+  mount(new MemoryStorage(original));
+  await settled();
+  fireEvent.click(button('Encounter'));
+  fireEvent.click(button('Tables'));
+  const tables = screen.getByRole('list', { name: 'Site tables' });
+  const lines = Array.from(
+    tables.querySelectorAll('li.wb-entry-use .wb-entry-summary')
+  ).map((node) => node.textContent);
+  expect(lines).toEqual([
+    'pursuer',
+    'alarm-reactor',
+    'patrol · with path a route of 3 waypoints',
+  ]);
+  expect(within(tables).queryByRole('alert')).toBeNull();
+  fireEvent.click(
+    within(tables).getByRole('button', {
+      name: /Show the rows of .* entry pursuer/,
+    })
+  );
+  expect(
+    within(within(tables).getByLabelText('pursuer rows'))
+      .getAllByRole('listitem')
+      .map((node) => node.textContent)
+  ).toEqual([
+    expect.stringContaining('enemy remembered'),
+    expect.stringContaining('search 6'),
+  ]);
+});

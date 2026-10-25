@@ -4685,7 +4685,7 @@ export function WorldBuildingConcept({
 
   if (roomMode && studioPresentation) {
     return (
-      <>
+      <SiteBundlesContext.Provider value={siteScope.bundles}>
         {studioPresentation.render({
           document: roomHistory.present,
           viewportProps,
@@ -5434,7 +5434,7 @@ export function WorldBuildingConcept({
             setBusy: handlePublishBusy,
           },
         })}
-      </>
+      </SiteBundlesContext.Provider>
     );
   }
 
