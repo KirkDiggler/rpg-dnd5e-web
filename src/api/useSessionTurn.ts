@@ -16,6 +16,8 @@ export interface UseSessionTurnResult {
   error: Error | null;
   /** True only after the newest request generation succeeds. */
   fresh: boolean;
+  /** Bumps on every successful read: a new snapshot has landed. */
+  revision: number;
   /** Synchronously revokes authority without discarding last-good display. */
   invalidate: () => void;
   refetch: () => Promise<void>;
@@ -31,6 +33,7 @@ interface TurnState {
   loading: boolean;
   error: Error | null;
   fresh: boolean;
+  revision: number;
 }
 
 function emptyState(key: string): TurnState {
@@ -44,6 +47,7 @@ function emptyState(key: string): TurnState {
     loading: false,
     error: null,
     fresh: false,
+    revision: 0,
   };
 }
 
@@ -96,7 +100,8 @@ export function useSessionTurn(
     try {
       const response = await sessionClient.turn({ session, member });
       if (!isCurrent()) return;
-      setState({
+      setState((previous) => ({
+        revision: (previous.key === key ? previous.revision : 0) + 1,
         key,
         clock: response.clock,
         active: response.active,
@@ -106,7 +111,7 @@ export function useSessionTurn(
         loading: false,
         error: null,
         fresh: true,
-      });
+      }));
     } catch (err) {
       if (!isCurrent()) return;
       setState((previous) => ({
@@ -137,6 +142,7 @@ export function useSessionTurn(
     loading: current.loading,
     error: current.error,
     fresh: current.fresh,
+    revision: current.revision,
     invalidate,
     refetch: fetchTurn,
   };

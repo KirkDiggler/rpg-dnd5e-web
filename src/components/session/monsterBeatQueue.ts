@@ -81,10 +81,21 @@ export function beatActor(act: Act): string | undefined {
   }
 }
 
-/** True for a walk, a swing or a turn's end by somebody other than `member`. */
-export function needsPacing(act: Act, member: string): boolean {
+/**
+ * True for a turn's end by somebody other than `member`, and for a walk or a
+ * swing by another member of the viewer's fight (`fight`). A walk or swing by
+ * somebody outside it is world pace, not a turn (rpg-project#685): it is
+ * never queued, so it is never announced as "<name>'s turn.". A turn's end is
+ * the fight's own clock, so it is always a turn.
+ */
+export function needsPacing(
+  act: Act,
+  member: string,
+  fight: ReadonlySet<string>
+): boolean {
   const actor = beatActor(act);
-  return actor !== undefined && actor !== member;
+  if (actor === undefined || actor === member) return false;
+  return isTurnEnd(act) || fight.has(actor);
 }
 
 export function isTurnEnd(act: Act): boolean {

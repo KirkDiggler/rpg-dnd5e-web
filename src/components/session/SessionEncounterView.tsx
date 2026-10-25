@@ -146,6 +146,7 @@ import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { useSessionWalk } from './useSessionWalk';
+import { useTurnOrderFollow } from './useTurnOrderFollow';
 import { VendorPopover } from './vendor/VendorPopover';
 import { watchZoneCells, zonesBehindWalkers } from './watchZoneCells';
 
@@ -266,6 +267,7 @@ function SessionEncounterScope({
     round: turnRound,
     participants: turnParticipants,
     fresh: turnFresh,
+    revision: turnRevision,
     invalidate: invalidateTurn,
     refetch: refetchTurn,
   } = useSessionTurn(sessionId, member);
@@ -706,6 +708,29 @@ function SessionEncounterScope({
     refreshCallbacks
   );
 
+  // THE TURN ORDER FOLLOWS THE FIGHT (rpg-project#685): clock acts and the
+  // paced story move the strip's marker between Turn snapshots. Display only;
+  // action authority stays the snapshot's.
+  const turnSnapshot = useMemo(
+    () => ({
+      active: turnActive,
+      round: turnRound,
+      participants: turnParticipants,
+      revision: turnRevision,
+    }),
+    [turnActive, turnParticipants, turnRevision, turnRound]
+  );
+  const refetchTurnSnapshot = useCallback(
+    () => scheduleRefresh(['turn']),
+    [scheduleRefresh]
+  );
+  const turnOrder = useTurnOrderFollow({
+    scope: `${sessionId}\u0000${member}`,
+    member,
+    snapshot: turnSnapshot,
+    refetch: refetchTurnSnapshot,
+  });
+
   // The canvas's hovered member, for the target panel's effect rows only
   // (rpg-project#520). Presentation: it never reaches a command.
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
@@ -725,6 +750,7 @@ function SessionEncounterScope({
     scheduleRefresh,
     // A heard sound's bearing is measured from here (rpg-project#569).
     viewerCell: wherePosition,
+    onTurnBeat: turnOrder.onTurnBeat,
   });
   const {
     participants: visibleParticipants,
@@ -736,6 +762,11 @@ function SessionEncounterScope({
     participants: turnParticipants,
     characterData,
   });
+  // The strip, and the dock's "whose turn" with it, draw the followed order.
+  const turnOrderParticipants = useMemo(
+    () => turnOrder.project(visibleParticipants),
+    [turnOrder, visibleParticipants]
+  );
   // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
   // cast owns the next floor click; otherwise a TURN click walks only while
   // Move is selected. WORLD keeps the established free-roam click behavior.
@@ -1248,6 +1279,7 @@ function SessionEncounterScope({
   // its family changed (`actRefreshKeys.ts`, paired with the v1 table it
   // replaces). A same-id run arrives whole and is funnelled in one pass.
   const { acceptStreamActs, invalidateAuthority } = combat;
+  const { acceptActs: acceptTurnOrderActs, reset: resetTurnOrder } = turnOrder;
   const handleSessionActs = useCallback(
     (run: readonly Act[], metadata: ActDeliveryMetadata) => {
       // Every delivered act revokes action authority before the coalesced
@@ -1282,12 +1314,14 @@ function SessionEncounterScope({
         }
       }
       scheduleRefresh([...keys]);
-      // The story log, toasts and dice read the same run (R14).
+      // The turn order, story log, toasts and dice read the same run (R14).
+      acceptTurnOrderActs(run, metadata);
       acceptStreamActs(run, metadata);
     },
     [
       acceptKnowledgeAct,
       acceptStreamActs,
+      acceptTurnOrderActs,
       invalidateAuthority,
       member,
       moves,
@@ -1297,9 +1331,10 @@ function SessionEncounterScope({
 
   const handleStreamAgedOut = useCallback(() => {
     invalidateAuthority();
+    resetTurnOrder();
     scheduleRefresh(['characterData', 'turn', 'afford', 'atlas']);
     // A fresh coherent snapshot restores geometry, observations and carriage.
-  }, [invalidateAuthority, scheduleRefresh]);
+  }, [invalidateAuthority, resetTurnOrder, scheduleRefresh]);
   const streamState = useSessionActStream(
     sessionId,
     member,
@@ -1940,8 +1975,8 @@ function SessionEncounterScope({
             viewerClassRefId={classRefId}
             memberNames={publicMemberNames}
             clock={experienceClock}
-            round={turnRound}
-            participants={visibleParticipants}
+            round={turnOrder.round}
+            participants={turnOrderParticipants}
             declarations={coherentDeclarations}
             characterData={visibleCharacterData}
             privateStatus={privateStatus}
