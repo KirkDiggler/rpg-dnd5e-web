@@ -160,3 +160,34 @@
   overflow-x: auto;
   font-size: 0.7rem;
 }
+
+/* An answered row's pick in its table's words (rpg-project#674). The id and
+   the beat name keep their width; the sentence takes the rest and wraps. */
+.reading {
+  opacity: 0.85;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toggle:has(.reading) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toggle:has(.reading) .id,
+.toggle:has(.reading) .beat {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.verdicts {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0 0 0 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
