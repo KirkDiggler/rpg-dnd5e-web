@@ -1422,3 +1422,118 @@ button.wb-tree-row[aria-pressed='true'] {
   border-left: 1px solid #283c3a;
   margin-top: 0.3rem;
 }
+
+/* Bundles (rpg-project#670): one card per bundle — the id and the parameters
+   on the header line, the rows below at full width, the card's actions at its
+   foot. */
+.wb-bundle-list {
+  margin: 0.4rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-bundle {
+  margin: 0 0 0.8rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+
+.wb-bundle-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 0.5rem 1.2rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.wb-bundle-header > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.wb-bundle-params {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wb-bundle-params ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-bundle-params li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.15rem 0;
+}
+
+.wb-bundle-params li > input:not([type='checkbox']) {
+  width: 8rem;
+}
+
+.wb-bundle .wb-policy-entries {
+  padding-left: 0;
+}
+
+.wb-bundle-text textarea {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+}
+
+.wb-bundle-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--wb-border);
+}
+
+/* A parameter reference, `$distance`, and a `with:` value on a `use:` line. */
+.wb-param-chip,
+.wb-with-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0.1rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--wb-accent);
+  border-radius: 999px;
+  color: var(--wb-accent);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  width: fit-content;
+  align-self: center;
+}
+
+.wb-with-chip {
+  border-color: var(--wb-border);
+  color: var(--wb-text);
+}
+
+.wb-param-chip button {
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+
+.wb-param-chip--refused {
+  border-color: #e0736a;
+  color: #e0736a;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.wb-param-pick {
+  width: auto;
+  max-width: 5rem;
+}

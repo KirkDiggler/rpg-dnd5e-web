@@ -75,6 +75,7 @@ function fixture(): EncounterStudioSession {
     selectPartyStart: vi.fn(() => true),
     armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
+    commitBundles: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),
       rename: vi.fn(() => true),

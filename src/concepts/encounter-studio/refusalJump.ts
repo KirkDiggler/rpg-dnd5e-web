@@ -19,6 +19,7 @@ import type { StudioDoorTarget } from '../world-building/studioDoorEditing';
  * its own there yet (S6-Q4). */
 export type RefusalHomeSection =
   | 'tables'
+  | 'bundles'
   | 'factions'
   | 'dispositions'
   | 'intel'
@@ -137,8 +138,14 @@ function targetOf(
         ? { kind: 'castMember', ref: `${MONSTER_PREFIX}${key}` }
         : null;
     case 'tables':
+    case 'bundles':
     case 'concealments': {
-      const map = head === 'tables' ? scope.tables : scope.concealments;
+      const map =
+        head === 'tables'
+          ? scope.tables
+          : head === 'bundles'
+            ? scope.bundles
+            : scope.concealments;
       return typeof key === 'string' && map && Object.hasOwn(map, key)
         ? { kind: 'home', section: head, id: key }
         : null;

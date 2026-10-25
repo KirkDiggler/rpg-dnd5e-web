@@ -35,7 +35,10 @@ import {
   answerWhenLegalOn,
   answerWord,
   answerWordsForTrigger,
+  GROUP_SENTENCES,
+  HEARING_SENTENCES,
   isSearchHeading,
+  patternOf,
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
@@ -45,13 +48,22 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
+  isUseEntry,
   OPTION_VERDICTS,
+  paramRefOf,
+  selectorRouteParam,
   whenConditions,
   whenFromConditions,
   whenListensShape,
@@ -72,10 +84,12 @@ import {
   heardLabel,
   selectorPhrase,
   whenShorthand,
-  wordShorthand,
 } from './answerVocabulary';
+import { heardPatternMatches, paramText, resolveUse } from './bundles';
+import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
 import { turnsTo } from './engineLaws';
+import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
 import { factionLayers } from './layeredOrders';
 import {
@@ -101,6 +115,7 @@ import {
   removeOptionApproach,
   removeOptionRow,
 } from './optionEdits';
+import { ParamChip, ParamSlot } from './ParamSlot';
 import { placementDisplayNames } from './placementNames';
 import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
 import {
@@ -161,37 +176,6 @@ function factionTemperText(temper: SiteTemper): string {
   return Object.entries(temper)
     .map(([word, share]) => `${word} ×${share}`)
     .join(' · ');
-}
-
-/** One entry: its condition — WHEN it is on the table at all, said only where
- * a condition is a thing this grammar has — its weight (an omitted weight IS 1
- * to the engine), the `say` that goes with it, and the one word it does.
- *
- * THE CONDITION LEAD IS `time`-ONLY, so the trigger is a parameter rather than
- * something this function can work out for itself. On a `time` row, no `when`
- * honestly means "always eligible" and the line says so. On a SOCIAL row
- * `when` is ILLEGAL — the verdict IS the condition, `answerWhenRefusal`'s own
- * sentence being "a `when` under it asks when a thing that just happened
- * happened" — so labelling one "any time" asserts a timing the row does not
- * have: that same falsehood from the other side. Social rows carry no
- * condition lead at all.
- *
- * FOUND IN REVIEW (independent-gate): the first cut printed "any time" on
- * every row, social included, and a test locked the mislabel in. */
-function entryText(entry: AnswerEntryShape, trigger: string): string {
-  const parts: string[] = [];
-  if (answerWhenLegalOn(trigger)) {
-    parts.push(
-      entry.when === undefined
-        ? 'any time'
-        : `when ${whenShorthand(entry.when)}`
-    );
-  }
-  parts.push(`weight ${entry.weight ?? 1}`);
-  if (entry.say !== undefined) parts.push(`say “${entry.say}”`);
-  const word = entryWord(entry);
-  if (word !== undefined) parts.push(wordShorthand(entry, word));
-  return parts.join(' · ');
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -592,42 +576,72 @@ function WhenConditionRow({
       {base?.kind === 'heard' && (
         <>
           {/* THE FOUR KINDS ARE THE RULEBOOK'S SEALED VOCABULARY (R4): a
-              kind and a span, never a maker — a sound names nobody. */}
-          <select
-            aria-label={`Sound${n} for ${trigger} entry`}
+              kind and a span, never a maker — a sound names nobody. They are
+              OFFERED, and the field also takes a pattern over them typed as
+              `/clang|bell/` (rpg-project#670 R16), in the same place. */}
+          <ParamSlot
             value={base.sound}
-            onChange={(event) =>
-              commitBase({ ...base, sound: event.target.value })
+            label={`Sound${n} for ${trigger} entry`}
+            onPick={(ref) => commitBase({ ...base, sound: ref })}
+            onClear={() =>
+              commitBase({ ...base, sound: ANSWER_SOUND_KINDS[0] ?? 'clang' })
             }
           >
-            {(ANSWER_SOUND_KINDS.includes(base.sound)
-              ? ANSWER_SOUND_KINDS
-              : [base.sound, ...ANSWER_SOUND_KINDS]
-            ).map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
+            <input
+              list={`sound-kinds${n}-${trigger}`}
+              aria-label={`Sound${n} for ${trigger} entry`}
+              placeholder="clang, or /clang|bell/"
+              value={base.sound}
+              onChange={(event) =>
+                commitBase({ ...base, sound: event.target.value })
+              }
+            />
+            <datalist
+              id={`sound-kinds${n}-${trigger}`}
+              data-testid={`Sound kinds${n} for ${trigger} entry`}
+            >
+              {ANSWER_SOUND_KINDS.map((kind) => (
+                <option key={kind} value={kind} />
+              ))}
+            </datalist>
+            {!heardPatternMatches(base.sound) && base.sound !== '' && (
+              <span className="wb-entry-refusal" role="alert">
+                {patternOf(base.sound) !== undefined
+                  ? GROUP_SENTENCES.heardPatternNoSound(base.sound)
+                  : HEARING_SENTENCES.unknownSoundKind(base.sound)}
+              </span>
+            )}
+          </ParamSlot>
           <span>within</span>
-          <input
-            type="number"
-            step={1}
-            min={ANSWER_WHEN.minimumWithin}
-            aria-label={`Heard within${n} for ${trigger} entry`}
-            value={String(base.within)}
-            onChange={(event) => {
-              if (event.target.value === '') return;
-              commitBase({ ...base, within: Number(event.target.value) });
-            }}
-          />
+          <ParamSlot
+            value={base.within}
+            label={`Heard within${n} for ${trigger} entry`}
+            onPick={(ref) =>
+              commitBase({ ...base, within: ref as unknown as number })
+            }
+            onClear={() =>
+              commitBase({ ...base, within: ANSWER_WHEN.minimumWithin })
+            }
+          >
+            <input
+              type="number"
+              step={1}
+              min={ANSWER_WHEN.minimumWithin}
+              aria-label={`Heard within${n} for ${trigger} entry`}
+              value={String(base.within)}
+              onChange={(event) => {
+                if (event.target.value === '') return;
+                commitBase({ ...base, within: Number(event.target.value) });
+              }}
+            />
+          </ParamSlot>
           <span>rounds</span>
         </>
       )}
       {base?.kind === 'fact' && (
         <input
           aria-label={`Fact${n} for ${trigger} entry`}
-          placeholder="fact id, e.g. alarm-raised"
+          placeholder="fact id, e.g. alarm-raised, or /alarm-.*/"
           value={base.fact}
           onChange={(event) =>
             commitBase({ ...base, fact: event.target.value })
@@ -766,7 +780,133 @@ const SEARCH_HEADING_LABELS: Record<
   right: 'right (a quarter right of went)',
 };
 
-export function AnswerEntryRow({
+/** The props every answer row takes, a word row or a group. */
+type AnswerEntryRowProps = Parameters<typeof WordEntryRow>[0];
+
+/**
+ * One answer row. A `use:` row (rpg-project#670) is ONE LINE —
+ * "pursuer · with distance 8 · ×2 · as toward" — that expands, read-only, to
+ * the rows its bundle makes with the parameters filled; the bundle itself is
+ * edited in the Bundles list. Every other row is today's editor.
+ */
+export function AnswerEntryRow(props: AnswerEntryRowProps) {
+  if (isUseEntry(props.entry))
+    return (
+      <UseEntryRow
+        trigger={props.trigger}
+        entry={props.entry}
+        onRemove={props.onRemove}
+        label={props.label ?? props.trigger}
+        controls={props.controls}
+      />
+    );
+  return <WordEntryRow {...props} />;
+}
+
+/** A `use:` row: its line, the engine's refusal when its bundle cannot be
+ * resolved, and its bundle's rows behind "Show rows". */
+function UseEntryRow({
+  trigger,
+  entry,
+  onRemove,
+  label,
+  controls,
+}: {
+  trigger: string;
+  entry: AnswerEntryShape & { use: string };
+  onRemove: () => void;
+  label: string;
+  controls?: ReactNode;
+}) {
+  const bundles = useContext(SiteBundlesContext);
+  const inBundle = useContext(BundleParamsContext);
+  const [open, setOpen] = useState(false);
+  // INSIDE A BUNDLE a `with` value may itself be a parameter, `$path`, which
+  // is only a route once the outer bundle is used; the line shows it as a
+  // chip, and the rows it makes are shown where the outer bundle is used.
+  const deferred =
+    inBundle !== undefined &&
+    Object.values(entry.with ?? {}).some((v) => paramRefOf(v) !== undefined);
+  const resolved = deferred
+    ? { rows: [], refusal: undefined }
+    : resolveUse(bundles, entry, trigger);
+  return (
+    <li
+      className="wb-policy-entry wb-entry-collapsed wb-entry-use"
+      data-entry-word="use"
+    >
+      <UseLine entry={entry} />
+      {controls}
+      <button
+        type="button"
+        aria-label={`Show the rows of ${label} entry ${entry.use}`}
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      >
+        {open ? 'Hide rows' : 'Show rows'}
+      </button>
+      <button
+        type="button"
+        className="wb-danger"
+        aria-label={`Remove ${label} entry`}
+        onClick={onRemove}
+      >
+        Remove
+      </button>
+      {resolved.refusal && (
+        <p className="wb-entry-refusal" role="alert">
+          {resolved.refusal.message}
+        </p>
+      )}
+      {open && (
+        <ul className="wb-use-rows" aria-label={`${entry.use} rows`}>
+          {deferred ? (
+            <li>filled in where this bundle is used</li>
+          ) : (
+            resolved.rows.map((row, index) => (
+              <li key={index}>{entryText(row, trigger)}</li>
+            ))
+          )}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** A `use:` row as ONE line, its `with:` values as chips: "pursuer · with
+ * [distance 8] · ×2 · as toward". A value that is itself a parameter, inside
+ * a bundle, is a `$name` chip. Its text is [groupLineText]'s exactly. */
+function UseLine({ entry }: { entry: AnswerEntryShape & { use: string } }) {
+  const given = Object.entries(entry.with ?? {});
+  return (
+    <span className="wb-entry-summary">
+      {entry.use}
+      {given.length > 0 && (
+        <>
+          {' · with '}
+          {given.map(([name, value], index) => (
+            <Fragment key={name}>
+              {index > 0 && ', '}
+              <span className="wb-with-chip" data-param={name}>
+                {name}{' '}
+                {paramRefOf(value) !== undefined ? (
+                  <ParamChip name={paramRefOf(value)!} />
+                ) : (
+                  paramText(value)
+                )}
+              </span>
+            </Fragment>
+          ))}
+        </>
+      )}
+      {entry.weight !== undefined && ` · ×${entry.weight}`}
+      {entry.as !== undefined && ` · as ${entry.as}`}
+      {entry.when !== undefined && ` · when ${whenShorthand(entry.when)}`}
+    </span>
+  );
+}
+
+function WordEntryRow({
   trigger,
   entry,
   onCommit,
@@ -775,7 +915,11 @@ export function AnswerEntryRow({
   excludeWords = [],
   allowNoWord = false,
   collapsed = false,
+  controls,
 }: {
+  /** Extra controls drawn on the row beside Edit and Remove — a bundle's
+   * rows pass Move up / Move down (rpg-project#670). */
+  controls?: ReactNode;
   /** Start as one summary line with Edit and Remove; Edit opens today's
    * controls (rpg-project#579). Opening one row closes none of the others. */
   collapsed?: boolean;
@@ -856,6 +1000,7 @@ export function AnswerEntryRow({
     return (
       <li className="wb-policy-entry wb-entry-collapsed" data-entry-word={word}>
         <span className="wb-entry-summary">{entryText(entry, trigger)}</span>
+        {controls}
         <button
           type="button"
           aria-label={`Edit ${label} entry`}
@@ -914,11 +1059,20 @@ export function AnswerEntryRow({
         {spec?.value === 'string' && (
           <label>
             <span>{word}</span>
-            <input
-              aria-label={`${word} for ${label} entry`}
-              value={typeof value === 'string' ? value : ''}
-              onChange={(event) => onCommit(withWordValue(event.target.value))}
-            />
+            <ParamSlot
+              value={value}
+              label={`${word} for ${label} entry`}
+              onPick={(ref) => onCommit(withWordValue(ref))}
+              onClear={() => onCommit(withWordValue(''))}
+            >
+              <input
+                aria-label={`${word} for ${label} entry`}
+                value={typeof value === 'string' ? value : ''}
+                onChange={(event) =>
+                  onCommit(withWordValue(event.target.value))
+                }
+              />
+            </ParamSlot>
           </label>
         )}
         {spec?.value === 'search' && (
@@ -931,55 +1085,91 @@ export function AnswerEntryRow({
           <>
             <label className="wb-entry-target">
               <span>Cells</span>
-              <input
-                type="number"
-                min={ANSWER_SEARCH.minimumDistance}
-                aria-label={`Cells for ${label} entry`}
-                value={
-                  isMapping(value) && typeof value.distance === 'number'
-                    ? value.distance
-                    : ANSWER_SEARCH.defaultDistance
-                }
-                onChange={(event) => {
-                  const distance = Number(event.target.value);
-                  if (
-                    Number.isInteger(distance) &&
-                    distance >= ANSWER_SEARCH.minimumDistance
+              <ParamSlot
+                value={isMapping(value) ? value.distance : undefined}
+                label={`Cells for ${label} entry`}
+                onPick={(ref) =>
+                  onCommit(
+                    withWordValue({
+                      ...(isMapping(value) ? value : {}),
+                      distance: ref,
+                    })
                   )
-                    onCommit(
-                      withWordValue({
-                        ...(isMapping(value) ? value : {}),
-                        distance,
-                      })
-                    );
+                }
+                onClear={() => {
+                  const body = { ...(isMapping(value) ? value : {}) };
+                  delete body.distance;
+                  onCommit(withWordValue(body));
                 }}
-              />
+              >
+                <input
+                  type="number"
+                  min={ANSWER_SEARCH.minimumDistance}
+                  aria-label={`Cells for ${label} entry`}
+                  value={
+                    isMapping(value) && typeof value.distance === 'number'
+                      ? value.distance
+                      : ANSWER_SEARCH.defaultDistance
+                  }
+                  onChange={(event) => {
+                    const distance = Number(event.target.value);
+                    if (
+                      Number.isInteger(distance) &&
+                      distance >= ANSWER_SEARCH.minimumDistance
+                    )
+                      onCommit(
+                        withWordValue({
+                          ...(isMapping(value) ? value : {}),
+                          distance,
+                        })
+                      );
+                  }}
+                />
+              </ParamSlot>
             </label>
             <label className="wb-entry-target">
               <span>Heading</span>
-              <select
-                aria-label={`Heading for ${label} entry`}
-                value={
-                  isMapping(value) && isSearchHeading(value.heading)
-                    ? value.heading
-                    : ANSWER_SEARCH.defaultHeading
+              <ParamSlot
+                value={isMapping(value) ? value.heading : undefined}
+                label={`Heading for ${label} entry`}
+                onPick={(ref) =>
+                  onCommit(
+                    withWordValue({
+                      ...(isMapping(value) ? value : {}),
+                      heading: ref,
+                    })
+                  )
                 }
-                onChange={(event) => {
-                  if (isSearchHeading(event.target.value))
-                    onCommit(
-                      withWordValue({
-                        ...(isMapping(value) ? value : {}),
-                        heading: event.target.value,
-                      })
-                    );
+                onClear={() => {
+                  const body = { ...(isMapping(value) ? value : {}) };
+                  delete body.heading;
+                  onCommit(withWordValue(body));
                 }}
               >
-                {ANSWER_SEARCH.headings.map((heading) => (
-                  <option key={heading} value={heading}>
-                    {SEARCH_HEADING_LABELS[heading]}
-                  </option>
-                ))}
-              </select>
+                <select
+                  aria-label={`Heading for ${label} entry`}
+                  value={
+                    isMapping(value) && isSearchHeading(value.heading)
+                      ? value.heading
+                      : ANSWER_SEARCH.defaultHeading
+                  }
+                  onChange={(event) => {
+                    if (isSearchHeading(event.target.value))
+                      onCommit(
+                        withWordValue({
+                          ...(isMapping(value) ? value : {}),
+                          heading: event.target.value,
+                        })
+                      );
+                  }}
+                >
+                  {ANSWER_SEARCH.headings.map((heading) => (
+                    <option key={heading} value={heading}>
+                      {SEARCH_HEADING_LABELS[heading]}
+                    </option>
+                  ))}
+                </select>
+              </ParamSlot>
             </label>
           </>
         )}
@@ -989,26 +1179,49 @@ export function AnswerEntryRow({
           // picker for it exists yet. A word select here would claim the row
           // walks to "the enemy" while the file says a route.
           <span className="wb-entry-target" data-testid="entry-place">
-            <span>To</span> {selectorPhrase(value as AnswerSelectorShape, 'it')}
+            <span>To</span>{' '}
+            {selectorRouteParam(value as AnswerSelectorShape) !== undefined ? (
+              <>
+                the route{' '}
+                <ParamChip
+                  name={selectorRouteParam(value as AnswerSelectorShape)!}
+                  clearLabel={`Clear the route parameter from ${label} entry`}
+                  onClear={() =>
+                    onCommit(
+                      withWordValue(ANSWER_SELECTOR_WORDS[0]?.key ?? 'enemy')
+                    )
+                  }
+                />
+              </>
+            ) : (
+              selectorPhrase(value as AnswerSelectorShape, 'it')
+            )}
           </span>
         )}
         {spec?.value === 'selector' && !isMapping(value) && (
           <>
             <label className="wb-entry-target">
               <span>{word === 'away' ? 'From' : 'To'}</span>
-              <select
-                aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
-                value={selectorChoice}
-                onChange={(event) =>
-                  onCommit(withWordValue(event.target.value))
-                }
+              <ParamSlot
+                value={undefined}
+                label={`Route for ${label} entry`}
+                onPick={(ref) => onCommit(withWordValue({ path: ref }))}
+                onClear={() => undefined}
               >
-                {selectorWords.map((selector) => (
-                  <option key={selector.key} value={selector.key}>
-                    {selector.label} ({selector.key})
-                  </option>
-                ))}
-              </select>
+                <select
+                  aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
+                  value={selectorChoice}
+                  onChange={(event) =>
+                    onCommit(withWordValue(event.target.value))
+                  }
+                >
+                  {selectorWords.map((selector) => (
+                    <option key={selector.key} value={selector.key}>
+                      {selector.label} ({selector.key})
+                    </option>
+                  ))}
+                </select>
+              </ParamSlot>
             </label>
           </>
         )}
@@ -1035,21 +1248,35 @@ export function AnswerEntryRow({
           title="Relative chance among eligible entries, not execution order."
         >
           <span>Weight</span>
-          <input
-            type="number"
-            step={1}
-            aria-label={`Weight for ${label} entry`}
-            value={entry.weight === undefined ? '' : String(entry.weight)}
-            placeholder="1"
-            onChange={(event) => {
-              const raw = event.target.value;
+          <ParamSlot
+            value={entry.weight}
+            label={`Weight for ${label} entry`}
+            onPick={(ref) =>
+              onCommit({ ...entry, weight: ref as unknown as number })
+            }
+            onClear={() => {
               const next: AnswerEntryShape = { ...entry };
-              if (raw === '') delete next.weight;
-              else next.weight = Number(raw);
+              delete next.weight;
               onCommit(next);
             }}
-          />
+          >
+            <input
+              type="number"
+              step={1}
+              aria-label={`Weight for ${label} entry`}
+              value={entry.weight === undefined ? '' : String(entry.weight)}
+              placeholder="1"
+              onChange={(event) => {
+                const raw = event.target.value;
+                const next: AnswerEntryShape = { ...entry };
+                if (raw === '') delete next.weight;
+                else next.weight = Number(raw);
+                onCommit(next);
+              }}
+            />
+          </ParamSlot>
         </label>
+        {controls}
         <button
           type="button"
           className="wb-danger wb-entry-remove"

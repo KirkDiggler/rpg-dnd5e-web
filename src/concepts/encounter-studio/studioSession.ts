@@ -308,6 +308,8 @@ export interface EncounterStudioSession {
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
+  /** The root `bundles:` (rpg-project#670), one undoable transaction. */
+  commitBundles(bundles: SiteScope['bundles']): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

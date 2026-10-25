@@ -22,6 +22,7 @@ import {
   isNotCondition,
   selectorCell,
   selectorRoute,
+  selectorRouteParam,
   whenConditions,
   type AnswerCellShape,
   type AnswerEntryShape,
@@ -236,6 +237,8 @@ export function selectorPhrase(
   const route = selectorRoute(selector);
   if (route !== undefined)
     return `a route through ${cellsPhrase(route.length)}${pausesPhrase(route)}`;
+  const routeParam = selectorRouteParam(selector);
+  if (routeParam !== undefined) return `the route $${routeParam}`;
   if (selector === 'enemy') return 'the enemy';
   if (selector === 'attacker') return `whoever hit ${verb('object', subject)}`;
   if (selector === 'actor') return 'whoever did it';
@@ -250,7 +253,10 @@ function towardPhrase(selector: AnswerSelectorShape, subject: Subject): string {
   const walk = verb('walk', subject);
   const cell = selectorCell(selector);
   if (cell !== undefined) return `${walk} to ${cellPhrase(cell)}`;
-  if (selectorRoute(selector) !== undefined)
+  if (
+    selectorRoute(selector) !== undefined ||
+    selectorRouteParam(selector) !== undefined
+  )
     return `${walk} ${selectorPhrase(selector, subject)}`;
   return `${walk} toward ${selectorPhrase(selector, subject)}`;
 }
@@ -353,6 +359,8 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
     const route = selectorRoute(selector);
     if (route !== undefined)
       return `${word} path ${route.map(waypointPhrase).join(' ')}`;
+    const routeParam = selectorRouteParam(selector);
+    if (routeParam !== undefined) return `${word} path $${routeParam}`;
   }
   return word;
 }

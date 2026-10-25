@@ -8,6 +8,7 @@ import {
   visit,
   type Scalar,
 } from 'yaml';
+import { documentRowLists, groupRefusals } from './bundles';
 import {
   validateMonsterTemplates,
   type SiteTemplates,
@@ -22,6 +23,7 @@ import {
   renderScope,
   scopeFrom,
   validateIntel,
+  validateSiteBundles,
   validateSiteConcealments,
   validateSiteDispositions,
   validateSiteEndings,
@@ -29,6 +31,7 @@ import {
   validateSiteFactions,
   validateSiteScenarios,
   validateSiteTables,
+  type SiteBundles,
   type SiteConcealments,
   type SiteDisposition,
   type SiteEnding,
@@ -42,6 +45,8 @@ import {
 
 export interface EncodeSingleRoomDungeonInput {
   templates?: SiteTemplates;
+  /** The named groups of rows a `use:` row resolves to (rpg-project#670). */
+  bundles?: SiteBundles;
   key: string;
   draft: RoomDraft;
   /** The site scope (rpg-dnd5e-web#1136, rpg-project#477): identity and policy
@@ -67,6 +72,7 @@ export interface EncodeSingleRoomDungeonInput {
 }
 export interface DecodeSingleRoomDungeonResult {
   templates?: SiteTemplates;
+  bundles?: SiteBundles;
   key: string;
   draft: RoomDraft;
   /** Present only when the file carried at least one; absence is the authored
@@ -100,6 +106,9 @@ const ROOT_KEYS = [
   'play',
   'room',
   'templates',
+  // `bundles` sits between `templates` and `tables` in `SingleRoomSpec`
+  // (rpg-project#670).
+  'bundles',
   // The engine's own root order: `tables` sits before `factions` in
   // `SingleRoomSpec`, and this list mirrors it so a file the engine writes
   // reads here in the order it was authored (rpg-toolkit#1897).
@@ -155,6 +164,7 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
   // authored orders are a named table must still claim v4, the same argument a
   // `factions`-only or `doorBindings`-only room makes below.
   if (Object.keys(scope.templates ?? {}).length > 0) return true;
+  if (Object.keys(scope.bundles ?? {}).length > 0) return true;
   if (Object.keys(scope.tables ?? {}).length > 0) return true;
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
@@ -370,6 +380,9 @@ function decodeSingleRoomRoot(
   const templates = Object.hasOwn(root, 'templates')
     ? validateMonsterTemplates(root.templates)
     : {};
+  const bundles = Object.hasOwn(root, 'bundles')
+    ? validateSiteBundles(root.bundles)
+    : {};
   const tables = Object.hasOwn(root, 'tables')
     ? validateSiteTables(root.tables)
     : {};
@@ -418,6 +431,7 @@ function decodeSingleRoomRoot(
     draft: root.room,
     scope: {
       templates,
+      bundles,
       tables,
       factions,
       dispositions,
@@ -441,10 +455,21 @@ function decodeSingleRoomRoot(
   // gets a sentence about the id they wrote rather than a compile that quietly
   // orders nothing.
   requireTableNames(draft, factions, tables);
+  // AND EVERY `use:` MUST RESOLVE (rpg-project#670), for the same reason and
+  // in the engine's own sentence at the engine's own path: a bundle nobody
+  // declared, a parameter that does not fit, a bundle that uses itself, and a
+  // `fact` pattern that matches no fact this file sets.
+  const refusals = groupRefusals(
+    { bundles, tables, factions, intel },
+    documentRowLists({ bundles, tables, factions }, draft)
+  );
+  if (refusals.length > 0)
+    throw new Error(`${refusals[0].path}: ${refusals[0].message}`);
   return {
     key: root.key,
     draft,
     ...(Object.keys(templates).length > 0 ? { templates } : {}),
+    ...(Object.keys(bundles).length > 0 ? { bundles } : {}),
     ...(Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
