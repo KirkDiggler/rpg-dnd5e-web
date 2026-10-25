@@ -1,4 +1,5 @@
 import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
+import type { PortraitProviderProps } from '@/portraits';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
@@ -97,6 +98,21 @@ import {
 } from './local-world-die/localWorldDiePreSimulation';
 import { localWorldDieDraft } from './local-world-die/localWorldDiePublish';
 import type { SessionCanvasProps } from './SessionCanvas';
+
+// Keep the public-roster/provider seam real; rasterization is browser-tested.
+vi.mock('@/portraits/PortraitCapture', () => ({ PortraitCapture: () => null }));
+const portraitInputs = vi.hoisted(() => vi.fn());
+vi.mock('@/portraits', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/portraits')>('@/portraits');
+  return {
+    ...actual,
+    PortraitProvider: (props: PortraitProviderProps) => {
+      portraitInputs(props);
+      return <actual.PortraitProvider {...props} />;
+    },
+  };
+});
 
 const hoisted = vi.hoisted(() => ({
   lastCanvasProps: { current: null as SessionCanvasProps | null },
@@ -1533,6 +1549,16 @@ describe('SessionEncounterView production combat integration', () => {
     within(dock).getByText('Aldric');
     within(dock).getByText(/level 3 fighter/i);
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
+    const portraitProps = portraitInputs.mock.calls.at(
+      -1
+    )![0] as PortraitProviderProps;
+    expect(portraitProps.scopeKey).toBe(
+      JSON.stringify(['player-1', 'enc-1', 'char-1'])
+    );
+    expect(
+      portraitProps.members.find((entry) => entry.id === 'char-1')
+    ).toMatchObject({ classRef: 'fighter', raceRef: 'elf' });
+    expect(portraitProps.members.map((entry) => entry.id)).toEqual(['char-1']);
     screen.getByText('24/28');
   });
 
@@ -5756,7 +5782,9 @@ describe('SessionEncounterView production combat integration', () => {
     const onBack = vi.fn();
     renderView({ onBack });
     await screen.findByTestId('session-combat-equipment-button');
-    const underlyingEndTurn = screen.getByRole('button', { name: /end turn/i });
+    const underlyingEndTurn = await screen.findByRole('button', {
+      name: /end turn/i,
+    });
 
     ended.release();
 
