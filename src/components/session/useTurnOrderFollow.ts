@@ -38,7 +38,7 @@ import {
   ClockMark,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActDeliveryMetadata } from './actFeed';
 import { fightIncludes } from './combat-experience/toastPolicy';
 
@@ -162,6 +162,11 @@ export function useTurnOrderFollow({
   refetchRef.current = refetch;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  // The round the viewer's current or last turn began in: recorded when the
+  // strip's marker arrives on the viewer, never when it stays there.
+  const viewerTurnRoundRef = useRef<number | null>(null);
+  const shownActiveRef = useRef('');
+  const shownScopeRef = useRef(scope);
 
   const update = useCallback((change: (s: FollowState) => FollowState) => {
     setState((previous) =>
@@ -180,17 +185,24 @@ export function useTurnOrderFollow({
         return;
       }
       const order = snapshotRef.current.participants.map((p) => p.member);
+      const from = turn?.member?.id;
+      const ownTurnRound = viewerTurnRoundRef.current;
       update((s) => ({
         ...s,
         cursor: passTo(
-          cursorOf(s, snapshotRef.current),
-          turn?.member?.id,
+          // The viewer's own turn end counts from the round their turn began
+          // in: the end-turn verb's snapshot can land first, already a round
+          // on, because the server has played the whole loop.
+          !s.cursor && from === member && ownTurnRound !== null
+            ? { active: member, round: ownTurnRound }
+            : cursorOf(s, snapshotRef.current),
+          from,
           next,
           order
         ),
       }));
     },
-    [update]
+    [member, update]
   );
 
   const onTurnBeat = useCallback(
@@ -272,6 +284,17 @@ export function useTurnOrderFollow({
   const active = state.cursor?.active ?? snapshot.active;
   const round = state.cursor?.round ?? snapshot.round;
   const { cleared, order, removed } = state;
+  useEffect(() => {
+    if (shownScopeRef.current !== scope) {
+      shownScopeRef.current = scope;
+      shownActiveRef.current = '';
+      viewerTurnRoundRef.current = null;
+    }
+    if (active === member && shownActiveRef.current !== member) {
+      viewerTurnRoundRef.current = round;
+    }
+    shownActiveRef.current = active;
+  }, [active, member, round, scope]);
   const project = useCallback(
     (participants: readonly Participant[]): Participant[] => {
       if (cleared) return [];

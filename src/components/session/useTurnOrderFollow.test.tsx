@@ -136,6 +136,28 @@ describe('useTurnOrderFollow: the strip follows the fight (rpg-project#685)', ()
     });
   });
 
+  it('the replay counts rounds from the viewer’s own turn, not from a snapshot that landed ahead of it', () => {
+    const { result, rerender, strip } = setup(snapshot(VIEWER, 1, 1));
+    // The end-turn verb's snapshot lands first: the server already looped the
+    // fight back to the viewer, a round on.
+    rerender({ snap: snapshot(VIEWER, 2, 2) });
+    act(() => result.current.acceptActs([turnEnded(VIEWER, 'guard-1')], live));
+    expect(strip().marked).toEqual(['guard-1']);
+    expect(strip().round).toBe(1);
+    act(() => result.current.onTurnBeat({ type: 'playing', actor: 'guard-1' }));
+    for (const [from, to] of [
+      ['guard-1', 'guard-2'],
+      ['guard-2', 'captain'],
+      ['captain', VIEWER],
+    ]) {
+      act(() =>
+        result.current.onTurnBeat({ type: 'passed', act: turnEnded(from, to) })
+      );
+    }
+    expect(strip().marked).toEqual([VIEWER]);
+    expect(strip().round).toBe(2);
+  });
+
   it('a TURN_ENDED without next refetches the snapshot once instead of guessing', () => {
     const { result, refetch, strip } = setup(snapshot('guard-1', 1, 1));
     act(() => result.current.onTurnBeat({ type: 'playing', actor: 'guard-1' }));
