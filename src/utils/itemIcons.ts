@@ -12,11 +12,12 @@
  * Resolution precedence, implemented by `getItemIconUrl`:
  *   1. Wire wins — a non-empty `iconKey` resolves via the existing
  *      `resolveIconUrl` (equipmentTypes.ts), unconditionally.
- *   2. Canonical — `ref.id` looked up in `ITEM_ICONS` (exhaustive over
+ *   2. Published thumbnail — exact module:type:id lookup when available.
+ *   3. Canonical — `ref.id` looked up in `ITEM_ICONS` (exhaustive over
  *      the 38 weapon + 13 armor canonical ids).
- *   3. Supplemental — `ref.id` looked up in `SUPPLEMENTAL_ITEM_ICONS`
+ *   4. Supplemental — `ref.id` looked up in `SUPPLEMENTAL_ITEM_ICONS`
  *      (non-exhaustive extra map for ammo/pack ids with no wire enum).
- *   4. Text-only — `undefined`. Callers already render text-only for an
+ *   5. Text-only — `undefined`. Callers already render text-only for an
  *      `undefined` icon URL (see `resolveIconUrl`'s empty-key case) —
  *      never a broken `<img>`.
  *
@@ -26,6 +27,7 @@
  */
 
 import { resolveIconUrl } from '../components/game/equipment/equipmentTypes';
+import { GENERATED_ITEM_THUMBNAILS } from '../generated/itemThumbnailCatalog';
 
 /** Icon-tier metadata — recorded for a future asset-batch pass, not
  *  consumed by rendering logic in v1 (design doc "Tier assignments"). */
@@ -360,11 +362,9 @@ export const SUPPLEMENTAL_ITEM_ICONS: Record<string, ItemIconEntry> = {
 };
 
 /**
- * Resolve the icon URL for an owned item, implementing the 3-step
- * precedence (wire -> canonical -> supplemental -> text-only). `ref`
- * carries `id` only (module/type unused here — id is unique within the
- * weapon/armor/item id space this registry covers). `ref.id` is used
- * verbatim, no normalization.
+ * Resolve wire -> exact published thumbnail -> legacy sprite -> text-only.
+ * A thumbnail requires a full ref; legacy id-only callers retain sprite behavior.
+ * Reference fields are used verbatim, without normalization.
  *
  * @example
  * ```typescript
@@ -377,11 +377,17 @@ export const SUPPLEMENTAL_ITEM_ICONS: Record<string, ItemIconEntry> = {
  * ```
  */
 export function getItemIconUrl(
-  ref: { id: string },
+  ref: { id: string; module?: string; type?: string },
   iconKey: string
 ): string | undefined {
   const wireUrl = resolveIconUrl(iconKey);
   if (wireUrl) return wireUrl;
+
+  if (ref.module && ref.type) {
+    const thumbnail =
+      GENERATED_ITEM_THUMBNAILS[`${ref.module}:${ref.type}:${ref.id}`];
+    if (thumbnail) return thumbnail.url;
+  }
 
   const canonicalEntry = ITEM_ICONS[ref.id];
   if (canonicalEntry) return resolveIconUrl(canonicalEntry.path);

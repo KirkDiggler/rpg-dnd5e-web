@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { InventoryLight } from './InventoryLight';
+import { GENERATED_ITEM_THUMBNAILS } from '../../../generated/itemThumbnailCatalog';
 import type { EquippedMap, ItemLike, SlotDefLike } from './equipmentTypes';
 import { refKey } from './equipmentTypes';
+import { InventoryLight } from './InventoryLight';
 
 const SLOTS: SlotDefLike[] = [
   { key: 'main_hand', displayLabel: 'Main hand', accepts: ['weapon'] },
@@ -193,7 +194,7 @@ describe('InventoryLight', () => {
     });
   });
 
-  it('resolves a canonical icon for a carried item when icon_key is empty (rpg-dnd5e-web#576)', () => {
+  it('renders the published thumbnail for a carried weapon when icon_key is empty', () => {
     const equipped: EquippedMap = {
       main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
     };
@@ -209,7 +210,7 @@ describe('InventoryLight', () => {
     const img = row.querySelector('img');
     expect(img).not.toBeNull();
     expect(img?.getAttribute('src')).toBe(
-      '/models/synty/ui/library/icons/inventory/ICON_FantasyWarrior_Inventory_Swords01_Clean.png'
+      GENERATED_ITEM_THUMBNAILS['dnd5e:item:greatsword'].url
     );
     expect(img?.getAttribute('alt')).toBe('');
     expect(row.getAttribute('title')).toContain('Greatsword');
