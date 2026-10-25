@@ -129,8 +129,28 @@ export function selectorCell(
 export function selectorRoute(
   selector: AnswerSelectorShape | undefined
 ): AnswerWaypointShape[] | undefined {
-  return typeof selector === 'object' && 'path' in selector
+  return typeof selector === 'object' &&
+    'path' in selector &&
+    Array.isArray(selector.path)
     ? selector.path
+    : undefined;
+}
+
+/** The parameter a route is written as inside a bundle, `path: $path`
+ * (rpg-project#670), or undefined for a route of cells or no route. */
+export function selectorRouteParam(
+  selector: AnswerSelectorShape | undefined
+): string | undefined {
+  if (typeof selector !== 'object' || !('path' in selector)) return undefined;
+  return paramRefOf(selector.path);
+}
+
+/** The parameter a scalar names inside a bundle's rows, `$distance` →
+ * `distance`, or undefined for any other value (rpg-project#670): the
+ * engine replaces a whole `$name` scalar, and nothing else. */
+export function paramRefOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 1 && value.startsWith('$')
+    ? value.slice(1)
     : undefined;
 }
 
