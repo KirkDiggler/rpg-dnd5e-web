@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { BundlesPanel } from '../world-building/BundlesPanel';
 import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
@@ -74,6 +75,7 @@ import { useStudioLabels } from './useStudioLabels';
 const ENCOUNTER_SECTIONS = {
   cast: 'Cast',
   tables: 'Tables',
+  bundles: 'Bundles',
   factions: 'Factions',
   dispositions: 'Dispositions',
   intel: 'Intel',
@@ -1290,6 +1292,7 @@ function StudioSurface({
               [
                 'cast',
                 'tables',
+                'bundles',
                 'factions',
                 'dispositions',
                 'intel',
@@ -1365,6 +1368,21 @@ function StudioSurface({
               onOpen={openFactUse}
             />
           )}
+          <div hidden={encounterSection !== 'bundles'}>
+            <h2>Bundles</h2>
+            <AboutPanel>
+              <p>
+                A behaviour written once and used as one line. A table row that
+                says <code>use: pursuer</code> rolls as one share, and the
+                bundle's own rows roll inside it.
+              </p>
+            </AboutPanel>
+            <BundlesPanel
+              key={session.document.draft.id}
+              scope={session.document.scope}
+              onChange={(bundles) => session.commitBundles(bundles)}
+            />
+          </div>
           <div hidden={encounterSection !== 'tables'}>
             <h2>Tables</h2>
             <AboutPanel>

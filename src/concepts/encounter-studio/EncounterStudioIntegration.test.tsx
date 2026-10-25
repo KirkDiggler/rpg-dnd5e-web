@@ -5135,7 +5135,7 @@ describe('S0 one selection across the homes', () => {
     ).toBeTruthy();
   });
 
-  it('the home lists Cast, Tables, Factions, Dispositions, Intel and Facts, and no Creatures or Stat blocks', async () => {
+  it('the home lists Cast, Tables, Bundles, Factions, Dispositions, Intel and Facts, and no Creatures or Stat blocks', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
@@ -5146,6 +5146,7 @@ describe('S0 one selection across the homes', () => {
     ).toEqual([
       'Cast',
       'Tables',
+      'Bundles',
       'Factions',
       'Dispositions',
       'Intel',

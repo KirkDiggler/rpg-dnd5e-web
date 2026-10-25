@@ -14,6 +14,7 @@
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
 import type { AnswerTableShape, OptionShape } from './answerTableShape';
+import { wordRowsOf } from './bundles';
 import { walkFacts } from './factWalk';
 import { documentPlacementNames } from './placementNames';
 import { sideName } from './predicateSentence';
@@ -68,9 +69,11 @@ export function factIndexOf(
   const write = (fact: string, use: FactUse) => add(row(fact).writers, use);
   const read = (fact: string, use: FactUse) => add(row(fact).readers, use);
 
+  // A GROUP'S ROWS IN ITS PLACE (rpg-project#670): a fact a bundle's row
+  // teaches is taught by every table that uses it.
   const table = (on: AnswerTableShape | undefined, use: FactUse) => {
-    for (const entries of Object.values(on ?? {}))
-      for (const entry of entries) {
+    for (const [trigger, rows] of Object.entries(on ?? {}))
+      for (const entry of wordRowsOf(document.scope.bundles, rows, trigger)) {
         if (entry.fact !== undefined) write(entry.fact, use);
         walkFacts(entry.when, (fact) => read(fact, use));
       }

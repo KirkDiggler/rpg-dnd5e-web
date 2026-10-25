@@ -398,16 +398,30 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
       when: { heard: { kind: 'clang', within: 2 } },
       toward: 'sound',
     });
-    expect(options('Sound for time entry')).toEqual([
-      'boom',
-      'crash',
-      'clang',
-      'voice',
-    ]);
+    expect(
+      Array.from(
+        screen
+          .getByTestId('Sound kinds for time entry')
+          .querySelectorAll('option')
+      ).map((o) => o.getAttribute('value'))
+    ).toEqual(['boom', 'crash', 'clang', 'voice']);
     fireEvent.change(screen.getByLabelText('Sound for time entry'), {
       target: { value: 'voice' },
     });
     expect(last()?.when).toEqual({ heard: { kind: 'voice', within: 2 } });
+  });
+
+  it('takes a pattern over the kinds in the same field (rpg-project#670)', () => {
+    const last = mount({
+      when: { heard: { kind: 'clang', within: 2 } },
+      toward: 'sound',
+    });
+    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
+      target: { value: '/clang|bell/' },
+    });
+    expect(last()?.when).toEqual({
+      heard: { kind: '/clang|bell/', within: 2 },
+    });
   });
 
   it('authors a `fact` condition as a free id', () => {

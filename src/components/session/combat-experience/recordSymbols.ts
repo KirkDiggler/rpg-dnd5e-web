@@ -28,6 +28,13 @@ export interface TableRowSymbol {
     readonly distance: number;
     readonly heading: string;
   } | null;
+  /** A GROUP row (rpg-project#670): the bundle it was compiled from, its
+   * parameters, the word it counts as, and its own rows. Absent on a word
+   * row. */
+  readonly from?: string;
+  readonly params?: Readonly<Record<string, string>>;
+  readonly as?: string;
+  readonly rows?: readonly TableRowSymbol[];
 }
 
 /** A described table: the `table` beat's fields. */
@@ -47,6 +54,11 @@ export interface RowVerdict {
   readonly weight: number;
   readonly percent: number;
   readonly loaded: number;
+  /** A group's verdict holds its rows' verdicts, and the inner die when the
+   * pick descended into it (rpg-project#670). */
+  readonly rows?: readonly RowVerdict[];
+  readonly roll?: number;
+  readonly of?: number;
 }
 
 /** The fields of an `answered` beat this module reads. */
@@ -57,6 +69,10 @@ export interface AnsweredSymbol {
   readonly roll: number;
   readonly of: number;
   readonly entry: number;
+  /** The row picked at every level (rpg-project#670): `[4]` for a word row,
+   * `[4, 1]` for the second row inside the group at entry 4. A beat from
+   * before groups carries none, and reads as `[entry]`. */
+  readonly path: readonly number[];
   readonly temper: string;
   readonly word: string;
   readonly selector: string;
@@ -96,23 +112,62 @@ function tableOf(fields: Readonly<Record<string, unknown>>): TableSymbol {
     option: str(fields.option),
     key: str(fields.key),
     temper: str(fields.temper),
-    rows: rows.map((r) => {
-      const row = (r ?? {}) as Record<string, unknown>;
-      const search = row.search as Record<string, unknown> | null | undefined;
-      return {
-        entry: num(row.entry),
-        when: Array.isArray(row.when) ? row.when.map(str) : [],
-        word: str(row.word),
-        selector: str(row.selector),
-        weight: num(row.weight),
-        say: str(row.say),
-        fact: str(row.fact),
-        search:
-          search && typeof search === 'object'
-            ? { distance: num(search.distance), heading: str(search.heading) }
-            : null,
-      };
-    }),
+    rows: rows.map(tableRowOf),
+  };
+}
+
+/** One described row, a group's rows read the same way beneath it. */
+function tableRowOf(r: unknown): TableRowSymbol {
+  const row = (r ?? {}) as Record<string, unknown>;
+  const search = row.search as Record<string, unknown> | null | undefined;
+  const out: TableRowSymbol = {
+    entry: num(row.entry),
+    when: Array.isArray(row.when) ? row.when.map(str) : [],
+    word: str(row.word),
+    selector: str(row.selector),
+    weight: num(row.weight),
+    say: str(row.say),
+    fact: str(row.fact),
+    search:
+      search && typeof search === 'object'
+        ? { distance: num(search.distance), heading: str(search.heading) }
+        : null,
+  };
+  if (!Array.isArray(row.rows)) return out;
+  const params =
+    row.params && typeof row.params === 'object'
+      ? Object.fromEntries(
+          Object.entries(row.params as Record<string, unknown>).map(
+            ([k, v]) => [k, str(v)]
+          )
+        )
+      : {};
+  return {
+    ...out,
+    from: str(row.from),
+    params,
+    as: str(row.as),
+    rows: row.rows.map(tableRowOf),
+  };
+}
+
+/** One row's verdict, a group's verdicts read the same way beneath it. */
+function verdictOf(r: unknown): RowVerdict {
+  const v = (r ?? {}) as Record<string, unknown>;
+  const out: RowVerdict = {
+    entry: num(v.entry),
+    held: v.held === true,
+    affordable: v.affordable === true,
+    weight: num(v.weight),
+    percent: num(v.percent),
+    loaded: num(v.loaded),
+  };
+  if (!Array.isArray(v.rows)) return out;
+  return {
+    ...out,
+    rows: v.rows.map(verdictOf),
+    roll: num(v.roll),
+    of: num(v.of),
   };
 }
 
@@ -122,28 +177,25 @@ export function answeredOf(
 ): AnsweredSymbol | undefined {
   if (!fields || typeof fields.key !== 'string') return undefined;
   const rows = Array.isArray(fields.rows) ? fields.rows : [];
+  const entry = typeof fields.entry === 'number' ? fields.entry : -1;
+  const path = Array.isArray(fields.path)
+    ? fields.path.filter((i): i is number => typeof i === 'number')
+    : entry >= 0
+      ? [entry]
+      : [];
   return {
     creature: str(fields.creature) || str(fields.prop),
     option: str(fields.option),
     key: fields.key,
     roll: num(fields.roll),
     of: num(fields.of),
-    entry: typeof fields.entry === 'number' ? fields.entry : -1,
+    entry,
+    path,
     temper: str(fields.temper),
     word: str(fields.word),
     selector: str(fields.selector),
     say: str(fields.say),
-    rows: rows.map((r) => {
-      const v = (r ?? {}) as Record<string, unknown>;
-      return {
-        entry: num(v.entry),
-        held: v.held === true,
-        affordable: v.affordable === true,
-        weight: num(v.weight),
-        percent: num(v.percent),
-        loaded: num(v.loaded),
-      };
-    }),
+    rows: rows.map(verdictOf),
   };
 }
 
@@ -182,23 +234,79 @@ function doesPhrase(row: TableRowSymbol): string {
   return row.selector ? `${row.word} ${row.selector}` : row.word;
 }
 
-/** A row in words: its conditions, then what it does. */
-export function rowPhrase(row: TableRowSymbol): string {
-  const when = row.when.length ? row.when.join(' and ') : 'always';
-  return `${when} → ${doesPhrase(row)}`;
+/** A group in words: its bundle and the parameters it was used with,
+ * "pursuer {distance 6, heading went}". */
+function groupPhrase(row: TableRowSymbol): string {
+  const params = Object.entries(row.params ?? {});
+  return params.length
+    ? `${row.from} {${params.map(([k, v]) => `${k} ${v}`).join(', ')}}`
+    : (row.from ?? '');
 }
 
-function verdictLine(
+/** A row in words: its conditions, then what it does — for a group, the
+ * bundle it uses. */
+export function rowPhrase(row: TableRowSymbol): string {
+  const when = row.when.length ? row.when.join(' and ') : 'always';
+  return row.rows
+    ? `${when} → ${groupPhrase(row)}`
+    : `${when} → ${doesPhrase(row)}`;
+}
+
+/** A row's verdict line, a group's rows' lines beneath it, each one level
+ * deeper marked "↳". */
+function verdictLines(
   v: RowVerdict,
   row: TableRowSymbol | undefined,
-  temper: string
-): string {
+  temper: string,
+  depth = 0
+): string[] {
+  const lead = '↳ '.repeat(depth);
   const what = row ? rowPhrase(row) : `entry ${v.entry}`;
-  if (v.held && v.affordable) {
-    const word = temper ? `${temper} ` : '';
-    return `✓ ${what} · ${v.weight} × ${word}${v.percent}% = ${v.loaded}`;
+  const word = temper ? `${temper} ` : '';
+  const line =
+    v.held && v.affordable
+      ? `${lead}✓ ${what} · ${v.weight} × ${word}${v.percent}% = ${v.loaded}`
+      : `${lead}✗ ${what}: ${v.held ? 'unaffordable' : 'condition'}`;
+  return [
+    line,
+    ...(v.rows ?? []).flatMap((inner) =>
+      verdictLines(inner, row?.rows?.[inner.entry], temper, depth + 1)
+    ),
+  ];
+}
+
+/** The path through the tree in words (rpg-project#670): every level's die
+ * and the group it landed on, then the last level's die and the row that
+ * fired — "rolled 61 of 200 → pursuer (2×100) · rolled 7 of 100 → enemy lost
+ * → search 6 went". undefined when a level is not in the table. */
+function pathPhrase(
+  answer: AnsweredSymbol,
+  table: TableSymbol
+): string | undefined {
+  const parts: string[] = [];
+  let rows: readonly TableRowSymbol[] | undefined = table.rows;
+  let verdicts: readonly RowVerdict[] | undefined = answer.rows;
+  let roll = answer.roll;
+  let of = answer.of;
+  for (const [level, index] of answer.path.entries()) {
+    const row: TableRowSymbol | undefined = rows?.[index];
+    if (!row) return undefined;
+    if (level === answer.path.length - 1) {
+      parts.push(`rolled ${roll} of ${of} → ${rowPhrase(row)}`);
+      break;
+    }
+    const v: RowVerdict | undefined = verdicts?.find(
+      (candidate) => candidate.entry === index
+    );
+    parts.push(
+      `rolled ${roll} of ${of} → ${row.from} (${v?.weight ?? row.weight}×${v?.percent ?? 100})`
+    );
+    roll = v?.roll ?? 0;
+    of = v?.of ?? 0;
+    rows = row.rows;
+    verdicts = v?.rows;
   }
-  return `✗ ${what}: ${v.held ? 'unaffordable' : 'condition'}`;
+  return parts.join(' · ');
 }
 
 /** An `answered` beat in the table's own words, or by index without it. */
@@ -207,6 +315,14 @@ export function readAnswer(
   table: TableSymbol | undefined
 ): AnswerReading {
   const head = [answer.creature, answer.key, answer.option].filter(Boolean);
+  const lines = answer.rows.flatMap((v) =>
+    verdictLines(v, table?.rows[v.entry], answer.temper)
+  );
+  // A PICK INTO A GROUP reads level by level (rpg-project#670).
+  const path =
+    table && answer.path.length > 1 ? pathPhrase(answer, table) : undefined;
+  if (path !== undefined)
+    return { sentence: [...head, path].join(' · '), lines, described: true };
   let picked: string;
   if (answer.entry < 0) {
     picked = 'held: nothing eligible';
@@ -221,9 +337,7 @@ export function readAnswer(
   if (!table) parts.push(TABLE_NOT_IN_RECORD);
   return {
     sentence: parts.join(' · '),
-    lines: answer.rows.map((v) =>
-      verdictLine(v, table?.rows[v.entry], answer.temper)
-    ),
+    lines,
     described: table !== undefined,
   };
 }

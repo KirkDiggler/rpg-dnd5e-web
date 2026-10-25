@@ -35,7 +35,10 @@ import {
   answerWhenLegalOn,
   answerWord,
   answerWordsForTrigger,
+  GROUP_SENTENCES,
+  HEARING_SENTENCES,
   isSearchHeading,
+  patternOf,
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
@@ -45,12 +48,13 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
+  isUseEntry,
   OPTION_VERDICTS,
   whenConditions,
   whenFromConditions,
@@ -71,11 +75,12 @@ import {
   factLabel,
   heardLabel,
   selectorPhrase,
-  whenShorthand,
-  wordShorthand,
 } from './answerVocabulary';
+import { heardPatternMatches, resolveUse } from './bundles';
+import { SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
 import { turnsTo } from './engineLaws';
+import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
 import { factionLayers } from './layeredOrders';
 import {
@@ -161,37 +166,6 @@ function factionTemperText(temper: SiteTemper): string {
   return Object.entries(temper)
     .map(([word, share]) => `${word} ×${share}`)
     .join(' · ');
-}
-
-/** One entry: its condition — WHEN it is on the table at all, said only where
- * a condition is a thing this grammar has — its weight (an omitted weight IS 1
- * to the engine), the `say` that goes with it, and the one word it does.
- *
- * THE CONDITION LEAD IS `time`-ONLY, so the trigger is a parameter rather than
- * something this function can work out for itself. On a `time` row, no `when`
- * honestly means "always eligible" and the line says so. On a SOCIAL row
- * `when` is ILLEGAL — the verdict IS the condition, `answerWhenRefusal`'s own
- * sentence being "a `when` under it asks when a thing that just happened
- * happened" — so labelling one "any time" asserts a timing the row does not
- * have: that same falsehood from the other side. Social rows carry no
- * condition lead at all.
- *
- * FOUND IN REVIEW (independent-gate): the first cut printed "any time" on
- * every row, social included, and a test locked the mislabel in. */
-function entryText(entry: AnswerEntryShape, trigger: string): string {
-  const parts: string[] = [];
-  if (answerWhenLegalOn(trigger)) {
-    parts.push(
-      entry.when === undefined
-        ? 'any time'
-        : `when ${whenShorthand(entry.when)}`
-    );
-  }
-  parts.push(`weight ${entry.weight ?? 1}`);
-  if (entry.say !== undefined) parts.push(`say “${entry.say}”`);
-  const word = entryWord(entry);
-  if (word !== undefined) parts.push(wordShorthand(entry, word));
-  return parts.join(' · ');
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -592,23 +566,33 @@ function WhenConditionRow({
       {base?.kind === 'heard' && (
         <>
           {/* THE FOUR KINDS ARE THE RULEBOOK'S SEALED VOCABULARY (R4): a
-              kind and a span, never a maker — a sound names nobody. */}
-          <select
+              kind and a span, never a maker — a sound names nobody. They are
+              OFFERED, and the field also takes a pattern over them typed as
+              `/clang|bell/` (rpg-project#670 R16), in the same place. */}
+          <input
+            list={`sound-kinds${n}-${trigger}`}
             aria-label={`Sound${n} for ${trigger} entry`}
+            placeholder="clang, or /clang|bell/"
             value={base.sound}
             onChange={(event) =>
               commitBase({ ...base, sound: event.target.value })
             }
+          />
+          <datalist
+            id={`sound-kinds${n}-${trigger}`}
+            data-testid={`Sound kinds${n} for ${trigger} entry`}
           >
-            {(ANSWER_SOUND_KINDS.includes(base.sound)
-              ? ANSWER_SOUND_KINDS
-              : [base.sound, ...ANSWER_SOUND_KINDS]
-            ).map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
+            {ANSWER_SOUND_KINDS.map((kind) => (
+              <option key={kind} value={kind} />
             ))}
-          </select>
+          </datalist>
+          {!heardPatternMatches(base.sound) && base.sound !== '' && (
+            <span className="wb-entry-refusal" role="alert">
+              {patternOf(base.sound) !== undefined
+                ? GROUP_SENTENCES.heardPatternNoSound(base.sound)
+                : HEARING_SENTENCES.unknownSoundKind(base.sound)}
+            </span>
+          )}
           <span>within</span>
           <input
             type="number"
@@ -627,7 +611,7 @@ function WhenConditionRow({
       {base?.kind === 'fact' && (
         <input
           aria-label={`Fact${n} for ${trigger} entry`}
-          placeholder="fact id, e.g. alarm-raised"
+          placeholder="fact id, e.g. alarm-raised, or /alarm-.*/"
           value={base.fact}
           onChange={(event) =>
             commitBase({ ...base, fact: event.target.value })
@@ -766,7 +750,83 @@ const SEARCH_HEADING_LABELS: Record<
   right: 'right (a quarter right of went)',
 };
 
-export function AnswerEntryRow({
+/** The props every answer row takes, a word row or a group. */
+type AnswerEntryRowProps = Parameters<typeof WordEntryRow>[0];
+
+/**
+ * One answer row. A `use:` row (rpg-project#670) is ONE LINE —
+ * "pursuer · with distance 8 · ×2 · as toward" — that expands, read-only, to
+ * the rows its bundle makes with the parameters filled; the bundle itself is
+ * edited in the Bundles list. Every other row is today's editor.
+ */
+export function AnswerEntryRow(props: AnswerEntryRowProps) {
+  if (isUseEntry(props.entry))
+    return (
+      <UseEntryRow
+        trigger={props.trigger}
+        entry={props.entry}
+        onRemove={props.onRemove}
+        label={props.label ?? props.trigger}
+      />
+    );
+  return <WordEntryRow {...props} />;
+}
+
+/** A `use:` row: its line, the engine's refusal when its bundle cannot be
+ * resolved, and its bundle's rows behind "Show rows". */
+function UseEntryRow({
+  trigger,
+  entry,
+  onRemove,
+  label,
+}: {
+  trigger: string;
+  entry: AnswerEntryShape & { use: string };
+  onRemove: () => void;
+  label: string;
+}) {
+  const bundles = useContext(SiteBundlesContext);
+  const [open, setOpen] = useState(false);
+  const resolved = resolveUse(bundles, entry, trigger);
+  return (
+    <li
+      className="wb-policy-entry wb-entry-collapsed wb-entry-use"
+      data-entry-word="use"
+    >
+      <span className="wb-entry-summary">{entryText(entry, trigger)}</span>
+      <button
+        type="button"
+        aria-label={`Show the rows of ${label} entry ${entry.use}`}
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      >
+        {open ? 'Hide rows' : 'Show rows'}
+      </button>
+      <button
+        type="button"
+        className="wb-danger"
+        aria-label={`Remove ${label} entry`}
+        onClick={onRemove}
+      >
+        Remove
+      </button>
+      {resolved.refusal && (
+        <p className="wb-entry-refusal" role="alert">
+          {resolved.refusal.message}
+        </p>
+      )}
+      {open && (
+        <ul className="wb-use-rows" aria-label={`${entry.use} rows`}>
+          {resolved.rows.map((row, index) => (
+            <li key={index}>{entryText(row, trigger)}</li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function WordEntryRow({
   trigger,
   entry,
   onCommit,

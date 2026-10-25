@@ -8,10 +8,10 @@ import { GROUP_SENTENCES } from '@/author/answerVocabulary';
 import { describe, expect, it } from 'vitest';
 import { validateAnswerTable } from './answerTableShape';
 import {
+  groupLineText,
   groupRefusals,
   resolveUse,
   scopeLists,
-  useLineText,
   wordRowsOf,
 } from './bundles';
 import type { SiteBundles, SiteScope } from './siteScope';
@@ -66,14 +66,14 @@ describe('a use row resolves to the bundle’s rows', () => {
 
   it('reads as one line', () => {
     expect(
-      useLineText({
+      groupLineText({
         use: 'pursuer',
         with: { distance: 8 },
         weight: 2,
         as: 'toward',
       })
     ).toBe('pursuer · with distance 8 · ×2 · as toward');
-    expect(useLineText({ use: 'alarm-reactor' })).toBe('alarm-reactor');
+    expect(groupLineText({ use: 'alarm-reactor' })).toBe('alarm-reactor');
   });
 
   it('flattens a table to the rows the engine rolls', () => {

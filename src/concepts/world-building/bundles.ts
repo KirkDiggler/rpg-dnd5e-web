@@ -178,7 +178,7 @@ export function resolveUse(
 }
 
 /** A `use:` row as ONE line: "pursuer · with distance 8 · ×2 · as toward". */
-export function useLineText(entry: AnswerEntryShape): string {
+export function groupLineText(entry: AnswerEntryShape): string {
   const parts = [entry.use ?? ''];
   const given = Object.entries(entry.with ?? {});
   if (given.length > 0)
