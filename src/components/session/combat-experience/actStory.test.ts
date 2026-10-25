@@ -113,7 +113,8 @@ describe('buildActStory carries the toast policy onto its rows', () => {
       },
     });
     const rows = story(turn, swingAtAlice('id-2'));
-    expect(rows[1]?.toastRule?.hold).toBe(true);
+    const swing = rows.find((r) => r.act?.id === 'id-2');
+    expect(swing?.toastRule?.hold).toBe(true);
   });
 
   it('a line’s own table answer toasts for the member who spoke it', () => {
@@ -261,5 +262,30 @@ describe('a member joining a running fight', () => {
     // The first turn end that names her puts her in it.
     expect(inFight('J7')).toBe(true);
     expect(rows.find((r) => r.act?.id === 'J7')?.toastRule?.hold).toBe(true);
+  });
+});
+
+describe('the story drops the turn-taken line for other members (rpg-project#685)', () => {
+  const turnEnded = (id: string, member: typeof alice, next: typeof alice) =>
+    at(id, Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.TURN_ENDED, turn: { member, next } },
+    });
+
+  it('a guard ending its turn writes no line; the viewer ending theirs still does', () => {
+    const rows = story(
+      turnEnded('id-guard', gate, alice),
+      turnEnded('id-self', alice, gate)
+    );
+    expect(rows.map((r) => r.act?.id)).toEqual(['id-self']);
+    expect(rows[0]?.detail).toBe('Alice ends their turn');
+  });
+
+  it('a dropped turn line still puts the viewer in the fight it passes to', () => {
+    const rows = story(
+      turnEnded('id-guard', gate, alice),
+      swingAtAlice('id-2')
+    );
+    expect(rows.find((r) => r.act?.id === 'id-2')?.inFight).toBe(true);
   });
 });

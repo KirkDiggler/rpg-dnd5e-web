@@ -184,3 +184,86 @@ describe('useCombatStoryPacing over whole driven turns', () => {
     expect(notices.at(-1)).toBeNull();
   });
 });
+
+describe('useCombatStoryPacing tells the turn order what it plays (rpg-project#685)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const party = (id: string) => ({ kind: PartyKind.MEMBER, id });
+  const walkBy = (id: string, mover: string) =>
+    create(ActSchema, {
+      session: 'castle',
+      id,
+      family: Family.ACT,
+      body: {
+        case: 'walk',
+        value: { mover: party(mover), path: [{ cell: { x: 1, y: 0 } }] },
+      },
+    });
+  const passed = (id: string, member: string, next: string) =>
+    create(ActSchema, {
+      session: 'castle',
+      id,
+      family: Family.CLOCK,
+      body: {
+        case: 'clock',
+        value: {
+          mark: ClockMark.TURN_ENDED,
+          turn: { member: party(member), next: party(next) },
+        },
+      },
+    });
+
+  it('a commoner walking at world pace outside the fight is never announced as a turn', () => {
+    const onTurnBeat = vi.fn();
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        member: 'aldric',
+        participants,
+        story: [],
+        onTurnBeat,
+      })
+    );
+    act(() =>
+      result.current.acceptActs([walkBy('id-w', 'commoner')], {
+        source: 'live',
+      })
+    );
+    expect(result.current.notice).toBeNull();
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS * 4));
+    expect(result.current.notice).toBeNull();
+    expect(onTurnBeat).not.toHaveBeenCalled();
+  });
+
+  it('plays each driven turn, passes it on in order, then rests', () => {
+    const beats: string[] = [];
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        member: 'aldric',
+        participants,
+        story: [],
+        onTurnBeat: (beat) =>
+          beats.push(
+            beat.type === 'playing'
+              ? `playing ${beat.actor}`
+              : beat.type === 'passed'
+                ? `passed ${beat.act.body.case === 'clock' ? beat.act.body.value.turn?.next?.id : ''}`
+                : 'idle'
+          ),
+      })
+    );
+    act(() =>
+      result.current.acceptActs(
+        [
+          walkBy('id-1', 'skeleton-guard'),
+          passed('id-2', 'skeleton-guard', 'aldric'),
+        ],
+        { source: 'live' }
+      )
+    );
+    for (let step = 0; step < 10; step += 1) {
+      act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    }
+    expect(beats).toEqual(['playing skeleton-guard', 'passed aldric', 'idle']);
+  });
+});

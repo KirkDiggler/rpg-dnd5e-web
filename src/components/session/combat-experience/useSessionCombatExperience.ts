@@ -36,6 +36,7 @@ import {
   type SetStateAction,
 } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
+import type { TurnBeat } from '../useTurnOrderFollow';
 import { wardedCastNotice } from '../wardBeat';
 import { actStoryId } from './actStory';
 import { caughtNotice } from './caughtNotice';
@@ -118,6 +119,8 @@ export interface UseSessionCombatExperienceArgs {
    * `heard` beat's bearing is measured from (rpg-project#569). Presentation
    * only: it never reaches a command. Null or absent while unknown. */
   viewerCell?: { readonly x: number; readonly y: number } | null;
+  /** The turn order follows the paced story's driven turns (rpg-project#685). */
+  onTurnBeat?: (beat: TurnBeat) => void;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -285,6 +288,7 @@ export function useSessionCombatExperience({
   scheduleRefresh,
   memberTargetingMode = 'legacy',
   viewerCell = null,
+  onTurnBeat,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
@@ -455,6 +459,7 @@ export function useSessionCombatExperience({
     memberNames,
     story: presentation.story,
     result: presentation.result,
+    onTurnBeat,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
