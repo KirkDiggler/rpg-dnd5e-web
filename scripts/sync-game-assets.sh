@@ -89,6 +89,8 @@ NPC_CATALOG_OUTPUT="$WEB_ROOT/src/generated/npcAppearanceCatalog.ts"
 WORLD_CATALOG_OUTPUT="$WEB_ROOT/src/generated/worldAssetCatalog.ts"
 MATERIAL_CATALOG_OUTPUT="$WEB_ROOT/src/generated/worldMaterialCatalog.ts"
 MATERIAL_GENERATOR="$SCRIPT_DIR/generate-world-material-catalog.mjs"
+ITEM_CATALOG_OUTPUT="$WEB_ROOT/src/generated/itemThumbnailCatalog.ts"
+ITEM_GENERATOR="$SCRIPT_DIR/generate-item-thumbnail-catalog.mjs"
 
 # A committed catalog records the exact provider commit it was generated from.
 # That commit is the pin: the mirror has to reproduce it, and only an explicit
@@ -154,6 +156,11 @@ CHARACTER_PIN=$(catalog_provider_commit "$CATALOG_OUTPUT")
 NPC_PIN=$(catalog_commit "$NPC_CATALOG_OUTPUT")
 WORLD_PIN=$(catalog_commit "$WORLD_CATALOG_OUTPUT")
 MATERIAL_PIN=$(catalog_commit "$MATERIAL_CATALOG_OUTPUT")
+ITEM_PIN=$(catalog_commit "$ITEM_CATALOG_OUTPUT")
+if [ -f "$ITEM_CATALOG_OUTPUT" ] && [ -z "$ITEM_PIN" ]; then
+  echo "ERROR: item thumbnail catalog must carry an exact provider pin" >&2
+  exit 1
+fi
 if [ -f "$MATERIAL_CATALOG_OUTPUT" ] && [ -z "$MATERIAL_PIN" ]; then
   echo "ERROR: material catalog must carry an exact provider pin" >&2
   exit 1
@@ -307,8 +314,8 @@ PINNED_MIRROR_ROOT=
 # describe. Each catalog governs its own subtree, so the mirror is a union:
 # pinned subtrees from their own commits and everything else from the clean
 # provider checkout. Nothing here touches the provider worktree or its HEAD.
-if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$MATERIAL_PIN" ]; }; then
-  if [ -z "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN" ]; then
+if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$MATERIAL_PIN$ITEM_PIN" ]; }; then
+  if [ -z "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN$ITEM_PIN" ]; then
     echo "ERROR: --pinned-runtime needs a committed catalog that pins a provider commit" >&2
     echo "       Establish one deliberately with: npm run assets:sync:bump" >&2
     exit 1
@@ -332,9 +339,9 @@ if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$
   # Default customization/NPC adoption still owns only those catalogs; preserve
   # the separately adopted material pin rather than copying new HEAD materials
   # behind unchanged metadata. Explicit --runtime-assets retains its HEAD meaning.
-  UNION_PINS="$MATERIAL_PIN"
+  UNION_PINS="$MATERIAL_PIN $ITEM_PIN"
   if [ "$PINNED_RUNTIME" = "1" ]; then
-    UNION_PINS="$CHARACTER_PIN $NPC_PIN $WORLD_PIN $MATERIAL_PIN"
+    UNION_PINS="$CHARACTER_PIN $NPC_PIN $WORLD_PIN $MATERIAL_PIN $ITEM_PIN"
   fi
   NEEDS_UNION=0
   for PIN in $UNION_PINS; do
@@ -377,6 +384,7 @@ if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$
       overlay_pinned_subtree "$WORLD_PIN" thumbnails/world-assets 1
     fi
     overlay_pinned_subtree "$MATERIAL_PIN" world-materials 1
+    overlay_pinned_subtree "$ITEM_PIN" thumbnails/items
   fi
 fi
 
@@ -391,6 +399,12 @@ verify_material_pin() {
   fi
 }
 verify_material_pin "$SYNTY_SRC"
+verify_item_pin() {
+  if [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$ITEM_PIN" ]; then
+    node "$ITEM_GENERATOR" --provider-root "$ASSETS_DIR" --check-pin "$ITEM_PIN" --runtime-root "$1" --output "$ITEM_CATALOG_OUTPUT"
+  fi
+}
+verify_item_pin "$SYNTY_SRC"
 
 # Preflight the complete approved boundary before rsync --delete can mutate
 # either destination. Runtime roots and required dice files must be real
@@ -467,6 +481,7 @@ NODE
   sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
   sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
   verify_material_pin "$SYNTY_DEST"
+  verify_item_pin "$SYNTY_DEST"
   if [ "$PINNED_RUNTIME" = "1" ]; then
     echo "Done. public/models/{synty,custom-dice}/ reproduce the subtrees pinned by the committed catalogs."
   else
@@ -522,6 +537,7 @@ trap 'rm -f "$CATALOG_STAGE" "$NPC_CATALOG_STAGE"' EXIT HUP INT TERM
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
 verify_material_pin "$SYNTY_DEST"
+verify_item_pin "$SYNTY_DEST"
 "$NPC_CATALOG_RUNNER" "$NPC_CATALOG_GENERATOR" \
   --provider-root "$ASSETS_DIR" \
   --selection "$NPC_SELECTION" \

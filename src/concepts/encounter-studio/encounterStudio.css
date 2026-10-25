@@ -562,6 +562,52 @@
   width: 100%;
   min-width: 0;
 }
+.es-cast-workspace {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.es-cast-members {
+  position: sticky;
+  top: 0;
+}
+.es-cast-members button {
+  width: 100%;
+  text-align: left;
+}
+.es-cast-editor {
+  min-width: 0;
+  border-left: 1px solid #465366;
+  padding-left: 1rem;
+}
+.es-cast-look-summary {
+  border: 1px solid #465366;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+.es-cast-look-summary > img {
+  object-fit: contain;
+  border-radius: 0.3rem;
+}
+.es-cast-look-summary .es-look-grid {
+  max-height: 24rem;
+  overflow-y: auto;
+}
+@media (max-width: 700px) {
+  .es-cast-workspace {
+    grid-template-columns: 1fr;
+  }
+  .es-cast-members {
+    position: static;
+  }
+  .es-cast-editor {
+    border-left: 0;
+    border-top: 1px solid #465366;
+    padding: 0.75rem 0 0;
+  }
+}
+
 .es-creature-panel {
   display: grid;
   gap: 0.75rem;
@@ -1159,6 +1205,79 @@
 
 /* Export and import (rpg-project#578): the header's Draft file control
  * opens this row under the header, as the leave confirmation does. */
+.encounter-studio .es-site-panel {
+  margin: 0.5rem 0.75rem;
+  border: 1px solid #465366;
+  border-radius: 0.5rem;
+  background: #18212d;
+  flex-shrink: 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+.es-site-heading,
+.es-site-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+.es-site-heading h2,
+.es-site-heading p {
+  margin: 0;
+}
+.es-site-body {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+}
+.es-site-nav {
+  padding: 0 0.75rem 0.75rem;
+  border-right: 1px solid #465366;
+}
+.es-site-nav h3 {
+  margin: 0.5rem 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #aabbd0;
+}
+.es-site-nav button {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.25rem;
+  text-align: left;
+}
+.es-site-content {
+  min-width: 0;
+}
+.es-site-recovery {
+  border-top: 1px solid #465366;
+  font-size: 0.8rem;
+  color: #aabbd0;
+}
+.encounter-studio .es-site-content .es-draft-file-panel {
+  border: 0;
+  margin: 0;
+  background: transparent;
+}
+@media (max-width: 600px) {
+  .es-site-body {
+    grid-template-columns: 1fr;
+  }
+  .es-site-nav {
+    display: flex;
+    gap: 1rem;
+    border-right: 0;
+    border-bottom: 1px solid #465366;
+  }
+  .es-site-nav > div {
+    flex: 1;
+  }
+  .es-site-heading,
+  .es-site-recovery {
+    flex-wrap: wrap;
+  }
+}
+
 .encounter-studio .es-draft-file-panel {
   display: flex;
   flex-wrap: wrap;

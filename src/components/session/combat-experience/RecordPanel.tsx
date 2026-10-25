@@ -6,6 +6,12 @@ import {
   type RecordRow,
 } from '../recordFeed';
 import styles from './RecordPanel.module.css';
+import {
+  answeredOf,
+  readAnswer,
+  symbolsOf,
+  type TableSymbol,
+} from './recordSymbols';
 
 /**
  * RecordPanel is the debug panel's view of the record stream
@@ -13,6 +19,11 @@ import styles from './RecordPanel.module.css';
  * name, act id — narrowed by act id and by beat name (event-stream R8).
  * Opening a row shows its fields as indented JSON. Clicking a row's act id
  * narrows the panel to that act: a walk's steps and the reaction it drew.
+ *
+ * An `answered` row reads in its table's own words (rpg-project#674): the
+ * latest `table` beat for its creature, option and key, read off the whole
+ * buffer so a beat filter does not hide the symbols. Collapsed it is the pick
+ * and the roll; open, every row of the key with ✓ load or ✗ reason.
  */
 export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
   const [filter, setFilter] = useState<RecordFilter>({ act: '', beat: '' });
@@ -20,6 +31,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
     () => filterRecord(feed.rows, filter),
     [feed.rows, filter]
   );
+  const symbols = useMemo(() => symbolsOf(feed.rows), [feed.rows]);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -123,6 +135,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
           <RecordRowView
             key={row.id}
             row={row}
+            table={symbols.get(row.id)}
             onAct={(act) => changeFilter({ ...filter, act })}
           />
         ))}
@@ -140,12 +153,19 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
 
 function RecordRowView({
   row,
+  table,
   onAct,
 }: {
   row: RecordRow;
+  table: TableSymbol | undefined;
   onAct: (act: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const reading = useMemo(() => {
+    if (row.beat !== 'answered') return undefined;
+    const answer = answeredOf(row.fields);
+    return answer ? readAnswer(answer, table) : undefined;
+  }, [row.beat, row.fields, table]);
   const json = useMemo(
     () => (open ? JSON.stringify(row.fields ?? {}, null, 2) : ''),
     [open, row.fields]
@@ -164,6 +184,9 @@ function RecordRowView({
             …{row.id.slice(-6)}
           </code>
           <strong className={styles.beat}>{row.beat || '(no beat)'}</strong>
+          {reading && (
+            <span className={styles.reading}>{reading.sentence}</span>
+          )}
         </button>
         {row.act ? (
           <button
@@ -178,6 +201,13 @@ function RecordRowView({
           <span className={styles.noAct}>no act</span>
         )}
       </div>
+      {open && reading && reading.lines.length > 0 && (
+        <ul className={styles.verdicts} aria-label="Rows of the table">
+          {reading.lines.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      )}
       {open && (
         <pre className={styles.fields} aria-label="Record fields">
           <code>{json}</code>

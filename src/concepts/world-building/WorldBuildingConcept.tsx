@@ -9,7 +9,6 @@ import {
   encodeRoomDocument,
   isRoomDocument,
 } from '@/compositions/roomDocument';
-import { npcAppearanceOptions } from '@/npc-appearances/npcAppearanceChoices';
 import {
   useCallback,
   useEffect,
@@ -27,7 +26,9 @@ import {
   adoptCastMember,
   applyCastEdit,
   castMemberOf,
+  castPlacementAppearanceAvailable,
   removeCastMember,
+  removeCastPlacement,
   removeUnusedLook,
   renameCastMember,
   shuffleCastLooks,
@@ -1138,9 +1139,10 @@ export function WorldBuildingConcept({
       if (
         armedCreature &&
         (!member ||
-          !member.defaults ||
-          npcAppearanceOptions(armedCreature.appearanceRef).family?.ref !==
-            member.defaults.modelRef)
+          !castPlacementAppearanceAvailable(
+            member,
+            armedCreature.appearanceRef
+          ))
       )
         throw new Error('This cast member or look is no longer available.');
       const faction = member?.defaults?.faction;
@@ -1155,7 +1157,7 @@ export function WorldBuildingConcept({
       const next = placeRoomMonster(roomDraft, {
         id,
         ref: member?.ref ?? armedMonsterRef,
-        ...(armedCreature
+        ...(armedCreature?.appearanceRef
           ? { appearanceRef: armedCreature.appearanceRef }
           : {}),
         startingCell: { location: { ...cell } },
@@ -1242,15 +1244,32 @@ export function WorldBuildingConcept({
   const removeSelectedStudioActor = useCallback((): void => {
     const target = activeStudioTargetRef.current;
     if (target?.kind !== 'actor' && target?.kind !== 'start') return;
-    const next =
-      target.kind === 'actor'
-        ? removeRoomMonster(roomDraft, target.id)
-        : clearRoomPartyStart(roomDraft);
-    if (next === roomDraft || !commit(next.scene, selectedIds, next.room))
-      return;
+    if (target.kind === 'actor') {
+      if (
+        !commitRoomDocument(
+          removeCastPlacement(
+            roomHistoryRef.current.present,
+            target.id,
+            idFactory
+          )
+        )
+      )
+        return;
+    } else {
+      const next = clearRoomPartyStart(roomDraft);
+      if (next === roomDraft || !commit(next.scene, selectedIds, next.room))
+        return;
+    }
     setSelectedActorId(null);
     activateStudioTarget(null);
-  }, [activateStudioTarget, commit, roomDraft, selectedIds]);
+  }, [
+    activateStudioTarget,
+    commit,
+    commitRoomDocument,
+    idFactory,
+    roomDraft,
+    selectedIds,
+  ]);
 
   const removeSelectedStudioDoor = useCallback((): void => {
     const target = activeStudioTargetRef.current;
@@ -3832,6 +3851,21 @@ export function WorldBuildingConcept({
       return false;
     try {
       switch (intent.kind) {
+        case 'actor-remove': {
+          if (
+            !commitRoomDocument(
+              removeCastPlacement(
+                roomHistoryRef.current.present,
+                intent.target.id,
+                idFactory
+              )
+            )
+          )
+            return false;
+          setSelectedActorId(null);
+          activateStudioTarget(null);
+          return true;
+        }
         case 'door-edit': {
           const { wall } = requireStudioDoor(roomDraft, intent.target);
           return commitDoorWall(editStudioDoor(wall, intent.target, intent));
@@ -4780,17 +4814,12 @@ export function WorldBuildingConcept({
                 );
                 if (!member)
                   return rejectEdit(new Error(`${ref} is not in the cast.`));
-                if (!member.defaults)
-                  return rejectEdit(
-                    new Error('Choose a default look in the cast to place it.')
-                  );
-                if (
-                  npcAppearanceOptions(appearanceRef).family?.ref !==
-                  member.defaults.modelRef
-                )
+                if (!castPlacementAppearanceAvailable(member, appearanceRef))
                   return rejectEdit(
                     new Error(
-                      `Choose a look from ${member.name}'s default look family.`
+                      member.defaults?.modelRef
+                        ? `Choose a look from ${member.name}'s default look family.`
+                        : 'Choose a default look in the cast to place it.'
                     )
                   );
                 cancelTransients();

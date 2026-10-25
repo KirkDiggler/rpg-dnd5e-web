@@ -1,5 +1,6 @@
 import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import { useDiceDials } from '@/feel/useFeelDials';
+import { PortraitProvider } from '@/portraits';
 import {
   ClockKind,
   LifeState,
@@ -8,7 +9,13 @@ import {
   Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useRef, useState, type CSSProperties } from 'react';
+import {
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react';
 import { propLabel } from '../holdingAffordances';
 import {
   authoredWords as exitWords,
@@ -22,6 +29,7 @@ import { DamageToasts } from './DamageToasts.tsx';
 import { DesktopEffects } from './DesktopEffects';
 import { DesktopStatusSection } from './DesktopStatusSection';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
+import { MemberPortrait } from './MemberPortrait';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import type { StandingAction } from './standingActions';
@@ -38,13 +46,34 @@ import {
 import { useRollFlash } from './useRollFlash';
 import { useStoryNotices } from './useStoryNotices';
 
-function portraitOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
+const EMPTY_PORTRAIT_MEMBERS = [] as const;
+
+export function CombatExperience(props: CombatExperienceProps): ReactElement {
+  // Capture only images this HUD displays, not every remembered creature in the site.
+  const members = useMemo(() => {
+    const wanted = new Set([props.viewerMember]);
+    if (props.clock === ClockKind.TURN) {
+      for (const participant of props.participants)
+        wanted.add(participant.member);
+    }
+    return (
+      props.portraits?.members.filter((member) => wanted.has(member.id)) ??
+      EMPTY_PORTRAIT_MEMBERS
+    );
+  }, [
+    props.viewerMember,
+    props.clock,
+    props.participants,
+    props.portraits?.members,
+  ]);
+  return (
+    <PortraitProvider
+      scopeKey={props.portraits?.scopeKey ?? ''}
+      members={members}
+    >
+      <CombatExperienceContent {...props} />
+    </PortraitProvider>
+  );
 }
 
 function labelOf(value?: string): string {
@@ -113,7 +142,7 @@ function InitiativeEntry({
       data-concentrating={participant.concentrating}
     >
       <span className={styles.initiativePortrait}>
-        {portraitOf(participant.name)}
+        <MemberPortrait memberId={participant.member} name={participant.name} />
       </span>
       <span className={styles.initiativeName}>
         {you ? 'You' : participant.name}
@@ -146,7 +175,8 @@ function StatusBadge({ status }: { status: InformationalStatus }) {
   );
 }
 
-export function CombatExperience({
+function CombatExperienceContent({
+  portraits,
   layout = 'review-frame',
   viewerMember,
   viewerName,
@@ -431,6 +461,7 @@ export function CombatExperience({
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
       data-desktop-hotbar={desktopHotbar ? 'true' : undefined}
+      data-portraits={portraits ? 'true' : undefined}
       style={
         desktopHotbar
           ? ({
@@ -637,7 +668,11 @@ export function CombatExperience({
               }
             >
               <div className={styles.viewerPortrait}>
-                {portraitOf(viewerName)}
+                <MemberPortrait
+                  memberId={viewerMember}
+                  name={viewerName}
+                  framing="portrait"
+                />
               </div>
               <div className={styles.viewerIdentity}>
                 <strong>{viewerName}</strong>
@@ -757,7 +792,11 @@ export function CombatExperience({
                   identity={
                     <>
                       <div className={styles.viewerPortrait}>
-                        {portraitOf(viewerName)}
+                        <MemberPortrait
+                          memberId={viewerMember}
+                          name={viewerName}
+                          framing="portrait"
+                        />
                       </div>
                       <div className={styles.viewerIdentity}>
                         <strong>{viewerName}</strong>

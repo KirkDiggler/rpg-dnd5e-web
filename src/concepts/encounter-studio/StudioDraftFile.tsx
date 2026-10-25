@@ -43,6 +43,7 @@ export function StudioDraftFile({
   onFileKey,
   onOpenServer,
   onClose,
+  mode = 'both',
 }: {
   session: EncounterStudioSession;
   /** The draft's one key. (`key` itself is React's.) */
@@ -53,7 +54,8 @@ export function StudioDraftFile({
   onFileKey(next: DraftFileKey): void;
   /** Opens the server save beside this panel. */
   onOpenServer?(): void;
-  onClose(): void;
+  onClose?(): void;
+  mode?: 'import' | 'export' | 'both';
 }): React.JSX.Element {
   const document = session.document;
   const key = draftKey;
@@ -117,62 +119,79 @@ export function StudioDraftFile({
 
   return (
     <section className="es-draft-file-panel" aria-label="Draft file">
-      <form
-        aria-label="Export draft"
-        className="es-buttons"
-        onSubmit={(event) => {
-          event.preventDefault();
-          download();
-        }}
-      >
-        <label className="es-field">
-          <span>
-            File key{' '}
-            <FieldHelp field="File key">
-              The dungeon key written into the file and its name, and the key
-              Save and Play saves under: one key per draft. Lowercase letters,
-              digits and dashes. An imported file&apos;s key is kept for its
-              draft.
-            </FieldHelp>
-          </span>
-          <input
-            aria-label="File key"
-            value={key}
-            disabled={session.publishing.busy}
-            onChange={(event) => onKeyChange(event.target.value)}
-          />
-        </label>
-        <button type="submit">Download {key.trim() || '…'}.yaml</button>
-        {keyRefusal && (
-          <span role="alert" className="es-warning">
-            {keyRefusal}
-          </span>
-        )}
-      </form>
-      <div className="es-buttons">
-        <button type="button" onClick={() => input.current?.click()}>
-          Import draft
-        </button>
-        <input
-          ref={input}
-          type="file"
-          accept=".yaml,.yml,text/yaml"
-          aria-label="Draft file to import"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-            if (file) void choose(file);
+      <h3>{mode === 'import' ? 'Import YAML' : 'Download YAML'}</h3>
+      {mode !== 'import' && (
+        <form
+          aria-label="Export draft"
+          className="es-buttons"
+          onSubmit={(event) => {
+            event.preventDefault();
+            download();
           }}
-        />
+        >
+          <label className="es-field">
+            <span>
+              File key{' '}
+              <FieldHelp field="File key">
+                The dungeon key written into the file and its name, and the key
+                Save and Play saves under: one key per draft. Lowercase letters,
+                digits and dashes. An imported file&apos;s key is kept for its
+                draft.
+              </FieldHelp>
+            </span>
+            <input
+              aria-label="File key"
+              value={key}
+              disabled={session.publishing.busy}
+              onChange={(event) => onKeyChange(event.target.value)}
+            />
+          </label>
+          <button type="submit">Download {key.trim() || '…'}.yaml</button>
+          {keyRefusal && (
+            <span role="alert" className="es-warning">
+              {keyRefusal}
+            </span>
+          )}
+        </form>
+      )}
+      <div className="es-buttons">
+        {mode !== 'export' && (
+          <>
+            <p className="es-help">
+              Open a site from a YAML file. You will confirm before replacing
+              the current draft.
+            </p>
+            <button
+              type="button"
+              disabled={session.publishing.busy}
+              onClick={() => input.current?.click()}
+            >
+              Choose YAML file
+            </button>
+            <input
+              ref={input}
+              type="file"
+              accept=".yaml,.yml,text/yaml"
+              aria-label="Draft file to import"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void choose(file);
+              }}
+            />
+          </>
+        )}
         {onOpenServer && (
           <button type="button" onClick={onOpenServer}>
             Save to server…
           </button>
         )}
-        <button type="button" onClick={onClose}>
-          Close draft file
-        </button>
+        {onClose && (
+          <button type="button" onClick={onClose}>
+            Close draft file
+          </button>
+        )}
       </div>
       {pending && (
         <div

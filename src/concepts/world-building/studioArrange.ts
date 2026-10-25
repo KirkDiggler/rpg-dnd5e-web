@@ -210,6 +210,10 @@ export type StudioArrangeIntent =
       readonly width?: number;
     }
   | { readonly kind: 'door-remove'; readonly target: StudioDoorTarget }
+  | {
+      readonly kind: 'actor-remove';
+      readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
+    }
   | StudioSceneArrangeEdit
   | StudioWallArrangeEdit
   | {

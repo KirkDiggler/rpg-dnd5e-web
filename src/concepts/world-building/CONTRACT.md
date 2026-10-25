@@ -727,22 +727,30 @@ no client-side stance fold or knowledge propagation is introduced.
 Encounter exposes Cast and Tables (rpg-project#575). The cast is derived, never
 a second list: one member per monster ref used by a root template, a palette
 recipe or a placement (`world-building/cast.ts`). Scene5 optionally carries
-`creaturePalette`: editor recipes with exact id, name, ref, modelRef and an
-optional faction. The first recipe on a ref is that member's defaults; later ones
-are unused looks. ref names an existing rulebook monster or root template,
-modelRef names a declared appearance family, and faction names a declared
-faction. Recipes carry no scores, coordinates or skin overrides and never
+`creaturePalette`: editor recipes with exact id, name and ref, plus optional
+modelRef and faction. The first recipe on a ref is that member's defaults; later
+ones are unused looks. ref names an existing rulebook monster or root template.
+A present modelRef names a declared appearance family, independently of the
+monster's identity; an absent modelRef uses the configured standard monster look.
+Templates without a standard model still require an explicit look before placement.
+When a cast member has no declared default, the placement picker offers its existing
+placements' published looks. That is a per-placement choice, not an inferred or
+persisted cast default. A published explicit choice is accepted without a saved
+default; an absent choice still requires a configured standard model.
+An explicit empty, malformed or unavailable look is not a request for the standard
+look. faction names a declared faction. Recipes carry no scores, coordinates or skin overrides and never
 instantiate actors. The toolkit carries `room.scene` through unread.
 They round-trip with the editor's scene metadata without adding gameplay grammar;
 runtime knowledge never resolves actor appearance or names from this palette.
 
 Encounter creates/configures recipes; it does not place them. Build/3D exposes
-Monsters & NPCs beside Props, reading the same saved palette. Choose one published
-look/skin ref there and arm the existing monster placement tool. One map click
-creates a fresh actor with copied ref and appearanceRef. The list remains visible
+Monsters & NPCs beside Props, reading the same cast. Use the standard monster
+look or choose a published look/skin ref and arm the existing monster placement
+tool. One map click creates a fresh actor with the monster ref and, only for an
+explicit look, an appearanceRef. The list remains visible
 and keeps the chosen variation for another placement. Changing the recipe, look,
 palette tab or view cancels the armed intent; cancellation creates nothing. Every placement has
-its own complete appearanceRef; recipe edits affect future placements only.
+its own complete appearanceRef or no override; recipe edits affect future placements only.
 Unknown imported model refs remain literal and placement refuses until resolved.
 Label, region, lighting and resize edits retain scene5 and its palette.
 
@@ -751,7 +759,9 @@ New recipe placements snapshot their name in the same transaction. Marker labels
 hover previews and the inspector use that name without changing the rules ref or enriching
 runtime knowledge. Older instances keep their rules-based label until explicitly
 named with Map name; the editor does not guess their recipe. Removing a creature
-removes its label. Move creature arms the existing one-shot destination-hex action,
+removes its label. Remove from board retains the cast member, including a member
+previously inferred only from its last imported placement; the complete removal
+is one undoable transaction. Move creature arms the existing one-shot destination-hex action,
 with snapped hover feedback and explicit cancellation; names and other bindings
 remain unchanged.
 
