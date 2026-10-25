@@ -834,9 +834,10 @@ describe('App Encounter Studio current-world entry', () => {
       'writer'
     );
     expect(screen.queryByText(/Publish/i)).toBeNull();
-    // The studio's own Save & Play (S6) is present and says why it cannot
-    // run: this test's server answers that authoring is off.
-    const play = screen.getByRole('button', { name: 'Save & Play' });
+    // Play remains present and explains why it cannot run; Site management
+    // is a separate entry. This test's server answers that authoring is off.
+    expect(screen.getByRole('button', { name: 'Site' })).toBeTruthy();
+    const play = screen.getByRole('button', { name: 'Play' });
     expect((play as HTMLButtonElement).disabled).toBe(true);
     expect(play.getAttribute('title')).toBe(
       'The server is not accepting authored encounters.'

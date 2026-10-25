@@ -19,6 +19,7 @@ import {
 import { documentPlacementNames } from '../world-building/placementNames';
 import { AboutPanel, FieldHelp } from './FieldHelp';
 import { NpcLookPicker } from './NpcLookPicker';
+import { StudioCastAppearance } from './StudioCastAppearance';
 import type { EncounterStudioSession } from './studioSession';
 
 /** The eighteen skill ids a stat block may be proficient in. */
@@ -599,6 +600,8 @@ export function StudioCast({
 }): React.JSX.Element {
   const cast = castOf(session.document);
   const [adding, setAdding] = useState(false);
+  const [addingMonster, setAddingMonster] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const arrange = session.arrange;
   const member =
     !adding && arrange?.kind === 'cast'
@@ -615,49 +618,103 @@ export function StudioCast({
       <h2>Cast</h2>
       <AboutPanel>
         <p>
-          A cast member is a stat block, or a rulebook monster as it is, plus
-          the look and faction new placements start with. Selecting one
+          Choose the monsters in this site, then give them the appearances you
+          want. A look never changes a monster's rules. Selecting a member
           highlights its placements on the map.
         </p>
       </AboutPanel>
-      {cast.length ? (
-        <ul aria-label="Cast members" className="es-inspector-list">
-          {cast.map((entry) => (
-            <li key={entry.ref}>
+      <div className="es-buttons">
+        <button
+          type="button"
+          onClick={() => {
+            setAdvanced(false);
+            setAdding(false);
+            setAddingMonster(true);
+          }}
+        >
+          Add monster
+        </button>
+        <button
+          type="button"
+          aria-pressed={advanced}
+          onClick={() => {
+            setAdvanced(!advanced);
+            setAdding(false);
+            setAddingMonster(false);
+          }}
+        >
+          Advanced editor
+        </button>
+      </div>
+      <div className="es-cast-workspace">
+        <div className="es-cast-members">
+          {cast.length ? (
+            <ul aria-label="Cast members" className="es-inspector-list">
+              {cast.map((entry) => (
+                <li key={entry.ref}>
+                  <button
+                    type="button"
+                    aria-pressed={!adding && pressedRef === entry.ref}
+                    onClick={() => {
+                      if (session.cast.select(entry.ref)) {
+                        setAdding(false);
+                        setAddingMonster(false);
+                      }
+                    }}
+                  >
+                    {entry.name} ·{' '}
+                    {entry.source === 'template' ? 'stat block' : 'rulebook'} ·{' '}
+                    {entry.placements.length} placement
+                    {entry.placements.length === 1 ? '' : 's'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No cast yet. Add a monster to get started.</p>
+          )}
+        </div>
+        <div className="es-cast-editor">
+          {!advanced && (addingMonster || member) && (
+            <StudioCastAppearance
+              key={addingMonster ? 'new-monster' : member!.ref}
+              session={session}
+              member={addingMonster ? null : member}
+              onDone={() => setAddingMonster(false)}
+              onShowPlacement={onShowPlacement}
+            />
+          )}
+          {!advanced && !addingMonster && !member && (
+            <p className="es-help">
+              Select a cast member to edit its appearance, or add a monster.
+            </p>
+          )}
+          {advanced && (
+            <>
+              <p className="es-help">
+                This editor changes stat blocks, equipment and defaults. Use the
+                appearance editor to change looks without changing rules.
+              </p>
               <button
                 type="button"
-                aria-pressed={!adding && pressedRef === entry.ref}
-                onClick={() => {
-                  if (session.cast.select(entry.ref)) setAdding(false);
-                }}
+                aria-pressed={adding}
+                onClick={() => setAdding(true)}
               >
-                {entry.name} ·{' '}
-                {entry.source === 'template' ? 'stat block' : 'rulebook'} ·{' '}
-                {entry.placements.length} placement
-                {entry.placements.length === 1 ? '' : 's'}
+                Add a cast member
               </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No cast yet. Add a stat block or a rulebook monster.</p>
-      )}
-      <button
-        type="button"
-        aria-pressed={adding}
-        onClick={() => setAdding(true)}
-      >
-        Add a cast member
-      </button>
-      {(adding || member) && (
-        <CastMemberForm
-          key={member?.ref ?? 'new'}
-          session={session}
-          member={member}
-          onShowPlacement={onShowPlacement}
-          onSaved={() => setAdding(false)}
-        />
-      )}
+              {(adding || member) && (
+                <CastMemberForm
+                  key={member?.ref ?? 'new'}
+                  session={session}
+                  member={member}
+                  onShowPlacement={onShowPlacement}
+                  onSaved={() => setAdding(false)}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

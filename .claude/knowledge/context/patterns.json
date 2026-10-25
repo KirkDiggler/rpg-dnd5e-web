@@ -85,5 +85,24 @@
       "src/components/hex-grid/SkinnedAccessoryAttachment.test.tsx",
       "rpg-dnd5e-web#881"
     ]
+  },
+  {
+    "type": "pattern",
+    "id": "encounter-studio-worker-foundation",
+    "created": "2026-10-24",
+    "updated": "2026-10-24",
+    "status": "active",
+    "name": "Encounter Studio: site, cast and placement have separate responsibilities",
+    "description": "Start Studio work from docs/architecture/components/encounter-studio.md and the owning authoring contract. WorldBuildingConcept owns the document/history/selection; Studio is presentation. Site persistence is distinct from browser recovery and gameplay launch. Cast is derived by monster ref, not a second rules roster. Monster identity, appearance, equipment and stat customization are separate concerns: a zombie may look human, and naming a standard thug must not create a template. Defaults affect future placements; explicit per-instance looks stay independent. Imported templates can have placed looks but no cast defaults, so test that entry path as well as newly added standard monsters. A visible placement choice may reuse an existing look without writing a default. Removing an NPC keeps cast membership and must roundtrip through Undo. Keep prop placement separate; route rules capability gaps to their owner rather than silently substituting a base.",
+    "example": "StudioCreaturePalette and WorldBuildingConcept validate the chosen explicit appearance both when arming and committing. StudioCreaturePalette.test.tsx covers the real imported castle; EncounterStudioIntegration.test.tsx drives its Mad King through palette -> owner -> persisted declaration -> Undo.",
+    "anti_pattern": "Treating a new-skeleton placement test as proof that imported template cast members can place, deriving a monster's rules from its model, or rewriting existing instances when a cast default changes.",
+    "domain": "web/encounter-studio",
+    "references": [
+      "docs/architecture/components/encounter-studio.md",
+      "src/concepts/world-building/CONTRACT.md",
+      "docs/how-to/encounter-studio-verification.md",
+      "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1327",
+      "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1332"
+    ]
   }
 ]

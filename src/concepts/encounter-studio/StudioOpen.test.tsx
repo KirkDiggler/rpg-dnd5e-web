@@ -122,7 +122,7 @@ function setup(lists: DungeonSummary[][], files: Record<string, string> = {}) {
 async function renderReady(lists: DungeonSummary[][], files = {}) {
   const harness = setup(lists, files);
   render(<harness.Harness gate="live" />);
-  await screen.findByRole('heading', { name: 'This world' });
+  await screen.findByRole('heading', { name: 'My World' });
   return harness;
 }
 
@@ -146,7 +146,7 @@ describe('StudioOpen', () => {
 
   it("lists This world with owners, the caller's own marked Mine, then References", async () => {
     await renderReady([[...WORLD, ...REFERENCES]]);
-    const world = screen.getByRole('list', { name: 'This world' });
+    const world = screen.getByRole('list', { name: 'My World' });
     const worldRows = within(world).getAllByRole('listitem');
     expect(worldRows.map((row) => row.getAttribute('aria-label'))).toEqual([
       'Room the-cells',
@@ -324,7 +324,7 @@ describe('StudioOpen', () => {
   it('a Save and Play in flight disables Rename and Delete with the lock title', async () => {
     const harness = setup([[...WORLD]]);
     const view = render(<harness.Harness gate="live" publishing />);
-    await screen.findByRole('heading', { name: 'This world' });
+    await screen.findByRole('heading', { name: 'My World' });
     const row = rowOf('Room the-cells');
     for (const name of ['Rename the-cells', 'Delete the-cells']) {
       const button = within(row).getByRole('button', {

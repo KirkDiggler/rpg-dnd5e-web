@@ -19,6 +19,33 @@ vi.mock('@/portraits/PortraitCapture', () => ({
   },
 }));
 afterEach(cleanup);
+it('offers the real HUD consumer view with shared player images and named missing fallback', async () => {
+  render(<PortraitProviderConcept />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show HUD integration' }));
+  await waitFor(() =>
+    expect(screen.getAllByAltText('Customized fighter portrait')).toHaveLength(
+      2
+    )
+  );
+  expect(
+    screen
+      .getAllByAltText('Customized fighter portrait')
+      .map((image) => image.getAttribute('src'))[0]
+  ).toBe(
+    screen.getAllByAltText('Customized fighter portrait')[1].getAttribute('src')
+  );
+  expect(
+    await screen.findByRole('img', { name: 'World NPC portrait' })
+  ).toBeTruthy();
+  expect(
+    await screen.findByRole('img', { name: 'Legacy skeleton portrait' })
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('img', {
+      name: 'Missing explicit appearance portrait unavailable',
+    })
+  ).toBeTruthy();
+});
 it('consumes produced images twice and replaces a changed appearance without inventing missing art', async () => {
   render(<PortraitProviderConcept />);
   await waitFor(() =>
