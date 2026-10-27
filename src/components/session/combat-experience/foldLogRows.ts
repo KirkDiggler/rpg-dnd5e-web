@@ -14,6 +14,13 @@
  * This presentation filter stands only while R36 is proposed; when R36 is
  * ticked the session fold drops the pick (toolkit `act_family.go`) and this
  * filter is deleted.
+ *
+ * DASH PICKS (rpg-dnd5e-web#1341). A table answer whose word is `dash` is a
+ * creature choosing to run. The run itself is the walk it causes, which the
+ * describer reads as "<name> runs"; that walk reaches this viewer only when
+ * they saw it. The pick is hidden from the log and never toasts, so a run is
+ * one line and is told under the walk's own visibility. The Debug panel keeps
+ * the pick and its roll.
  */
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { actorOf, isDeed } from './toastPolicy';
@@ -25,6 +32,15 @@ export function isIdleHoldPick(act: Act): boolean {
     act.body.case === 'tableAnswer' &&
     !act.body.value.dealt &&
     act.body.value.word === 'hold'
+  );
+}
+
+/** A creature's `dash` pick: its run is told by the walk it causes. */
+export function isDashPick(act: Act): boolean {
+  return (
+    act.body.case === 'tableAnswer' &&
+    !act.body.value.dealt &&
+    act.body.value.word === 'dash'
   );
 }
 

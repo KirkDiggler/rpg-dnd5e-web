@@ -3351,11 +3351,14 @@ describe('SessionEncounterView production combat integration', () => {
     const debugButton = await screen.findByRole('button', { name: 'Debug' });
     expect(hoisted.streamRecordFn).not.toHaveBeenCalled();
     fireEvent.click(debugButton);
-    await waitFor(() => screen.getByRole('button', { name: walk }));
+    // The panel lists acts (rpg-dnd5e-web#1345): the walk's row, opened,
+    // holds its beat.
+    await waitFor(() => screen.getByRole('button', { name: `Act ${walk}` }));
     expect(hoisted.streamRecordFn).toHaveBeenCalledWith(
       expect.objectContaining({ afterId: '' }),
       expect.anything()
     );
+    fireEvent.click(screen.getByRole('button', { name: `Act ${walk}` }));
     screen.getByText('moved');
 
     fireEvent.click(screen.getByRole('button', { name: 'Story' }));

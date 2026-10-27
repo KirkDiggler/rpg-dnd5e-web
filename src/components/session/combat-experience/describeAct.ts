@@ -33,6 +33,12 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
 
+/**
+ * The cause a creature's `dash` pick writes on every step of its run
+ * (encounter v0.148.0): the walk act carries it as `cause`.
+ */
+export const DASH_CAUSE = 'encounter:table:dash';
+
 export interface DescribeContext {
   readonly viewerMember: string;
   readonly memberNames?: Readonly<Record<string, string>>;
@@ -264,6 +270,16 @@ function describeWith(
       const w = body.value;
       const last = w.path.at(-1)?.cell;
       const where = last ? ` to (${last.x}, ${last.y})` : '';
+      if (w.cause === DASH_CAUSE) {
+        // A run (rpg-dnd5e-web#1341): the walk a creature's `dash` pick
+        // caused. It reads as a run, not a walk with a cause in brackets.
+        return {
+          eyebrow: 'Dash',
+          headline: `${name(w.mover)} runs`,
+          detail: `${plural(w.path.length, 'cell')}${where}`,
+          tone: 'neutral',
+        };
+      }
       return {
         eyebrow: 'Move',
         headline: `${name(w.mover)} moves`,

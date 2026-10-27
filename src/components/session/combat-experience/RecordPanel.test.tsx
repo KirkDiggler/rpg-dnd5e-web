@@ -3,168 +3,188 @@ import { describe, expect, it } from 'vitest';
 import type { RecordRow } from '../recordFeed';
 import { RecordPanel } from './RecordPanel';
 
-const WALK = 'move:01HF7YAT003RVQKEBZ99Y1AF3E';
-
 function row(
   id: string,
   beat: string,
   act: string,
-  fields: Record<string, unknown> = { beat }
+  fields: Record<string, unknown> = { beat },
+  at = 3n
 ): RecordRow {
-  return { id, at: 3n, act, beat, fields };
+  return { id, at, act, beat, fields };
 }
 
-// A guard's walk: three steps and the opportunity attack it drew, under one
-// act; a line spoken elsewhere; and two answers.
+const HERO = 'char_hero';
+
+// rpg-dnd5e-web#1345: a reserve's dash (its pick, then the move act it
+// drove: twelve steps and the opportunity attack they drew), the hero's
+// turn ending, and the scene's opening beats, written outside any act.
+const PICK = 'time:01HF7YAT10';
+const RUN = 'move:01HF7YAT20';
+const steps = Array.from({ length: 12 }, (_, i) =>
+  row(
+    `01HF7YAT2${String(i).padStart(2, '0')}`,
+    'moved',
+    RUN,
+    { beat: 'moved', member: 'reserve-1', cause: 'encounter:table:dash' },
+    1n
+  )
+);
 const record: RecordRow[] = [
-  row('01HF7YAT01', 'moved', WALK, { beat: 'moved', member: 'gate-1' }),
-  row('01HF7YAT02', 'struck', WALK, {
-    beat: 'struck',
-    actor: 'ranger',
-    amount: 6,
-    attack: { roll: 14, total: 19 },
+  row('01HF7YAT01', 'scene-opened', '', { beat: 'scene-opened' }, 0n),
+  row('01HF7YAT02', 'sighted', '', { beat: 'sighted', member: HERO }, 0n),
+  row(
+    '01HF7YAT11',
+    'answered',
+    PICK,
+    {
+      beat: 'answered',
+      creature: 'reserve-1',
+      key: 'time',
+      option: '',
+      word: 'dash',
+      selector: 'enemy',
+      target: HERO,
+      roll: 26,
+      of: 100,
+      entry: 0,
+      temper: 'soldier',
+      rows: [],
+    },
+    1n
+  ),
+  ...steps,
+  row(
+    '01HF7YAT3000',
+    'struck',
+    RUN,
+    { beat: 'struck', actor: HERO, amount: 6, attack: { roll: 14, total: 19 } },
+    1n
+  ),
+  row('01HF7YAT40', 'turn-ended', 'end_turn:01HF7YAT40', {
+    beat: 'turn-ended',
+    member: HERO,
   }),
-  row('01HF7YAT03', 'moved', WALK),
-  row('01HF7YAT04', 'moved', WALK),
-  row('01HF7YAT05', 'spoke', 'speak:01HF7YAT05X'),
-  row('01HF7YAT06', 'answered', 'speak:01HF7YAT05X'),
-  row('01HF7YAT07', 'answered', 'time:01HF7YAT07X'),
-  row('01HF7YAT08', 'scene-opened', ''),
 ];
 
-function shown(): string[] {
+/** The act rows shown, by key, top to bottom. */
+function acts(): string[] {
   const list = screen.getByRole('list', { name: 'Record' });
-  return within(list)
+  return Array.from(list.querySelectorAll(':scope > li')).map(
+    (li) => li.getAttribute('data-act-key') ?? ''
+  );
+}
+
+function line(key: string): HTMLElement {
+  return screen.getByRole('button', { name: `Act ${key}` });
+}
+
+/** The beats an open act shows, by id, in order. */
+function beatsOf(key: string): string[] {
+  return within(screen.getByRole('list', { name: `Beats of ${key}` }))
     .getAllByRole('listitem')
     .map((li) => li.getAttribute('data-record-id') ?? '');
 }
 
-const longRecord = Array.from({ length: 23 }, (_, index) =>
-  row(
-    `record-${String(index + 1).padStart(2, '0')}`,
-    index === 22 ? 'answered' : 'moved',
-    `act-${Math.floor(index / 5)}`
-  )
-);
-
-describe('RecordPanel', () => {
-  it('pages loaded rows and lets the reader show more without changing the feed', () => {
-    render(<RecordPanel feed={{ rows: longRecord, notice: undefined }} />);
-    expect(shown()).toEqual(longRecord.slice(0, 10).map((r) => r.id));
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Previous record page',
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    expect(shown()).toEqual(longRecord.slice(10, 20).map((r) => r.id));
-    expect(screen.getByText('11–20 of 23')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    expect(shown()).toEqual(longRecord.slice(20).map((r) => r.id));
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Next record page',
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Previous record page' })
-    );
-    expect(shown()[0]).toBe('record-11');
-    fireEvent.change(screen.getByLabelText('Record rows per page'), {
-      target: { value: '25' },
-    });
-    expect(shown()).toHaveLength(23);
-    expect(screen.getByText('1–23 of 23')).toBeTruthy();
-    expect(longRecord).toHaveLength(23);
+describe('RecordPanel lists acts (rpg-dnd5e-web#1345)', () => {
+  it('lists acts newest first, collapsed, with no page controls', () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    expect(acts()).toEqual(['end_turn:01HF7YAT40', PICK, 'world:0']);
+    for (const key of acts())
+      expect(line(key).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByLabelText('Record rows per page')).toBe(null);
+    expect(screen.queryByRole('button', { name: /record page/ })).toBe(null);
   });
-  it('filters the whole loaded record before paging and resets on filter changes', () => {
-    render(<RecordPanel feed={{ rows: longRecord, notice: undefined }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
+
+  it('reads a dash act as who, the round, the word and what followed', () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    expect(line(PICK).textContent).toBe(
+      'reserve-1r1dash enemy12 cells, 1 strike'
+    );
+  });
+
+  it('groups the pick and the beats it drove, oldest first, under one act', () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    fireEvent.click(line(PICK));
+    expect(beatsOf(PICK)).toEqual([
+      '01HF7YAT11',
+      ...steps.map((s) => s.id),
+      '01HF7YAT3000',
+    ]);
+    const pick = screen.getByLabelText('The pick');
+    expect(pick.textContent).toContain('reserve-1 · time · rolled 26 of 100');
+    expect(pick.textContent).toContain(`target ${HERO}`);
+  });
+
+  it('puts beats with no act under a world row for their round', () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    expect(line('world:0').textContent).toBe(
+      'worldr01 scene-opened, 1 sighted'
+    );
+    fireEvent.click(line('world:0'));
+    expect(beatsOf('world:0')).toEqual(['01HF7YAT01', '01HF7YAT02']);
+  });
+
+  it('a beat filter shows only the acts holding a match, opened', () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
     fireEvent.change(screen.getByLabelText('Filter by beat'), {
-      target: { value: 'answered' },
+      target: { value: 'moved' },
     });
-    expect(shown()).toEqual(['record-23']);
+    expect(acts()).toEqual([PICK]);
+    expect(line(PICK).getAttribute('aria-expanded')).toBe('true');
+    const marked = within(
+      screen.getByRole('list', { name: `Beats of ${PICK}` })
+    )
+      .getAllByRole('listitem')
+      .filter((li) => li.getAttribute('data-match') === 'true')
+      .map((li) => li.getAttribute('data-record-id'));
+    expect(marked).toEqual(steps.map((s) => s.id));
     fireEvent.change(screen.getByLabelText('Filter by beat'), {
       target: { value: 'absent' },
     });
     expect(screen.getByText('No records match these filters.')).toBeTruthy();
-    expect(screen.getByText('0–0 of 0')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(shown()[0]).toBe('record-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'act-2' })[0]);
-    expect(shown()).toEqual(longRecord.slice(10, 15).map((r) => r.id));
+    expect(acts()).toHaveLength(3);
   });
-  it('keeps the current page on append and clamps it when the buffer shrinks', () => {
-    const { rerender } = render(
-      <RecordPanel feed={{ rows: longRecord, notice: undefined }} />
+
+  it("narrows to an act when a beat's act id is clicked", () => {
+    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    fireEvent.click(line('end_turn:01HF7YAT40'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'end_turn:01HF7YAT40' })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    const appended = [...longRecord, row('record-24', 'moved', 'act-4')];
+    expect(acts()).toEqual(['end_turn:01HF7YAT40']);
+    expect(screen.getByLabelText('Filter by act id')).toHaveProperty(
+      'value',
+      'end_turn:01HF7YAT40'
+    );
+  });
+
+  it('puts a new act at the top and keeps every act after a restart', () => {
+    const { rerender } = render(
+      <RecordPanel feed={{ rows: record, notice: undefined }} />
+    );
+    const appended = [
+      ...record,
+      row('01HF7YAT50', 'moved', 'move:01HF7YAT50', {
+        beat: 'moved',
+        member: HERO,
+      }),
+    ];
     rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
-    expect(shown()[0]).toBe('record-11');
+    expect(acts()[0]).toBe('move:01HF7YAT50');
     rerender(<RecordPanel feed={{ rows: [], notice: 'Record restarted' }} />);
     expect(screen.getByText('No record beats received.')).toBeTruthy();
     rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
-    expect(shown()[0]).toBe('record-01');
-  });
-  it('filters by act id', () => {
-    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
-    expect(shown()).toHaveLength(8);
-    fireEvent.change(screen.getByLabelText('Filter by act id'), {
-      target: { value: WALK },
-    });
-    expect(shown()).toEqual([
-      '01HF7YAT01',
-      '01HF7YAT02',
-      '01HF7YAT03',
-      '01HF7YAT04',
-    ]);
+    expect(acts()).toHaveLength(4);
   });
 
-  it("narrows to a row's act when its act id is clicked", () => {
+  it('pretty-prints a beat’s fields', () => {
     render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
-    fireEvent.click(screen.getAllByRole('button', { name: WALK })[0]!);
-    expect(shown()).toEqual([
-      '01HF7YAT01',
-      '01HF7YAT02',
-      '01HF7YAT03',
-      '01HF7YAT04',
-    ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(shown()).toHaveLength(8);
-  });
-
-  it('filters by beat', () => {
-    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
-    fireEvent.change(screen.getByLabelText('Filter by beat'), {
-      target: { value: 'answered' },
-    });
-    expect(shown()).toEqual(['01HF7YAT06', '01HF7YAT07']);
-  });
-
-  it('pretty-prints fields', () => {
-    render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
+    fireEvent.click(line(PICK));
     fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect struck 01HF7YAT02' })
+      screen.getByRole('button', { name: 'Inspect struck 01HF7YAT3000' })
     );
     const pre = screen.getByLabelText('Record fields');
-    expect(pre.textContent).toBe(
-      JSON.stringify(
-        {
-          beat: 'struck',
-          actor: 'ranger',
-          amount: 6,
-          attack: { roll: 14, total: 19 },
-        },
-        null,
-        2
-      )
-    );
     expect(pre.textContent).toContain('\n  "attack": {\n    "roll": 14');
   });
 
@@ -278,37 +298,36 @@ const searched = gateAnswer('01HF7YAU03', 12, 50, 2, [
   },
 ]);
 
-describe('RecordPanel reads an answer in its table’s words', () => {
-  it('renders the pick and the roll, and every row when opened', () => {
+describe('RecordPanel reads a pick in its table’s words', () => {
+  /** Open the pick's act and read its sentence and its rows. */
+  function openPick(id: string) {
+    fireEvent.click(line(`time:${id}X`));
+    const pick = within(screen.getByLabelText('The pick'));
+    return {
+      sentence: pick.getAllByRole('paragraph')[0]!.textContent,
+      lines: pick.queryAllByRole('listitem').map((li) => li.textContent ?? ''),
+    };
+  }
+
+  it('reads the pick and the roll, and every row', () => {
     render(
       <RecordPanel
         feed={{ rows: [GATE_TABLE, chased, searched], notice: undefined }}
       />
     );
-    expect(
-      screen.getByText(
-        'gate-1 · time · rolled 36 of 50 · enemy remembered → toward enemy'
-      )
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        'gate-1 · time · rolled 12 of 50 · enemy lost → search 6 went'
-      )
-    ).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU02' })
+    const read = openPick('01HF7YAU02');
+    expect(read.sentence).toBe(
+      'gate-1 · time · rolled 36 of 50 · enemy remembered → toward enemy'
     );
-    const lines = within(
-      screen.getByRole('list', { name: 'Rows of the table' })
-    )
-      .getAllByRole('listitem')
-      .map((li) => li.textContent);
-    expect(lines).toEqual([
+    expect(read.lines).toEqual([
       '✗ enemy seen → attack enemy: condition',
       '✓ enemy remembered → toward enemy · 1 × coward 50% = 50',
       '✗ enemy lost → search 6 went: condition',
     ]);
+    fireEvent.click(line('time:01HF7YAU02X'));
+    expect(openPick('01HF7YAU03').sentence).toBe(
+      'gate-1 · time · rolled 12 of 50 · enemy lost → search 6 went'
+    );
   });
 
   it('finds the table under a beat filter that hides it', () => {
@@ -318,9 +337,9 @@ describe('RecordPanel reads an answer in its table’s words', () => {
     fireEvent.change(screen.getByLabelText('Filter by beat'), {
       target: { value: 'answered' },
     });
-    expect(shown()).toEqual(['01HF7YAU02']);
+    expect(acts()).toEqual(['time:01HF7YAU02X']);
     expect(
-      screen.getByText(
+      within(screen.getByLabelText('The pick')).getByText(
         'gate-1 · time · rolled 36 of 50 · enemy remembered → toward enemy'
       )
     ).toBeTruthy();
@@ -328,20 +347,11 @@ describe('RecordPanel reads an answer in its table’s words', () => {
 
   it('reads by index and says so when no table was seen', () => {
     render(<RecordPanel feed={{ rows: [chased], notice: undefined }} />);
-    expect(
-      screen.getByText(
-        'gate-1 · time · rolled 36 of 50 · entry 1 · table not in record'
-      )
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU02' })
+    const read = openPick('01HF7YAU02');
+    expect(read.sentence).toBe(
+      'gate-1 · time · rolled 36 of 50 · entry 1 · table not in record'
     );
-    const lines = within(
-      screen.getByRole('list', { name: 'Rows of the table' })
-    )
-      .getAllByRole('listitem')
-      .map((li) => li.textContent);
-    expect(lines).toEqual([
+    expect(read.lines).toEqual([
       '✗ entry 0: condition',
       '✓ entry 1 · 1 × coward 50% = 50',
       '✗ entry 2: condition',
@@ -364,11 +374,8 @@ describe('RecordPanel reads an answer in its table’s words', () => {
     render(
       <RecordPanel feed={{ rows: [GATE_TABLE, swing], notice: undefined }} />
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect answered 01HF7YAU04' })
+    expect(openPick('01HF7YAU04').lines).toContain(
+      '✗ enemy seen → attack enemy: unaffordable'
     );
-    expect(
-      screen.getByText('✗ enemy seen → attack enemy: unaffordable')
-    ).toBeTruthy();
   });
 });
