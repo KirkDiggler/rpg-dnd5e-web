@@ -30,7 +30,7 @@ import {
   partyName,
   type DescribeContext,
 } from './describeAct';
-import { isIdleHoldPick } from './foldLogRows';
+import { isDashPick, isIdleHoldPick } from './foldLogRows';
 import { actorOf, fightIncludes, isDeed, toastFor } from './toastPolicy';
 import type {
   CombatExperienceAttackModifierSource,
@@ -172,6 +172,8 @@ export function buildActStory(
     if (isOthersTurnEnd(act, context.viewerMember)) continue;
     // R36 is proposed: hide the idle hold pick here until the fold drops it.
     if (isIdleHoldPick(act)) continue;
+    // A dash pick is told by the run it causes (rpg-dnd5e-web#1341).
+    if (isDashPick(act)) continue;
     const line = describeAct(act, context);
     if (!line) continue;
     const group = act.act;

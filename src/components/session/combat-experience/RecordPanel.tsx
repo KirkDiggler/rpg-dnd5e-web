@@ -24,6 +24,12 @@ import {
  * latest `table` beat for its creature, option and key, read off the whole
  * buffer so a beat filter does not hide the symbols. Collapsed it is the pick
  * and the roll; open, every row of the key with ✓ load or ✗ reason.
+ *
+ * NEWEST FIRST, ONE SCROLL (rpg-dnd5e-web#1342). The panel lists every loaded
+ * beat, latest at the top, and the log scrolls; there is no page. The feed
+ * already holds the whole retained record: it catches a lag up with GetRecord
+ * pages until the server says `more` is false, keeping the newest
+ * RECORD_MAX_ROWS. Only the order on screen is reversed here.
  */
 export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
   const [filter, setFilter] = useState<RecordFilter>({ act: '', beat: '' });
@@ -32,18 +38,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
     [feed.rows, filter]
   );
   const symbols = useMemo(() => symbolsOf(feed.rows), [feed.rows]);
-  const [pageSize, setPageSize] = useState(10);
-  const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-  const currentPage = Math.min(page, pageCount - 1);
-  // Persist the clamp so a cleared/restarted buffer cannot resurrect an old page.
-  if (page !== currentPage) setPage(currentPage);
-  const start = currentPage * pageSize;
-  const pageRows = rows.slice(start, start + pageSize);
-  const changeFilter = (next: RecordFilter) => {
-    setFilter(next);
-    setPage(0);
-  };
+  const newestFirst = useMemo(() => [...rows].reverse(), [rows]);
   const narrowed = filter.act !== '' || filter.beat !== '';
   return (
     <div className={styles.panel}>
@@ -54,7 +49,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
             aria-label="Filter by act id"
             value={filter.act}
             placeholder="e.g. move:01…"
-            onChange={(e) => changeFilter({ ...filter, act: e.target.value })}
+            onChange={(e) => setFilter({ ...filter, act: e.target.value })}
           />
         </label>
         <label>
@@ -63,13 +58,13 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
             aria-label="Filter by beat"
             value={filter.beat}
             placeholder="e.g. answered"
-            onChange={(e) => changeFilter({ ...filter, beat: e.target.value })}
+            onChange={(e) => setFilter({ ...filter, beat: e.target.value })}
           />
         </label>
         {narrowed && (
           <button
             type="button"
-            onClick={() => changeFilter({ act: '', beat: '' })}
+            onClick={() => setFilter({ act: '', beat: '' })}
           >
             Clear
           </button>
@@ -81,49 +76,6 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
         >
           {rows.length}/{feed.rows.length} loaded
         </span>
-        <nav
-          className={styles.pagination}
-          aria-label="Record pages"
-          title="Pages of the loaded record buffer"
-        >
-          <label className={styles.pageSize}>
-            Rows
-            <select
-              aria-label="Record rows per page"
-              value={pageSize}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(0);
-              }}
-            >
-              {[10, 25, 50].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className={styles.range}>
-            {rows.length ? start + 1 : 0}–{start + pageRows.length} of{' '}
-            {rows.length}
-          </span>
-          <button
-            type="button"
-            aria-label="Previous record page"
-            disabled={currentPage === 0}
-            onClick={() => setPage(currentPage - 1)}
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            aria-label="Next record page"
-            disabled={currentPage === pageCount - 1}
-            onClick={() => setPage(currentPage + 1)}
-          >
-            Next
-          </button>
-        </nav>
       </div>
       {feed.notice && (
         <div className={styles.notice} role="status">
@@ -131,12 +83,12 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
         </div>
       )}
       <ol className={styles.rows} aria-label="Record">
-        {pageRows.map((row) => (
+        {newestFirst.map((row) => (
           <RecordRowView
             key={row.id}
             row={row}
             table={symbols.get(row.id)}
-            onAct={(act) => changeFilter({ ...filter, act })}
+            onAct={(act) => setFilter({ ...filter, act })}
           />
         ))}
       </ol>

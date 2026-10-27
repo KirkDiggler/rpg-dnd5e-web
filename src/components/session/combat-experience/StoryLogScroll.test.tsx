@@ -179,4 +179,44 @@ describe('StoryLog auto-follow', () => {
 
     expect(feed().scrollTop).toBe(MAX_SCROLL);
   });
+
+  // rpg-dnd5e-web#1342: the Debug record lists newest first, so its newest
+  // edge is the top.
+  it('keeps the Debug record at its top as beats arrive, until the reader scrolls down', () => {
+    const beat = (id: string) => ({
+      id,
+      at: 1n,
+      act: '',
+      beat: 'moved',
+      fields: undefined,
+    });
+    const debug = (n: number) =>
+      props([], {
+        mode: 'debug',
+        diagnosticsEnabled: true,
+        record: {
+          rows: Array.from({ length: n }, (_, i) => beat(`r${i}`)),
+          notice: undefined,
+        },
+      });
+    const { rerender } = render(<StoryLog {...debug(1)} />);
+    expect(feed().scrollTop).toBe(0);
+
+    feed().scrollTop = 300;
+    rerender(<StoryLog {...debug(2)} />);
+    expect(feed().scrollTop).toBe(0);
+
+    // Reading back down the record releases the pin.
+    feed().scrollTop = 300;
+    fireEvent.scroll(feed());
+    rerender(<StoryLog {...debug(3)} />);
+    expect(feed().scrollTop).toBe(300);
+
+    // Back at the top: the next beat is followed again.
+    feed().scrollTop = 0;
+    fireEvent.scroll(feed());
+    feed().scrollTop = 300;
+    rerender(<StoryLog {...debug(4)} />);
+    expect(feed().scrollTop).toBe(0);
+  });
 });

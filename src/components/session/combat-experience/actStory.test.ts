@@ -182,6 +182,63 @@ describe('idle hold pick hidden', () => {
   });
 });
 
+describe('a run is one line (rpg-dnd5e-web#1341)', () => {
+  const steps = (...xs: number[]) => xs.map((x) => ({ cell: { x, y: 6 } }));
+  it('a dash pick and the walk it causes read as one run', () => {
+    const rows = story(
+      fightFormed,
+      at(
+        'id-1',
+        Family.TABLE_ANSWER,
+        { case: 'tableAnswer', value: { who: gate, word: 'dash' } },
+        'time',
+        'turn:gate'
+      ),
+      at(
+        'id-2',
+        Family.ACT,
+        {
+          case: 'walk',
+          value: {
+            mover: gate,
+            path: steps(-20, -19, -18),
+            cause: 'encounter:table:dash',
+          },
+        },
+        'time',
+        'turn:gate'
+      )
+    );
+    const lines = rows
+      .filter((r) => r.act?.family !== Family.CLOCK)
+      .map((r) => [r.eyebrow, r.headline, r.detail]);
+    expect(lines).toEqual([['Dash', 'Gate Guard runs', '3 cells to (-18, 6)']]);
+  });
+
+  it('a plain walk still reads as a walk', () => {
+    const rows = story(
+      fightFormed,
+      at(
+        'id-1',
+        Family.TABLE_ANSWER,
+        { case: 'tableAnswer', value: { who: gate, word: 'toward' } },
+        'time'
+      ),
+      at('id-2', Family.ACT, {
+        case: 'walk',
+        value: { mover: gate, path: steps(-8, -7) },
+      })
+    );
+    const lines = rows
+      .filter((r) => r.act?.family !== Family.CLOCK)
+      .map((r) => [r.eyebrow, r.headline]);
+    expect(lines).toEqual([
+      ['Answer', 'Gate Guard: toward'],
+      ['Move', 'Gate Guard moves'],
+    ]);
+  });
+});
+
 describe('in a fight is the viewer’s own fight', () => {
   it('another fight forming and dissolving does not move the viewer’s', () => {
     const bob = { kind: PartyKind.MEMBER, id: 'bob' };

@@ -1,4 +1,7 @@
-import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
+import {
+  isScrolledAwayFromBottom,
+  SCROLL_PIN_THRESHOLD_PX,
+} from '@/components/game/combatLogScroll';
 import {
   useCallback,
   useEffect,
@@ -51,6 +54,17 @@ export interface StoryLogProps {
   announceUpdates?: boolean;
   /** Desktop HUD: recent released outcomes open the same history/debug reader. */
   compactPreview?: boolean;
+}
+
+/** Whether the reader has scrolled away from the feed's newest edge: the
+ * story's bottom, the Debug record's top (rpg-dnd5e-web#1342). */
+function awayFromNewest(
+  el: HTMLElement,
+  mode: CombatExperienceLogMode
+): boolean {
+  return mode === 'debug'
+    ? el.scrollTop > SCROLL_PIN_THRESHOLD_PX
+    : isScrolledAwayFromBottom(el.scrollTop, el.scrollHeight, el.clientHeight);
 }
 
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
@@ -206,9 +220,13 @@ export function StoryLog({
   // One ref serves both feeds: `visibleMode` renders exactly one of them, so
   // the ref only ever holds the mounted container, and the mode itself is a
   // dependency so switching feeds re-pins the newly mounted one.
+  //
+  // THE NEWEST EDGE DEPENDS ON THE FEED. The story reads down, newest at the
+  // bottom; the Debug record lists newest first (rpg-dnd5e-web#1342), so it
+  // follows its top edge.
   const rootRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [pinnedToNewest, setPinnedToNewest] = useState(true);
   const rows = useMemo(() => foldLogRows(story), [story]);
   const [recentShown, setRecentShown] = useState(false);
   // The recent panel's click: scroll the log to that act's row, or to the
@@ -224,7 +242,7 @@ export function StoryLog({
         (row.dataset.foldIds ?? '').split(' ').includes(id)
     );
     if (!target) return;
-    setPinnedToBottom(false);
+    setPinnedToNewest(false);
     target.scrollIntoView?.({ block: 'nearest' });
   }, []);
   const [collapsedChoice, setCollapsed] = useState<boolean | null>(null);
@@ -243,7 +261,7 @@ export function StoryLog({
     if (compactPreview) {
       onModeChange('story');
       savedScrollTop.current = undefined;
-      setPinnedToBottom(true);
+      setPinnedToNewest(true);
     }
     pendingStoryId.current = id ?? null;
     focusAfterToggle.current = true;
@@ -286,22 +304,18 @@ export function StoryLog({
     if (savedScrollTop.current !== undefined) {
       el.scrollTop = savedScrollTop.current;
       savedScrollTop.current = undefined;
-      setPinnedToBottom(
-        !isScrolledAwayFromBottom(
-          el.scrollTop,
-          el.scrollHeight,
-          el.clientHeight
-        )
-      );
+      setPinnedToNewest(!awayFromNewest(el, visibleMode));
       return;
     }
-    if (pinnedToBottom) el.scrollTop = el.scrollHeight;
+    if (pinnedToNewest) {
+      el.scrollTop = visibleMode === 'debug' ? 0 : el.scrollHeight;
+    }
   }, [
     story.length,
     result,
     record?.rows.length,
     visibleMode,
-    pinnedToBottom,
+    pinnedToNewest,
     collapsed,
     scrollToRow,
   ]);
@@ -320,9 +334,7 @@ export function StoryLog({
     if (collapsed) return;
     const el = scrollRef.current;
     if (!el) return;
-    setPinnedToBottom(
-      !isScrolledAwayFromBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
-    );
+    setPinnedToNewest(!awayFromNewest(el, visibleMode));
   };
   const streamLabel =
     streamState === 'live'

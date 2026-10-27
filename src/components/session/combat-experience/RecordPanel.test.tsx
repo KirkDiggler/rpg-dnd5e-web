@@ -48,42 +48,36 @@ const longRecord = Array.from({ length: 23 }, (_, index) =>
 );
 
 describe('RecordPanel', () => {
-  it('pages loaded rows and lets the reader show more without changing the feed', () => {
+  // rpg-dnd5e-web#1342: newest at the top, one scrolling list, no page.
+  const newest = (rows: readonly RecordRow[]) =>
+    [...rows].reverse().map((r) => r.id);
+
+  it('lists every loaded row newest first, with no page controls', () => {
     render(<RecordPanel feed={{ rows: longRecord, notice: undefined }} />);
-    expect(shown()).toEqual(longRecord.slice(0, 10).map((r) => r.id));
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Previous record page',
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    expect(shown()).toEqual(longRecord.slice(10, 20).map((r) => r.id));
-    expect(screen.getByText('11–20 of 23')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    expect(shown()).toEqual(longRecord.slice(20).map((r) => r.id));
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Next record page',
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Previous record page' })
+    expect(shown()).toEqual(newest(longRecord));
+    expect(shown()[0]).toBe('record-23');
+    expect(screen.queryByRole('navigation', { name: 'Record pages' })).toBe(
+      null
     );
-    expect(shown()[0]).toBe('record-11');
-    fireEvent.change(screen.getByLabelText('Record rows per page'), {
-      target: { value: '25' },
-    });
-    expect(shown()).toHaveLength(23);
-    expect(screen.getByText('1–23 of 23')).toBeTruthy();
-    expect(longRecord).toHaveLength(23);
+    expect(screen.queryByLabelText('Record rows per page')).toBe(null);
+    expect(screen.queryByRole('button', { name: /record page/ })).toBe(null);
   });
-  it('filters the whole loaded record before paging and resets on filter changes', () => {
+
+  it('puts a new beat at the top and keeps every row after a restart', () => {
+    const { rerender } = render(
+      <RecordPanel feed={{ rows: longRecord, notice: undefined }} />
+    );
+    const appended = [...longRecord, row('record-24', 'moved', 'act-4')];
+    rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
+    expect(shown()).toEqual(newest(appended));
+    rerender(<RecordPanel feed={{ rows: [], notice: 'Record restarted' }} />);
+    expect(screen.getByText('No record beats received.')).toBeTruthy();
+    rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
+    expect(shown()).toEqual(newest(appended));
+  });
+
+  it('filters the whole loaded record and keeps it newest first', () => {
     render(<RecordPanel feed={{ rows: longRecord, notice: undefined }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
     fireEvent.change(screen.getByLabelText('Filter by beat'), {
       target: { value: 'answered' },
     });
@@ -92,26 +86,12 @@ describe('RecordPanel', () => {
       target: { value: 'absent' },
     });
     expect(screen.getByText('No records match these filters.')).toBeTruthy();
-    expect(screen.getByText('0–0 of 0')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(shown()[0]).toBe('record-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'act-2' })[0]);
-    expect(shown()).toEqual(longRecord.slice(10, 15).map((r) => r.id));
+    expect(shown()).toEqual(newest(longRecord));
+    fireEvent.click(screen.getAllByRole('button', { name: 'act-2' })[0]!);
+    expect(shown()).toEqual(newest(longRecord.slice(10, 15)));
   });
-  it('keeps the current page on append and clamps it when the buffer shrinks', () => {
-    const { rerender } = render(
-      <RecordPanel feed={{ rows: longRecord, notice: undefined }} />
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Next record page' }));
-    const appended = [...longRecord, row('record-24', 'moved', 'act-4')];
-    rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
-    expect(shown()[0]).toBe('record-11');
-    rerender(<RecordPanel feed={{ rows: [], notice: 'Record restarted' }} />);
-    expect(screen.getByText('No record beats received.')).toBeTruthy();
-    rerender(<RecordPanel feed={{ rows: appended, notice: undefined }} />);
-    expect(shown()[0]).toBe('record-01');
-  });
+
   it('filters by act id', () => {
     render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
     expect(shown()).toHaveLength(8);
@@ -119,10 +99,10 @@ describe('RecordPanel', () => {
       target: { value: WALK },
     });
     expect(shown()).toEqual([
-      '01HF7YAT01',
-      '01HF7YAT02',
-      '01HF7YAT03',
       '01HF7YAT04',
+      '01HF7YAT03',
+      '01HF7YAT02',
+      '01HF7YAT01',
     ]);
   });
 
@@ -130,10 +110,10 @@ describe('RecordPanel', () => {
     render(<RecordPanel feed={{ rows: record, notice: undefined }} />);
     fireEvent.click(screen.getAllByRole('button', { name: WALK })[0]!);
     expect(shown()).toEqual([
-      '01HF7YAT01',
-      '01HF7YAT02',
-      '01HF7YAT03',
       '01HF7YAT04',
+      '01HF7YAT03',
+      '01HF7YAT02',
+      '01HF7YAT01',
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(shown()).toHaveLength(8);
@@ -144,7 +124,7 @@ describe('RecordPanel', () => {
     fireEvent.change(screen.getByLabelText('Filter by beat'), {
       target: { value: 'answered' },
     });
-    expect(shown()).toEqual(['01HF7YAT06', '01HF7YAT07']);
+    expect(shown()).toEqual(['01HF7YAT07', '01HF7YAT06']);
   });
 
   it('pretty-prints fields', () => {
