@@ -160,3 +160,84 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;
 }
+
+/* One act per row (rpg-dnd5e-web#1345): who, the round, what fired, what
+   followed. Open, the pick and the beats sit indented under it. */
+.acts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.actItem {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.75rem;
+}
+
+.actItem[data-world] .actor {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.actLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.actLine::before {
+  content: '▸';
+  opacity: 0.5;
+}
+
+.actLine[aria-expanded='true']::before {
+  content: '▾';
+}
+
+.actor {
+  font-weight: 600;
+}
+
+.round {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+.word {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #e6c46a;
+}
+
+.followed {
+  opacity: 0.8;
+}
+
+.actBody {
+  padding: 0 0 0.4rem 0.9rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  margin-left: 0.25rem;
+}
+
+.pick {
+  padding: 0.2rem 0 0.35rem;
+}
+
+.pick p {
+  margin: 0 0 0.15rem;
+}
+
+.match {
+  background: rgba(230, 196, 106, 0.12);
+}

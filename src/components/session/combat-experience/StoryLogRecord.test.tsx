@@ -115,6 +115,9 @@ describe('StoryLog record visibility', () => {
     story.unmount();
 
     renderLog('debug', () => {}, feed);
+    // The Debug panel lists acts (rpg-dnd5e-web#1345): the pick's words are
+    // inside its act, opened.
+    fireEvent.click(screen.getByRole('button', { name: 'Act time:r2' }));
     expect(screen.getByText(sentence)).toBeTruthy();
   });
 });
