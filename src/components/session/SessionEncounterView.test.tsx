@@ -6697,6 +6697,10 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
         hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
       ).toHaveLength(3)
     );
+    // Authority already refreshed; the cursor still holds this rendered body.
+    expect(hoisted.lastCanvasProps.current?.heldMovementMembers).toEqual(
+      new Set(['scout'])
+    );
     // The token is still walking: the floor keeps the zone it showed.
     expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
       new Set(['1,-1,0'])
@@ -6712,6 +6716,9 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
         new Set(['5,-5,0'])
       )
     );
+    expect(hoisted.lastCanvasProps.current?.heldMovementMembers).toEqual(
+      new Set()
+    );
   });
 
   it('a view with no zones hands the floor none', async () => {
@@ -6726,6 +6733,82 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
       hoisted.lastCanvasProps.current?.scene?.watchZoneCells
     ).toBeUndefined();
     expect(probe.dataset.watchZoneCells).toBe('');
+  });
+});
+
+describe('completion-driven remote movement seam', () => {
+  it('releases the next world walker only after the current rendered route completes', async () => {
+    readyScene();
+    let delivered = false;
+    const zones = () => [
+      create(WatchZoneSchema, {
+        watcher: 'pedlar',
+        cells: [create(PositionSchema, { x: delivered ? 7 : 3, y: 0 })],
+      }),
+    ];
+    const sightings = () =>
+      ['commoner', 'pedlar'].map((subject, index) => ({
+        subject,
+        name: subject,
+        kind: MemberKind.MONSTER,
+        seen: { position: { x: index * 3, y: 0 }, standing: Standing.UP },
+        passage: Passage.PASS_THROUGH,
+        currentVia: ['sight'],
+      }));
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.sightings =
+        sightings() as unknown as typeof snapshot.view.sightings;
+      snapshot.view.watchZones = zones();
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: sightings(),
+      watchZones: zones(),
+    }));
+    const stream = deferredActs([
+      walkAct('commoner', [{ x: 1, y: 0 }]),
+      walkAct('pedlar', [{ x: 4, y: 0 }]),
+    ]);
+    renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(2)
+    );
+    delivered = true;
+    const reads = hoisted.getViewFn.mock.calls.length;
+    stream.release();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
+        true
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.movements?.has('pedlar')).toBe(
+      false
+    );
+    expect(hoisted.lastCanvasProps.current?.heldMovementMembers).toEqual(
+      new Set(['commoner', 'pedlar'])
+    );
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(reads)
+    );
+    expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+      new Set(['3,-3,0'])
+    );
+    const seq =
+      hoisted.lastCanvasProps.current!.movements!.get('commoner')!.seq;
+    act(() =>
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('commoner', seq, 1)
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movements?.has('pedlar')).toBe(
+        true
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.heldMovementMembers).toEqual(
+      new Set(['pedlar'])
+    );
   });
 });
 

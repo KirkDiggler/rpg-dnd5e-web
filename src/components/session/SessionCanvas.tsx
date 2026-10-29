@@ -186,6 +186,8 @@ export interface SessionCanvasProps {
    * exactly what every non-local actor used to do always
    * (rpg-dnd5e-web#961). */
   movements?: Movements;
+  /** Live bodies with queued/active presentation must not jump to newer snapshots. */
+  heldMovementMembers?: ReadonlySet<string>;
   /** Fires when a floor hex is clicked (and it isn't an attack — see this
    * component's own doc comment) — the request-shaping/pathfinding and
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
@@ -332,6 +334,7 @@ export function SessionScene({
   myPosition,
   startFacing,
   movements,
+  heldMovementMembers,
   onHexClick,
   onCancelSelection,
   onEntityClick,
@@ -816,6 +819,9 @@ export function SessionScene({
         offHandPresentation={offHandPresentation}
         movePath={selfMovement?.route}
         moveSeq={selfMovement?.seq}
+        deferPositionReconciliation={
+          heldMovementMembers?.has(characterId) ?? false
+        }
         onMovementPresentationComplete={(entityId, completedMoveSeq) =>
           onMovementPainted?.(
             entityId,
@@ -848,6 +854,10 @@ export function SessionScene({
           position={member.position}
           movePath={movements?.get(member.subject)?.route}
           moveSeq={movements?.get(member.subject)?.seq}
+          deferPositionReconciliation={
+            !member.remembered &&
+            (heldMovementMembers?.has(member.subject) ?? false)
+          }
           seenFacingDegrees={facingWhileWalking(
             member.facingDegrees,
             movements?.get(member.subject)

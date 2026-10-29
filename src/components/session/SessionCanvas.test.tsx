@@ -3241,6 +3241,61 @@ describe('SessionScene', () => {
       }
     }
 
+    it('holds a live queued walker against snapshots but releases the hold for remembered bodies', async () => {
+      const props = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        classRefId: undefined,
+        myPosition: { x: 0, y: 0, z: 0 },
+        otherMembers: oneMember,
+        attackableTargets: ['skeleton-1'],
+        selectedTargets: ['skeleton-1'],
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene {...props} />
+      );
+      const marker = renderer.scene.findByProps({
+        name: 'member-target-marker-skeleton-1',
+      });
+      const group = marker.instance.parent!;
+      const initial = group.position.x;
+      const later = [{ ...oneMember[0]!, position: { x: 3, y: -3, z: 0 } }];
+      await renderer.update(
+        <SessionScene
+          {...props}
+          otherMembers={later}
+          heldMovementMembers={new Set(['skeleton-1'])}
+        />
+      );
+      expect(group.position.x).toBeCloseTo(initial);
+      await renderer.update(
+        <SessionScene
+          {...props}
+          otherMembers={later}
+          heldMovementMembers={new Set()}
+        />
+      );
+      expect(group.position.x).toBeCloseTo(
+        cubeToWorld(later[0]!.position, 1).x
+      );
+      const remembered = [
+        { ...later[0]!, remembered: true, position: { x: 4, y: -4, z: 0 } },
+      ];
+      await renderer.update(
+        <SessionScene
+          {...props}
+          otherMembers={remembered}
+          heldMovementMembers={new Set(['skeleton-1'])}
+        />
+      );
+      expect(group.position.x).toBeCloseTo(
+        cubeToWorld(remembered[0]!.position, 1).x
+      );
+      await renderer.unmount();
+    });
+
     it('opt-in member targeting marks selected peers and self, follows their entity groups, and routes mesh/cell clicks once', async () => {
       const onEntityClick = vi.fn();
       const onHexClick = vi.fn();
