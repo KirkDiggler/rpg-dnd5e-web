@@ -37,6 +37,7 @@ import {
 } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
 import type { TurnBeat } from '../useTurnOrderFollow';
+import type { PresentWalk } from '../walkPresentation';
 import { wardedCastNotice } from '../wardBeat';
 import { actStoryId } from './actStory';
 import { caughtNotice } from './caughtNotice';
@@ -121,6 +122,7 @@ export interface UseSessionCombatExperienceArgs {
   viewerCell?: { readonly x: number; readonly y: number } | null;
   /** The turn order follows the paced story's driven turns (rpg-project#685). */
   onTurnBeat?: (beat: TurnBeat) => void;
+  onPresentWalk?: PresentWalk;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -146,6 +148,7 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
+  heldMovementMembers: ReadonlySet<string>;
   endTurnBlocked: boolean;
   /** `choice` is supplied only for a VERB_REACT declaration: the answer to
    * an open reaction window. */
@@ -289,6 +292,7 @@ export function useSessionCombatExperience({
   memberTargetingMode = 'legacy',
   viewerCell = null,
   onTurnBeat,
+  onPresentWalk,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
@@ -454,12 +458,14 @@ export function useSessionCombatExperience({
   }, [member, presentation.state.presentations, receivedRollWindow, session]);
   manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
+    session,
     member,
     participants,
     memberNames,
     story: presentation.story,
     result: presentation.result,
     onTurnBeat,
+    onPresentWalk,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
@@ -2263,6 +2269,7 @@ export function useSessionCombatExperience({
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      heldMovementMembers: pacing.heldMovementMembers,
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onSelectCastOption,
@@ -2307,6 +2314,7 @@ export function useSessionCombatExperience({
       onSpeakOption,
       onConfirmTargets,
       pacing.notice,
+      pacing.heldMovementMembers,
       pacing.result,
       pacing.story,
       pendingDeathSaveResponse,

@@ -6,6 +6,7 @@ import {
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
 import {
+  beatActor,
   isTurnEnd,
   needsPacing,
   nextBeatStep,
@@ -13,6 +14,7 @@ import {
 } from '../monsterBeatQueue';
 import { participantNameMap } from '../participantNames';
 import type { TurnBeat } from '../useTurnOrderFollow';
+import type { PresentWalk } from '../walkPresentation';
 import { actStoryId } from './actStory';
 import { fightIncludes } from './toastPolicy';
 import type {
@@ -20,39 +22,54 @@ import type {
   CombatExperienceStoryExchange,
 } from './types';
 
+/** A gap between completed items, never a guess at a walk's duration. */
 export const COMBAT_STORY_PACE_MS = 300;
 
 export interface UseCombatStoryPacingArgs {
+  session: string;
   member: string;
   participants: readonly Participant[];
   memberNames?: ReadonlyMap<string, string>;
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
-  /** Told whose driven turn the story is playing, each turn it passes on,
-   * and when it rests: the turn order follows it (rpg-project#685). */
   onTurnBeat?: (beat: TurnBeat) => void;
+  /** Absence means no render surface: walks settle without waiting for paint. */
+  onPresentWalk?: PresentWalk;
 }
 
 export interface UseCombatStoryPacingResult {
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
   notice: string | null;
-  /** One same-id run of acts, whole and in order. */
+  /** Already displayed bodies must not snap to newer snapshots ahead of a walk. */
+  heldMovementMembers: ReadonlySet<string>;
   acceptActs: (run: readonly Act[], metadata: ActDeliveryMetadata) => void;
 }
 
 interface PacingScopeToken {
+  readonly session: string;
   readonly member: string;
 }
 
 interface ScopedPacingState {
   readonly token: PacingScopeToken;
   readonly hiddenIds: ReadonlySet<string>;
+  readonly heldMovementMembers: ReadonlySet<string>;
   readonly notice: string | null;
 }
 
+interface PendingWalk {
+  readonly member: string;
+  unsubscribe?: () => void;
+}
+
 function emptyScopedPacing(token: PacingScopeToken): ScopedPacingState {
-  return { token, hiddenIds: new Set(), notice: null };
+  return {
+    token,
+    hiddenIds: new Set(),
+    heldMovementMembers: new Set(),
+    notice: null,
+  };
 }
 
 /** Records who a live clock act names as in the viewer's fight. */
@@ -81,32 +98,35 @@ function learnFight(act: Act, member: string, named: Set<string>): void {
 }
 
 /**
- * A presentation-only cursor for another member's live turn.
- *
- * Events have already entered the authoritative reducer and query invalidation
- * funnel before this hook sees them. Only their Story projection is briefly
- * hidden, then revealed with the existing monsterBeatQueue order. Catch-up
- * history is never replayed slowly.
+ * One presentation-only cursor. Authority/knowledge process delivery immediately;
+ * this cursor releases visible walks and waits for their exact completion before
+ * revealing the next paced row/turn. Catch-up never animates. World walks share
+ * this owner without borrowing a combat turn announcement.
  */
 export function useCombatStoryPacing({
+  session,
   member,
   participants,
   memberNames,
   story,
   result,
   onTurnBeat,
+  onPresentWalk,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
-    () => Object.freeze({ member }),
-    [member]
+    () => Object.freeze({ session, member }),
+    [session, member]
   );
   const activeTokenRef = useRef(token);
   activeTokenRef.current = token;
+  const mountedRef = useRef(true);
   const [scopedPacing, setScopedPacing] = useState<ScopedPacingState>(() =>
     emptyScopedPacing(token)
   );
   const queueRef = useRef<QueuedBeat[]>([]);
+  const waitingRef = useRef<PendingWalk | null>(null);
   const drainingRef = useRef(false);
+  const turnPresentationActiveRef = useRef(false);
   const announcedActorRef = useRef<string | null>(null);
   const sawBeatRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,22 +136,27 @@ export function useCombatStoryPacing({
   memberNamesRef.current = memberNames;
   const onTurnBeatRef = useRef(onTurnBeat);
   onTurnBeatRef.current = onTurnBeat;
-  /** Fight members the live clock acts named since the last snapshot could
-   * (a fight forming, a join, a turn passing); a dissolve forgets them. */
+  const onPresentWalkRef = useRef(onPresentWalk);
+  onPresentWalkRef.current = onPresentWalk;
   const namedInFightRef = useRef(new Set<string>());
+  const inScope = useCallback(
+    () => mountedRef.current && activeTokenRef.current === token,
+    [token]
+  );
 
   const tell = useCallback(
     (beat: TurnBeat) => {
-      if (activeTokenRef.current !== token) return;
-      onTurnBeatRef.current?.(beat);
+      if (inScope()) onTurnBeatRef.current?.(beat);
     },
-    [token]
+    [inScope]
   );
   const rest = useCallback(() => {
     drainingRef.current = false;
-    tell({ type: 'idle' });
+    if (turnPresentationActiveRef.current) {
+      turnPresentationActiveRef.current = false;
+      tell({ type: 'idle' });
+    }
   }, [tell]);
-
   const namesNow = useCallback(() => {
     const names = new Map(memberNamesRef.current ?? []);
     for (const [id, name] of participantNameMap(participantsRef.current)) {
@@ -143,8 +168,12 @@ export function useCombatStoryPacing({
   const resetQueue = useCallback(() => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = null;
+    const waiting = waitingRef.current;
+    waitingRef.current = null;
+    waiting?.unsubscribe?.();
     queueRef.current = [];
     drainingRef.current = false;
+    turnPresentationActiveRef.current = false;
     announcedActorRef.current = null;
     sawBeatRef.current = false;
     namedInFightRef.current = new Set();
@@ -152,69 +181,85 @@ export function useCombatStoryPacing({
 
   const setNoticeForScope = useCallback(
     (notice: string | null) => {
-      if (activeTokenRef.current !== token) return;
+      if (!inScope()) return;
       setScopedPacing((current) => {
-        if (activeTokenRef.current !== token) return current;
-        const hiddenIds =
-          current.token === token ? current.hiddenIds : new Set<string>();
-        if (current.token === token && current.notice === notice)
-          return current;
-        return { token, hiddenIds, notice };
+        if (!inScope()) return current;
+        const base =
+          current.token === token ? current : emptyScopedPacing(token);
+        return base.notice === notice ? base : { ...base, notice };
       });
     },
-    [token]
+    [inScope, token]
   );
 
   const updateHiddenIdsForScope = useCallback(
-    (update: (current: ReadonlySet<string>) => ReadonlySet<string>) => {
-      if (activeTokenRef.current !== token) return;
+    (update: (ids: ReadonlySet<string>) => ReadonlySet<string>) => {
+      if (!inScope()) return;
       setScopedPacing((current) => {
-        if (activeTokenRef.current !== token) return current;
-        const hiddenIds = update(
-          current.token === token ? current.hiddenIds : new Set<string>()
-        );
-        return {
-          token,
-          hiddenIds,
-          notice: current.token === token ? current.notice : null,
-        };
+        if (!inScope()) return current;
+        const base =
+          current.token === token ? current : emptyScopedPacing(token);
+        return { ...base, hiddenIds: update(base.hiddenIds) };
       });
     },
-    [token]
+    [inScope, token]
   );
+
+  const publishHeldMembers = useCallback(() => {
+    if (!inScope()) return;
+    const held = new Set<string>();
+    if (waitingRef.current) held.add(waitingRef.current.member);
+    for (const beat of queueRef.current) {
+      if (beat.act.body.case === 'walk') {
+        const actor = beatActor(beat.act);
+        if (actor) held.add(actor);
+      }
+    }
+    setScopedPacing((current) => {
+      if (!inScope()) return current;
+      const base = current.token === token ? current : emptyScopedPacing(token);
+      if (
+        base.heldMovementMembers.size === held.size &&
+        [...held].every((id) => base.heldMovementMembers.has(id))
+      )
+        return base;
+      return { ...base, heldMovementMembers: held };
+    });
+  }, [inScope, token]);
 
   const scheduleForScope = useCallback(
     (callback: () => void) => {
-      if (activeTokenRef.current !== token) return;
+      if (!inScope()) return;
       timerRef.current = setTimeout(() => {
-        if (activeTokenRef.current !== token) return;
+        if (!inScope()) return;
         timerRef.current = null;
         callback();
       }, COMBAT_STORY_PACE_MS);
     },
-    [token]
+    [inScope]
   );
 
   const drain = useCallback(
     function drainQueue() {
-      if (activeTokenRef.current !== token) return;
+      if (!inScope() || waitingRef.current) return;
       const step = nextBeatStep(queueRef.current, announcedActorRef.current);
       if (step.type === 'idle') {
         setNoticeForScope(null);
+        publishHeldMembers();
         rest();
         return;
       }
-
       if (step.type === 'announce') {
         announcedActorRef.current = step.actor;
+        turnPresentationActiveRef.current = true;
         tell({ type: 'playing', actor: step.actor });
         sawBeatRef.current = false;
-        const name = namesNow().get(step.actor);
-        setNoticeForScope(`${name ?? step.actor}'s turn.`);
+        setNoticeForScope(
+          `${namesNow().get(step.actor) ?? step.actor}'s turn.`
+        );
         scheduleForScope(drainQueue);
         return;
       }
-
       queueRef.current.shift();
       const { beat, actor } = step;
       updateHiddenIdsForScope((current) => {
@@ -224,15 +269,40 @@ export function useCombatStoryPacing({
       });
 
       if (beat.act.body.case === 'walk') {
-        sawBeatRef.current = true;
-      } else if (beat.act.body.case === 'attack') {
+        if (beat.scope === 'turn') sawBeatRef.current = true;
+        const pending: PendingWalk = { member: actor };
+        waitingRef.current = pending;
+        publishHeldMembers();
+        const complete = (): void => {
+          if (!inScope() || waitingRef.current !== pending) return;
+          waitingRef.current = null;
+          pending.unsubscribe?.();
+          publishHeldMembers();
+          if (queueRef.current.length > 0) scheduleForScope(drainQueue);
+          else {
+            setNoticeForScope(null);
+            rest();
+          }
+        };
+        // Install the identity BEFORE asking the renderer. Missing/unavailable
+        // presentation may complete synchronously; never install a stale waiter.
+        const unsubscribe = onPresentWalkRef.current?.({
+          act: beat.act,
+          complete,
+        });
+        if (unsubscribe) {
+          if (waitingRef.current === pending) pending.unsubscribe = unsubscribe;
+          else unsubscribe();
+        } else if (!onPresentWalkRef.current) complete();
+        return;
+      }
+      publishHeldMembers();
+      if (beat.act.body.case === 'attack') {
         sawBeatRef.current = true;
         setNoticeForScope(null);
       } else if (isTurnEnd(beat.act)) {
-        if (!sawBeatRef.current) {
-          const name = namesNow().get(actor);
-          setNoticeForScope(`${name ?? actor} does nothing.`);
-        }
+        if (!sawBeatRef.current)
+          setNoticeForScope(`${namesNow().get(actor) ?? actor} does nothing.`);
         announcedActorRef.current = null;
         sawBeatRef.current = false;
         tell({ type: 'passed', act: beat.act });
@@ -243,35 +313,36 @@ export function useCombatStoryPacing({
         });
         return;
       }
-
-      if (queueRef.current.length > 0) {
-        scheduleForScope(drainQueue);
-      } else {
-        rest();
-      }
+      if (queueRef.current.length > 0) scheduleForScope(drainQueue);
+      else rest();
     },
     [
+      inScope,
       namesNow,
+      publishHeldMembers,
       rest,
-      tell,
       scheduleForScope,
       setNoticeForScope,
-      token,
+      tell,
       updateHiddenIdsForScope,
     ]
   );
 
   const acceptActs = useCallback(
     (run: readonly Act[], metadata: ActDeliveryMetadata) => {
-      if (activeTokenRef.current !== token || metadata.source !== 'live') {
-        return;
-      }
+      if (!inScope() || metadata.source !== 'live') return;
       const named = namedInFightRef.current;
-      const paced = run.flatMap((act, index) => {
+      const paced = run.flatMap<QueuedBeat>((act, index) => {
         learnFight(act, member, named);
         const fight = new Set(named);
-        for (const p of participantsRef.current) fight.add(p.member);
-        return needsPacing(act, member, fight) ? [{ act, index }] : [];
+        for (const participant of participantsRef.current)
+          fight.add(participant.member);
+        if (needsPacing(act, member, fight))
+          return [{ act, index, scope: 'turn' }];
+        const actor = beatActor(act);
+        if (act.body.case === 'walk' && actor && actor !== member)
+          return [{ act, index, scope: 'world' }];
+        return [];
       });
       if (paced.length === 0) return;
       queueRef.current.push(...paced);
@@ -280,32 +351,32 @@ export function useCombatStoryPacing({
         for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
         return next;
       });
+      publishHeldMembers();
       if (!drainingRef.current) {
         drainingRef.current = true;
         drain();
       }
     },
-    [drain, member, token, updateHiddenIdsForScope]
+    [drain, inScope, member, publishHeldMembers, updateHiddenIdsForScope]
   );
 
   useLayoutEffect(() => {
+    mountedRef.current = true;
     resetQueue();
-    setScopedPacing((current) => {
-      if (
-        current.token === token &&
-        current.hiddenIds.size === 0 &&
-        current.notice === null
-      ) {
-        return current;
-      }
-      return emptyScopedPacing(token);
-    });
-    return resetQueue;
+    setScopedPacing((current) =>
+      current.token === token &&
+      current.hiddenIds.size === 0 &&
+      current.heldMovementMembers.size === 0 &&
+      current.notice === null
+        ? current
+        : emptyScopedPacing(token)
+    );
+    return () => {
+      mountedRef.current = false;
+      resetQueue();
+    };
   }, [resetQueue, token]);
 
-  // A member change gets an empty projection during render; the layout reset
-  // then clears mutable work before paint. Prior-scope Story/notice therefore
-  // cannot flash while React commits the new member.
   const currentPacing = scopedPacing.token === token ? scopedPacing : null;
   const visibleStory = useMemo(
     () =>
@@ -318,11 +389,13 @@ export function useCombatStoryPacing({
     result && !currentPacing?.hiddenIds.has(result.attackId)
       ? result
       : undefined;
-
   return {
     story: visibleStory,
     result: visibleResult,
     notice: currentPacing?.notice ?? null,
+    heldMovementMembers: currentPacing?.heldMovementMembers ?? EMPTY_MEMBERS,
     acceptActs,
   };
 }
+
+const EMPTY_MEMBERS: ReadonlySet<string> = new Set();
