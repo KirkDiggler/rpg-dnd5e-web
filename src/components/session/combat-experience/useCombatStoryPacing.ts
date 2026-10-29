@@ -35,6 +35,8 @@ export interface UseCombatStoryPacingArgs {
   onTurnBeat?: (beat: TurnBeat) => void;
   /** Absence means no render surface: walks settle without waiting for paint. */
   onPresentWalk?: PresentWalk;
+  /** Absent means no live render surface. Visibility loss retires queued motion. */
+  presentableMembers?: ReadonlySet<string>;
 }
 
 export interface UseCombatStoryPacingResult {
@@ -112,6 +114,7 @@ export function useCombatStoryPacing({
   result,
   onTurnBeat,
   onPresentWalk,
+  presentableMembers = EMPTY_MEMBERS,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
     () => Object.freeze({ session, member }),
@@ -138,6 +141,8 @@ export function useCombatStoryPacing({
   onTurnBeatRef.current = onTurnBeat;
   const onPresentWalkRef = useRef(onPresentWalk);
   onPresentWalkRef.current = onPresentWalk;
+  const presentableMembersRef = useRef(presentableMembers);
+  presentableMembersRef.current = presentableMembers;
   const namedInFightRef = useRef(new Set<string>());
   const inScope = useCallback(
     () => mountedRef.current && activeTokenRef.current === token,
@@ -210,7 +215,7 @@ export function useCombatStoryPacing({
     const held = new Set<string>();
     if (waitingRef.current) held.add(waitingRef.current.member);
     for (const beat of queueRef.current) {
-      if (beat.act.body.case === 'walk') {
+      if (beat.walkPresentation === 'eligible') {
         const actor = beatActor(beat.act);
         if (actor) held.add(actor);
       }
@@ -270,6 +275,17 @@ export function useCombatStoryPacing({
 
       if (beat.act.body.case === 'walk') {
         if (beat.scope === 'turn') sawBeatRef.current = true;
+        if (beat.walkPresentation === 'discarded') {
+          // Retain the delivered story at its proper place in the cursor, but
+          // never replay motion whose render lifecycle has already ended.
+          publishHeldMembers();
+          if (queueRef.current.length > 0) scheduleForScope(drainQueue);
+          else {
+            setNoticeForScope(null);
+            rest();
+          }
+          return;
+        }
         const pending: PendingWalk = { member: actor };
         waitingRef.current = pending;
         publishHeldMembers();
@@ -337,11 +353,19 @@ export function useCombatStoryPacing({
         const fight = new Set(named);
         for (const participant of participantsRef.current)
           fight.add(participant.member);
-        if (needsPacing(act, member, fight))
-          return [{ act, index, scope: 'turn' }];
         const actor = beatActor(act);
+        const walkPresentation: QueuedBeat['walkPresentation'] =
+          act.body.case !== 'walk'
+            ? 'none'
+            : actor &&
+                onPresentWalkRef.current &&
+                presentableMembersRef.current.has(actor)
+              ? 'eligible'
+              : 'discarded';
+        if (needsPacing(act, member, fight))
+          return [{ act, index, scope: 'turn', walkPresentation }];
         if (act.body.case === 'walk' && actor && actor !== member)
-          return [{ act, index, scope: 'world' }];
+          return [{ act, index, scope: 'world', walkPresentation }];
         return [];
       });
       if (paced.length === 0) return;
@@ -376,6 +400,23 @@ export function useCombatStoryPacing({
       resetQueue();
     };
   }, [resetQueue, token]);
+
+  useLayoutEffect(() => {
+    if (!inScope()) return;
+    let changed = false;
+    queueRef.current = queueRef.current.map<QueuedBeat>((beat) => {
+      const actor = beatActor(beat.act);
+      if (
+        beat.walkPresentation === 'eligible' &&
+        (!actor || !presentableMembers.has(actor))
+      ) {
+        changed = true;
+        return { ...beat, walkPresentation: 'discarded' };
+      }
+      return beat;
+    });
+    if (changed) publishHeldMembers();
+  }, [inScope, presentableMembers, publishHeldMembers]);
 
   const currentPacing = scopedPacing.token === token ? scopedPacing : null;
   const visibleStory = useMemo(

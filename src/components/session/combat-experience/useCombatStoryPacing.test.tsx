@@ -282,6 +282,7 @@ describe('completion-driven walk presentation', () => {
   afterEach(() => vi.useRealTimers());
 
   type Complete = (outcome: 'painted' | 'unavailable' | 'cancelled') => void;
+  const presentableMembers = new Set(['skeleton-guard', 'commoner', 'pedlar']);
   const walk = (id: string, mover = 'skeleton-guard') =>
     create(ActSchema, {
       session: 'crypt-run',
@@ -337,6 +338,7 @@ describe('completion-driven walk presentation', () => {
         story,
         onTurnBeat,
         onPresentWalk,
+        presentableMembers,
       })
     );
     act(() => result.current.acceptActs(run, { source: 'live' }));
@@ -378,6 +380,7 @@ describe('completion-driven walk presentation', () => {
         story: [],
         onPresentWalk,
         onTurnBeat,
+        presentableMembers,
       })
     );
     act(() =>
@@ -415,6 +418,7 @@ describe('completion-driven walk presentation', () => {
           participants,
           story: [],
           onPresentWalk,
+          presentableMembers,
         }),
       { initialProps: { session: 'first-run' } }
     );
@@ -446,6 +450,7 @@ describe('completion-driven walk presentation', () => {
         participants,
         story: [],
         onPresentWalk,
+        presentableMembers,
       })
     );
     act(() =>
@@ -468,6 +473,7 @@ describe('completion-driven walk presentation', () => {
         participants,
         story: [],
         onPresentWalk,
+        presentableMembers,
       })
     );
     act(() =>

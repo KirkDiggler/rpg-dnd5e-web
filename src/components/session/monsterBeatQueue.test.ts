@@ -45,6 +45,7 @@ const beat = (a: ReturnType<typeof act>): QueuedBeat => ({
   act: a,
   index: 0,
   scope: 'turn',
+  walkPresentation: a.body.case === 'walk' ? 'eligible' : 'none',
 });
 
 describe('beatActor / needsPacing', () => {
@@ -81,6 +82,7 @@ describe('nextBeatStep', () => {
       act: walk('commoner'),
       index: 0,
       scope: 'world',
+      walkPresentation: 'eligible',
     };
     expect(nextBeatStep([world], null)).toEqual({
       type: 'process',

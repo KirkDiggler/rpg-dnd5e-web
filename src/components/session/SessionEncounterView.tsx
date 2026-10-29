@@ -602,11 +602,19 @@ function SessionEncounterScope({
     forgetUnsightedMovements(liveSighted);
   }, [liveSighted, forgetUnsightedMovements]);
 
+  // A cached scene is not an available render surface when the error branch
+  // replaces SessionCanvas. Use the same fact for queued and active walks.
+  const canPresentMovement =
+    canDrawScene && !scenePresentationError && runEnded === null;
+  const presentableMembers = useMemo(
+    () => (canPresentMovement ? liveSighted : new Set<string>()),
+    [canPresentMovement, liveSighted]
+  );
   const walkPresentation = useWalkPresentation({
     session: sessionId,
     member,
     liveSighted,
-    canPresent: canDrawScene && runEnded === null,
+    canPresent: canPresentMovement,
     beginRoute: moves.beginRoute,
     forgetRoute: moves.forgetRoute,
   });
@@ -727,6 +735,7 @@ function SessionEncounterScope({
     viewerCell: wherePosition,
     onTurnBeat: turnOrder.onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
+    presentableMembers,
   });
   // The same cursor hold protects a queued watcher's floor overlay before
   // its route starts, not just while the route is already interpolating.

@@ -6737,6 +6737,76 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
 });
 
 describe('completion-driven remote movement seam', () => {
+  it('retires active and queued walks when a scene error unmounts the cached canvas', async () => {
+    readyScene();
+    const sightings = () =>
+      ['commoner', 'pedlar'].map((subject, index) => ({
+        subject,
+        name: subject,
+        kind: MemberKind.MONSTER,
+        seen: { position: { x: index * 3, y: 0 }, standing: Standing.UP },
+        passage: Passage.PASS_THROUGH,
+        currentVia: ['sight'],
+      }));
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.sightings =
+        sightings() as unknown as typeof snapshot.view.sightings;
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: sightings(),
+    }));
+    const stream = deferredActs([
+      walkAct('commoner', [{ x: 1, y: 0 }]),
+      walkAct('pedlar', [{ x: 4, y: 0 }]),
+    ]);
+    const { rerender } = renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(2)
+    );
+    stream.release();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
+        true
+      )
+    );
+
+    hoisted.dungeonSceneResult.error =
+      'The authored room is temporarily unreadable.';
+    rerender(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={() => {}}
+      />
+    );
+    expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
+    expect(screen.queryByTestId('session-canvas')).toBeNull();
+    // No paint acknowledgement is possible while the canvas is gone.
+    hoisted.dungeonSceneResult.error = null;
+    rerender(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={() => {}}
+      />
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.heldMovementMembers?.size).toBe(0)
+    );
+    expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
+      false
+    );
+    expect(hoisted.lastCanvasProps.current?.movements?.has('pedlar')).toBe(
+      false
+    );
+  });
+
   it('releases the next world walker only after the current rendered route completes', async () => {
     readyScene();
     let delivered = false;

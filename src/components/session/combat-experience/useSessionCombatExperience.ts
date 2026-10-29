@@ -123,6 +123,7 @@ export interface UseSessionCombatExperienceArgs {
   /** The turn order follows the paced story's driven turns (rpg-project#685). */
   onTurnBeat?: (beat: TurnBeat) => void;
   onPresentWalk?: PresentWalk;
+  presentableMembers?: ReadonlySet<string>;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -293,6 +294,7 @@ export function useSessionCombatExperience({
   viewerCell = null,
   onTurnBeat,
   onPresentWalk,
+  presentableMembers,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
@@ -466,6 +468,7 @@ export function useSessionCombatExperience({
     result: presentation.result,
     onTurnBeat,
     onPresentWalk,
+    presentableMembers,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();

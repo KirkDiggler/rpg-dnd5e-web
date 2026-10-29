@@ -65,6 +65,8 @@ export interface QueuedBeat {
   readonly index: number;
   /** World walks share completion order but never announce a combat turn. */
   readonly scope: 'turn' | 'world';
+  /** Discarded is terminal for this queued motion, not for its story row. */
+  readonly walkPresentation: 'none' | 'eligible' | 'discarded';
 }
 
 export function beatActor(act: Act): string | undefined {
