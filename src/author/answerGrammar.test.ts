@@ -493,13 +493,13 @@ describe('selectors', () => {
     );
   });
 
-  it('refuses a selector word outside the sealed three', () => {
+  it('refuses a selector word outside the sealed five', () => {
     expect(() =>
       parseDungeon(
         mutated(TIME_FLED, TIME_FLED.replace('away: actor', 'away: nobody'))
       )
     ).toThrow(
-      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or \{ at: \[col, row\] \}, or \{ path: \[\[col, row\], …\] \}/
+      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or \{ at: \[col, row\] \}, or \{ path: \[\[col, row\], …\] \}/
     );
   });
 });

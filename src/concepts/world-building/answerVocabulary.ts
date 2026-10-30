@@ -286,6 +286,7 @@ export function selectorPhrase(
   if (selector === 'attacker') return `whoever hit ${verb('object', subject)}`;
   if (selector === 'actor') return 'whoever did it';
   if (selector === 'sound') return 'the sound';
+  if (selector === 'ally') return 'the nearest ally';
   return String(selector);
 }
 

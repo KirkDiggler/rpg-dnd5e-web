@@ -913,7 +913,12 @@ function validateAnswerSelector(
     if (!selectorWordLegalOn(value, word))
       // A SELECTOR-SHAPE FAULT IS THE ROW'S (rpg-toolkit#2044): the engine
       // asks mind/behavior of the compiled row and reports at `…time[i]`.
-      fail(rowPathOf(path, word), HEARING_SENTENCES.attackSound());
+      fail(
+        rowPathOf(path, word),
+        value === 'ally'
+          ? HEARING_SENTENCES.attackAlly()
+          : HEARING_SENTENCES.attackSound()
+      );
     return value;
   }
   if (isMapping(value)) {

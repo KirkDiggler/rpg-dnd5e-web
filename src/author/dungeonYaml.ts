@@ -1461,10 +1461,11 @@ function answerSelector(
     if (!isSelectorWord(v)) {
       throw new DungeonParseError(`${path}: ${unknownSelectorRefusal(v)}`);
     }
-    // `sound` on `attack` (R10): a sound cannot be struck.
+    // `sound` on `attack` (R10): a sound cannot be struck; nor an `ally`
+    // (rpg-project#717).
     if (!selectorWordLegalOn(v, word)) {
       throw new DungeonParseError(
-        `${rowPathOf(path, word)}: ${HEARING_SENTENCES.attackSound()}`
+        `${rowPathOf(path, word)}: ${v === 'ally' ? HEARING_SENTENCES.attackAlly() : HEARING_SENTENCES.attackSound()}`
       );
     }
     return { word: v };

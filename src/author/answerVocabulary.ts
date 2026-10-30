@@ -415,8 +415,9 @@ export interface AnswerSelectorSpec {
   readonly refusedOn?: readonly string[];
 }
 
-/** The three sealed selector words, in the engine's order. A scalar selector
- * is one of these; the fourth spelling is a cell ([ANSWER_AT_SELECTOR]). */
+/** The sealed selector words, in the engine's order (`behavior.SelectorWords`).
+ * A scalar selector is one of these; the other spellings are a cell
+ * ([ANSWER_AT_SELECTOR]) and a route ([ANSWER_PATH_SELECTOR]). */
 export const ANSWER_SELECTOR_WORDS: readonly AnswerSelectorSpec[] =
   Object.freeze([
     {
@@ -440,6 +441,14 @@ export const ANSWER_SELECTOR_WORDS: readonly AnswerSelectorSpec[] =
       key: 'sound',
       label: 'The freshest sound',
       help: 'Where the freshest sound it holds was made — a place, never a figure. Walked toward or away from; never attacked.',
+      refusedOn: Object.freeze(['attack']),
+    },
+    {
+      // rpg-project#717: the nearest allied member held in sight, else in
+      // memory. "Follow" is `{ when: { enemy: none }, toward: ally }`.
+      key: 'ally',
+      label: 'The nearest ally',
+      help: 'The nearest creature on a side its own faction is allied with, in sight, else remembered. Walked toward or away from; never attacked.',
       refusedOn: Object.freeze(['attack']),
     },
   ]);
@@ -904,6 +913,10 @@ export const HEARING_SENTENCES = Object.freeze({
   /** `Selector.validate` (mind/behavior): `sound` on `attack`. */
   attackSound: (): string =>
     '`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from',
+  /** `Selector.validate` (mind/behavior): `ally` on `attack`
+   * (rpg-project#717). */
+  attackAlly: (): string =>
+    '`attack` cannot take `ally`: a mind is never handed an ally to strike, only one to walk toward or away from',
   /** `Answer.Validate` (mind/behavior): `sound` on a row whose top-level
    * conditions listen for nothing — a `heard` inside a `not` is not
    * listening. */

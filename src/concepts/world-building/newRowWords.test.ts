@@ -99,3 +99,37 @@ describe('dash and the move words (rpg-project#671)', () => {
     );
   });
 });
+
+describe('the ally selector (rpg-project#717)', () => {
+  it('reads ally on toward, dash and away', () => {
+    const authored = {
+      time: [
+        { when: { enemy: 'none' }, toward: 'ally' },
+        { dash: 'ally' },
+        { away: 'ally' },
+      ],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
+  });
+
+  it('refuses ally on attack at the row, in mind/behavior’s sentence', () => {
+    expect(table({ time: [{ attack: 'ally' }] })).toThrow(
+      'on.time[0]: `attack` cannot take `ally`: a mind is never handed an ally to strike, only one to walk toward or away from'
+    );
+  });
+
+  it('lists ally among the words the engine resolves', () => {
+    expect(table({ time: [{ toward: 'friend' }] })).toThrow(
+      '"friend" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }'
+    );
+  });
+
+  it('says it in words', () => {
+    expect(wordPhrase({ when: { enemy: 'none' }, toward: 'ally' }, 'it')).toBe(
+      'walks toward the nearest ally'
+    );
+    expect(wordPhrase({ away: 'ally' }, 'I')).toBe(
+      'walk away from the nearest ally'
+    );
+  });
+});
