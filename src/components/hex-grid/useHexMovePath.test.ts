@@ -377,6 +377,7 @@ describe('useHexMovePath (hook-level regression test)', () => {
     entityPosition: CubeCoord;
     movePath: CubeCoord[] | undefined;
     moveSeq: number | undefined;
+    deferPositionReconciliation?: boolean;
   };
 
   function renderMovePath(
@@ -389,7 +390,12 @@ describe('useHexMovePath (hook-level regression test)', () => {
     // mount-time layout effect still short-circuits the same way.
     const groupRef = { current: null } as React.RefObject<THREE.Group | null>;
     const hook = renderHook(
-      ({ entityPosition, movePath, moveSeq }: Props) =>
+      ({
+        entityPosition,
+        movePath,
+        moveSeq,
+        deferPositionReconciliation,
+      }: Props) =>
         useHexMovePath(
           entityPosition,
           movePath,
@@ -398,7 +404,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
           Y_OFFSET,
           groupRef,
           onHeading,
-          onPresentationComplete
+          onPresentationComplete,
+          deferPositionReconciliation
         ),
       {
         initialProps: {
@@ -420,6 +427,87 @@ describe('useHexMovePath (hook-level regression test)', () => {
   beforeEach(() => {
     hoisted.frameCallback = undefined;
     hoisted.invalidate.mockReset();
+  });
+
+  it('holds already displayed pixels against a newer snapshot until its queued route starts', () => {
+    const complete = vi.fn();
+    const { rerender, groupRef, result } = renderMovePath(undefined, complete);
+    groupRef.current = new THREE.Group();
+    rerender({
+      entityPosition: { ...posA },
+      movePath: undefined,
+      moveSeq: undefined,
+    });
+    const start = groupRef.current.position.clone();
+    rerender({
+      entityPosition: posC,
+      movePath: undefined,
+      moveSeq: undefined,
+      deferPositionReconciliation: true,
+    });
+    expect(groupRef.current.position).toEqual(start);
+    rerender({
+      entityPosition: posC,
+      movePath: [posB, posC],
+      moveSeq: 1,
+      deferPositionReconciliation: true,
+    });
+    expect(result.current.isMoving).toBe(true);
+    expect(groupRef.current.position).toEqual(start);
+    tick(SECONDS_PER_HEX_STEP);
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posB, HEX_SIZE).x
+    );
+    tick(SECONDS_PER_HEX_STEP);
+    expect(complete).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it('reconciles to the snapshot when a pending hold is released without a route', () => {
+    const { rerender, groupRef } = renderMovePath();
+    groupRef.current = new THREE.Group();
+    rerender({
+      entityPosition: { ...posA },
+      movePath: undefined,
+      moveSeq: undefined,
+    });
+    rerender({
+      entityPosition: posC,
+      movePath: undefined,
+      moveSeq: undefined,
+      deferPositionReconciliation: true,
+    });
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posA, HEX_SIZE).x
+    );
+    rerender({
+      entityPosition: posC,
+      movePath: undefined,
+      moveSeq: undefined,
+      deferPositionReconciliation: false,
+    });
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posC, HEX_SIZE).x
+    );
+  });
+
+  it('still places a newly mounted body normally even when its id is held', () => {
+    const groupRef = { current: new THREE.Group() };
+    renderHook(() =>
+      useHexMovePath(
+        posB,
+        undefined,
+        undefined,
+        HEX_SIZE,
+        Y_OFFSET,
+        groupRef,
+        undefined,
+        undefined,
+        true
+      )
+    );
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posB, HEX_SIZE).x
+    );
   });
 
   it('reports only the exact move instance that actually finishes after a move is superseded', () => {

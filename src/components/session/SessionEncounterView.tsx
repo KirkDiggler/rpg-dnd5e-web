@@ -68,7 +68,6 @@ import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import type { ActDeliveryMetadata } from './actFeed';
 import { refreshKeysForAct } from './actRefreshKeys';
-import { arrivingWalk } from './arrivingWalk';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
@@ -147,6 +146,7 @@ import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { useSessionWalk } from './useSessionWalk';
 import { useTurnOrderFollow } from './useTurnOrderFollow';
+import { useWalkPresentation } from './useWalkPresentation';
 import { VendorPopover } from './vendor/VendorPopover';
 import { watchZoneCells, zonesBehindWalkers } from './watchZoneCells';
 
@@ -431,36 +431,8 @@ function SessionEncounterScope({
   // ONE movement per actor, whoever they are (rpg-dnd5e-web#961). Declared
   // ahead of the walk hook, which feeds it the local player's route, and of
   // the red floor, which waits on it.
-  const moves = useMoveController();
-  // A watcher still walking keeps the zone it showed before the walk; its
-  // new zone lands when its token does (see `zonesBehindWalkers`).
-  const walkingMembers = useMemo(() => {
-    const out = new Set<string>();
-    for (const [who, m] of moves.movements) if (isWalking(m)) out.add(who);
-    return out;
-  }, [moves.movements]);
-  const shownZonesRef = useRef<readonly WatchZone[]>(knowledgeView.watchZones);
-  const shownZones = useMemo(
-    () =>
-      zonesBehindWalkers(
-        shownZonesRef.current,
-        knowledgeView.watchZones,
-        walkingMembers
-      ),
-    [knowledgeView.watchZones, walkingMembers]
-  );
-  useEffect(() => {
-    shownZonesRef.current = shownZones;
-  }, [shownZones]);
-  const zoneCells = useMemo(() => watchZoneCells(shownZones), [shownZones]);
-  const builtScene = sceneBuild?.ok ? sceneBuild.scene : null;
-  const scene = useMemo(
-    () =>
-      builtScene && zoneCells.size > 0
-        ? { ...builtScene, watchZoneCells: zoneCells }
-        : builtScene,
-    [builtScene, zoneCells]
-  );
+  const moves = useMoveController(sessionId, member);
+  const scene = sceneBuild?.ok ? sceneBuild.scene : null;
   const observationMarkers = useMemo(() => {
     if (!scene) return [];
     const props = knowledgeView.props.flatMap((s) => {
@@ -623,18 +595,29 @@ function SessionEncounterScope({
     }
     return ids;
   }, [otherMembers, member]);
-  // Read through a ref at beat time: the stream handler must not be rebuilt
-  // every time a sighting shifts.
-  const liveSightedRef = useRef(liveSighted);
-  liveSightedRef.current = liveSighted;
   const { forgetUnsighted: forgetUnsightedMovements } = moves;
-  // Two guards, because they cover different moments. The feed guard below
-  // refuses to bank a step for an actor the viewer cannot see right now; this
-  // one drops an actor who goes out of sight MID-walk, whose route was
-  // legitimately banked while they were still visible.
+  // The presentation bridge checks sight when the cursor releases a walk.
+  // This guard also drops motion when an actor leaves sight mid-route.
   useEffect(() => {
     forgetUnsightedMovements(liveSighted);
   }, [liveSighted, forgetUnsightedMovements]);
+
+  // A cached scene is not an available render surface when the error branch
+  // replaces SessionCanvas. Use the same fact for queued and active walks.
+  const canPresentMovement =
+    canDrawScene && !scenePresentationError && runEnded === null;
+  const presentableMembers = useMemo(
+    () => (canPresentMovement ? liveSighted : new Set<string>()),
+    [canPresentMovement, liveSighted]
+  );
+  const walkPresentation = useWalkPresentation({
+    session: sessionId,
+    member,
+    liveSighted,
+    canPresent: canPresentMovement,
+    beginRoute: moves.beginRoute,
+    forgetRoute: moves.forgetRoute,
+  });
 
   const publicMemberNames = useMemo(
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
@@ -751,7 +734,42 @@ function SessionEncounterScope({
     // A heard sound's bearing is measured from here (rpg-project#569).
     viewerCell: wherePosition,
     onTurnBeat: turnOrder.onTurnBeat,
+    onPresentWalk: walkPresentation.presentWalk,
+    presentableMembers,
   });
+  // The same cursor hold protects a queued watcher's floor overlay before
+  // its route starts, not just while the route is already interpolating.
+  const walkingMembers = useMemo(() => {
+    const out = new Set(
+      [...combat.heldMovementMembers].filter((who) => liveSighted.has(who))
+    );
+    for (const [who, movement] of moves.movements) {
+      if (liveSighted.has(who) && isWalking(movement)) out.add(who);
+    }
+    return out;
+  }, [combat.heldMovementMembers, liveSighted, moves.movements]);
+  const shownZonesRef = useRef<readonly WatchZone[]>(knowledgeView.watchZones);
+  const shownZones = useMemo(
+    () =>
+      zonesBehindWalkers(
+        shownZonesRef.current,
+        knowledgeView.watchZones,
+        walkingMembers
+      ),
+    [knowledgeView.watchZones, walkingMembers]
+  );
+  useEffect(() => {
+    shownZonesRef.current = shownZones;
+  }, [shownZones]);
+  const zoneCells = useMemo(() => watchZoneCells(shownZones), [shownZones]);
+  const presentationBase = lastGoodSceneRef.current;
+  const sceneForPresentation = useMemo(
+    () =>
+      presentationBase && zoneCells.size > 0
+        ? { ...presentationBase, watchZoneCells: zoneCells }
+        : presentationBase,
+    [presentationBase, zoneCells]
+  );
   const {
     participants: visibleParticipants,
     characterData: visibleCharacterData,
@@ -1290,13 +1308,8 @@ function SessionEncounterScope({
         acceptKnowledgeAct(act);
         for (const key of refreshKeysForAct(act, member)) keys.add(key);
 
-        // A remote walk DRAWS, cell by cell, from the path the act carries.
-        // The local player's own route already arrived whole from their Move
-        // answer (`arrivingWalk` drops it).
-        const walk = arrivingWalk(act, member);
-        if (walk && liveSightedRef.current.has(walk.member)) {
-          for (const cell of walk.cells) moves.stepArrived(walk.member, cell);
-        }
+        // Remote routes are released by the existing presentation cursor,
+        // not by delivery. Knowledge and authority still update immediately.
 
         // Remembered BEFORE the ending arrives, because the ending names no
         // carrier — see `carrier`'s own comment.
@@ -1324,7 +1337,6 @@ function SessionEncounterScope({
       acceptTurnOrderActs,
       invalidateAuthority,
       member,
-      moves,
       scheduleRefresh,
     ]
   );
@@ -1363,11 +1375,12 @@ function SessionEncounterScope({
   const handleMovementPainted = useCallback(
     (paintedMember: string, seq: number, reached: number) => {
       moves.movementPainted(paintedMember, seq, reached);
-      // Only the local player's walk holds a reconcile open; a peer's walk
-      // is presentation and nothing waits on it.
+      walkPresentation.movementPainted(paintedMember, seq, reached);
+      // Only the local player's command path holds a reconcile open.
+      // Remote completion releases presentation, never authoritative rules.
       if (paintedMember === member) onWalkAnimationComplete();
     },
-    [moves, member, onWalkAnimationComplete]
+    [moves, member, onWalkAnimationComplete, walkPresentation]
   );
 
   const handleDoorClick = useCallback(
@@ -2074,7 +2087,7 @@ function SessionEncounterScope({
                     // would claim the party arrives at the origin looking
                     // nowhere.
                     startFacing={atlas?.start?.facing || undefined}
-                    scene={lastGoodSceneRef.current!}
+                    scene={sceneForPresentation!}
                     hexSize={HEX_SIZE}
                     compositionSource={compositionSource}
                     characterId={member}
@@ -2096,6 +2109,7 @@ function SessionEncounterScope({
                     }
                     myPosition={displayPosition ?? lastGoodPositionRef.current!}
                     movements={moves.movements}
+                    heldMovementMembers={combat.heldMovementMembers}
                     onHexClick={
                       runEnded === null ? handleGroundClick : undefined
                     }

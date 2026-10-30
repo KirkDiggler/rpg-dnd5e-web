@@ -63,6 +63,10 @@ import {
 export interface QueuedBeat {
   readonly act: Act;
   readonly index: number;
+  /** World walks share completion order but never announce a combat turn. */
+  readonly scope: 'turn' | 'world';
+  /** Discarded is terminal for this queued motion, not for its story row. */
+  readonly walkPresentation: 'none' | 'eligible' | 'discarded';
 }
 
 export function beatActor(act: Act): string | undefined {
@@ -84,8 +88,8 @@ export function beatActor(act: Act): string | undefined {
 /**
  * True for a turn's end by somebody other than `member`, and for a walk or a
  * swing by another member of the viewer's fight (`fight`). A walk or swing by
- * somebody outside it is world pace, not a turn (rpg-project#685): it is
- * never queued, so it is never announced as "<name>'s turn.". A turn's end is
+ * somebody outside it is world pace, not a turn (rpg-project#685). World walks
+ * can wait for visible completion without a turn announcement. A turn's end is
  * the fight's own clock, so it is always a turn.
  */
 export function needsPacing(
@@ -126,7 +130,7 @@ export function nextBeatStep(
   if (actor === undefined) {
     return { type: 'process', beat, actor: announcedActor ?? '' };
   }
-  if (actor !== announcedActor) {
+  if (beat.scope === 'turn' && actor !== announcedActor) {
     return { type: 'announce', actor };
   }
   return { type: 'process', beat, actor };

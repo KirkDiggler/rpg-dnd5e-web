@@ -190,6 +190,18 @@ export function movementPainted(
   return next;
 }
 
+/** Discard one unavailable presentation without erasing a newer route. */
+export function forgetRoute(
+  prev: Movements,
+  member: string,
+  seq: number
+): Movements {
+  if (prev.get(member)?.seq !== seq) return prev;
+  const next = new Map(prev);
+  next.delete(member);
+  return next;
+}
+
 /** True while the canvas has not painted `movement` to its last cell. */
 export function isWalking(movement: Movement | undefined): boolean {
   return movement !== undefined && movement.reached < movement.route.length;
