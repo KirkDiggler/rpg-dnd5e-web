@@ -9,7 +9,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readDraftYaml } from '../encounter-studio/draftFile';
+import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import castleYaml from '../encounter-studio/fixtures/stack-sites/the-mad-king.yaml?raw';
 import { dispositionLine } from './predicateSentence';
 import { DispositionsPanel } from './SitePolicies';
@@ -67,6 +67,22 @@ describe('until steps (rpg-project#717)', () => {
         until: { down: 'leader' },
       },
     ]);
+  });
+
+  it('keeps a one-step list a list, as the engine records it (UntilSpec.List)', () => {
+    const until = [{ fact: 'veteran-joined', then: 'allied' }];
+    const read = validateSiteDispositions([
+      { between: ['veteran', 'party'], stance: 'neutral', until },
+    ]);
+    expect(read[0]!.until).toEqual(until);
+    // And through the whole file: a one-step list is written back as a list.
+    const document = castle();
+    document.scope.dispositions = read;
+    const saved = exportDraftYaml(document, 'one-step');
+    const reopened = readDraftYaml(saved);
+    if (!reopened.ok) throw new Error(reopened.refusal);
+    expect(reopened.scope.dispositions?.[0]?.until).toEqual(until);
+    expect(saved).toMatch(/until:\n\s+- fact: veteran-joined\n\s+then: allied/);
   });
 
   it('takes an allied pair whose steps name a then', () => {

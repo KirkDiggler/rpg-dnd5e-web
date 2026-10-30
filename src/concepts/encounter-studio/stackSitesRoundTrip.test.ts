@@ -2,7 +2,9 @@
  * THE FIVE WALK SITES AND THE CASTLE OPEN AND COME BACK (rpg-project#732).
  *
  * The acceptance inputs are the stack's own content, copied byte-for-byte
- * from rpg-deployment `content/` (113f006) into `fixtures/stack-sites/`, and
+ * into `fixtures/stack-sites/` from the castle stack's local, untracked
+ * content directory (`.runtime/local/castle/sources/rpg-deployment/content/`,
+ * which rpg-deployment's git ignores) as of 2026-10-30, and
  * the toolkit's castle (`dungeonspec/testdata/world-builder-v4-castle.yaml`
  * at rpg-toolkit f6e5e411), which is the web's `fixtures/the-mad-king.yaml`.
  * Each uses a word the studio did not speak before this slice: `fell` with

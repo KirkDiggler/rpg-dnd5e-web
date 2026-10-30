@@ -10,7 +10,7 @@ Story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), 
 - A faction's `options`, edited in the Factions panel with the bindings' OptionsEditor; the creature panel and the Read back say a member with no lines speaks its faction's ([rpg-project#718](https://github.com/KirkDiggler/rpg-project/issues/718)).
 - Endings: `when: { left: <exit> }`, bare or under `not`, with `outcome` and an optional `if`; the Endings panel authors them ([rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716)).
 - `until` as one step or a list of steps with `then`, edited as a list in the Dispositions panel ([rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717)).
-- The web's castle fixture is the toolkit's at rpg-toolkit f6e5e411. The stack's five walk sites are copied under `fixtures/stack-sites/` and all six files import, download byte-stable, and write back every key they were given.
+- The web's castle fixture is the toolkit's at rpg-toolkit f6e5e411. The stack's five walk sites, copied from the castle stack's local untracked content directory (`.runtime/local/castle/sources/rpg-deployment/content/`) as of 2026-10-30, are under `fixtures/stack-sites/`; all six files import, download byte-stable, and write back every key they were given.
 
 ## Decided
 
@@ -26,7 +26,7 @@ Story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), 
 - The stack's gate-walk lists its `watcher-gate` rows out of weight order, so the studio's save moves the weight-5 `fell` row first (R12). The engine rolls the same table either way.
 - The castle's `room.scene.mapLabels: []` is written back as absent, the draft's law for an empty list.
 - The toolkit castle's header comment still says the patrol and march rows are "Hand edit". The studio's forms write them since rpg-project#720; that comment is the toolkit's to change.
-- The stack's the-mad-king and the toolkit's castle differ: the stack's loyalists turn on the king's fall, the toolkit's are hostile always. Both open and round-trip.
+- The stack's the-mad-king and the toolkit's castle differ only in their comments and layout; both carry the loyalists' `until: { down: king }`, and both open and round-trip.
 
 ## Mistaken
 

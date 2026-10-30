@@ -48,7 +48,9 @@ src/concepts/world-building/fixtures/*.yaml
 src/concepts/encounter-studio/fixtures/*.yaml
 
 # The stack's five walk sites (rpg-project#732), copied byte-for-byte from
-# rpg-deployment `content/`: the studio must import each and write it back,
-# so a reformatted copy would be a different file from the one the stack
-# serves.
+# the castle stack's local, untracked content directory
+# (`.runtime/local/castle/sources/rpg-deployment/content/`, ignored by
+# rpg-deployment's git) as of 2026-10-30: the studio must import each and
+# write it back, so a reformatted copy would be a different file from the
+# one the stack serves.
 src/concepts/encounter-studio/fixtures/stack-sites/*.yaml
