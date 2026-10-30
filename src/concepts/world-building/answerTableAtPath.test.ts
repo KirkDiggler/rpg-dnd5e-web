@@ -190,11 +190,15 @@ describe('the single room reads a cell and a route as { q, r }', () => {
 
 describe('a cell and a route in words', () => {
   it('reads a route and a cell back as places', () => {
-    expect(wordPhrase(PATROL, 'it')).toBe('walks a route through 4 cells');
+    // A route reads as the loop it walks, every waypoint named in order
+    // (rpg-project#720).
+    expect(wordPhrase(PATROL, 'it')).toBe(
+      'walks its loop by {q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0} and {q: 0, r: 2}'
+    );
     expect(wordPhrase(MARCH, 'it')).toBe('walks to {q: 1, r: 1}');
     expect(wordPhrase(MARCH, 'I')).toBe('walk to {q: 1, r: 1}');
     expect(wordPhrase({ toward: { path: [{ q: 0, r: 0 }] } }, 'it')).toBe(
-      'walks a route through 1 cell'
+      'walks its loop by {q: 0, r: 0}'
     );
   });
 
@@ -306,7 +310,7 @@ describe('a route waypoint carries its pause', () => {
 
   it('shows each pause on the route, in words and in the shorthand', () => {
     expect(wordPhrase(GUARD, 'it')).toBe(
-      'walks a route through 4 cells, standing 2 rounds facing se at {q: -7, r: 9}, 2 rounds facing sw at {q: -1, r: 9} and 1 round at {q: -9, r: 12}'
+      'walks its loop by {q: -7, r: 9} (waits 2, faces se), {q: -1, r: 9} (waits 2, faces sw), {q: -3, r: 12} and {q: -9, r: 12} (waits 1)'
     );
     expect(wordShorthand(GUARD, 'toward')).toBe(
       'toward path {q: -7, r: 9, wait: 2, facing: se} {q: -1, r: 9, wait: 2, facing: sw} {q: -3, r: 12} {q: -9, r: 12, wait: 1}'

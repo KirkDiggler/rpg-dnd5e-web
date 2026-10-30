@@ -13,6 +13,7 @@ import type {
   RoomDraftDocument,
   RoomHexCell,
 } from '../world-building/roomDraft';
+import { rowOfPath } from '../world-building/rowRefusals';
 import type { StudioDoorTarget } from '../world-building/studioDoorEditing';
 
 /** The Encounter home sections a refusal opens when the noun has no focus of
@@ -31,7 +32,15 @@ export type RefusalTarget =
   | { kind: 'door'; target: StudioDoorTarget }
   | { kind: 'hex'; cell: RoomHexCell }
   | { kind: 'castMember'; ref: string }
-  | { kind: 'home'; section: RefusalHomeSection; id?: string }
+  | {
+      kind: 'home';
+      section: RefusalHomeSection;
+      id?: string;
+      /** The table or bundle row the refusal names, by its path
+       * (`tables.<id>.on.time[9]`), which the section opens and scrolls to
+       * (rpg-project#720). Absent for a refusal of the whole noun. */
+      row?: string;
+    }
   | { kind: 'ending'; id: string };
 
 export interface RefusalJump {
@@ -146,9 +155,12 @@ function targetOf(
           : head === 'bundles'
             ? scope.bundles
             : scope.concealments;
-      return typeof key === 'string' && map && Object.hasOwn(map, key)
-        ? { kind: 'home', section: head, id: key }
-        : null;
+      if (!(typeof key === 'string' && map && Object.hasOwn(map, key)))
+        return null;
+      const row = head === 'concealments' ? undefined : rowOfPath(path);
+      return row
+        ? { kind: 'home', section: head, id: key, row }
+        : { kind: 'home', section: head, id: key };
     }
     case 'factions': {
       // The file writes factions as a list (`factions[0]`); a keyed path

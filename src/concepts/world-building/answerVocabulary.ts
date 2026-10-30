@@ -246,17 +246,40 @@ export function selectorPhrase(
   return String(selector);
 }
 
+/** One waypoint as a loop names it: its cell, and its stand when it has one
+ * — "{q: -5, r: 8} (waits 1, faces ne)". */
+function loopStopPhrase(waypoint: AnswerWaypointShape): string {
+  const pause = [
+    ...(waypoint.wait !== undefined ? [`waits ${waypoint.wait}`] : []),
+    ...(waypoint.facing !== undefined ? [`faces ${waypoint.facing}`] : []),
+  ];
+  return pause.length === 0
+    ? cellPhrase(waypoint)
+    : `${cellPhrase(waypoint)} (${pause.join(', ')})`;
+}
+
+/** A route as the loop it walks, every waypoint named in order with its
+ * stand (rpg-project#720): "its loop by {q: -5, r: 8} (waits 1, faces ne),
+ * {q: -5, r: 10} (waits 1, faces se) and {q: -7, r: 10}". */
+export function loopPhrase(
+  route: readonly AnswerWaypointShape[],
+  subject: Subject
+): string {
+  const whose = subject === 'I' ? 'my' : 'its';
+  return `${whose} loop by ${joinAnd(route.map(loopStopPhrase))}`;
+}
+
 /** `toward` on a selector: a figure is walked TOWARD, a cell is walked ONTO
- * ("walks to {q: 1, r: 1}"), and a route is walked through, round again
- * ("walks a route through 4 cells"). */
+ * ("walks to {q: 1, r: 1}"), and a route is walked round, its waypoints named
+ * ("walks its loop by {q: -5, r: 8} (waits 1, faces ne) and …"). */
 function towardPhrase(selector: AnswerSelectorShape, subject: Subject): string {
   const walk = verb('walk', subject);
   const cell = selectorCell(selector);
   if (cell !== undefined) return `${walk} to ${cellPhrase(cell)}`;
-  if (
-    selectorRoute(selector) !== undefined ||
-    selectorRouteParam(selector) !== undefined
-  )
+  const route = selectorRoute(selector);
+  if (route !== undefined && route.length > 0)
+    return `${walk} ${loopPhrase(route, subject)}`;
+  if (route !== undefined || selectorRouteParam(selector) !== undefined)
     return `${walk} ${selectorPhrase(selector, subject)}`;
   return `${walk} toward ${selectorPhrase(selector, subject)}`;
 }

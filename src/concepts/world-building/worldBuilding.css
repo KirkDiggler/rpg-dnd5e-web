@@ -1537,3 +1537,85 @@ button.wb-tree-row[aria-pressed='true'] {
   width: auto;
   max-width: 5rem;
 }
+
+/* A cell and a route on a row (rpg-project#720): each waypoint a chip, its
+ * number, its cell, and its stand. */
+.wb-route-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.wb-waypoint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #ffd36e;
+  border-radius: 999px;
+  color: var(--wb-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.wb-waypoint-number {
+  flex: none;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #ffd36e;
+  color: #1b1300;
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+
+.wb-waypoint-pause {
+  color: var(--wb-muted, #9fb3bf);
+}
+
+.wb-route-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.wb-route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+}
+
+.wb-waypoint-row {
+  border-radius: 0.5rem;
+  flex-wrap: wrap;
+  white-space: normal;
+  width: fit-content;
+}
+
+.wb-waypoint-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wb-waypoint-wait {
+  width: 3.5rem;
+}
+
+.wb-use-route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  padding-top: 0.35rem;
+}

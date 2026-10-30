@@ -67,7 +67,7 @@ describe('readBackOf over the castle', () => {
       )
     );
     expect(time).toContain(
-      'If no enemy is seen or remembered, it walks a route through 4 cells (weight 1).'
+      'If no enemy is seen or remembered, it walks its loop by {q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0} and {q: 0, r: 2} (weight 1).'
     );
     expect(time).toContain(
       'If it knows alarm-raised, it walks to {q: 1, r: 1} (weight 1).'
