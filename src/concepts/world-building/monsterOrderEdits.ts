@@ -89,6 +89,14 @@ export function normalizeBinding(
   // when it carries at least one weapon.
   if (next.actions !== undefined && next.actions.length > 0)
     normalized.actions = next.actions;
+  // ADD AND DROP ARE KEPT, IN ORDER (rpg-project#721). Before #721 this
+  // function never copied them, so any orders edit on a placement that
+  // carried them (a temper, a weapon, a faction) silently erased both lists.
+  // An empty list is "none" and is dropped, as `actions` is.
+  for (const key of ['addActions', 'dropActions'] as const) {
+    const refs = next[key];
+    if (refs !== undefined && refs.length > 0) normalized[key] = refs;
+  }
   // The reserve + holdings facts keep the SAME law (web#1176): the encoder
   // refuses an empty `holds` and a binding that declares nothing, so both are
   // dropped here rather than written out.
