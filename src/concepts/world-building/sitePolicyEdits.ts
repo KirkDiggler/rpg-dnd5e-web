@@ -28,7 +28,9 @@ import {
   heaviestFirst,
   type AnswerEntryShape,
   type AnswerTableShape,
+  type OptionShape,
 } from './answerTableShape';
+import { addOption, removeOption, replaceOption } from './optionEdits';
 import type { SiteDisposition, SiteFaction, SiteScope } from './siteScope';
 
 /** A fresh faction id nobody has taken. */
@@ -94,9 +96,44 @@ export function patchSiteFaction(
       if (next.table === undefined || next.table === '') delete next.table;
       if (next.on === undefined || Object.keys(next.on).length === 0)
         delete next.on;
+      // NO LINES IS ABSENT (rpg-project#718): `options: []` is refused, and
+      // absent is what lets the members speak their own.
+      if (next.options === undefined || next.options.length === 0)
+        delete next.options;
       return next;
     }),
   };
+}
+
+/** A faction's lines (rpg-project#718), one edit each, through the one
+ * option editor's helpers: add a line, replace one, remove one. Removing the
+ * last one leaves the key absent, so the members speak their own. */
+export function addSiteFactionOption(scope: SiteScope, id: string): SiteScope {
+  const faction = (scope.factions ?? []).find((f) => f.id === id);
+  return patchSiteFaction(scope, id, { options: addOption(faction?.options) });
+}
+
+export function setSiteFactionOption(
+  scope: SiteScope,
+  id: string,
+  index: number,
+  option: OptionShape
+): SiteScope {
+  const faction = (scope.factions ?? []).find((f) => f.id === id);
+  return patchSiteFaction(scope, id, {
+    options: replaceOption(faction?.options, index, option),
+  });
+}
+
+export function removeSiteFactionOption(
+  scope: SiteScope,
+  id: string,
+  index: number
+): SiteScope {
+  const faction = (scope.factions ?? []).find((f) => f.id === id);
+  return patchSiteFaction(scope, id, {
+    options: removeOption(faction?.options, index),
+  });
 }
 
 /** Declare a new pair against the party. Without a custom faction, use the

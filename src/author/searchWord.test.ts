@@ -30,6 +30,10 @@ describe('pursuit words (rpg-project#668)', () => {
       'remembered',
       'lost',
       'none',
+      // rpg-project#671: the three move words, after the bands.
+      'walk',
+      'dash',
+      'far',
     ]);
     expect(answerWordsForTrigger('time').map((w) => w.key)).toContain('search');
     expect(answerWordsForTrigger('success').map((w) => w.key)).not.toContain(

@@ -13,11 +13,10 @@
 # down to the eight rooms, the gate and throne walls drawn wider so each
 # door is its room's only way in, the captain moved to the gate, and the keep's
 # cast, bindings, stat blocks, tables, factions and endings authored. The
-# patrol and march rows (`toward: { path }`, `toward: { at }`) were hand
-# edits until the table form offered a cell and a route picked on the Layout
-# (rpg-project#720); the form now writes them, byte for byte. The remaining
-# hand edits are these comments and the rows marked "Hand edit". After the
-# first walk the export also gives the captain a soldier's look (the fixture dressed him as the
+# only hand edits are these comments and the patrol and march rows
+# (`toward: { path }`, `toward: { at }`, marked "Hand edit"), which the
+# studio's table form does not offer yet. After the first walk the export
+# also gives the captain a soldier's look (the fixture dressed him as the
 # king), drops the workspace's two stray map labels that sat in no room, and
 # draws the castle's outer walls: twelve wall lines along the eight rooms'
 # outer edges, no openings, so the gate door is the gatehouse's only view as
@@ -48,21 +47,41 @@
 # floor. The one-offs stay in testdata as their own tests' content.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
-# captain: it is civil to the party until the party is recognized, and civil
-# to the loyalists until the guards turn. The loyalists (the king and his
+# captain: it is civil to the party until the party is recognized, and the
+# party's side once the guards turn; civil to the loyalists until the guards
+# turn. THE CAPTAIN'S WORD OUTRANKS RECOGNITION (rpg-project#717): the
+# garrison's `until` is a list, `guards-turned` first, so a party recognized
+# and then turned is allied, and a party turned and then recognized stays
+# allied. The loyalists (the king and his
 # knights) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
 # opens the turn. The captain's orders on the kitchen floor say the party is
 # not who it claims: carry them into the captain's presence and the garrison
-# knows it (`party-recognized`, the garrison's `until`). The prisoners are
+# knows it (`party-recognized`, the second step of the garrison's `until`). The prisoners are
 # neutral to everybody. Every door is shut, the throne room's too, and one
 # is locked: the cell door, thieves' tools at DC 13, whose opening teaches
-# `cells-opened` and ends the run `freed`. A shut throne door stops a turned
-# garrison's march at it, because a driven walk routes only through open
-# doors and no creature opens one (rpg-toolkit#2069); the party opens it. A
-# turned garrison storms the keep; a garrison told to hold the castle ends
-# the run with the king still breathing.
+# `cells-opened`, and walking out of the front door after it ends the run
+# `freed`. A creature walking into a shut, unlocked door opens it on its way
+# (rpg-project#715), so a turned garrison storms the keep through the shut
+# throne door, and its captain comes with the party (`toward: ally`,
+# rpg-project#717); a locked door still stops a march. A garrison told to
+# hold the castle, and the party walking out of the front door, ends the run
+# with the king still breathing.
+#
+# THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
+# the front door, the troupe (by the cook or by the stranger), the troupe
+# blown, turning the garrison, the king deposed, the king slain, the scout
+# who talks to the wrong guard, the cell lock picked, and the orders carried
+# to the captain.
+# THE KITCHEN-DOOR ROUTES (rpg-project#606, sneaking S1). The kitchen's one
+# door into the great hall is LOCKED: thieves' tools at DC 13 pick it
+# silently, Strength at DC 15 forces it and crashes. The hall guard walks a
+# loop across the great hall between the kitchen door and the throne door.
+# A party that declares sneaking in the kitchen, picks the door and crosses
+# the hall past him reaches the throne door unseen
+# (castle_king_kitchen_test.go). Every other route out of the kitchen picks
+# the lock first.
 #
 # STATED FACINGS (rpg-project#623). A watcher's cone points where it faces,
 # and an unstated facing is south (180), so every creature that stands still
@@ -76,7 +95,7 @@
 # holds each cone over the cell it keeps.
 #
 # THE QA CASTLE (rpg-project#639). The castle is also the standing QA
-# script, and these pieces stage its steps, each a test in rpg-toolkit's
+# script, and these pieces stage its steps, each a test in
 # dungeonspec/castle_king_script_test.go. The party starts outside, with the
 # garrison civil, on open ground round the gatehouse whose one way into the
 # castle is a doorway in the gatehouse's south wall: the operator's own
@@ -200,17 +219,58 @@ bundles:
             kind: clang
             within: 2
         toward: sound
+  # Go for whoever hit you in the last two rounds (rpg-project#669): strike
+  # them in reach, walk to them in sight or memory. Each row is on the table
+  # only while you hold your attacker so, and the group with it.
+  revenger:
+    rows:
+      - when: { attacked: { within: 2 } }
+        attack: attacker
+      - when: { attacked: { within: 2 } }
+        toward: attacker
+  # Hand edit (rpg-project#671, S4 dash; lane #683 D6, D8): close at the
+  # pace the gap needs. Strike them in reach; walk when a walk gets you there
+  # and still swings. Run only while the run gains a round: inside one run of
+  # reach, walk up and swing next round rather than arrive winded beside him.
+  # A run spends the swing, so only a guard more than a run away runs.
+  dasher:
+    rows:
+      - when: { enemy: reach }
+        attack: enemy
+      - when: { enemy: walk }
+        toward: enemy
+      - when: { enemy: dash }
+        toward: enemy
+      - when: { enemy: far }
+        dash: enemy
   # With nobody to chase, walk the route.
   patrol:
     params: { path: ~ }
     rows:
       - when: { enemy: none }
         toward: { path: $path }
+  # Hand edit (rpg-project#670, N2): the base every gate guard starts from,
+  # a bundle of bundles. Pursuit, the clang, and the guard's own loop, whose
+  # route each guard passes in; `$path` crosses into the patrol one level
+  # down. Hand edit (rpg-project#671): the dasher first, and it is the whole
+  # approach: a table that uses this base carries no plain `reach` or `seen`
+  # rows of its own.
+  guard-base:
+    params: { path: ~ }
+    rows:
+      - use: dasher
+      # Hand edit (rpg-project#671): the pursuit for a cold trail only; the
+      # dasher closes on a memory (answer-the-gate's reason).
+      - use: pursuer
+        when: { enemy: lost }
+      - use: alarm-reactor
+      - use: patrol
+        with: { path: $path }
 tables:
   gate-patrol:
     time:
-      # A gate guard who witnessed the turn marches with the captain, on
-      # storm-the-keep's own row.
+      # Hand edit: a gate guard who witnessed the turn marches with the
+      # captain, on storm-the-keep's own row.
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
       - say: To arms! Intruders at the gate!
@@ -219,19 +279,17 @@ tables:
           - not:
               fact: alarm-raised
         fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # Hand edit (rpg-project#668, #670): pursuit, as one line. Lost from
-      # sight, he walks to where he last saw you; finding nobody there he
-      # searches six cells on the way you went, then gives up — and his
-      # patrol below walks him home. Then the clang he runs to.
-      - use: pursuer
-      - use: alarm-reactor
-      # The QA castle's step 4 (rpg-project#639): gate-1's loop.
+      # Hand edit (rpg-project#671): no plain approach rows here. The base's
+      # dasher is the approach: in reach he strikes, within a run he walks
+      # up, beyond one he runs. A plain `seen` row beside it would split his
+      # roll between walking and running.
+      #
+      # Hand edit (rpg-project#668, #670): the guard's base, as one line:
+      # pursuit (lost from sight, he walks to where he last saw you, then
+      # searches six cells on the way you went), the clang he runs to, and
+      # his loop home.
+      #
+      # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
       # He stands a round at the door post west of the captain turned ne to
       # the cell under the gate, walks to the beat post north of the south
       # doorway and stands a round there turned se to the incomers (#624), and
@@ -239,12 +297,12 @@ tables:
       # gate-2, so the two keep step: in two world rounds of every four both
       # stand at their beat posts with their backs to the gate. That is the
       # sneak window. Neither beat post sees round the corner wall.
-      - use: patrol
+      - use: guard-base
         with: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
   gate-patrol-east:
     time:
-      # A gate guard who witnessed the turn marches with the captain, on
-      # storm-the-keep's own row.
+      # Hand edit: a gate guard who witnessed the turn marches with the
+      # captain, on storm-the-keep's own row.
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
       - say: To arms! Intruders at the gate!
@@ -253,24 +311,25 @@ tables:
           - not:
               fact: alarm-raised
         fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # Hand edit (rpg-project#668, #670): pursuit, as one line. Lost from
-      # sight, he walks to where he last saw you; finding nobody there he
-      # searches six cells on the way you went, then gives up — and his
-      # patrol below walks him home. Then the clang he runs to.
-      - use: pursuer
-      - use: alarm-reactor
-      # rpg-project#639: gate-2's loop, gate-patrol's mirror: nw
+      # Hand edit (rpg-project#671): no plain approach rows; the base's dasher
+      # is the approach, gate-patrol's reason.
+      #
+      # Hand edit (rpg-project#668, #670): the guard's base, as one line.
+      #
+      # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
       # at the door post east of the captain, sw at the beat post.
-      - use: patrol
+      - use: guard-base
         with: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
   keep-patrol:
     time:
+      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+      # king fall breaks and runs from the fight; one who did not fights
+      # on until somebody tells him. Testimony, not a world flag: the row
+      # reads the fall this knight holds. `on: ally` because the king is
+      # the knight's side, not the knight himself.
+      - when: { fell: { who: king, within: 3, on: ally } }
+        away: enemy
+        weight: 3
       - say: Protect the king!
         when:
           - enemy: seen
@@ -283,7 +342,7 @@ tables:
       - when:
           enemy: seen
         toward: enemy
-      # On the alarm, fall back beside the king, in his corner.
+      # Hand edit: on the alarm, fall back beside the king, in his corner.
       - when: { fact: alarm-raised }
         toward: { at: { q: 4, r: -18 } }
       - when:
@@ -291,12 +350,20 @@ tables:
             kind: voice
             within: 3
         toward: sound
-      # This knight paces the throne room's west side, a loop that
+      # Hand edit: this knight paces the throne room's west side, a loop that
       # stays clear of the throne door's line from the hall.
       - when: { enemy: none }
         toward: { path: [{ q: 4, r: -19 }, { q: 7, r: -19 }, { q: 7, r: -21 }, { q: 5, r: -21 }] }
   keep-patrol-east:
     time:
+      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+      # king fall breaks and runs from the fight; one who did not fights
+      # on until somebody tells him. Testimony, not a world flag: the row
+      # reads the fall this knight holds. `on: ally` because the king is
+      # the knight's side, not the knight himself.
+      - when: { fell: { who: king, within: 3, on: ally } }
+        away: enemy
+        weight: 3
       - say: Protect the king!
         when:
           - enemy: seen
@@ -309,7 +376,7 @@ tables:
       - when:
           enemy: seen
         toward: enemy
-      # On the alarm, fall back beside the king, in his corner.
+      # Hand edit: on the alarm, fall back beside the king, in his corner.
       - when: { fact: alarm-raised }
         toward: { at: { q: 4, r: -18 } }
       - when:
@@ -317,7 +384,7 @@ tables:
             kind: voice
             within: 3
         toward: sound
-      # This knight paces the throne room's east side, a loop that
+      # Hand edit: this knight paces the throne room's east side, a loop that
       # stays clear of the throne door's line from the hall.
       - when: { enemy: none }
         toward: { path: [{ q: 13, r: -19 }, { q: 16, r: -19 }, { q: 16, r: -21 }, { q: 14, r: -21 }] }
@@ -350,7 +417,7 @@ tables:
         hold: {}
   hall-patrol:
     time:
-      # The hall guard is storm-the-keep's soldier when the
+      # Hand edit: the hall guard is storm-the-keep's soldier when the
       # garrison turns, and until then walks a loop across the great hall
       # between the kitchen door and the throne door (sneaking S1,
       # rpg-project#606): the watcher a party sneaking from the kitchen to the
@@ -367,13 +434,20 @@ tables:
         toward: { path: [{ q: -2, r: -12 }, { q: 6, r: -12 }, { q: 6, r: -15 }, { q: 1, r: -15 }] }
   storm-the-keep:
     time:
-      # A turned garrison marches on the throne room until it sees
-      # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
-      # seen }`: the bands are exclusive (R11), so an enemy in reach is not
-      # "seen", and the negation would march a captain past the knight
+      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
+      # whoever hit him, past a nearer enemy, as one line. Otherwise the rows
+      # below are the fallback, through the roll.
+      - use: revenger
+      # Hand edit (Frank's list S3, rpg-project#717): a turned captain comes
+      # with the party. With no foe in sight he follows the nearest ally, a
+      # member of the party once the garrison is the party's side; his own
+      # garrison are kin, not allies. The rest of the garrison still marches
+      # on the throne room on its own tables. `enemy: none`, not `not: {
+      # enemy: seen }`: the bands are exclusive (R11), so an enemy in reach is
+      # not "seen", and the negation would walk a captain past the knight
       # swinging at him.
       - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
+        toward: ally
       - when:
           enemy: reach
         attack: enemy
@@ -382,13 +456,20 @@ tables:
         toward: enemy
   answer-the-gate:
     time:
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # The QA castle's step 7 (rpg-project#639): the far room
+      # Hand edit (rpg-project#671): the reserves run to the gate. The dasher
+      # is their whole approach, seen or remembered: in reach they strike,
+      # within a run they walk up, beyond one they run. No plain `reach` or
+      # `seen` row beside it, which would split the roll between walking and
+      # running.
+      - use: dasher
+      # Hand edit (rpg-project#661, #671): the gate guards' pursuit, for a
+      # trail gone cold only. A reserve who walked to where he last saw you and
+      # found nobody searches six cells on the way you went. While he still
+      # remembers you, the dasher closes on the memory, and the pursuer's own
+      # walk would only split his roll.
+      - use: pursuer
+        when: { enemy: lost }
+      # Hand edit (the QA castle's step 7, rpg-project#639): the far room
       # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
       # sight walks to the yard two cells in from the gate, so the two who
       # answer do not stand in the gate's one crossing.
@@ -403,21 +484,51 @@ factions:
   - id: loyalists
     mind: king
     temper: aggressive
+    # Hand edit (Frank's list S4, rpg-project#718): the side's lines, spoken
+    # by whichever loyalist is addressed, so the court can be talked to once
+    # the king has fallen. Ungated: an option's `requires` reads a fact or a
+    # holding, and nothing the king's fall teaches is a fact.
+    options:
+      - id: yield
+        say: Yield and live.
+        check:
+          - ability: persuasion
+            dc: 12
+        success:
+          - say: The king is dead. We yield.
+            fact: loyalists-yielded
+        failure:
+          - say: Never.
+      - id: refuse
+        say: Die with your king, then.
+        check:
+          - ability: intimidation
+            dc: 15
+        failure:
+          - say: Then we die fighting.
   - id: kitchen
     mind: cook
   - id: prisoners
   - id: townsfolk
 dispositions:
+  # The captain's word outranks recognition: the first step that holds wins
+  # (rpg-project#717), whichever fact the captain learned first.
   - between:
       - garrison
       - party
     stance: neutral
     until:
-      fact: party-recognized
+      - { fact: guards-turned, then: allied }
+      - { fact: party-recognized, then: hostile }
   - between:
       - loyalists
       - party
     stance: hostile
+    # Hand edit (Frank's list S4, rpg-project#718): the court stands down when
+    # the king falls, so the fight dissolves and the survivors can be spoken
+    # to. A blow afterwards turns it hostile again by provocation (D4).
+    until:
+      down: king
   - between:
       - garrison
       - loyalists
@@ -454,16 +565,42 @@ exits:
     cell:
       q: -22
       r: 5
+  # Hand edit (rpg-project#716, ruled 2026-10-29): the party's way in is its
+  # way out. "walk out the front door to end. king taken care of? no?
+  # failure, yes? success." The last standing party member through this
+  # door ends the run; the king's state at that moment is the outcome.
+  - id: front-door
+    cell:
+      q: -2
+      r: 16
 endings:
   - id: king-slain
     when:
+      left: front-door
+    if:
       down: king
+    outcome: success
+  # Hand edit (rpg-project#716, decided 2026-10-29): every ending is at the
+  # door. The castle deposed and the cells freed are won when the party
+  # walks out with that done, as the king slain is; the first in this list
+  # whose `if` holds is the one the run ends on, so a king both slain and
+  # deposed ends slain, and walking out with none of it done is the failure.
   - id: king-deposed
     when:
+      left: front-door
+    if:
       fact: throne-taken
+    outcome: success
   - id: freed
     when:
+      left: front-door
+    if:
       fact: cells-opened
+    outcome: success
+  - id: king-lives
+    when:
+      left: front-door
+    outcome: failure
 room:
   version: 3
   id: room-1
@@ -1598,14 +1735,35 @@ room:
                 fact: throne-taken
             failure:
               - say: We’ll hold what we can.
+      # A FAILED THEFT CLOSES THE KITCHEN, NOT THE KEEP (rpg-project#719):
+      # the pilfer's failure teaches `caught-in-kitchen` to whoever saw it,
+      # and the cook's theft and gossip are withheld from a speaker who knows
+      # it (D3: the speaker's knowledge). Ashford and the bribe already have
+      # a requirement each, and a requires is one predicate, so they stay.
       cook:
         faction: kitchen
         options:
+          - id: pilfer
+            say: (lift a pie from the sill)
+            check:
+              - ability: sleight-of-hand
+                dc: 13
+            requires:
+              not:
+                fact: caught-in-kitchen
+            success:
+              - say: The cook never looks round.
+            failure:
+              - say: Thief!
+                fact: caught-in-kitchen
           - id: gossip
             say: Busy night?
             check:
               - ability: persuasion
                 dc: 10
+            requires:
+              not:
+                fact: caught-in-kitchen
             success:
               - say: Feast for the whole court, and him sitting there grinning after what he did
                   to Ashford.

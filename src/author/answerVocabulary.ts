@@ -129,6 +129,17 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
     legalOn: ['time'],
   },
   {
+    // rpg-project#671 R17: a run at the target that spends the turn on it.
+    // `toward`'s selectors (a cell and a route among them), and `toward`'s
+    // temperament factor.
+    key: 'dash',
+    label: 'Dashes toward',
+    commandLabel: 'Dash toward',
+    help: 'Runs at the selected creature, onto an authored cell or along an authored route, spending the turn on the run: no swing that turn. A dash at a foe already in reach is never picked; the dasher reads `{ enemy: dash }`.',
+    value: 'selector',
+    legalOn: ['time'],
+  },
+  {
     key: 'away',
     label: 'Walks away',
     commandLabel: 'Walk away',
@@ -292,17 +303,28 @@ export const ANSWER_TRIGGER_KEYS: readonly string[] = Object.freeze(
 export interface AnswerWhenSpec {
   /** Which triggers a `when` may appear under — always `time`. */
   readonly legalOn: AnswerApplicability;
-  /** The five exclusive enemy bands, in the engine's own order. Exactly one
-   * holds at any moment, so an author writes one entry per band. */
+  /** Every value `enemy:` takes, in the engine's own order
+   * (`behavior.EnemyWords`): the five exclusive bands nearest first, then the
+   * three move words (rpg-project#671) — what this turn's movement buys
+   * against the foe `enemy` names. */
   readonly enemyBands: readonly string[];
-  /** The four deeds a `when` may read, in the engine's past tense. */
+  /** `threat: none | walk | dash` (rpg-project#671 R18): who ELSE could reach
+   * the cell this row's move lands on and swing next turn. */
+  readonly threatKey: 'threat';
+  /** `behavior.ThreatWords`, in the engine's order. */
+  readonly threatWords: readonly string[];
+  /** The five deeds a `when` may read, in the engine's past tense
+   * (`behavior.WhenDeeds`). */
   readonly deeds: readonly string[];
+  /** The deeds whose condition may name WHO it was done to, with `who`
+   * (`behavior.WhoDeeds`, rpg-project#716): `fell` alone. */
+  readonly whoDeeds: readonly string[];
   /** A span is counted from 1 (`WhenSpec.Within`): `{ within: 0 }` is a
    * condition that can never hold. */
   readonly minimumWithin: number;
-  /** The three keys a deed condition's body may carry, sealed so the reader
+  /** The four keys a deed condition's body may carry, sealed so the reader
    * and the writer cannot drift apart (`dungeonspec`'s `whenBodyWithin`,
-   * `whenBodyOn`, `whenBodyAs`). */
+   * `whenBodyOn`, `whenBodyAs`, `whenBodyWho`). */
   readonly bodyKeys: readonly string[];
   /** WHOSE deed a condition is about — the two NAMED readings, in the
    * engine's order (`encounter.DeedScopes` minus `ScopeSelf`). */
@@ -337,10 +359,32 @@ export interface AnswerScopeSpec {
 export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
   legalOn: 'time',
   // `lost` (rpg-project#668 R3): went to the remembered cell, found nobody.
-  enemyBands: Object.freeze(['reach', 'seen', 'remembered', 'lost', 'none']),
-  deeds: Object.freeze(['attacked', 'intimidated', 'persuaded', 'fled']),
+  enemyBands: Object.freeze([
+    'reach',
+    'seen',
+    'remembered',
+    'lost',
+    'none',
+    // rpg-project#671: walk puts me in reach, only a dash does, or not even
+    // a dash. The host computes them; no number is written here.
+    'walk',
+    'dash',
+    'far',
+  ]),
+  threatKey: 'threat',
+  threatWords: Object.freeze(['none', 'walk', 'dash']),
+  // `fell` (rpg-project#716): a fall, its actor who caused it, its target
+  // who fell.
+  deeds: Object.freeze([
+    'attacked',
+    'intimidated',
+    'persuaded',
+    'fled',
+    'fell',
+  ]),
+  whoDeeds: Object.freeze(['fell']),
   minimumWithin: 1,
-  bodyKeys: Object.freeze(['within', 'on', 'as']),
+  bodyKeys: Object.freeze(['within', 'on', 'as', 'who']),
   // THE TWO NAMED SCOPES. Omitting both means the creature itself, which is
   // what the field being absent says — so `self` is deliberately NOT a third
   // word a document may write, and a refusal lists only these two.
@@ -372,7 +416,7 @@ export const ANSWER_SOUND_KINDS: readonly string[] = Object.freeze([
   'voice',
 ]);
 
-/** One selector word: what an `attack`/`toward`/`away` entry acts on
+/** One selector word: what an `attack`/`toward`/`dash`/`away` entry acts on
  * (`encounter.SelectorWords`). */
 export interface AnswerSelectorSpec {
   readonly key: string;
@@ -384,8 +428,9 @@ export interface AnswerSelectorSpec {
   readonly refusedOn?: readonly string[];
 }
 
-/** The three sealed selector words, in the engine's order. A scalar selector
- * is one of these; the fourth spelling is a cell ([ANSWER_AT_SELECTOR]). */
+/** The sealed selector words, in the engine's order (`behavior.SelectorWords`).
+ * A scalar selector is one of these; the other spellings are a cell
+ * ([ANSWER_AT_SELECTOR]) and a route ([ANSWER_PATH_SELECTOR]). */
 export const ANSWER_SELECTOR_WORDS: readonly AnswerSelectorSpec[] =
   Object.freeze([
     {
@@ -411,6 +456,14 @@ export const ANSWER_SELECTOR_WORDS: readonly AnswerSelectorSpec[] =
       help: 'Where the freshest sound it holds was made — a place, never a figure. Walked toward or away from; never attacked.',
       refusedOn: Object.freeze(['attack']),
     },
+    {
+      // rpg-project#717: the nearest allied member held in sight, else in
+      // memory. "Follow" is `{ when: { enemy: none }, toward: ally }`.
+      key: 'ally',
+      label: 'The nearest ally',
+      help: 'The nearest creature on a side its own faction is allied with, in sight, else remembered. Walked toward or away from; never attacked.',
+      refusedOn: Object.freeze(['attack']),
+    },
   ]);
 
 /** Whether a selector word may be written on a table word — every word but
@@ -423,15 +476,18 @@ export function selectorWordLegalOn(selector: string, word: string): boolean {
 /** The authored-cell selector — `{ at: [col, row] }` in a v2 document,
  * `{ at: { q, r } }` in a single room (rpg-toolkit#2063).
  *
- * `toward` IS THE ONLY WORD `at:` IS LEGAL ON (`SelectorSpec`): walking away
- * from a fixed cell is a direction rather than a flight, and nothing has paid
- * for one. An authored cell is walked ONTO, not up to. */
+ * ONLY A WORD THAT WALKS TO A PLACE TAKES `at:` (`grammar.walksTo`): `toward`
+ * and `dash` (rpg-project#671 R17). Walking away from a fixed cell is a
+ * direction rather than a flight, and nothing has paid for one. An authored
+ * cell is walked ONTO, not up to. */
 export const ANSWER_AT_SELECTOR = Object.freeze({
   key: 'at',
   label: 'An authored cell',
   help: 'A cell to walk onto. Pick a cell nothing stands on — a creature anchor is stood beside.',
-  /** The one word this selector spelling is legal on. */
-  onlyWord: 'toward',
+  /** The words this selector spelling is legal on: the words that walk to a
+   * place (`grammar.walksTo`) — `toward`, and `dash`, a run toward
+   * (rpg-project#671 R17). */
+  words: Object.freeze(['toward', 'dash']),
 });
 
 /** The authored-route selector — `{ path: [[col, row], …] }` in a v2
@@ -440,15 +496,22 @@ export const ANSWER_AT_SELECTOR = Object.freeze({
  *
  * THE ROUTE HOLDS NO STATE. Which waypoint is next is derived by the engine
  * from where the creature stands each time the row fires, so nothing the
- * builder writes says how far along it got. `toward` alone walks a route; the
- * old word `patrol` stays refused and points here. */
+ * builder writes says how far along it got. `toward` and `dash` walk a route;
+ * the old word `patrol` stays refused and points here. */
 export const ANSWER_PATH_SELECTOR = Object.freeze({
   key: 'path',
   label: 'A route',
   help: 'Cells walked in order, looping. The next waypoint is worked out from where the creature stands.',
-  /** The one word a route is legal on. */
-  onlyWord: 'toward',
+  /** The words a route is legal on — `Selector.validate`'s `toward` and
+   * `dash`. */
+  words: Object.freeze(['toward', 'dash']),
 });
+
+/** Whether a table word walks to a place, so it takes a cell or a route
+ * (`grammar.walksTo`): `toward`, and `dash`. */
+export function walksTo(word: string): boolean {
+  return ANSWER_AT_SELECTOR.words.includes(word);
+}
 
 /**
  * `temper:` — a temperament, which is multipliers on a table's words and
@@ -669,7 +732,7 @@ export function whenShapeRefusal(): string {
   return HEARING_SENTENCES.whenShape();
 }
 
-/** `WhenSpec.UnmarshalYAML`: an `enemy:` value outside the four bands. */
+/** `WhenSpec.UnmarshalYAML`: an `enemy:` value outside the eight words. */
 export function unknownEnemyBandRefusal(band: string): string {
   return `\`enemy: ${band}\` is not a condition this build reads: they are ${ANSWER_WHEN.enemyBands.join(
     ', '
@@ -680,12 +743,32 @@ export function unknownEnemyBandRefusal(band: string): string {
 export function unknownDeedRefusal(deed: string): string {
   return `\`${deed}\` is not a deed this build holds: they are ${ANSWER_WHEN.deeds.join(
     ', '
-  )} (and \`enemy\`, \`heard\`, \`fact\`, \`not\`)`;
+  )} (and \`enemy\`, \`heard\`, \`fact\`, \`threat\`, \`not\`)`;
+}
+
+/** `WhenSpec.UnmarshalYAML`: a `threat:` value outside the sealed three. */
+export function unknownThreatRefusal(word: string): string {
+  return `\`threat: ${word}\` is not a threat this build reads: they are ${ANSWER_WHEN.threatWords.join(
+    ', '
+  )} (who else could reach where this row lands: nobody, a walker, or only a dasher)`;
 }
 
 /** `WhenSpec.UnmarshalYAML`: a deed with no span written. */
 export function missingSpanRefusal(deed: string): string {
   return `\`${deed}\` names no span — write { within: N }`;
+}
+
+/** `WhenSpec.UnmarshalYAML`: `who` on a deed that is not a fall
+ * (rpg-project#716). */
+export function whoOnlyOnFellRefusal(deed: string): string {
+  return `\`who\` names the one who fell, and only \`${ANSWER_WHEN.whoDeeds.join(
+    '`, `'
+  )}\` takes it; \`${deed}\` does not`;
+}
+
+/** `WhenSpec.UnmarshalYAML`: `who` written and naming nobody. */
+export function whoNamesNobodyRefusal(deed: string): string {
+  return `\`${deed}: { who }\` names nobody: write the id of the monster placement whose fall this waits on`;
 }
 
 /** `WhenSpec.UnmarshalYAML`: a span counted from zero. */
@@ -826,7 +909,9 @@ export const HEARING_SENTENCES = Object.freeze({
   whenShape: (): string =>
     `a \`when\` is one of { enemy: ${ANSWER_WHEN.enemyBands.join(
       ' | '
-    )} }, { <deed>: { within: N } }, { heard: { kind, within } }, { fact: <id> } or { not: { … } }`,
+    )} }, { <deed>: { within: N } }, { heard: { kind, within } }, { fact: <id> }, { threat: ${ANSWER_WHEN.threatWords.join(
+      ' | '
+    )} } or { not: { … } }`,
   /** `WhenListSpec.UnmarshalYAML`: `when: []`. */
   emptyWhenList: (): string =>
     'a `when` with no condition in it is on the table always — omit it',
@@ -854,6 +939,10 @@ export const HEARING_SENTENCES = Object.freeze({
   /** `Selector.validate` (mind/behavior): `sound` on `attack`. */
   attackSound: (): string =>
     '`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from',
+  /** `Selector.validate` (mind/behavior): `ally` on `attack`
+   * (rpg-project#717). */
+  attackAlly: (): string =>
+    '`attack` cannot take `ally`: a mind is never handed an ally to strike, only one to walk toward or away from',
   /** `Answer.Validate` (mind/behavior): `sound` on a row whose top-level
    * conditions listen for nothing — a `heard` inside a `not` is not
    * listening. */
@@ -862,7 +951,7 @@ export const HEARING_SENTENCES = Object.freeze({
   /** `Selector.validate` (mind/behavior): a route on a word that does not
    * walk one. */
   pathNotToward: (word: string): string =>
-    `\`${word}\` cannot take a \`path\`: a route is walked, and only \`toward\` walks one`,
+    `\`${word}\` cannot take a \`path\`: a route is walked, and only \`toward\` and \`dash\` walk one`,
   /** `Selector.validate` (mind/behavior), at the ROW: a cell and a route at
    * once. */
   selectorNamesBoth: (word: string): string =>

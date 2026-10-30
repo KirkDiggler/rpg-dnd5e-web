@@ -37,7 +37,7 @@ export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
     untilTurns: {
       id: 'untilTurns',
       sentence:
-        'When its until holds, a hostile pair becomes neutral and a neutral pair becomes hostile.',
+        'When its until holds, a pair turns to the stance its `then` names; with no `then`, a hostile pair becomes neutral and a neutral pair becomes hostile. Of a list of steps, the first that holds wins.',
       source:
         'rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/factions.go turnsTo',
     },
@@ -94,10 +94,13 @@ export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
     },
   });
 
-/** The stance a declared one turns to when its `until` holds: the other of
- * hostile and neutral. Allied carries no `until` (the decoder refuses one)
- * and answers itself. The computation the `untilTurns` law states. */
-export function turnsTo(stance: Stance): Stance {
+/** The stance a declared one turns to when an `until` step holds: its
+ * `then` when it names one (rpg-project#717), else the other of hostile and
+ * neutral. Allied with no `then` is refused by the decoder and answers
+ * itself. The computation the `untilTurns` law states (`factions.go`
+ * `turnsTo`). */
+export function turnsTo(stance: Stance, then?: Stance): Stance {
+  if (then !== undefined) return then;
   if (stance === 'hostile') return 'neutral';
   if (stance === 'neutral') return 'hostile';
   return stance;

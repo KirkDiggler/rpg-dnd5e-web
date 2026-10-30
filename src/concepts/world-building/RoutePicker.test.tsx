@@ -77,6 +77,7 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     expect(options('To for time entry')).toEqual([
       'enemy',
       'attacker',
+      'ally',
       'at',
       'path',
     ]);
@@ -361,7 +362,7 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
   });
 });
 
-describe("the castle's gate patrol, its loop given to a bundle", () => {
+describe("the castle's gate patrol, its loop given to a bundle (guard-base)", () => {
   function castle(): SiteScope {
     const read = readDraftYaml(
       readFileSync(
@@ -373,7 +374,7 @@ describe("the castle's gate patrol, its loop given to a bundle", () => {
     return read.scope;
   }
 
-  it('the patrol row shows its three waypoints as chips, and edits them', () => {
+  it('the guard-base row shows its patrol’s three waypoints as chips, and edits them', () => {
     const scope = castle();
     const onChange = vi.fn();
     render(
@@ -385,7 +386,7 @@ describe("the castle's gate patrol, its loop given to a bundle", () => {
     );
     fireEvent.click(screen.getByLabelText('Table gate-patrol'));
     const table = screen.getByTestId('site-table-gate-patrol');
-    const chips = within(table).getByLabelText('Waypoints of patrol path');
+    const chips = within(table).getByLabelText('Waypoints of guard-base path');
     expect(
       Array.from(chips.querySelectorAll('[data-waypoint]')).map(
         (chip) => chip.textContent
@@ -397,18 +398,18 @@ describe("the castle's gate patrol, its loop given to a bundle", () => {
     ]);
     fireEvent.click(
       within(table).getByRole('button', {
-        name: /^Edit the route of time entry patrol$/,
+        name: /^Edit the route of time entry guard-base$/,
       })
     );
     fireEvent.change(
       within(table).getByLabelText(
-        'Wait in rounds at waypoint 3 of time entry patrol path'
+        'Wait in rounds at waypoint 3 of time entry guard-base path'
       ),
       { target: { value: '2' } }
     );
     const next = onChange.mock.calls.at(-1)![0] as SiteScope;
     const patrol = next.tables!['gate-patrol']!.time!.find(
-      (row) => row.use === 'patrol'
+      (row) => row.use === 'guard-base'
     );
     expect(patrol?.with?.path).toEqual([
       { q: -5, r: 8, wait: 1, facing: 'ne' },

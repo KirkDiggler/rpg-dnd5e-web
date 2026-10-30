@@ -77,6 +77,7 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
+import { PlacedMonstersContext } from './placedMonstersContext';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { documentPlacementNames } from './placementNames';
 import { withPropBinding } from './propBindingEdits';
@@ -4653,1177 +4654,1217 @@ export function WorldBuildingConcept({
   if (roomMode && studioPresentation) {
     return (
       <SiteBundlesContext.Provider value={siteScope.bundles}>
-        {studioPresentation.render({
-          document: roomHistory.present,
-          viewportProps,
-          intentEpoch: viewportGeneration,
-          arrange,
-          doorEditing,
-          commitArrange: guardSnapshotIntent(commitArrange),
-          selectHex: guardSnapshotIntent(selectStudioHex),
-          selectRegion: guardSnapshotIntent(selectStudioRegion),
-          selectScene: guardSnapshotIntent(
-            (ids: readonly string[]): boolean => {
-              const present = roomHistoryRef.current.present.draft.scene;
-              if (
-                refuseWhilePublishing() ||
-                ids.length === 0 ||
-                !ids.every((id) =>
-                  [...present.items, ...present.groups].some(
-                    (entity) => entity.id === id
+        <PlacedMonstersContext.Provider value={placementNames}>
+          {studioPresentation.render({
+            document: roomHistory.present,
+            viewportProps,
+            intentEpoch: viewportGeneration,
+            arrange,
+            doorEditing,
+            commitArrange: guardSnapshotIntent(commitArrange),
+            selectHex: guardSnapshotIntent(selectStudioHex),
+            selectRegion: guardSnapshotIntent(selectStudioRegion),
+            selectScene: guardSnapshotIntent(
+              (ids: readonly string[]): boolean => {
+                const present = roomHistoryRef.current.present.draft.scene;
+                if (
+                  refuseWhilePublishing() ||
+                  ids.length === 0 ||
+                  !ids.every((id) =>
+                    [...present.items, ...present.groups].some(
+                      (entity) => entity.id === id
+                    )
                   )
                 )
-              )
-                return false;
-              selectInScene([...ids]);
-              return true;
-            }
-          ),
-          selectPartyStart: guardSnapshotIntent((): boolean => {
-            if (
-              refuseWhilePublishing() ||
-              !roomHistoryRef.current.present.draft.room.partyStart
-            )
-              return false;
-            selectStudioActor({ kind: 'start' });
-            return true;
-          }),
-          armPartyStart: guardSnapshotIntent((): boolean => {
-            if (refuseWhilePublishing()) return false;
-            armStartPlacement();
-            setTool('select');
-            return true;
-          }),
-          clearSelection: guardSnapshotIntent((): boolean => {
-            if (refuseWhilePublishing()) return false;
-            clearStudioSelection();
-            return true;
-          }),
-          cast: (() => {
-            /** One transaction. `follows` names the member's ref after the
-             * edit: the edited member becomes the selection, so a rename or
-             * an adoption keeps the author on the member they changed. */
-            const castIntent = <Args extends unknown[]>(
-              edit: (current: RoomDocument, ...args: Args) => RoomDocument,
-              follows?: (...args: Args) => string
-            ): ((...args: Args) => boolean) =>
-              guardSnapshotIntent((...args: Args): boolean => {
-                if (refuseWhilePublishing()) return false;
-                try {
-                  const next = edit(roomHistoryRef.current.present, ...args);
-                  if (!commitRoomDocument(next)) return false;
-                  const ref = follows?.(...args);
-                  if (ref !== undefined && castMemberOf(next, ref)) {
-                    clearStudioSelection();
-                    activateStudioTarget({ kind: 'cast', ref });
-                  }
-                  return true;
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              });
-            const MONSTER = 'dnd5e:monsters:';
-            return {
-              save: castIntent(
-                (current, edit: CastEdit) =>
-                  applyCastEdit(current, edit, idFactory),
-                (edit) =>
-                  edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
-              ),
-              rename: castIntent(
-                (current, ref: string, toId: string) =>
-                  renameCastMember(current, ref, toId),
-                (_ref, toId) => `${MONSTER}${toId}`
-              ),
-              adopt: castIntent(
-                (current, ref: string, templateId: string) =>
-                  adoptCastMember(current, ref, templateId),
-                (_ref, templateId) => `${MONSTER}${templateId}`
-              ),
-              remove: castIntent((current, ref: string) =>
-                removeCastMember(current, ref)
-              ),
-              removeUnusedLook: castIntent(
-                (current, ref: string, entryId: string) =>
-                  removeUnusedLook(current, ref, entryId)
-              ),
-              select: guardSnapshotIntent(selectStudioCastMember),
-              shuffle: castIntent((current, ref: string) =>
-                shuffleCastLooks(current, ref, Math.random)
-              ),
-            };
-          })(),
-          creatures: {
-            select: guardSnapshotIntent((id: string): boolean => {
+                  return false;
+                selectInScene([...ids]);
+                return true;
+              }
+            ),
+            selectPartyStart: guardSnapshotIntent((): boolean => {
               if (
                 refuseWhilePublishing() ||
-                !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
-                  (actor) => actor.id === id
-                )
+                !roomHistoryRef.current.present.draft.room.partyStart
               )
                 return false;
-              selectStudioActor({ kind: 'actor', id });
+              selectStudioActor({ kind: 'start' });
               return true;
             }),
-            placement:
-              roomTool === 'monster' && armedCreature
-                ? {
-                    name:
-                      castMemberOf(roomHistory.present, armedCreature.ref)
-                        ?.name ?? 'Creature',
-                    appearanceRef: armedCreature.appearanceRef,
-                  }
-                : null,
-            armPlacement: guardSnapshotIntent(
-              (ref: string, appearanceRef: string): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const member = castMemberOf(
-                  roomHistoryRef.current.present,
-                  ref
-                );
-                if (!member)
-                  return rejectEdit(new Error(`${ref} is not in the cast.`));
-                if (!castPlacementAppearanceAvailable(member, appearanceRef))
-                  return rejectEdit(
-                    new Error(
-                      member.defaults?.modelRef
-                        ? `Choose a look from ${member.name}'s default look family.`
-                        : 'Choose a default look in the cast to place it.'
-                    )
-                  );
-                cancelTransients();
-                setArmedMonsterRef(member.ref);
-                setArmedCreature({ ref: member.ref, appearanceRef });
-                setRoomTool('monster');
-                setTool('select');
-                setSelectedActorId(null);
-                activateStudioTarget(null);
-                setNotice('');
-                return true;
-              }
-            ),
-            setDefinition: guardSnapshotIntent(
-              (id: string, ref: string): boolean => {
-                if (selectionRevisionRef.current !== selectionRevision)
-                  return false;
-                try {
-                  const current = roomHistoryRef.current.present;
-                  return commitRoomDocument({
-                    ...current,
-                    draft: setRoomMonsterDefinition(current.draft, id, ref),
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
-          },
-          doors: {
-            setBinding: guardSnapshotIntent(
-              (doorId: string, next: RoomDoorBinding | undefined): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const current = roomHistoryRef.current.present;
-                const attached = (current.draft.room.walls ?? []).some((wall) =>
-                  wall.openings.some((opening) => opening.door?.id === doorId)
-                );
-                if (!attached)
-                  return rejectEdit(new Error(`There is no door ${doorId}.`));
-                if (next === undefined)
-                  return rejectEdit(
-                    new Error(
-                      'A door on a wall always has a state. Delete the doorway to remove it.'
-                    )
-                  );
-                const bindings = withDoorBinding(
-                  current.draft.room.doorBindings,
-                  doorId,
-                  next
-                );
-                const room: RoomGameplayData = { ...current.draft.room };
-                if (bindings === undefined) delete room.doorBindings;
-                else room.doorBindings = bindings;
-                return commitRoomDocument({
-                  ...current,
-                  draft: { ...current.draft, room },
-                });
-              }
-            ),
-          },
-          exits: {
-            set: guardSnapshotIntent(
-              (cell: RoomHexCell, id: string | null): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const current = roomHistoryRef.current.present;
-                const walkable = isFloorCell(current.draft, cell);
-                if (
-                  id !== null &&
-                  !walkable &&
-                  !exitAt(current.scope.exits, cell)
-                )
-                  return rejectEdit(
-                    new Error(
-                      `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
-                    )
-                  );
-                const previous = exitAt(current.scope.exits, cell)?.id;
-                if (previous !== undefined && id === null) {
-                  const referrers = exitReferrers(current, previous);
-                  if (referrers.length)
-                    return rejectEdit(
-                      new Error(
-                        stillNamedRefusal(`Exit ${previous}`, referrers)
-                      )
-                    );
-                }
-                try {
-                  const exits = setExitAt(current.scope.exits, cell, id);
-                  const scope =
-                    previous !== undefined && id !== null && id !== previous
-                      ? {
-                          ...renameExitReferences(current, previous, id),
-                        }
-                      : { ...current.scope };
-                  if (exits.length === 0) delete scope.exits;
-                  else scope.exits = exits;
-                  return commitRoomDocument({ ...current, scope });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
-          },
-          endings: {
-            set: guardSnapshotIntent((next: readonly SiteEnding[]): boolean => {
+            armPartyStart: guardSnapshotIntent((): boolean => {
               if (refuseWhilePublishing()) return false;
-              const current = roomHistoryRef.current.present;
-              try {
-                const endings = validateSiteEndings([...next]);
-                const scope = { ...current.scope };
-                if (endings.length === 0) delete scope.endings;
-                else scope.endings = endings;
-                return commitRoomDocument({ ...current, scope });
-              } catch (error) {
-                return rejectEdit(error);
-              }
-            }),
-          },
-          concealments: {
-            add: guardSnapshotIntent((): boolean => {
-              if (refuseWhilePublishing()) return false;
-              const current = roomHistoryRef.current.present;
-              return commitRoomDocument({
-                ...current,
-                scope: addConcealment(current.scope),
-              });
-            }),
-            update: guardSnapshotIntent(
-              (id: string, spec: SiteConcealmentSpec | undefined): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const current = roomHistoryRef.current.present;
-                if (!Object.hasOwn(current.scope.concealments ?? {}, id))
-                  return rejectEdit(
-                    new Error(`There is no concealment ${id}.`)
-                  );
-                if (spec === undefined) {
-                  const referrers = concealmentReferrers(current.scope, id);
-                  if (referrers.length)
-                    return rejectEdit(
-                      new Error(
-                        stillNamedRefusal(`Concealment ${id}`, referrers)
-                      )
-                    );
-                }
-                try {
-                  if (spec !== undefined)
-                    validateSiteConcealments(
-                      { [id]: spec },
-                      { requireMembers: false }
-                    );
-                  if (spec === undefined && paintingConcealmentId === id)
-                    setPaintingConcealmentId(null);
-                  return commitRoomDocument({
-                    ...current,
-                    scope: setConcealment(current.scope, id, spec),
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
-            rename: guardSnapshotIntent((from: string, to: string): boolean => {
-              if (refuseWhilePublishing()) return false;
-              const current = roomHistoryRef.current.present;
-              const concealments = current.scope.concealments ?? {};
-              if (!Object.hasOwn(concealments, from))
-                return rejectEdit(
-                  new Error(`There is no concealment ${from}.`)
-                );
-              if (from === to) return true;
-              if (Object.hasOwn(concealments, to))
-                return rejectEdit(
-                  new Error(`There is already a concealment ${to}.`)
-                );
-              try {
-                const scope = renameRevealReferences(
-                  renameConcealment(current.scope, from, to),
-                  from,
-                  to
-                );
-                validateSiteConcealments(scope.concealments, {
-                  requireMembers: false,
-                });
-                if (paintingConcealmentId === from)
-                  setPaintingConcealmentId(to);
-                return commitRoomDocument({ ...current, scope });
-              } catch (error) {
-                return rejectEdit(error);
-              }
-            }),
-            armedId: activeConcealmentId,
-            armMembers: (id: string): boolean => {
-              if (!mountedRef.current || refuseWhilePublishing()) return false;
-              if (
-                !Object.hasOwn(
-                  roomHistoryRef.current.present.scope.concealments ?? {},
-                  id
-                )
-              )
-                return false;
-              setRoomTool('select');
+              armStartPlacement();
               setTool('select');
-              setPaintingConcealmentId(id);
               return true;
-            },
-            disarm: () => setPaintingConcealmentId(null),
-            pick: guardSnapshotIntent(pickConcealmentMember),
-            setDoorHiddenBy: guardSnapshotIntent(
-              (doorId: string, concealmentId: string | null): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const current = roomHistoryRef.current.present;
-                try {
-                  return commitRoomDocument({
-                    ...current,
-                    scope: setPropHiddenBy(
-                      current.scope,
-                      doorId,
-                      concealmentId
-                    ),
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
+            }),
+            clearSelection: guardSnapshotIntent((): boolean => {
+              if (refuseWhilePublishing()) return false;
+              clearStudioSelection();
+              return true;
+            }),
+            cast: (() => {
+              /** One transaction. `follows` names the member's ref after the
+               * edit: the edited member becomes the selection, so a rename or
+               * an adoption keeps the author on the member they changed. */
+              const castIntent = <Args extends unknown[]>(
+                edit: (current: RoomDocument, ...args: Args) => RoomDocument,
+                follows?: (...args: Args) => string
+              ): ((...args: Args) => boolean) =>
+                guardSnapshotIntent((...args: Args): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  try {
+                    const next = edit(roomHistoryRef.current.present, ...args);
+                    if (!commitRoomDocument(next)) return false;
+                    const ref = follows?.(...args);
+                    if (ref !== undefined && castMemberOf(next, ref)) {
+                      clearStudioSelection();
+                      activateStudioTarget({ kind: 'cast', ref });
+                    }
+                    return true;
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                });
+              const MONSTER = 'dnd5e:monsters:';
+              return {
+                save: castIntent(
+                  (current, edit: CastEdit) =>
+                    applyCastEdit(current, edit, idFactory),
+                  (edit) =>
+                    edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
+                ),
+                rename: castIntent(
+                  (current, ref: string, toId: string) =>
+                    renameCastMember(current, ref, toId),
+                  (_ref, toId) => `${MONSTER}${toId}`
+                ),
+                adopt: castIntent(
+                  (current, ref: string, templateId: string) =>
+                    adoptCastMember(current, ref, templateId),
+                  (_ref, templateId) => `${MONSTER}${templateId}`
+                ),
+                remove: castIntent((current, ref: string) =>
+                  removeCastMember(current, ref)
+                ),
+                removeUnusedLook: castIntent(
+                  (current, ref: string, entryId: string) =>
+                    removeUnusedLook(current, ref, entryId)
+                ),
+                select: guardSnapshotIntent(selectStudioCastMember),
+                shuffle: castIntent((current, ref: string) =>
+                  shuffleCastLooks(current, ref, Math.random)
+                ),
+              };
+            })(),
+            creatures: {
+              select: guardSnapshotIntent((id: string): boolean => {
+                if (
+                  refuseWhilePublishing() ||
+                  !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
+                    (actor) => actor.id === id
+                  )
+                )
+                  return false;
+                selectStudioActor({ kind: 'actor', id });
+                return true;
+              }),
+              placement:
+                roomTool === 'monster' && armedCreature
+                  ? {
+                      name:
+                        castMemberOf(roomHistory.present, armedCreature.ref)
+                          ?.name ?? 'Creature',
+                      appearanceRef: armedCreature.appearanceRef,
+                    }
+                  : null,
+              armPlacement: guardSnapshotIntent(
+                (ref: string, appearanceRef: string): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const member = castMemberOf(
+                    roomHistoryRef.current.present,
+                    ref
+                  );
+                  if (!member)
+                    return rejectEdit(new Error(`${ref} is not in the cast.`));
+                  if (!castPlacementAppearanceAvailable(member, appearanceRef))
+                    return rejectEdit(
+                      new Error(
+                        member.defaults?.modelRef
+                          ? `Choose a look from ${member.name}'s default look family.`
+                          : 'Choose a default look in the cast to place it.'
+                      )
+                    );
+                  cancelTransients();
+                  setArmedMonsterRef(member.ref);
+                  setArmedCreature({ ref: member.ref, appearanceRef });
+                  setRoomTool('monster');
+                  setTool('select');
+                  setSelectedActorId(null);
+                  activateStudioTarget(null);
+                  setNotice('');
+                  return true;
                 }
-              }
-            ),
-          },
-          commitTables: guardSnapshotIntent(
-            (tables: SiteScope['tables']): boolean => {
-              const current = roomHistoryRef.current.present;
-              const scope = { ...current.scope };
-              if (tables === undefined) delete scope.tables;
-              else scope.tables = tables;
-              return commitRoomDocument({ ...current, scope });
-            }
-          ),
-          commitBundles: guardSnapshotIntent(
-            (bundles: SiteScope['bundles']): boolean => {
-              const current = roomHistoryRef.current.present;
-              const scope = { ...current.scope };
-              if (bundles === undefined || Object.keys(bundles).length === 0)
-                delete scope.bundles;
-              else scope.bundles = bundles;
-              return commitRoomDocument({ ...current, scope });
-            }
-          ),
-          mapLabelSelection: {
-            selectedId:
-              activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
-            select: guardSnapshotIntent(selectStudioLabel),
-          },
-          regionEditing: {
-            resolutions: regionResolutions,
-            finishes: {
-              catalog: materialCatalog,
-              projection: roomFinishes,
-              set: guardSnapshotIntent(
-                (
-                  regionId: string,
-                  value: RegionWallFinishPatch | null
-                ): boolean =>
-                  arrange?.kind === 'region' && arrange.region.id === regionId
-                    ? commitArrange({
-                        kind: 'region-edit',
-                        target: arrange.target,
-                        wallFinish: value,
-                      })
-                    : false
+              ),
+              setDefinition: guardSnapshotIntent(
+                (id: string, ref: string): boolean => {
+                  if (selectionRevisionRef.current !== selectionRevision)
+                    return false;
+                  try {
+                    const current = roomHistoryRef.current.present;
+                    return commitRoomDocument({
+                      ...current,
+                      draft: setRoomMonsterDefinition(current.draft, id, ref),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
               ),
             },
-            createRegion: guardSnapshotIntent((name: string): boolean => {
-              if (refuseWhilePublishing()) return false;
-              try {
-                const current = roomHistoryRef.current.present;
-                const id = idFactory();
-                if (
-                  !commitRoomDocument({
+            doors: {
+              setBinding: guardSnapshotIntent(
+                (
+                  doorId: string,
+                  next: RoomDoorBinding | undefined
+                ): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  const attached = (current.draft.room.walls ?? []).some(
+                    (wall) =>
+                      wall.openings.some(
+                        (opening) => opening.door?.id === doorId
+                      )
+                  );
+                  if (!attached)
+                    return rejectEdit(new Error(`There is no door ${doorId}.`));
+                  if (next === undefined)
+                    return rejectEdit(
+                      new Error(
+                        'A door on a wall always has a state. Delete the doorway to remove it.'
+                      )
+                    );
+                  const bindings = withDoorBinding(
+                    current.draft.room.doorBindings,
+                    doorId,
+                    next
+                  );
+                  const room: RoomGameplayData = { ...current.draft.room };
+                  if (bindings === undefined) delete room.doorBindings;
+                  else room.doorBindings = bindings;
+                  return commitRoomDocument({
                     ...current,
-                    draft: createRegion(current.draft, id, name),
-                  })
+                    draft: { ...current.draft, room },
+                  });
+                }
+              ),
+            },
+            exits: {
+              set: guardSnapshotIntent(
+                (cell: RoomHexCell, id: string | null): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  const walkable = isFloorCell(current.draft, cell);
+                  if (
+                    id !== null &&
+                    !walkable &&
+                    !exitAt(current.scope.exits, cell)
+                  )
+                    return rejectEdit(
+                      new Error(
+                        `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
+                      )
+                    );
+                  const previous = exitAt(current.scope.exits, cell)?.id;
+                  if (previous !== undefined && id === null) {
+                    const referrers = exitReferrers(current, previous);
+                    if (referrers.length)
+                      return rejectEdit(
+                        new Error(
+                          stillNamedRefusal(`Exit ${previous}`, referrers)
+                        )
+                      );
+                  }
+                  try {
+                    const exits = setExitAt(current.scope.exits, cell, id);
+                    const scope =
+                      previous !== undefined && id !== null && id !== previous
+                        ? {
+                            ...renameExitReferences(current, previous, id),
+                          }
+                        : { ...current.scope };
+                    if (exits.length === 0) delete scope.exits;
+                    else scope.exits = exits;
+                    return commitRoomDocument({ ...current, scope });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+            },
+            endings: {
+              set: guardSnapshotIntent(
+                (next: readonly SiteEnding[]): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const endings = validateSiteEndings([...next]);
+                    const scope = { ...current.scope };
+                    if (endings.length === 0) delete scope.endings;
+                    else scope.endings = endings;
+                    return commitRoomDocument({ ...current, scope });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+            },
+            concealments: {
+              add: guardSnapshotIntent((): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                return commitRoomDocument({
+                  ...current,
+                  scope: addConcealment(current.scope),
+                });
+              }),
+              update: guardSnapshotIntent(
+                (
+                  id: string,
+                  spec: SiteConcealmentSpec | undefined
+                ): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  if (!Object.hasOwn(current.scope.concealments ?? {}, id))
+                    return rejectEdit(
+                      new Error(`There is no concealment ${id}.`)
+                    );
+                  if (spec === undefined) {
+                    const referrers = concealmentReferrers(current.scope, id);
+                    if (referrers.length)
+                      return rejectEdit(
+                        new Error(
+                          stillNamedRefusal(`Concealment ${id}`, referrers)
+                        )
+                      );
+                  }
+                  try {
+                    if (spec !== undefined)
+                      validateSiteConcealments(
+                        { [id]: spec },
+                        { requireMembers: false }
+                      );
+                    if (spec === undefined && paintingConcealmentId === id)
+                      setPaintingConcealmentId(null);
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setConcealment(current.scope, id, spec),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              rename: guardSnapshotIntent(
+                (from: string, to: string): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  const concealments = current.scope.concealments ?? {};
+                  if (!Object.hasOwn(concealments, from))
+                    return rejectEdit(
+                      new Error(`There is no concealment ${from}.`)
+                    );
+                  if (from === to) return true;
+                  if (Object.hasOwn(concealments, to))
+                    return rejectEdit(
+                      new Error(`There is already a concealment ${to}.`)
+                    );
+                  try {
+                    const scope = renameRevealReferences(
+                      renameConcealment(current.scope, from, to),
+                      from,
+                      to
+                    );
+                    validateSiteConcealments(scope.concealments, {
+                      requireMembers: false,
+                    });
+                    if (paintingConcealmentId === from)
+                      setPaintingConcealmentId(to);
+                    return commitRoomDocument({ ...current, scope });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              armedId: activeConcealmentId,
+              armMembers: (id: string): boolean => {
+                if (!mountedRef.current || refuseWhilePublishing())
+                  return false;
+                if (
+                  !Object.hasOwn(
+                    roomHistoryRef.current.present.scope.concealments ?? {},
+                    id
+                  )
                 )
                   return false;
-                activateStudioTarget({ kind: 'region', id });
+                setRoomTool('select');
+                setTool('select');
+                setPaintingConcealmentId(id);
                 return true;
-              } catch (error) {
-                return rejectEdit(error);
-              }
-            }),
-            // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
-            // argument, so these act on it whatever is selected. A refusal
-            // (unknown region, blank name, the implicit region's removal)
-            // surfaces through the owner's notice, never a silent false.
-            renameRegion: guardSnapshotIntent(
-              (regionId: string, name: string): boolean =>
-                editRegionById((draft) => renameRegion(draft, regionId, name))
-            ),
-            setRegionLighting: guardSnapshotIntent(
-              (regionId: string, intensity: number): boolean =>
-                editRegionById((draft) =>
-                  setRegionLighting(draft, regionId, intensity)
-                )
-            ),
-            removeRegion: guardSnapshotIntent((regionId: string): boolean => {
-              if (!editRegionById((draft) => removeRegion(draft, regionId)))
-                return false;
-              if (
-                activeStudioTargetRef.current?.kind === 'region' &&
-                activeStudioTargetRef.current.id === regionId
-              )
-                activateStudioTarget(null);
-              return true;
-            }),
-          },
-          renameDocument: guardSnapshotIntent(renameDocument),
-          importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
-          wallEditing: {
-            finishes: {
-              catalog: materialCatalog,
-              statuses: roomFinishes.walls,
+              },
+              disarm: () => setPaintingConcealmentId(null),
+              pick: guardSnapshotIntent(pickConcealmentMember),
+              setDoorHiddenBy: guardSnapshotIntent(
+                (doorId: string, concealmentId: string | null): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setPropHiddenBy(
+                        current.scope,
+                        doorId,
+                        concealmentId
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
             },
-            selectedId:
-              activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
-            assetRef: wallAssetRef,
-            snapEnabled: wallSnapEnabled,
-            endpointSnapEnabled: wallEndpointSnapEnabled,
-            rightAngleEnabled: wallRightAngleEnabled,
-            setRightAngle: guardSnapshotIntent((enabled: boolean): boolean => {
-              if (refuseWhilePublishing()) return false;
-              if (enabled !== wallRightAngleEnabled) {
-                cancelTransients();
-                setWallRightAngleEnabled(enabled);
+            commitTables: guardSnapshotIntent(
+              (tables: SiteScope['tables']): boolean => {
+                const current = roomHistoryRef.current.present;
+                const scope = { ...current.scope };
+                if (tables === undefined) delete scope.tables;
+                else scope.tables = tables;
+                return commitRoomDocument({ ...current, scope });
               }
-              return true;
-            }),
-            setEndpointSnap: guardSnapshotIntent(
-              (enabled: boolean): boolean => {
+            ),
+            commitBundles: guardSnapshotIntent(
+              (bundles: SiteScope['bundles']): boolean => {
+                const current = roomHistoryRef.current.present;
+                const scope = { ...current.scope };
+                if (bundles === undefined || Object.keys(bundles).length === 0)
+                  delete scope.bundles;
+                else scope.bundles = bundles;
+                return commitRoomDocument({ ...current, scope });
+              }
+            ),
+            mapLabelSelection: {
+              selectedId:
+                activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
+              select: guardSnapshotIntent(selectStudioLabel),
+            },
+            regionEditing: {
+              resolutions: regionResolutions,
+              finishes: {
+                catalog: materialCatalog,
+                projection: roomFinishes,
+                set: guardSnapshotIntent(
+                  (
+                    regionId: string,
+                    value: RegionWallFinishPatch | null
+                  ): boolean =>
+                    arrange?.kind === 'region' && arrange.region.id === regionId
+                      ? commitArrange({
+                          kind: 'region-edit',
+                          target: arrange.target,
+                          wallFinish: value,
+                        })
+                      : false
+                ),
+              },
+              createRegion: guardSnapshotIntent((name: string): boolean => {
                 if (refuseWhilePublishing()) return false;
-                if (enabled !== wallEndpointSnapEnabled) {
+                try {
+                  const current = roomHistoryRef.current.present;
+                  const id = idFactory();
+                  if (
+                    !commitRoomDocument({
+                      ...current,
+                      draft: createRegion(current.draft, id, name),
+                    })
+                  )
+                    return false;
+                  activateStudioTarget({ kind: 'region', id });
+                  return true;
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }),
+              // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
+              // argument, so these act on it whatever is selected. A refusal
+              // (unknown region, blank name, the implicit region's removal)
+              // surfaces through the owner's notice, never a silent false.
+              renameRegion: guardSnapshotIntent(
+                (regionId: string, name: string): boolean =>
+                  editRegionById((draft) => renameRegion(draft, regionId, name))
+              ),
+              setRegionLighting: guardSnapshotIntent(
+                (regionId: string, intensity: number): boolean =>
+                  editRegionById((draft) =>
+                    setRegionLighting(draft, regionId, intensity)
+                  )
+              ),
+              removeRegion: guardSnapshotIntent((regionId: string): boolean => {
+                if (!editRegionById((draft) => removeRegion(draft, regionId)))
+                  return false;
+                if (
+                  activeStudioTargetRef.current?.kind === 'region' &&
+                  activeStudioTargetRef.current.id === regionId
+                )
+                  activateStudioTarget(null);
+                return true;
+              }),
+            },
+            renameDocument: guardSnapshotIntent(renameDocument),
+            importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
+            wallEditing: {
+              finishes: {
+                catalog: materialCatalog,
+                statuses: roomFinishes.walls,
+              },
+              selectedId:
+                activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
+              assetRef: wallAssetRef,
+              snapEnabled: wallSnapEnabled,
+              endpointSnapEnabled: wallEndpointSnapEnabled,
+              rightAngleEnabled: wallRightAngleEnabled,
+              setRightAngle: guardSnapshotIntent(
+                (enabled: boolean): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  if (enabled !== wallRightAngleEnabled) {
+                    cancelTransients();
+                    setWallRightAngleEnabled(enabled);
+                  }
+                  return true;
+                }
+              ),
+              setEndpointSnap: guardSnapshotIntent(
+                (enabled: boolean): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  if (enabled !== wallEndpointSnapEnabled) {
+                    cancelTransients();
+                    setWallEndpointSnapEnabled(enabled);
+                  }
+                  return true;
+                }
+              ),
+              options: studioWallOptions,
+              select: guardSnapshotIntent(selectStudioWall),
+              setAsset: guardSnapshotIntent((ref: string | null): boolean => {
+                if (refuseWhilePublishing()) return false;
+                if (
+                  ref !== null &&
+                  !wallAssetOptions.some((option) => option.ref === ref)
+                ) {
+                  setNotice(
+                    `Wall appearance refused; unsupported asset ${ref}.`
+                  );
+                  return false;
+                }
+                if (ref !== wallAssetRef) {
                   cancelTransients();
-                  setWallEndpointSnapEnabled(enabled);
+                  setWallAssetRef(ref);
                 }
                 return true;
-              }
-            ),
-            options: studioWallOptions,
-            select: guardSnapshotIntent(selectStudioWall),
-            setAsset: guardSnapshotIntent((ref: string | null): boolean => {
-              if (refuseWhilePublishing()) return false;
-              if (
-                ref !== null &&
-                !wallAssetOptions.some((option) => option.ref === ref)
-              ) {
-                setNotice(`Wall appearance refused; unsupported asset ${ref}.`);
-                return false;
-              }
-              if (ref !== wallAssetRef) {
-                cancelTransients();
-                setWallAssetRef(ref);
-              }
-              return true;
-            }),
-            setSnap: guardSnapshotIntent((enabled: boolean): boolean => {
-              if (refuseWhilePublishing()) return false;
-              if (enabled !== wallSnapEnabled) {
-                cancelTransients();
-                setWallSnapEnabled(enabled);
-              }
-              return true;
-            }),
-            create: guardSnapshotIntent(createStudioWall),
-            edit: guardSnapshotIntent((next, join) =>
-              !walls.some((wall) => wall.id === next.id) ||
-              wallGestureActive(next.id)
-                ? editWall(next, join)
-                : false
-            ),
-            remove: guardSnapshotIntent((id) =>
-              !walls.some((wall) => wall.id === id) ||
-              (activeStudioTargetRef.current?.kind === 'wall' &&
-                activeStudioTargetRef.current.id === id &&
-                selectionRevisionRef.current === selectionRevision)
-                ? removeWall(id)
-                : false
-            ),
-            reportRefusal: (message: string): void => {
-              guardSnapshotIntent(() => {
-                setNotice(message);
+              }),
+              setSnap: guardSnapshotIntent((enabled: boolean): boolean => {
+                if (refuseWhilePublishing()) return false;
+                if (enabled !== wallSnapEnabled) {
+                  cancelTransients();
+                  setWallSnapEnabled(enabled);
+                }
                 return true;
-              })();
-            },
-          },
-          canUndo: !publishBusy && roomHistory.past.length > 0,
-          canRedo: !publishBusy && roomHistory.future.length > 0,
-          undo: () => {
-            if (
-              viewportGenerationRef.current === viewportGeneration &&
-              mountedRef.current
-            )
-              undo();
-          },
-          redo: () => {
-            if (
-              viewportGenerationRef.current === viewportGeneration &&
-              mountedRef.current
-            )
-              redo();
-          },
-          commitFloor: guardIntent(
-            (cells, mode, regionId) =>
-              studioHomeRef.current === 'build' &&
-              commitFloor(cells, mode, regionId)
-          ),
-          createMapLabel: guardIntent((text: string, location: WorldPoint) =>
-            applyRoomIntent((current) => ({
-              ...current,
-              draft: createMapLabel(current.draft, idFactory(), text, location),
-            }))
-          ),
-          moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
-            labelIntentIsCurrent(id, true)
-              ? applyRoomIntent((current) => ({
-                  ...current,
-                  draft: moveMapLabel(current.draft, id, location),
-                }))
-              : false
-          ),
-          renameMapLabel: guardIntent((id: string, text: string) =>
-            labelIntentIsCurrent(id)
-              ? applyRoomIntent((current) => ({
-                  ...current,
-                  draft: renameMapLabel(current.draft, id, text),
-                }))
-              : false
-          ),
-          deleteMapLabel: guardIntent((id: string) =>
-            labelIntentIsCurrent(id)
-              ? applyRoomIntent((current) => ({
-                  ...current,
-                  draft: deleteMapLabel(current.draft, id),
-                }))
-              : false
-          ),
-          cancelTransients,
-          propTool: tool,
-          setPropTool: (next) => {
-            cancelTransients();
-            setTool(next);
-            setRoomTool(next);
-          },
-          socialControls: {
-            factions: (
-              <FactionsPanel
-                scope={siteScope}
-                room={roomDraft.room}
-                placementNames={placementNames}
-                onChange={guardSnapshotIntent(commitPolicies)}
-                onNotice={guardSnapshotIntent((message: string) => {
+              }),
+              create: guardSnapshotIntent(createStudioWall),
+              edit: guardSnapshotIntent((next, join) =>
+                !walls.some((wall) => wall.id === next.id) ||
+                wallGestureActive(next.id)
+                  ? editWall(next, join)
+                  : false
+              ),
+              remove: guardSnapshotIntent((id) =>
+                !walls.some((wall) => wall.id === id) ||
+                (activeStudioTargetRef.current?.kind === 'wall' &&
+                  activeStudioTargetRef.current.id === id &&
+                  selectionRevisionRef.current === selectionRevision)
+                  ? removeWall(id)
+                  : false
+              ),
+              reportRefusal: (message: string): void => {
+                guardSnapshotIntent(() => {
                   setNotice(message);
                   return true;
-                })}
-              />
+                })();
+              },
+            },
+            canUndo: !publishBusy && roomHistory.past.length > 0,
+            canRedo: !publishBusy && roomHistory.future.length > 0,
+            undo: () => {
+              if (
+                viewportGenerationRef.current === viewportGeneration &&
+                mountedRef.current
+              )
+                undo();
+            },
+            redo: () => {
+              if (
+                viewportGenerationRef.current === viewportGeneration &&
+                mountedRef.current
+              )
+                redo();
+            },
+            commitFloor: guardIntent(
+              (cells, mode, regionId) =>
+                studioHomeRef.current === 'build' &&
+                commitFloor(cells, mode, regionId)
             ),
-            dispositions: (
-              <DispositionsPanel
-                scope={siteScope}
-                room={roomDraft.room}
-                placementNames={placementNames}
-                onChange={guardSnapshotIntent(commitPolicies)}
-              />
+            createMapLabel: guardIntent((text: string, location: WorldPoint) =>
+              applyRoomIntent((current) => ({
+                ...current,
+                draft: createMapLabel(
+                  current.draft,
+                  idFactory(),
+                  text,
+                  location
+                ),
+              }))
             ),
-            intel: (
-              <IntelPanel
-                explicitRename
-                scope={siteScope}
-                room={roomDraft.room}
-                onChange={guardSnapshotIntent(commitPolicies)}
-              />
+            moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
+              labelIntentIsCurrent(id, true)
+                ? applyRoomIntent((current) => ({
+                    ...current,
+                    draft: moveMapLabel(current.draft, id, location),
+                  }))
+                : false
             ),
-            selection:
-              arrange?.kind === 'actor' ? (
-                <>
-                  <CreatureOrders
-                    scope={siteScope}
-                    room={roomDraft.room}
-                    monster={arrange.monster}
-                    placementNames={placementNames}
-                    titled={false}
-                    binding={
-                      roomDraft.room.monsterBindings?.[arrange.monster.id]
-                    }
-                    onFactionChange={guardBindingIntent(
-                      (faction: string | undefined) =>
-                        setMonsterFaction(arrange.monster.id, faction)
-                    )}
-                    onOrdersChange={guardBindingIntent(
-                      (next: RoomMonsterBinding | undefined) =>
-                        setMonsterOrders(arrange.monster.id, next)
-                    )}
-                  />
-                  <StudioSection
-                    title="Authored dispositions"
-                    level="subsection"
-                    about={
-                      <p>
-                        These are authored relationships, not a live stance
-                        calculation. Conditions and knowledge are evaluated by
-                        the engine.
-                      </p>
-                    }
-                  >
-                    <AuthoredDispositions
-                      document={{ draft: roomDraft, scope: siteScope }}
-                      faction={
-                        roomDraft.room.monsterBindings?.[arrange.monster.id]
-                          ?.faction
-                      }
-                    />
-                  </StudioSection>
-                </>
-              ) : arrange?.kind === 'scene' ? (
-                selectedProp && optionSections.single ? (
+            renameMapLabel: guardIntent((id: string, text: string) =>
+              labelIntentIsCurrent(id)
+                ? applyRoomIntent((current) => ({
+                    ...current,
+                    draft: renameMapLabel(current.draft, id, text),
+                  }))
+                : false
+            ),
+            deleteMapLabel: guardIntent((id: string) =>
+              labelIntentIsCurrent(id)
+                ? applyRoomIntent((current) => ({
+                    ...current,
+                    draft: deleteMapLabel(current.draft, id),
+                  }))
+                : false
+            ),
+            cancelTransients,
+            propTool: tool,
+            setPropTool: (next) => {
+              cancelTransients();
+              setTool(next);
+              setRoomTool(next);
+            },
+            socialControls: {
+              factions: (
+                <FactionsPanel
+                  scope={siteScope}
+                  room={roomDraft.room}
+                  placementNames={placementNames}
+                  onChange={guardSnapshotIntent(commitPolicies)}
+                  onNotice={guardSnapshotIntent((message: string) => {
+                    setNotice(message);
+                    return true;
+                  })}
+                />
+              ),
+              dispositions: (
+                <DispositionsPanel
+                  scope={siteScope}
+                  room={roomDraft.room}
+                  placementNames={placementNames}
+                  onChange={guardSnapshotIntent(commitPolicies)}
+                />
+              ),
+              intel: (
+                <IntelPanel
+                  explicitRename
+                  scope={siteScope}
+                  room={roomDraft.room}
+                  onChange={guardSnapshotIntent(commitPolicies)}
+                />
+              ),
+              selection:
+                arrange?.kind === 'actor' ? (
                   <>
-                    {declarationEditor}
-                    {optionSections.orders ? (
-                      <PropOrders
-                        items={[selectedProp]}
-                        bindings={roomDraft.room.propBindings}
-                        declaredIds={
-                          new Set(Object.keys(roomDraft.room.propDeclarations))
+                    <CreatureOrders
+                      scope={siteScope}
+                      room={roomDraft.room}
+                      monster={arrange.monster}
+                      placementNames={placementNames}
+                      titled={false}
+                      binding={
+                        roomDraft.room.monsterBindings?.[arrange.monster.id]
+                      }
+                      onFactionChange={guardBindingIntent(
+                        (faction: string | undefined) =>
+                          setMonsterFaction(arrange.monster.id, faction)
+                      )}
+                      onOrdersChange={guardBindingIntent(
+                        (next: RoomMonsterBinding | undefined) =>
+                          setMonsterOrders(arrange.monster.id, next)
+                      )}
+                    />
+                    <StudioSection
+                      title="Authored dispositions"
+                      level="subsection"
+                      about={
+                        <p>
+                          These are authored relationships, not a live stance
+                          calculation. Conditions and knowledge are evaluated by
+                          the engine.
+                        </p>
+                      }
+                    >
+                      <AuthoredDispositions
+                        document={{ draft: roomDraft, scope: siteScope }}
+                        faction={
+                          roomDraft.room.monsterBindings?.[arrange.monster.id]
+                            ?.faction
                         }
-                        doorIds={
-                          new Set(
-                            Object.keys(roomDraft.room.doorBindings ?? {})
-                          )
-                        }
-                        recordIds={(siteScope.intel ?? []).map(
-                          (record) => record.id
-                        )}
-                        scope={siteScope}
-                        room={roomDraft.room}
-                        placementNames={placementNames}
-                        onChange={guardBindingIntent(
-                          (id: string, next: RoomPropBinding | undefined) =>
-                            id === selectedProp.id
-                              ? setPropBinding(id, next)
-                              : false
-                        )}
                       />
-                    ) : (
-                      <p>
-                        {optionSections.door
-                          ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
-                          : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
-                      </p>
-                    )}
+                    </StudioSection>
                   </>
-                ) : (
-                  <p>
-                    Select one placed prop to edit its held intel and orders.
-                  </p>
-                )
-              ) : null,
-          },
-          propControls: {
-            palette: assetPalette,
-            tree: siteSceneTree,
-            selection:
-              activeStudioTarget?.kind === 'scene'
-                ? renderVisualPropControls()
-                : null,
-            arrangeExtras:
-              activeStudioTarget?.kind === 'scene' ? (
-                <>
-                  <div className="wb-actions">{duplicateDeleteButtons}</div>
-                  {pointLightEditor}
-                </>
-              ) : null,
-            groupActions:
-              activeStudioTarget?.kind === 'scene' ? groupUngroupActions : null,
-          },
-          saveStatus,
-          notice: notice || null,
-          autosaveBlocked,
-          saveLocalDraft: saveNow,
-          dismissNotice: () => setNotice(''),
-          publishing: {
-            busy: publishBusy,
-            setBusy: handlePublishBusy,
-          },
-        })}
+                ) : arrange?.kind === 'scene' ? (
+                  selectedProp && optionSections.single ? (
+                    <>
+                      {declarationEditor}
+                      {optionSections.orders ? (
+                        <PropOrders
+                          items={[selectedProp]}
+                          bindings={roomDraft.room.propBindings}
+                          declaredIds={
+                            new Set(
+                              Object.keys(roomDraft.room.propDeclarations)
+                            )
+                          }
+                          doorIds={
+                            new Set(
+                              Object.keys(roomDraft.room.doorBindings ?? {})
+                            )
+                          }
+                          recordIds={(siteScope.intel ?? []).map(
+                            (record) => record.id
+                          )}
+                          scope={siteScope}
+                          room={roomDraft.room}
+                          placementNames={placementNames}
+                          onChange={guardBindingIntent(
+                            (id: string, next: RoomPropBinding | undefined) =>
+                              id === selectedProp.id
+                                ? setPropBinding(id, next)
+                                : false
+                          )}
+                        />
+                      ) : (
+                        <p>
+                          {optionSections.door
+                            ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
+                            : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p>
+                      Select one placed prop to edit its held intel and orders.
+                    </p>
+                  )
+                ) : null,
+            },
+            propControls: {
+              palette: assetPalette,
+              tree: siteSceneTree,
+              selection:
+                activeStudioTarget?.kind === 'scene'
+                  ? renderVisualPropControls()
+                  : null,
+              arrangeExtras:
+                activeStudioTarget?.kind === 'scene' ? (
+                  <>
+                    <div className="wb-actions">{duplicateDeleteButtons}</div>
+                    {pointLightEditor}
+                  </>
+                ) : null,
+              groupActions:
+                activeStudioTarget?.kind === 'scene'
+                  ? groupUngroupActions
+                  : null,
+            },
+            saveStatus,
+            notice: notice || null,
+            autosaveBlocked,
+            saveLocalDraft: saveNow,
+            dismissNotice: () => setNotice(''),
+            publishing: {
+              busy: publishBusy,
+              setBusy: handlePublishBusy,
+            },
+          })}
+        </PlacedMonstersContext.Provider>
       </SiteBundlesContext.Provider>
     );
   }
 
   return (
     <SiteBundlesContext.Provider value={siteScope.bundles}>
-      <section
-        className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
-        aria-label={roomMode ? 'Site' : 'World Building Concept'}
-        data-transform-preview={previewScene || previewWall ? 'active' : 'idle'}
-        data-workspace-origin={workspaceOrigin}
-      >
-        {roomMode ? (
-          <header className="wb-header wb-header--site">
-            <div className="wb-site-heading">
-              {onBack && (
-                <button type="button" onClick={onBack}>
-                  Back
-                </button>
-              )}
-              <h2>{scene.name}</h2>
-            </div>
-            <div className="wb-save-cluster">
-              <button
-                type="button"
-                aria-label="Identity"
-                aria-expanded={identityOpen}
-                aria-controls="wb-identity"
-                disabled={publishBusy}
-                title={
-                  publishBusy
-                    ? 'Save & Play is running…'
-                    : 'Identity, local draft, revisions, arrangements and publishing'
-                }
-                onClick={() => setIdentityOpen((open) => !open)}
-              >
-                Identity
-              </button>
-            </div>
-          </header>
-        ) : (
-          <header className="wb-header">
-            <div>
-              <p className="wb-kicker">
-                {compositionSource
-                  ? `World library · ${compositionSource.worldId}`
-                  : 'Durable Concepts Lab · web#935'}
-              </p>
-              <h2>{compositionSource ? 'World Builder' : 'World Building'}</h2>
-              <p>Compose freely in world space. Hexes are scale, not slots.</p>
-            </div>
-            <div className="wb-save-cluster">
-              {onBack && <button onClick={onBack}>Back to main menu</button>}
-              {/* Prop compositions keep their own chrome: the design leaves that
-                screen "as it already is". */}
-              <span aria-live="polite">{saveStatus}</span>
-              <button disabled={publishBusy} onClick={saveNow}>
-                Save local draft
-              </button>
-              <button disabled={publishBusy} onClick={reopen}>
-                Reopen local draft
-              </button>
-              {compositionSource?.writer && (
+      <PlacedMonstersContext.Provider value={placementNames}>
+        <section
+          className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
+          aria-label={roomMode ? 'Site' : 'World Building Concept'}
+          data-transform-preview={
+            previewScene || previewWall ? 'active' : 'idle'
+          }
+          data-workspace-origin={workspaceOrigin}
+        >
+          {roomMode ? (
+            <header className="wb-header wb-header--site">
+              <div className="wb-site-heading">
+                {onBack && (
+                  <button type="button" onClick={onBack}>
+                    Back
+                  </button>
+                )}
+                <h2>{scene.name}</h2>
+              </div>
+              <div className="wb-save-cluster">
                 <button
-                  disabled={worldBusy || publishBusy}
-                  onClick={() => void saveCompositionToWorld()}
-                >
-                  {worldBusy
-                    ? 'Saving composition…'
-                    : 'Save composition to world'}
-                </button>
-              )}
-              {!confirmBlank ? (
-                <button
+                  type="button"
+                  aria-label="Identity"
+                  aria-expanded={identityOpen}
+                  aria-controls="wb-identity"
                   disabled={publishBusy}
-                  onClick={() => setConfirmBlank(true)}
+                  title={
+                    publishBusy
+                      ? 'Save & Play is running…'
+                      : 'Identity, local draft, revisions, arrangements and publishing'
+                  }
+                  onClick={() => setIdentityOpen((open) => !open)}
                 >
-                  New blank scene
+                  Identity
                 </button>
-              ) : (
-                <span className="wb-confirm">
-                  <button onClick={() => setConfirmBlank(false)}>
-                    Keep current
+              </div>
+            </header>
+          ) : (
+            <header className="wb-header">
+              <div>
+                <p className="wb-kicker">
+                  {compositionSource
+                    ? `World library · ${compositionSource.worldId}`
+                    : 'Durable Concepts Lab · web#935'}
+                </p>
+                <h2>
+                  {compositionSource ? 'World Builder' : 'World Building'}
+                </h2>
+                <p>
+                  Compose freely in world space. Hexes are scale, not slots.
+                </p>
+              </div>
+              <div className="wb-save-cluster">
+                {onBack && <button onClick={onBack}>Back to main menu</button>}
+                {/* Prop compositions keep their own chrome: the design leaves that
+                screen "as it already is". */}
+                <span aria-live="polite">{saveStatus}</span>
+                <button disabled={publishBusy} onClick={saveNow}>
+                  Save local draft
+                </button>
+                <button disabled={publishBusy} onClick={reopen}>
+                  Reopen local draft
+                </button>
+                {compositionSource?.writer && (
+                  <button
+                    disabled={worldBusy || publishBusy}
+                    onClick={() => void saveCompositionToWorld()}
+                  >
+                    {worldBusy
+                      ? 'Saving composition…'
+                      : 'Save composition to world'}
                   </button>
-                  <button className="wb-danger" onClick={confirmNewDocument}>
-                    Confirm blank scene
+                )}
+                {!confirmBlank ? (
+                  <button
+                    disabled={publishBusy}
+                    onClick={() => setConfirmBlank(true)}
+                  >
+                    New blank scene
                   </button>
-                </span>
-              )}
-            </div>
-          </header>
-        )}
+                ) : (
+                  <span className="wb-confirm">
+                    <button onClick={() => setConfirmBlank(false)}>
+                      Keep current
+                    </button>
+                    <button className="wb-danger" onClick={confirmNewDocument}>
+                      Confirm blank scene
+                    </button>
+                  </span>
+                )}
+              </div>
+            </header>
+          )}
 
-        {/* The one status that must not be lost from the screen: a world snapshot
+          {/* The one status that must not be lost from the screen: a world snapshot
           open here is NOT locally autosaved, and autosave is paused while the
           stored bytes cannot be read. It sits BELOW the header, which the
           design keeps to Back · site name · Identity and nothing else. */}
-        {roomMode && (workspaceOrigin === 'world' || autosaveBlocked) && (
-          <p className="wb-save-alert" role="status">
-            {saveStatus}
-          </p>
-        )}
-
-        {notice && (
-          <div className="wb-alert" role="alert">
-            {notice}
-            <button aria-label="Dismiss message" onClick={() => setNotice('')}>
-              ×
-            </button>
-          </div>
-        )}
-
-        <div className="wb-workspace">
-          {roomMode ? (
-            <aside className="wb-panel wb-palette" aria-label="Site outline">
-              {/* Rooms — a navigation list. One entry today, because the
-                document root has `room` singular; a room is a camera target,
-                so this is navigation and not a scope. */}
-              <details className="wb-collapse" open>
-                <summary aria-label="Rooms">Rooms</summary>
-                <ul className="wb-room-nav">
-                  <li>
-                    <button
-                      type="button"
-                      aria-current="true"
-                      aria-label={`Focus room ${roomDraft.name}`}
-                      onClick={focusRoom}
-                    >
-                      {roomDraft.name}
-                    </button>
-                  </li>
-                </ul>
-                <p className="wb-help">
-                  One room today. Jumping between rooms waits on `rooms[]` and
-                  the authored-door contract.
-                </p>
-              </details>
-              {/* Props — the palette and the scene tree in ONE section: "add a
-                prop" and "find a prop already placed" are the same noun.
-                Collapsed by default. */}
-              <details className="wb-collapse">
-                <summary aria-label="Props">Props</summary>
-                {assetPalette}
-                <h4 className="wb-tree-heading">
-                  Placed props ({scene.items.length})
-                </h4>
-                {siteSceneTree}
-              </details>
-            </aside>
-          ) : (
-            <aside className="wb-panel wb-palette" aria-label="Asset palette">
-              <h3>Real asset palette</h3>
-              {assetPalette}
-            </aside>
+          {roomMode && (workspaceOrigin === 'world' || autosaveBlocked) && (
+            <p className="wb-save-alert" role="status">
+              {saveStatus}
+            </p>
           )}
 
-          <main className="wb-stage">
-            <div className="wb-tool-strip">
-              <div
-                className="wb-tools"
-                role="toolbar"
-                aria-label="Manipulation tools"
+          {notice && (
+            <div className="wb-alert" role="alert">
+              {notice}
+              <button
+                aria-label="Dismiss message"
+                onClick={() => setNotice('')}
               >
-                {(roomMode
-                  ? ([
-                      'paint',
-                      'erase',
-                      'rectangle',
-                      ...(repeatAssetRef ? (['repeat'] as const) : []),
-                      'wall',
-                      'select',
-                      'move',
-                      'rotate',
-                    ] as const)
-                  : (['select', 'move', 'rotate'] as const)
-                ).map((entry) => (
-                  <button
-                    key={entry}
-                    className={
-                      (roomMode ? roomTool : tool) === entry
-                        ? 'wb-tool wb-active'
-                        : 'wb-tool'
-                    }
-                    aria-pressed={(roomMode ? roomTool : tool) === entry}
-                    disabled={roomMode && entry === 'wall' && !wallAssetRef}
-                    onClick={() => {
-                      setPreviewScene(null);
-                      setPreviewWall(null);
-                      setPaintingConcealmentId(null);
-                      if (entry !== 'repeat') setRepeatAssetRef(null);
-                      // Actor arming lives in the Room setup controls; a tool
-                      // strip switch always disarms a placement.
-                      setArmedMonsterRef(null);
-                      if (
-                        entry === 'paint' ||
-                        entry === 'erase' ||
-                        entry === 'rectangle' ||
-                        entry === 'repeat' ||
-                        entry === 'wall'
-                      )
-                        setRoomTool(entry);
-                      else {
-                        setRoomTool(entry);
-                        setTool(entry);
-                      }
-                    }}
-                  >
-                    {entry[0]!.toUpperCase() + entry.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <span data-testid="interaction-status">
-                {roomMode && activeConcealmentId
-                  ? 'Click walkable hexes, doors and props to add members · Escape: done'
-                  : roomMode && roomTool === 'paint'
-                    ? 'Drag on floor: paint walkable ground'
-                    : roomMode && roomTool === 'erase'
-                      ? 'Drag on floor: erase walkable ground'
-                      : roomMode && roomTool === 'rectangle'
-                        ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
-                        : roomMode && roomTool === 'repeat'
-                          ? repeatDescriptor
-                            ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
-                            : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
-                          : roomMode && roomTool === 'monster'
-                            ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
-                            : roomMode && roomTool === 'wall'
-                              ? wallAssetRef
-                                ? `Drag on floor: draw ${WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)?.label ?? 'asset'} wall · release once · Esc/right-click: cancel`
-                                : 'Wall unavailable: select a repeatable asset with measured dimensions and no door leaf'
-                              : roomMode && roomTool === 'start'
-                                ? 'Click the floor: place or move the party start'
-                                : roomMode &&
-                                    roomTool === 'move' &&
-                                    selectedActorId
-                                  ? selectedActorId === 'start'
-                                    ? 'Click the floor: move the party start · Delete: clear it'
-                                    : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
-                                  : tool === 'select'
-                                    ? 'Left: select · Shift-left: add selection'
-                                    : tool === 'move'
-                                      ? 'Drag arrows or planes · Esc/right-click: cancel'
-                                      : 'Drag the Y ring · Esc/right-click: cancel'}
-              </span>
+                ×
+              </button>
             </div>
-            <div className="wb-stage-bar">
-              <span>
-                Drag palette assets into the scene · Middle: orbit ·
-                Shift-middle: pan · Wheel: zoom
-              </span>
-              <span data-testid="asset-load-status">
-                Real models loaded {loadedCount}/{scene.items.length}
-                {failedCount > 0 ? ` · ${failedCount} failed` : ''}
-              </span>
-            </div>
-            {roomMode && activeConcealmentId && (
-              <div className="wb-help" role="status">
-                Adding members to “{activeConcealmentId}” — click hexes, doors
-                and props.
-                <button
-                  type="button"
-                  onClick={() => setPaintingConcealmentId(null)}
-                >
-                  Done
-                </button>
-              </div>
+          )}
+
+          <div className="wb-workspace">
+            {roomMode ? (
+              <aside className="wb-panel wb-palette" aria-label="Site outline">
+                {/* Rooms — a navigation list. One entry today, because the
+                document root has `room` singular; a room is a camera target,
+                so this is navigation and not a scope. */}
+                <details className="wb-collapse" open>
+                  <summary aria-label="Rooms">Rooms</summary>
+                  <ul className="wb-room-nav">
+                    <li>
+                      <button
+                        type="button"
+                        aria-current="true"
+                        aria-label={`Focus room ${roomDraft.name}`}
+                        onClick={focusRoom}
+                      >
+                        {roomDraft.name}
+                      </button>
+                    </li>
+                  </ul>
+                  <p className="wb-help">
+                    One room today. Jumping between rooms waits on `rooms[]` and
+                    the authored-door contract.
+                  </p>
+                </details>
+                {/* Props — the palette and the scene tree in ONE section: "add a
+                prop" and "find a prop already placed" are the same noun.
+                Collapsed by default. */}
+                <details className="wb-collapse">
+                  <summary aria-label="Props">Props</summary>
+                  {assetPalette}
+                  <h4 className="wb-tree-heading">
+                    Placed props ({scene.items.length})
+                  </h4>
+                  {siteSceneTree}
+                </details>
+              </aside>
+            ) : (
+              <aside className="wb-panel wb-palette" aria-label="Asset palette">
+                <h3>Real asset palette</h3>
+                {assetPalette}
+              </aside>
             )}
-            <div className="wb-canvas-wrap">
-              <WorldBuildingViewport {...viewportProps} />
-              {identityPanel}
-            </div>
-          </main>
 
-          {roomMode ? (
-            <WorldBuilderInspector
-              selectionSection={selectedWallId ? 'walls' : 'selection'}
-              selectionKey={
-                selectedIds.length > 0 || selectedMonster || selectedWallId
-                  ? JSON.stringify([
-                      roomDraft.id,
-                      selectedMonster?.id,
-                      selectedWallId,
-                      selectedIds,
-                    ])
-                  : ''
-              }
-            >
-              <details
-                className="wb-collapse"
-                data-inspector-section="edit"
-                open
-              >
-                <summary aria-label="Edit">Edit</summary>
-                <div className="wb-actions">{undoRedoButtons}</div>
-                {shortcutsHelp}
-              </details>
-
-              {/* The active nouns of the site, present whichever room the
-                  camera is on: they are not a scope and do not change when a
-                  room is jumped to. */}
-              <details
-                className="wb-collapse"
-                data-inspector-section="monsters"
-                open
-              >
-                <summary aria-label="Monsters">Monsters</summary>
-                <p className="wb-help">
-                  Monsters and the party start are authoring markers. Props stay
-                  freely placed; the encounter decides legality at Play.
-                </p>
+            <main className="wb-stage">
+              <div className="wb-tool-strip">
                 <div
-                  className="wb-actions"
-                  role="group"
-                  aria-label="Monster palette"
+                  className="wb-tools"
+                  role="toolbar"
+                  aria-label="Manipulation tools"
                 >
-                  {PALETTE_MONSTERS.map((monster) => (
+                  {(roomMode
+                    ? ([
+                        'paint',
+                        'erase',
+                        'rectangle',
+                        ...(repeatAssetRef ? (['repeat'] as const) : []),
+                        'wall',
+                        'select',
+                        'move',
+                        'rotate',
+                      ] as const)
+                    : (['select', 'move', 'rotate'] as const)
+                  ).map((entry) => (
                     <button
-                      key={monster.ref}
-                      type="button"
-                      aria-label={`Place ${monster.label}`}
-                      aria-pressed={
-                        roomTool === 'monster' &&
-                        armedMonsterRef === monster.ref
+                      key={entry}
+                      className={
+                        (roomMode ? roomTool : tool) === entry
+                          ? 'wb-tool wb-active'
+                          : 'wb-tool'
                       }
-                      onClick={() => armMonsterPlacement(monster.ref)}
+                      aria-pressed={(roomMode ? roomTool : tool) === entry}
+                      disabled={roomMode && entry === 'wall' && !wallAssetRef}
+                      onClick={() => {
+                        setPreviewScene(null);
+                        setPreviewWall(null);
+                        setPaintingConcealmentId(null);
+                        if (entry !== 'repeat') setRepeatAssetRef(null);
+                        // Actor arming lives in the Room setup controls; a tool
+                        // strip switch always disarms a placement.
+                        setArmedMonsterRef(null);
+                        if (
+                          entry === 'paint' ||
+                          entry === 'erase' ||
+                          entry === 'rectangle' ||
+                          entry === 'repeat' ||
+                          entry === 'wall'
+                        )
+                          setRoomTool(entry);
+                        else {
+                          setRoomTool(entry);
+                          setTool(entry);
+                        }
+                      }}
                     >
-                      {monster.label}
+                      {entry[0]!.toUpperCase() + entry.slice(1)}
                     </button>
                   ))}
                 </div>
-                <div
-                  className="wb-actions"
-                  role="group"
-                  aria-label="Party start"
-                >
+                <span data-testid="interaction-status">
+                  {roomMode && activeConcealmentId
+                    ? 'Click walkable hexes, doors and props to add members · Escape: done'
+                    : roomMode && roomTool === 'paint'
+                      ? 'Drag on floor: paint walkable ground'
+                      : roomMode && roomTool === 'erase'
+                        ? 'Drag on floor: erase walkable ground'
+                        : roomMode && roomTool === 'rectangle'
+                          ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
+                          : roomMode && roomTool === 'repeat'
+                            ? repeatDescriptor
+                              ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
+                              : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
+                            : roomMode && roomTool === 'monster'
+                              ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
+                              : roomMode && roomTool === 'wall'
+                                ? wallAssetRef
+                                  ? `Drag on floor: draw ${WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)?.label ?? 'asset'} wall · release once · Esc/right-click: cancel`
+                                  : 'Wall unavailable: select a repeatable asset with measured dimensions and no door leaf'
+                                : roomMode && roomTool === 'start'
+                                  ? 'Click the floor: place or move the party start'
+                                  : roomMode &&
+                                      roomTool === 'move' &&
+                                      selectedActorId
+                                    ? selectedActorId === 'start'
+                                      ? 'Click the floor: move the party start · Delete: clear it'
+                                      : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
+                                    : tool === 'select'
+                                      ? 'Left: select · Shift-left: add selection'
+                                      : tool === 'move'
+                                        ? 'Drag arrows or planes · Esc/right-click: cancel'
+                                        : 'Drag the Y ring · Esc/right-click: cancel'}
+                </span>
+              </div>
+              <div className="wb-stage-bar">
+                <span>
+                  Drag palette assets into the scene · Middle: orbit ·
+                  Shift-middle: pan · Wheel: zoom
+                </span>
+                <span data-testid="asset-load-status">
+                  Real models loaded {loadedCount}/{scene.items.length}
+                  {failedCount > 0 ? ` · ${failedCount} failed` : ''}
+                </span>
+              </div>
+              {roomMode && activeConcealmentId && (
+                <div className="wb-help" role="status">
+                  Adding members to “{activeConcealmentId}” — click hexes, doors
+                  and props.
                   <button
                     type="button"
-                    aria-label="Place party start"
-                    aria-pressed={roomTool === 'start'}
-                    onClick={armStartPlacement}
+                    onClick={() => setPaintingConcealmentId(null)}
                   >
-                    Place party start
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Clear party start"
-                    disabled={!roomDraft.room.partyStart}
-                    onClick={clearPartyStart}
-                  >
-                    Clear party start
+                    Done
                   </button>
                 </div>
-                <ul
-                  className="wb-actor-list"
-                  aria-label="Placed monsters"
-                  data-testid="placed-monsters"
-                >
-                  {roomDraft.room.monsterDeclarations.map((monster) => (
-                    <li
-                      key={monster.id}
-                      className={
-                        selectedActorId === monster.id
-                          ? 'wb-actor-row wb-actor-row--selected'
-                          : 'wb-actor-row'
-                      }
-                      data-actor-id={monster.id}
-                    >
-                      <span>
-                        {paletteNameForRef(monster.ref)} (
-                        {monster.startingCell.location.q},{' '}
-                        {monster.startingCell.location.r})
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Move monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
-                        aria-pressed={
-                          roomTool === 'move' && selectedActorId === monster.id
-                        }
-                        onClick={() => {
-                          // ARMS the move; it does not merely select. Selecting an
-                          // actor is what clicking it on the board does, and that
-                          // must never relocate it.
-                          setSelectedActorId(monster.id);
-                          setRoomTool('move');
-                          setNotice('');
-                        }}
-                      >
-                        Move
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Remove monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
-                        onClick={() => removeActor(monster.id)}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {selectedActorId === 'start' && (
-                  <p
-                    className="wb-help"
-                    data-testid="actor-selection"
-                    aria-live="polite"
-                  >
-                    Party start selected — click the floor to move it, or Delete
-                    to clear it.
-                  </p>
-                )}
-                {selectedActorId && selectedActorId !== 'start' && (
-                  <p
-                    className="wb-help"
-                    data-testid="actor-selection"
-                    aria-live="polite"
-                  >
-                    Selected monster {selectedActorId} — click the floor to move
-                    it, or Delete to remove it.
-                  </p>
-                )}
-              </details>
+              )}
+              <div className="wb-canvas-wrap">
+                <WorldBuildingViewport {...viewportProps} />
+                {identityPanel}
+              </div>
+            </main>
 
-              {/* STRUCTURAL WALLS (Task 3). The panel lists and selects authored
+            {roomMode ? (
+              <WorldBuilderInspector
+                selectionSection={selectedWallId ? 'walls' : 'selection'}
+                selectionKey={
+                  selectedIds.length > 0 || selectedMonster || selectedWallId
+                    ? JSON.stringify([
+                        roomDraft.id,
+                        selectedMonster?.id,
+                        selectedWallId,
+                        selectedIds,
+                      ])
+                    : ''
+                }
+              >
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="edit"
+                  open
+                >
+                  <summary aria-label="Edit">Edit</summary>
+                  <div className="wb-actions">{undoRedoButtons}</div>
+                  {shortcutsHelp}
+                </details>
+
+                {/* The active nouns of the site, present whichever room the
+                  camera is on: they are not a scope and do not change when a
+                  room is jumped to. */}
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="monsters"
+                  open
+                >
+                  <summary aria-label="Monsters">Monsters</summary>
+                  <p className="wb-help">
+                    Monsters and the party start are authoring markers. Props
+                    stay freely placed; the encounter decides legality at Play.
+                  </p>
+                  <div
+                    className="wb-actions"
+                    role="group"
+                    aria-label="Monster palette"
+                  >
+                    {PALETTE_MONSTERS.map((monster) => (
+                      <button
+                        key={monster.ref}
+                        type="button"
+                        aria-label={`Place ${monster.label}`}
+                        aria-pressed={
+                          roomTool === 'monster' &&
+                          armedMonsterRef === monster.ref
+                        }
+                        onClick={() => armMonsterPlacement(monster.ref)}
+                      >
+                        {monster.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div
+                    className="wb-actions"
+                    role="group"
+                    aria-label="Party start"
+                  >
+                    <button
+                      type="button"
+                      aria-label="Place party start"
+                      aria-pressed={roomTool === 'start'}
+                      onClick={armStartPlacement}
+                    >
+                      Place party start
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Clear party start"
+                      disabled={!roomDraft.room.partyStart}
+                      onClick={clearPartyStart}
+                    >
+                      Clear party start
+                    </button>
+                  </div>
+                  <ul
+                    className="wb-actor-list"
+                    aria-label="Placed monsters"
+                    data-testid="placed-monsters"
+                  >
+                    {roomDraft.room.monsterDeclarations.map((monster) => (
+                      <li
+                        key={monster.id}
+                        className={
+                          selectedActorId === monster.id
+                            ? 'wb-actor-row wb-actor-row--selected'
+                            : 'wb-actor-row'
+                        }
+                        data-actor-id={monster.id}
+                      >
+                        <span>
+                          {paletteNameForRef(monster.ref)} (
+                          {monster.startingCell.location.q},{' '}
+                          {monster.startingCell.location.r})
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Move monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                          aria-pressed={
+                            roomTool === 'move' &&
+                            selectedActorId === monster.id
+                          }
+                          onClick={() => {
+                            // ARMS the move; it does not merely select. Selecting an
+                            // actor is what clicking it on the board does, and that
+                            // must never relocate it.
+                            setSelectedActorId(monster.id);
+                            setRoomTool('move');
+                            setNotice('');
+                          }}
+                        >
+                          Move
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                          onClick={() => removeActor(monster.id)}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {selectedActorId === 'start' && (
+                    <p
+                      className="wb-help"
+                      data-testid="actor-selection"
+                      aria-live="polite"
+                    >
+                      Party start selected — click the floor to move it, or
+                      Delete to clear it.
+                    </p>
+                  )}
+                  {selectedActorId && selectedActorId !== 'start' && (
+                    <p
+                      className="wb-help"
+                      data-testid="actor-selection"
+                      aria-live="polite"
+                    >
+                      Selected monster {selectedActorId} — click the floor to
+                      move it, or Delete to remove it.
+                    </p>
+                  )}
+                </details>
+
+                {/* STRUCTURAL WALLS (Task 3). The panel lists and selects authored
                 walls; the repeated appearance pieces on the canvas are derived
                 presentation, never scene props. */}
-              <details className="wb-collapse" data-inspector-section="walls">
-                <summary aria-label="Walls">Walls</summary>
-                <StructuralWallPanel
-                  walls={walls}
-                  selectedWallId={selectedWallId}
-                  onSelectWall={selectWall}
-                  transformActions={cardinalRotateActions}
-                  assetOptions={wallAssetOptions}
-                  doorAssetOptions={wallDoorAssetOptions}
-                  doorBindings={roomDraft.room.doorBindings}
-                  armedAssetRef={wallAssetRef}
-                  onArmedAssetChange={setWallAssetRef}
-                  snapEnabled={wallSnapEnabled}
-                  onSnapChange={setWallSnapEnabled}
-                  onEdit={editWall}
-                  onRemoveWall={removeWall}
-                  onDoorMutation={mutateWallDoor}
-                  onNotice={setNotice}
-                />
-              </details>
+                <details className="wb-collapse" data-inspector-section="walls">
+                  <summary aria-label="Walls">Walls</summary>
+                  <StructuralWallPanel
+                    walls={walls}
+                    selectedWallId={selectedWallId}
+                    onSelectWall={selectWall}
+                    transformActions={cardinalRotateActions}
+                    assetOptions={wallAssetOptions}
+                    doorAssetOptions={wallDoorAssetOptions}
+                    doorBindings={roomDraft.room.doorBindings}
+                    armedAssetRef={wallAssetRef}
+                    onArmedAssetChange={setWallAssetRef}
+                    snapEnabled={wallSnapEnabled}
+                    onSnapChange={setWallSnapEnabled}
+                    onEdit={editWall}
+                    onRemoveWall={removeWall}
+                    onDoorMutation={mutateWallDoor}
+                    onNotice={setNotice}
+                  />
+                </details>
 
-              {/* THE SITE'S NOUNS, each its own node (rpg-dnd5e-web#1178
+                {/* THE SITE'S NOUNS, each its own node (rpg-dnd5e-web#1178
                 follow-up). "Policies" was a wrapper over exactly two things —
                 factions and dispositions — and a wrapper that names nothing
                 its children do not name is a level of nesting that buys
@@ -5832,262 +5873,276 @@ export function WorldBuildingConcept({
                 default like Props: the top level is the nouns themselves.
                 The form writes the document and the SERVER judges it through
                 the publish panel's validation (design slices 3/4, #1160). */}
-              <details
-                className="wb-collapse"
-                data-inspector-section="factions"
-              >
-                <summary aria-label="Factions">Factions</summary>
-                <FactionsPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  placementNames={placementNames}
-                  onChange={commitPolicies}
-                  onNotice={setNotice}
-                />
-              </details>
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="factions"
+                >
+                  <summary aria-label="Factions">Factions</summary>
+                  <FactionsPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    placementNames={placementNames}
+                    onChange={commitPolicies}
+                    onNotice={setNotice}
+                  />
+                </details>
 
-              <details
-                className="wb-collapse"
-                data-inspector-section="dispositions"
-              >
-                <summary aria-label="Dispositions">Dispositions</summary>
-                <DispositionsPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  placementNames={placementNames}
-                  onChange={commitPolicies}
-                />
-              </details>
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="dispositions"
+                >
+                  <summary aria-label="Dispositions">Dispositions</summary>
+                  <DispositionsPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    placementNames={placementNames}
+                    onChange={commitPolicies}
+                  />
+                </details>
 
-              <details
-                className="wb-collapse"
-                data-inspector-section="concealments"
-              >
-                <summary aria-label="Concealments">Concealments</summary>
-                <ConcealmentPanel
-                  scope={siteScope}
-                  items={[
-                    ...scene.items,
-                    ...walls.map((wall) => ({
-                      id: wall.id,
-                      label: wall.label,
-                    })),
-                    ...walls.flatMap((wall) =>
-                      wall.openings.flatMap((opening) =>
-                        opening.door
-                          ? [
-                              {
-                                id: opening.door.id,
-                                label: `${wall.label} · ${opening.id} door`,
-                              },
-                            ]
-                          : []
-                      )
-                    ),
-                  ]}
-                  activeId={activeConcealmentId}
-                  onActivate={(id) => {
-                    setPaintingConcealmentId(id);
-                    setPreviewScene(null);
-                    setActiveDrag(null);
-                    setSelectedActorId(null);
-                    setArmedMonsterRef(null);
-                    setRoomTool('select');
-                    setTool('select');
-                  }}
-                  onChange={commitPolicies}
-                />
-              </details>
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="concealments"
+                >
+                  <summary aria-label="Concealments">Concealments</summary>
+                  <ConcealmentPanel
+                    scope={siteScope}
+                    items={[
+                      ...scene.items,
+                      ...walls.map((wall) => ({
+                        id: wall.id,
+                        label: wall.label,
+                      })),
+                      ...walls.flatMap((wall) =>
+                        wall.openings.flatMap((opening) =>
+                          opening.door
+                            ? [
+                                {
+                                  id: opening.door.id,
+                                  label: `${wall.label} · ${opening.id} door`,
+                                },
+                              ]
+                            : []
+                        )
+                      ),
+                    ]}
+                    activeId={activeConcealmentId}
+                    onActivate={(id) => {
+                      setPaintingConcealmentId(id);
+                      setPreviewScene(null);
+                      setActiveDrag(null);
+                      setSelectedActorId(null);
+                      setArmedMonsterRef(null);
+                      setRoomTool('select');
+                      setTool('select');
+                    }}
+                    onChange={commitPolicies}
+                  />
+                </details>
 
-              <details className="wb-collapse" data-inspector-section="intel">
-                <summary aria-label="Intel">Intel</summary>
-                {/* The site's knowledge records (web#1176, v2's web#933). A
+                <details className="wb-collapse" data-inspector-section="intel">
+                  <summary aria-label="Intel">Intel</summary>
+                  {/* The site's knowledge records (web#1176, v2's web#933). A
                   record is a SITE noun held by many creatures, so it lives
                   here and never inside one creature's panel — editing it from
                   a creature would make one placement write another's
                   knowledge. What a record REVEALS is read by the engine when
                   it changes hands; the form never resolves it. */}
-                <IntelPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  onChange={commitPolicies}
-                />
-              </details>
+                  <IntelPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    onChange={commitPolicies}
+                  />
+                </details>
 
-              {/* THE SHARED ANSWER TABLES (rpg-toolkit#1897, web#1201). Beside
+                {/* THE SHARED ANSWER TABLES (rpg-toolkit#1897, web#1201). Beside
                 Intel for Intel's own reason: a table is declared once and
                 NAMED from whatever answers it, and it stands nowhere — so it
                 belongs to the site and never inside one creature's panel.
                 Kirk's direction (rpg-project#498): "having the place in the
                 builder where we can name the tables at the root like we do
                 disposition and others." */}
-              <details className="wb-collapse" data-inspector-section="tables">
-                <summary aria-label="Tables">Tables</summary>
-                <TablesPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  placementNames={placementNames}
-                  onChange={commitPolicies}
-                />
-              </details>
+                <details
+                  className="wb-collapse"
+                  data-inspector-section="tables"
+                >
+                  <summary aria-label="Tables">Tables</summary>
+                  <TablesPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    placementNames={placementNames}
+                    onChange={commitPolicies}
+                  />
+                </details>
 
-              {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the
+                {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the
                   thing (or things) selected on the canvas, not to the site: the
                   transform verbs, the height, the movement/sight declaration,
                   and — one rule for every noun — the selected thing's own
                   options. A creature is a selection too, so it opens the same
                   scope rather than living inside the Monsters roster. */}
-              {(selectedIds.length > 0 || selectedMonster) && (
-                <section
-                  className="wb-light-editor"
-                  aria-label="Selection declarations"
-                  data-inspector-section="selection"
-                >
-                  <h3>Selection</h3>
-                  {selectedIds.length > 0 && (
-                    <>{renderVisualPropControls(declarationEditor)}</>
-                  )}
+                {(selectedIds.length > 0 || selectedMonster) && (
+                  <section
+                    className="wb-light-editor"
+                    aria-label="Selection declarations"
+                    data-inspector-section="selection"
+                  >
+                    <h3>Selection</h3>
+                    {selectedIds.length > 0 && (
+                      <>{renderVisualPropControls(declarationEditor)}</>
+                    )}
 
-                  {/* THE PROP'S OWN OPTIONS (web#1178). A prop has options, and
+                    {/* THE PROP'S OWN OPTIONS (web#1178). A prop has options, and
                     which ones depend on what it is: every prop has a transform,
                     a height and a declaration above; a door adds its state; a
                     declared, non-door prop adds what it does — holdable, what
                     it carries, whether it arrives. These were document
                     sections listing every prop in the room, which is the wrong
                     shape for a setting that belongs to one. */}
-                  {optionSections.door && selectedProp && (
-                    <div
-                      className="wb-light-editor"
-                      aria-label="Door state"
-                      data-testid="selected-door-state"
-                    >
-                      <h4>Door</h4>
-                      <DoorStates
-                        items={[selectedProp]}
-                        bindings={roomDraft.room.doorBindings}
-                        declaredIds={
-                          new Set(Object.keys(roomDraft.room.propDeclarations))
-                        }
-                        onChange={setDoorBinding}
-                      />
-                    </div>
-                  )}
-                  {optionSections.orders && selectedProp && (
-                    <div
-                      className="wb-light-editor"
-                      aria-label="Prop orders"
-                      data-testid="selected-prop-orders"
-                    >
-                      <h4>Prop orders</h4>
-                      <PropOrders
-                        items={[selectedProp]}
-                        bindings={roomDraft.room.propBindings}
-                        declaredIds={
-                          new Set(Object.keys(roomDraft.room.propDeclarations))
-                        }
-                        doorIds={
-                          new Set(
-                            Object.keys(roomDraft.room.doorBindings ?? {})
-                          )
-                        }
-                        recordIds={(siteScope.intel ?? []).map(
-                          (record) => record.id
-                        )}
-                        scope={siteScope}
-                        room={roomDraft.room}
-                        onChange={setPropBinding}
-                      />
-                    </div>
-                  )}
-                  {/* ONE RULE FOR EVERY NOUN (web#1178): selecting a thing
+                    {optionSections.door && selectedProp && (
+                      <div
+                        className="wb-light-editor"
+                        aria-label="Door state"
+                        data-testid="selected-door-state"
+                      >
+                        <h4>Door</h4>
+                        <DoorStates
+                          items={[selectedProp]}
+                          bindings={roomDraft.room.doorBindings}
+                          declaredIds={
+                            new Set(
+                              Object.keys(roomDraft.room.propDeclarations)
+                            )
+                          }
+                          onChange={setDoorBinding}
+                        />
+                      </div>
+                    )}
+                    {optionSections.orders && selectedProp && (
+                      <div
+                        className="wb-light-editor"
+                        aria-label="Prop orders"
+                        data-testid="selected-prop-orders"
+                      >
+                        <h4>Prop orders</h4>
+                        <PropOrders
+                          items={[selectedProp]}
+                          bindings={roomDraft.room.propBindings}
+                          declaredIds={
+                            new Set(
+                              Object.keys(roomDraft.room.propDeclarations)
+                            )
+                          }
+                          doorIds={
+                            new Set(
+                              Object.keys(roomDraft.room.doorBindings ?? {})
+                            )
+                          }
+                          recordIds={(siteScope.intel ?? []).map(
+                            (record) => record.id
+                          )}
+                          scope={siteScope}
+                          room={roomDraft.room}
+                          onChange={setPropBinding}
+                        />
+                      </div>
+                    )}
+                    {/* ONE RULE FOR EVERY NOUN (web#1178): selecting a thing
                     configures that thing. The selected creature's facts sit
                     here, beside the props' sections, instead of inside the
                     Monsters node — the design's creature split made legible
                     (actor carries identity and placement, the binding carries
                     the orders), and reported as what its faction supplies
                     against what the placement overrides (slice 2, web#1157). */}
-                  {selectedMonster && (
-                    <div
-                      className="wb-light-editor"
-                      aria-label="Creature options"
-                      data-testid="selected-creature"
-                    >
-                      <CreatureOrders
-                        scope={siteScope}
-                        monster={selectedMonster}
-                        room={roomDraft.room}
-                        placementNames={placementNames}
-                        binding={
-                          roomDraft.room.monsterBindings?.[selectedMonster.id]
-                        }
-                        onFactionChange={(faction) =>
-                          setMonsterFaction(selectedMonster.id, faction)
-                        }
-                        onOrdersChange={(next) =>
-                          setMonsterOrders(selectedMonster.id, next)
-                        }
-                      />
-                    </div>
-                  )}
-                  {optionSections.reason === 'multi-select' && (
-                    <p className="wb-help" data-testid="option-sections-multi">
-                      {selectedIds.length} props selected — door state and prop
-                      orders belong to one prop, so they appear when a single
-                      prop is selected. What applies to all of them is above.
-                    </p>
-                  )}
+                    {selectedMonster && (
+                      <div
+                        className="wb-light-editor"
+                        aria-label="Creature options"
+                        data-testid="selected-creature"
+                      >
+                        <CreatureOrders
+                          scope={siteScope}
+                          monster={selectedMonster}
+                          room={roomDraft.room}
+                          placementNames={placementNames}
+                          binding={
+                            roomDraft.room.monsterBindings?.[selectedMonster.id]
+                          }
+                          onFactionChange={(faction) =>
+                            setMonsterFaction(selectedMonster.id, faction)
+                          }
+                          onOrdersChange={(next) =>
+                            setMonsterOrders(selectedMonster.id, next)
+                          }
+                        />
+                      </div>
+                    )}
+                    {optionSections.reason === 'multi-select' && (
+                      <p
+                        className="wb-help"
+                        data-testid="option-sections-multi"
+                      >
+                        {selectedIds.length} props selected — door state and
+                        prop orders belong to one prop, so they appear when a
+                        single prop is selected. What applies to all of them is
+                        above.
+                      </p>
+                    )}
+                  </section>
+                )}
+              </WorldBuilderInspector>
+            ) : (
+              <aside
+                className="wb-panel wb-inspector"
+                aria-label="Scene and arrangements"
+              >
+                <section>
+                  <h3>Edit</h3>
+                  <label>
+                    <span>Scene name</span>
+                    <input
+                      aria-label="Scene name"
+                      value={sceneNameDraft}
+                      maxLength={120}
+                      onChange={(event) =>
+                        setSceneNameDraft(event.target.value)
+                      }
+                      onBlur={commitDocumentName}
+                    />
+                  </label>
+                  <div className="wb-actions">
+                    {undoRedoButtons}
+                    {duplicateDeleteButtons}
+                  </div>
+                  {groupUngroupActions}
+                  {cardinalRotateActions}
+                  {shortcutsHelp}
+                  {visualHeightEditor}
+                  {declarationEditor}
+                  {pointLightEditor}
                 </section>
-              )}
-            </WorldBuilderInspector>
-          ) : (
-            <aside
-              className="wb-panel wb-inspector"
-              aria-label="Scene and arrangements"
-            >
-              <section>
-                <h3>Edit</h3>
-                <label>
-                  <span>Scene name</span>
-                  <input
-                    aria-label="Scene name"
-                    value={sceneNameDraft}
-                    maxLength={120}
-                    onChange={(event) => setSceneNameDraft(event.target.value)}
-                    onBlur={commitDocumentName}
-                  />
-                </label>
-                <div className="wb-actions">
-                  {undoRedoButtons}
-                  {duplicateDeleteButtons}
-                </div>
-                {groupUngroupActions}
-                {cardinalRotateActions}
-                {shortcutsHelp}
-                {visualHeightEditor}
-                {declarationEditor}
-                {pointLightEditor}
-              </section>
 
-              <section>
-                <h3>Scene objects ({scene.items.length})</h3>
-                {composerSceneTree}
-              </section>
-              {worldLibrarySection}
-              {arrangementLibrarySection}
-              {portableJsonDetails}
-            </aside>
-          )}
-        </div>
+                <section>
+                  <h3>Scene objects ({scene.items.length})</h3>
+                  {composerSceneTree}
+                </section>
+                {worldLibrarySection}
+                {arrangementLibrarySection}
+                {portableJsonDetails}
+              </aside>
+            )}
+          </div>
 
-        <output data-testid="library-json" hidden>
-          {JSON.stringify(library)}
-        </output>
-        {roomMode && (
-          <output data-testid="room-draft-json" hidden>
-            {roomDraftJson}
+          <output data-testid="library-json" hidden>
+            {JSON.stringify(library)}
           </output>
-        )}
-      </section>
+          {roomMode && (
+            <output data-testid="room-draft-json" hidden>
+              {roomDraftJson}
+            </output>
+          )}
+        </section>
+      </PlacedMonstersContext.Provider>
     </SiteBundlesContext.Provider>
   );
 }

@@ -45,6 +45,7 @@ import {
   type PlacementDoc,
   type PredicateDoc,
 } from './dungeonYaml';
+import { leftOnlyEndings } from './factionVocabulary';
 
 export interface Refusal {
   /** The field it names, in the compiler's spelling. */
@@ -211,6 +212,10 @@ export function predicateRefusals(
     if (p.fact === '') {
       out.push({ path: `${path}.fact`, message: saysNothing('fact') });
     }
+    return out;
+  }
+  if ('left' in p) {
+    out.push({ path: `${path}.left`, message: leftOnlyEndings(p.left) });
     return out;
   }
   const [a, b] = p.stance.between;

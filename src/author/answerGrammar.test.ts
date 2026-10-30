@@ -86,7 +86,7 @@ const ENGINE_WORD_LEGALITY: Readonly<Record<string, readonly string[]>> = {
   failure: ['fact', 'flee'],
   // rpg-project#569 R6: `fact` joined `time` — an alarm is a loud fact,
   // audience the hearers (`grammar.go` `wordLegality`, B2).
-  time: ['fact', 'hold', 'attack', 'toward', 'away', 'search'],
+  time: ['fact', 'hold', 'attack', 'toward', 'dash', 'away', 'search'],
 };
 /** The keys of the transcription that are TABLE triggers; the rest are an
  * option's verdicts. */
@@ -284,10 +284,11 @@ describe('a word is legal on some triggers and not others', () => {
         );
       }
     }
-    // 1 social-only word (`flee`) x 1 time trigger + 5 time words x 2
-    // verdicts — `fact` is legal on both since rpg-project#569 R6, and
-    // `search` joined the time words (rpg-project#668).
-    expect(checked).toBe(11);
+    // 1 social-only word (`flee`) x 1 time trigger + 6 time words x 2
+    // verdicts — `fact` is legal on both since rpg-project#569 R6,
+    // `search` joined the time words (rpg-project#668) and `dash`
+    // (rpg-project#671).
+    expect(checked).toBe(13);
   });
 
   it('refuses a scalar or sequence body on a word that carries nothing', () => {
@@ -356,7 +357,7 @@ describe('the `when` shape', () => {
     expect(() =>
       parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('fled:', 'fleeing:')))
     ).toThrow(
-      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`, `heard`, `fact`, `not`\)/
+      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled, fell \(and `enemy`, `heard`, `fact`, `threat`, `not`\)/
     );
   });
 
@@ -375,8 +376,8 @@ describe('the `when` shape', () => {
   });
 
   it('carries the shape the declaration seals', () => {
-    expect(ANSWER_WHEN.enemyBands).toHaveLength(5);
-    expect(ANSWER_WHEN.deeds).toHaveLength(4);
+    expect(ANSWER_WHEN.enemyBands).toHaveLength(8);
+    expect(ANSWER_WHEN.deeds).toHaveLength(5);
   });
 
   it('refuses a non-scalar band exactly as the raw node reads it', () => {
@@ -492,13 +493,13 @@ describe('selectors', () => {
     );
   });
 
-  it('refuses a selector word outside the sealed three', () => {
+  it('refuses a selector word outside the sealed five', () => {
     expect(() =>
       parseDungeon(
         mutated(TIME_FLED, TIME_FLED.replace('away: actor', 'away: nobody'))
       )
     ).toThrow(
-      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or \{ at: \[col, row\] \}, or \{ path: \[\[col, row\], …\] \}/
+      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or \{ at: \[col, row\] \}, or \{ path: \[\[col, row\], …\] \}/
     );
   });
 });
@@ -613,7 +614,7 @@ describe('the hearing rows', () => {
     );
     expect(refused('{ away: { path: [[1, 1]] } }')).toThrow(
       at(
-        '`away` cannot take a `path`: a route is walked, and only `toward` walks one'
+        '`away` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one'
       )
     );
     expect(refused('{ toward: { at: [1, 1], path: [[1, 1]] } }')).toThrow(
@@ -661,7 +662,7 @@ describe('the hearing rows', () => {
       /a `when` with no condition in it is on the table always — omit it/
     );
     expect(refused('{ when: { not: [{ enemy: seen }] }, hold: {} }')).toThrow(
-      /a `when` is one of \{ enemy: reach \| seen \| remembered \| lost \| none \}/
+      /a `when` is one of \{ enemy: reach \| seen \| remembered \| lost \| none \| walk \| dash \| far \}, \{ <deed>: \{ within: N \} \}, \{ heard: \{ kind, within \} \}, \{ fact: <id> \}, \{ threat: none \| walk \| dash \} or \{ not: \{ … \} \}/
     );
   });
 
