@@ -17,6 +17,7 @@ import {
   type TemplateAbility,
 } from '../world-building/monsterTemplates';
 import { documentPlacementNames } from '../world-building/placementNames';
+import { ActionRefList } from './ActionRefList';
 import { AboutPanel, FieldHelp } from './FieldHelp';
 import { NpcLookPicker } from './NpcLookPicker';
 import { StudioCastAppearance } from './StudioCastAppearance';
@@ -53,6 +54,9 @@ interface Stage {
   experience?: string;
   armor?: string;
   actions?: string[];
+  /** Ordered action refs (rpg-project#721); an empty list clears the key. */
+  addActions?: string[];
+  dropActions?: string[];
   skills?: string[];
   modelRef?: string;
   /** '' is no default faction. */
@@ -67,6 +71,8 @@ const OVERRIDES = [
   'experience',
   'armor',
   'actions',
+  'addActions',
+  'dropActions',
   'skills',
 ] as const;
 
@@ -107,6 +113,12 @@ function stagedTemplate(
     const actions = stage.actions.map((ref) => ref.trim()).filter(Boolean);
     if (actions.length) next.actions = actions;
     else delete next.actions;
+  }
+  for (const key of ['addActions', 'dropActions'] as const) {
+    const refs = stage[key];
+    if (refs === undefined) continue;
+    if (refs.length) next[key] = [...refs];
+    else delete next[key];
   }
   if (stage.skills) {
     const skills = SKILL_IDS.filter((id) => stage.skills!.includes(id));
@@ -221,6 +233,8 @@ export function CastMemberForm({
     (rulebook ? (member?.defaults?.name ?? '') : (template?.name ?? ''));
   const actions = stage.actions ?? [...(template?.actions ?? [])];
   const skills = stage.skills ?? [...(template?.skills ?? [])];
+  const addActions = stage.addActions ?? template?.addActions ?? [];
+  const dropActions = stage.dropActions ?? template?.dropActions ?? [];
   const factions = session.document.scope.factions ?? [];
   const faction = stage.faction ?? member?.defaults?.faction ?? '';
   // Only a new member can land on an id bare placements already use; a
@@ -439,6 +453,16 @@ export function CastMemberForm({
           rulebook catalog.
         </FieldHelp>
       </fieldset>
+      <ActionRefList
+        kind="addActions"
+        refs={addActions}
+        onChange={(next) => patch({ addActions: [...next] })}
+      />
+      <ActionRefList
+        kind="dropActions"
+        refs={dropActions}
+        onChange={(next) => patch({ dropActions: [...next] })}
+      />
       <fieldset className="es-skill-fields">
         <legend>Skills</legend>
         {SKILL_IDS.map((id) => (

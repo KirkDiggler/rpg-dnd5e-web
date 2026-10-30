@@ -28,7 +28,8 @@ export type EngineLawId =
   | 'temperAtSpawn'
   | 'hearing'
   | 'weights'
-  | 'holds';
+  | 'holds'
+  | 'dropAbsent';
 
 export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
   Object.freeze({
@@ -76,6 +77,12 @@ export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
       id: 'holds',
       sentence: 'When no row holds, it stands where it is.',
       source: 'rpg-toolkit mind/behavior/table.go holdPick',
+    },
+    dropAbsent: {
+      id: 'dropAbsent',
+      sentence:
+        'A dropped action must be in its list at that layer: the session refuses the run at launch when it is not.',
+      source: 'rpg-toolkit rulebooks/dnd5e/session/entities.go augmentActions',
     },
   });
 

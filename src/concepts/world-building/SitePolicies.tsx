@@ -55,9 +55,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { ActionRefList } from '../encounter-studio/ActionRefList';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
+import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
   isUseEntry,
@@ -2408,6 +2410,18 @@ export function CreatureOrders({
                 onOrdersChange(moveMonsterAction(binding, from, to))
               }
             />
+            {/* ADD AND DROP, THIS PLACEMENT ONLY (rpg-project#721): applied by
+                the session after its kind's stat block and its own weapons. */}
+            {(['addActions', 'dropActions'] as const).map((key) => (
+              <ActionRefList
+                key={key}
+                kind={key}
+                refs={binding?.[key] ?? []}
+                onChange={(next) =>
+                  onOrdersChange(setMonsterActionAugment(binding, key, next))
+                }
+              />
+            ))}
             <CreatureTemperEditor
               temper={binding?.temper}
               onCommit={(temper) =>
@@ -2456,6 +2470,16 @@ export function CreatureOrders({
             )}
             {binding.actions !== undefined && (
               <p className="wb-help">actions {binding.actions.join(', ')}</p>
+            )}
+            {binding.addActions !== undefined && (
+              <p className="wb-help">
+                addActions {binding.addActions.join(', ')}
+              </p>
+            )}
+            {binding.dropActions !== undefined && (
+              <p className="wb-help">
+                dropActions {binding.dropActions.join(', ')}
+              </p>
             )}
             {binding.holds !== undefined && (
               <p className="wb-help">holds {binding.holds.join(', ')}</p>
