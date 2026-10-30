@@ -22,18 +22,24 @@ import { parse as parseYaml } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
 import { concealmentHiding } from '../world-building/concealmentEdits';
+import { contentWorkspace } from '../world-building/contentGrid';
 import frontGoblinOptionsYaml from '../world-building/fixtures/frontGoblinOptions.yaml?raw';
 import { nextIntelId } from '../world-building/intelEdits';
-import { createRoomLabel } from '../world-building/regionEdits';
+import { renameRegion, setRegionLighting } from '../world-building/regionEdits';
 import {
   assertRoomDocumentSize,
+  cellOwners,
+  cellsInWorldRectangle,
+  floorCells,
+  MAX_FLOOR_HEXES,
+  paintCells,
   parseRoomDocumentJson,
-  resizeRoomWorkspace,
+  regionCells,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
-  updateWalkableHexes,
   type RoomDraftDocument,
   type RoomHexCell,
+  type RoomRegion,
 } from '../world-building/roomDraft';
 import {
   finishRoomFixture,
@@ -74,10 +80,11 @@ import type {
   WorldScene,
 } from '../world-building/types';
 import {
-  centeredRoomWorkspace,
   workspaceBounds,
   workspaceCells,
+  type WorkspaceBounds,
 } from '../world-building/workspaceGeometry';
+import { MAX_WORLD_COORD } from '../world-building/worldBounds';
 import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
@@ -97,12 +104,13 @@ import {
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createCastleS4Document } from './fixtures/castleS4';
 import {
+  castleRectangleCells,
   createCastleWorkspaceDocument,
-  createSparseMaxWorkspaceDocument,
 } from './fixtures/castleWorkspace';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
+  LIGHTING_REGIONS,
 } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import referenceCastleYaml from './fixtures/the-mad-king.yaml?raw';
@@ -838,6 +846,15 @@ it('names an older creature and moves it once without changing its rules, looks 
   expect(storage.document()).toEqual(moved);
 });
 
+/** A saved region wall finish, written straight into the document: no edit
+ * can choose one, because no region is wall-bound (rpg-project#725). */
+const CARRIED_FINISH = {
+  materialRef: GRAY_REF,
+  patternStart: {
+    incoming: { wallId: 'west', direction: 'end-to-start' as const },
+    outgoing: { wallId: 'north', direction: 'start-to-end' as const },
+  },
+};
 function installFinishPreview(): { smallRef: string } {
   const asset = WORLD_BUILDING_CATALOG_BY_REF.get(FIT_WALL_REF)!;
   if (asset.source !== 'generated') throw new Error('Expected fit wall.');
@@ -895,7 +912,11 @@ function installFinishPreview(): { smallRef: string } {
 
 function seed(emptyFloor = false): RoomDraftDocument {
   const document = createPopulatedStudioDocument();
-  if (emptyFloor) document.draft.room.walkableHexes = [];
+  if (emptyFloor)
+    document.draft.room.regions = document.draft.room.regions.map((region) => ({
+      ...region,
+      cells: [],
+    }));
   // Compare normalized supported data, not pre-validation representations.
   return parseRoomDocumentJson(
     stringifyRoomDraft(document.draft, document.scope)
@@ -924,10 +945,41 @@ function surface(): SVGSVGElement {
     name: 'Layout floor surface',
   }) as unknown as SVGSVGElement;
 }
+/** The grid is derived from the content (rpg-project#725 R3), so the
+ * surface's fit extent moves as content grows: read it from the cells the
+ * surface actually draws, the live presentation, not a stored workspace. */
+function drawnExtent(): WorkspaceBounds | null {
+  const drawn = document.querySelectorAll(
+    '[aria-label="Layout floor surface"] polygon[data-cell]'
+  );
+  if (drawn.length === 0) return null;
+  const extent = {
+    minX: Infinity,
+    maxX: -Infinity,
+    minZ: Infinity,
+    maxZ: -Infinity,
+  };
+  for (const node of drawn)
+    for (const pair of node.getAttribute('points')!.split(' ')) {
+      const [x, z] = pair.split(',').map(Number);
+      extent.minX = Math.min(extent.minX, x);
+      extent.maxX = Math.max(extent.maxX, x);
+      extent.minZ = Math.min(extent.minZ, z);
+      extent.maxZ = Math.max(extent.maxZ, z);
+    }
+  return extent;
+}
+let lastExtent: WorkspaceBounds | null = null;
 function at(cell: RoomHexCell): { clientX: number; clientY: number } {
+  // A retired (hidden) surface keeps the extent it last drew.
+  lastExtent = drawnExtent() ?? lastExtent;
   const point = worldToClient(
     layoutCellCenter(cell),
-    createLayoutTransform(bounds, { center: { x: 0, z: 0 }, zoom: 1 }, 12)
+    createLayoutTransform(
+      bounds,
+      { center: { x: 0, z: 0 }, zoom: 1 },
+      lastExtent!
+    )
   )!;
   return { clientX: point.x, clientY: point.y };
 }
@@ -958,11 +1010,19 @@ function viewport(): WorldBuildingViewportProps {
   return boundary.latest!;
 }
 function withoutFloor(document: RoomDraftDocument): object {
+  // The floor is the regions' cells (rpg-project#725): compare every region's
+  // identity, name and lighting, not the cells a floor edit moved.
   return {
     ...document,
     draft: {
       ...document.draft,
-      room: { ...document.draft.room, walkableHexes: undefined },
+      room: {
+        ...document.draft.room,
+        regions: document.draft.room.regions.map((region) => ({
+          ...region,
+          cells: [],
+        })),
+      },
     },
   };
 }
@@ -1140,76 +1200,62 @@ describe('Studio authoring homes through the real owner', () => {
     expect(session.document).toEqual(before);
   });
 
-  it('authors independent wall finishes and pattern starts through shared history, YAML and reload', () => {
-    const { smallRef } = installFinishPreview();
+  // Rewritten (rpg-project#725): regions are their cells and name no wall
+  // face, so a region wall finish can no longer be chosen or applied; a
+  // carried finish is shown, kept through YAML and reload, and never edited.
+  it('carries a saved region wall finish it cannot choose or apply, through YAML and reload', () => {
+    installFinishPreview();
+    const fixture = finishRoomFixture(true);
+    const carried = CARRIED_FINISH;
     const storage = new MemoryStorage({
-        draft: finishRoomFixture(true),
+        draft: {
+          ...fixture,
+          scene: {
+            ...fixture.scene,
+            version: 6,
+            regionPresentation: { left: { wallFinish: carried } },
+          },
+        },
         scope: {},
       }),
       mounted = mount(storage),
       before = storage.document();
+    expect(before.draft.scene.regionPresentation).toEqual({
+      left: { wallFinish: carried },
+    });
+    const writes = storage.roomWrites();
     fireEvent.click(button('Regions'));
     fireEvent.click(button('Edit region Left'));
-    fireEvent.change(screen.getByLabelText('Room masonry'), {
-      target: { value: GRAY_REF },
-    });
-    const left = storage.document();
-    expect(left.draft.scene.version).toBe(6);
-    expect(left.draft.scene.authoringRegions![0].wallFinish!.materialRef).toBe(
-      GRAY_REF
-    );
-    expect(screen.getByLabelText('Pattern start marker')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Pattern start'), {
-      target: { value: '1' },
-    });
-    const shifted = storage.document();
-    expect(
-      shifted.draft.scene.authoringRegions![0].wallFinish!.patternStart
-    ).not.toEqual(
-      left.draft.scene.authoringRegions![0].wallFinish!.patternStart
-    );
-    fireEvent.click(button('Undo'));
-    expect(storage.document()).toEqual(left);
-    fireEvent.click(button('Redo'));
-    expect(storage.document()).toEqual(shifted);
+    const masonry = (): HTMLSelectElement =>
+      screen.getByLabelText('Room masonry') as HTMLSelectElement;
+    expect(masonry().value).toBe(GRAY_REF);
+    expect(masonry().disabled).toBe(true);
     fireEvent.click(button('Edit region Right'));
-    fireEvent.change(screen.getByLabelText('Room masonry'), {
-      target: { value: smallRef },
-    });
-    const both = storage.document();
-    expect(
-      both.draft.scene.authoringRegions!.map((r) => r.wallFinish!.materialRef)
-    ).toEqual([GRAY_REF, smallRef]);
-    expect(both.draft.room).toEqual(before.draft.room);
-    const writes = storage.roomWrites();
-    fireEvent.change(screen.getByLabelText('Room masonry'), {
-      target: { value: smallRef },
-    });
+    expect(masonry().value).toBe('');
+    expect(masonry().disabled).toBe(true);
+    expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
     const decoded = decodeSingleRoomDungeon(
       encodeSingleRoomDungeon({
         key: 'finish-walk',
-        draft: both.draft,
-        ...both.scope,
+        draft: before.draft,
+        ...before.scope,
       })
     );
-    expect(decoded.draft.scene.authoringRegions).toEqual(
-      both.draft.scene.authoringRegions
+    expect(decoded.draft.scene.regionPresentation).toEqual(
+      before.draft.scene.regionPresentation
     );
     mounted.unmount();
     mount(storage);
-    expect(storage.document()).toEqual(both);
+    expect(storage.document()).toEqual(before);
     fireEvent.click(button('Regions'));
     fireEvent.click(button('Edit region Left'));
-    expect(
-      (screen.getByLabelText('Pattern start') as HTMLSelectElement).value
-    ).toBe('1');
+    expect(masonry().value).toBe(GRAY_REF);
   });
 
   it('refuses an incompatible staged appearance and finish as one transaction, then accepts correction without losing staged inputs', () => {
     installFinishPreview();
     const draft = finishRoomFixture();
-    delete draft.scene.authoringRegions;
     delete draft.scene.mapLabels;
     draft.room.walls = [draft.room.walls![0]];
     const storage = new MemoryStorage({ draft, scope: {} });
@@ -1251,7 +1297,6 @@ describe('Studio authoring homes through the real owner', () => {
   it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
     const { smallRef } = installFinishPreview(),
       draft = finishRoomFixture();
-    delete draft.scene.authoringRegions;
     delete draft.scene.mapLabels;
     draft.room.walls = [draft.room.walls![0]];
     const storage = new MemoryStorage({ draft, scope: {} }),
@@ -1284,7 +1329,7 @@ describe('Studio authoring homes through the real owner', () => {
     const both = storage.document();
     expect(storage.roomWrites()).toBe(writes + 1);
     expect(both.draft.scene.version).toBe(7);
-    expect(both.draft.scene.authoringRegions).toBeUndefined();
+    expect(both.draft.scene.regionPresentation).toBeUndefined();
     expect(both.draft.scene.wallFinishes!.north).toEqual({
       'positive-z': GRAY_REF,
       'negative-z': GRAY_REF,
@@ -1364,7 +1409,9 @@ describe('Studio authoring homes through the real owner', () => {
     expect(storage.document().draft.scene.version).toBe(7);
   });
 
-  it("a region label's view edits background light through one intent", () => {
+  // Rewritten (rpg-project#725): a region is no longer a label's area with a
+  // background light; its view edits its own lighting intensity.
+  it("a region's view edits its lighting through one intent", () => {
     const storage = new MemoryStorage(createRegionLightingDocument(false));
     mount(storage);
     const before = storage.document();
@@ -1373,19 +1420,17 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.click(button('Edit region left'));
     const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
     expect(inspector.getByRole('region', { name: 'Region' })).toBeTruthy();
-    fireEvent.change(inspector.getByLabelText('Background light (%)'), {
+    fireEvent.change(inspector.getByLabelText('Lighting (%)'), {
       target: { value: '25' },
     });
     fireEvent.click(inspector.getByRole('button', { name: 'Apply' }));
-    expect(
-      storage.document().draft.scene.authoringRegions![0].lighting
-    ).toEqual({ background: 0.25 });
-    expect(storage.document().draft.room).toEqual(before.draft.room);
-    expect(storage.document().scope).toEqual(before.scope);
+    expect(storage.document()).toEqual({
+      ...before,
+      draft: setRegionLighting(before.draft, LIGHTING_REGIONS.left, 0.25),
+    });
     expect(storage.roomWrites()).toBe(writes + 1);
     expect(
-      (inspector.getByLabelText('Background light (%)') as HTMLInputElement)
-        .value
+      (inspector.getByLabelText('Lighting (%)') as HTMLInputElement).value
     ).toBe('25');
     fireEvent.click(button('Undo'));
     expect(storage.document()).toEqual(before);
@@ -1508,7 +1553,7 @@ describe('Encounter Studio joined document boundary', () => {
     expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
     gesture(zero, two);
     expect(cells()).toEqual(['0,0', '2,0']);
-    expect(storage.document().draft.room.walkableHexes).toEqual([zero, two]);
+    expect(floorCells(storage.document().draft)).toEqual([zero, two]);
     expectPreserved(storage.document(), original);
     gesture(one);
     expect(cells()).toEqual(['0,0', '1,0', '2,0']);
@@ -1525,7 +1570,7 @@ describe('Encounter Studio joined document boundary', () => {
     const writes = storage.roomWrites();
     switchTo('3D');
     const committedScene = viewport().scene;
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([zero, one, two]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([zero, one, two]);
     expect(viewport().scene).toEqual(restored.draft.scene);
     switchTo('Layout');
     expect(storage.roomWrites()).toBe(writes);
@@ -1562,8 +1607,8 @@ describe('Encounter Studio joined document boundary', () => {
     expect(storage.document()).toEqual(restored);
     switchTo('3D');
     expect(viewport().scene).toEqual(restored.draft.scene);
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
-      restored.draft.room.walkableHexes
+    expect(viewport().roomAuthoring?.floorCells).toEqual(
+      floorCells(restored.draft)
     );
   });
 
@@ -1622,7 +1667,7 @@ describe('Encounter Studio joined document boundary', () => {
     switchTo('3D');
     expect(captured.size).toBe(0);
     fireEvent.pointerUp(retiredSurface, { ...at(two), pointerId: 7 });
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([]);
     act(() => viewport().onSelect(['studio-decoration']));
     const late = viewport();
     const preview = moved(late.scene);
@@ -1659,7 +1704,7 @@ describe('Encounter Studio joined document boundary', () => {
       <WorldBuilderWorkspace compositionSource={source} storage={storage} />
     );
     await settled();
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([zero, two]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([zero, two]);
     expect(viewport().scene).toEqual(authored.draft.scene);
     expect(
       parseRoomDocumentJson(screen.getByTestId('room-draft-json').textContent!)
@@ -1732,7 +1777,7 @@ describe('Encounter Studio joined document boundary', () => {
     gesture(zero, two);
     expect(cells()).toEqual(['0,0', '2,0']);
     switchTo('3D');
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([zero, two]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([zero, two]);
     switchTo('Layout');
     fireEvent.click(button('Undo'));
     expect(cells()).toEqual([]);
@@ -1756,7 +1801,7 @@ describe('Encounter Studio joined document boundary', () => {
     );
     expect(screen.getByText(/storage quota test failure/)).not.toBeNull();
     switchTo('3D');
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([zero, two]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([zero, two]);
     expect(viewport().scene).toEqual(original.draft.scene);
     const next = moved(viewport().scene);
     act(() => viewport().onSelect([viewport().scene.items[0].id]));
@@ -1769,7 +1814,7 @@ describe('Encounter Studio joined document boundary', () => {
     fireEvent.click(button('Undo'));
     switchTo('3D');
     expect(viewport().scene).toEqual(original.draft.scene);
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual([zero, two]);
+    expect(viewport().roomAuthoring?.floorCells).toEqual([zero, two]);
     switchTo('Layout');
     fireEvent.click(button('Redo'));
     switchTo('3D');
@@ -1792,7 +1837,8 @@ describe('Encounter Studio joined document boundary', () => {
     const good = storage.document();
     switchTo('3D');
     const invalid = moved(viewport().scene);
-    invalid.items[0].transform.x = 9999;
+    // Past the world bound: the canvas is unbounded within it (rpg-project#725).
+    invalid.items[0].transform.x = 2 * MAX_WORLD_COORD;
     act(() => viewport().onSelect([viewport().scene.items[0].id]));
     act(() => viewport().onTransformCommit(invalid));
     expect(viewport().scene).toEqual(good.draft.scene);
@@ -1815,45 +1861,34 @@ function changeField(name: string, value: string): void {
 function submitForm(name: string): void {
   fireEvent.submit(screen.getByRole('form', { name }));
 }
-function resize(width: number, height: number): void {
-  if (!screen.queryByRole('textbox', { name: 'Width (hexes)' }))
-    fireEvent.click(button('Size'));
-  changeField('Width (hexes)', String(width));
-  changeField('Height (hexes)', String(height));
-  submitForm('Workspace dimensions');
+/** The studio opens framed on the origin at zoom 1 and fits the derived
+ * grid (rpg-project#725 R3); read that grid from the surface when it is
+ * drawn, else derive it from the stored document. */
+function documentExtent(storage: MemoryStorage): WorkspaceBounds {
+  return (
+    drawnExtent() ?? workspaceBounds(contentWorkspace(storage.document().draft))
+  );
 }
 function pointInDocument(
   storage: MemoryStorage,
   world: WorldPoint
 ): { clientX: number; clientY: number } {
-  const workspace = storage.document().draft.workspace;
-  // Apply dimensions frames the workspace's centre (S0 T6).
-  const extent =
-    workspace.kind === undefined ? null : workspaceBounds(workspace);
   const client = worldToClient(
     world,
     createLayoutTransform(
       bounds,
-      {
-        center: extent
-          ? {
-              x: (extent.minX + extent.maxX) / 2,
-              z: (extent.minZ + extent.maxZ) / 2,
-            }
-          : { x: 0, z: 0 },
-        zoom: 1,
-      },
-      extent ?? workspace.horizontalLimit
+      { center: { x: 0, z: 0 }, zoom: 1 },
+      documentExtent(storage)
     )
   )!;
   return { clientX: client.x, clientY: client.y };
 }
 function paintWorkspace(storage: MemoryStorage): void {
-  const all = workspaceCells(storage.document().draft.workspace);
-  // Both tested rectangles have an even height: first row is even and last
-  // row is odd, so these contained endpoints enclose every cell centre.
-  const start = pointInDocument(storage, layoutCellCenter(all[0]));
-  const end = pointInDocument(storage, layoutCellCenter(all[all.length - 1]));
+  // Paint every cell of the drawn (derived) grid with one rectangle from
+  // corner to corner of its bounds, which enclose every cell centre.
+  const grid = workspaceBounds(contentWorkspace(storage.document().draft));
+  const start = pointInDocument(storage, { x: grid.minX, z: grid.minZ });
+  const end = pointInDocument(storage, { x: grid.maxX, z: grid.maxZ });
   fireEvent.click(button('Rectangle'));
   fireEvent.pointerDown(surface(), { ...start, pointerId: 7, button: 0 });
   fireEvent.pointerMove(surface(), { ...end, pointerId: 7 });
@@ -1896,24 +1931,19 @@ describe('Task 6 populated workspace/label integration', () => {
   it('castle fixture preserves the complete payload and survives real JSON/YAML/snapshot/composition codecs', () => {
     const base = seed();
     const castle = createCastleWorkspaceDocument();
-    expect(workspaceCells(castle.draft.workspace)).toHaveLength(3504);
-    expect(castle.draft.room.walkableHexes).toHaveLength(3504);
-    expect(
-      new Set(
-        castle.draft.room.walkableHexes.map((cell) => `${cell.q},${cell.r}`)
-      ).size
-    ).toBe(3504);
+    // The castle rectangle is painted floor, not a stored workspace: the
+    // canvas is unbounded and the floor is the regions (rpg-project#725).
+    const floor = floorCells(castle.draft);
+    expect(floor).toHaveLength(3504);
+    expect(new Set(floor.map((cell) => `${cell.q},${cell.r}`)).size).toBe(3504);
+    expect(castle.draft).not.toHaveProperty('workspace');
+    const painted = paintCells(base.draft, castleRectangleCells());
     expect(castle).toEqual({
       ...base,
       draft: {
-        ...base.draft,
-        workspace: resizeRoomWorkspace(base, 73, 48).draft.workspace,
-        room: {
-          ...base.draft.room,
-          walkableHexes: castle.draft.room.walkableHexes,
-        },
+        ...painted,
         scene: {
-          ...base.draft.scene,
+          ...painted.scene,
           version: 2,
           mapLabels: [
             {
@@ -1936,24 +1966,22 @@ describe('Task 6 populated workspace/label integration', () => {
     expect(castle.draft.scene.mapLabels![0].text).toBe('Kitchen');
   });
 
-  it('real resize/paint/label forms preserve all populated data through no-ops, cancellation, refused shrink, shared history and reload', async () => {
+  // Rewritten (rpg-project#725 R3): the Size form and resizing are retired
+  // with the stored workspace; painting the drawn grid, labels, no-ops,
+  // cancellation, shared history and reload still hold.
+  it('real paint/label forms preserve all populated data through no-ops, cancellation, shared history and reload', async () => {
     const original = seed();
     const storage = new MemoryStorage(original);
     let id = 0;
     const view = mount(storage, () => `joined-label-${++id}`);
     await settled();
-    resize(73, 48);
-    const resized = resizeRoomWorkspace(original, 73, 48);
-    expect(storage.document()).toEqual(resized); // growth changes no geometry/policy
-    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(3504);
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    const grid = workspaceCells(contentWorkspace(original.draft));
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(grid.length);
     paintWorkspace(storage);
     const painted = {
-      ...resized,
-      draft: updateWalkableHexes(
-        resized.draft,
-        workspaceCells(resized.draft.workspace),
-        'paint'
-      ),
+      ...original,
+      draft: paintCells(original.draft, grid),
     };
     expect(storage.document()).toEqual(painted);
     fireEvent.click(button('Label'));
@@ -1966,6 +1994,7 @@ describe('Task 6 populated workspace/label integration', () => {
         ...painted.draft,
         scene: {
           ...painted.draft.scene,
+          version: 2,
           mapLabels: [
             { id: kitchenId, text: 'Kitchen', location: { x: -8, z: -6 } },
           ],
@@ -1976,13 +2005,12 @@ describe('Task 6 populated workspace/label integration', () => {
     createLabelAt('Courtyard', { x: 8, z: 6 });
     const courtyardId = storage.document().draft.scene.mapLabels![1].id;
     expect(courtyardId).not.toBe(kitchenId);
-    const castle = createCastleWorkspaceDocument();
     const labeled = {
-      ...castle,
+      ...kitchen,
       draft: {
-        ...castle.draft,
+        ...kitchen.draft,
         scene: {
-          ...castle.draft.scene,
+          ...kitchen.draft.scene,
           mapLabels: [
             { id: kitchenId, text: 'Kitchen', location: { x: -8, z: -6 } },
             { id: courtyardId, text: 'Courtyard', location: { x: 8, z: 6 } },
@@ -1993,7 +2021,6 @@ describe('Task 6 populated workspace/label integration', () => {
     expect(storage.document()).toEqual(labeled);
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
-    resize(73, 48); // no-op dimensions
     fireEvent.click(button('Label'));
     changeField('Existing label', kitchenId);
     fireEvent.click(button('Inspector'));
@@ -2008,10 +2035,6 @@ describe('Task 6 populated workspace/label integration', () => {
     changeField('Rename label', 'Never committed');
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
     fireEvent.click(button('Label'));
-    fireEvent.click(button('Size'));
-    changeField('Width (hexes)', '74');
-    fireEvent.click(button('Cancel dimensions'));
-    fireEvent.click(button('Label'));
     changeField('Label name', 'Never placed');
     submitForm('New map label');
     // Arming from a selected label must really succeed before cancellation:
@@ -2023,21 +2046,13 @@ describe('Task 6 populated workspace/label integration', () => {
     submitForm('New map label');
     expect(screen.getByText(/Placing “Never placed”/)).not.toBeNull();
     fireEvent.click(button('Cancel placement'));
-    resize(2, 2);
-    expect(screen.getByText(/Resize refused/)).not.toBeNull();
-    expect(
-      screen
-        .getAllByRole('alert')
-        .map((node) => node.textContent)
-        .join(' ')
-    ).toMatch(/walkableHexes.*outside/i);
     expect(storage.document()).toEqual(labeled);
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.roomWrites()).toBe(writes);
     switchTo('3D');
     expect(viewport().scene).toEqual(labeled.draft.scene);
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
-      labeled.draft.room.walkableHexes
+    expect(viewport().roomAuthoring?.floorCells).toEqual(
+      floorCells(labeled.draft)
     );
     const nextScene = moved(viewport().scene);
     act(() => viewport().onSelect([viewport().scene.items[0].id]));
@@ -2051,14 +2066,14 @@ describe('Task 6 populated workspace/label integration', () => {
     switchTo('3D');
     expect(viewport().scene).toEqual(nextScene);
     switchTo('Layout');
-    // Exactly five committed edits; all navigation/no-op/cancel/refusal entries
-    // are absent. Whole-document comparisons protect every policy and identity.
-    for (const expected of [labeled, kitchen, painted, resized, original]) {
+    // Exactly four committed edits; all navigation/no-op/cancel entries are
+    // absent. Whole-document comparisons protect every policy and identity.
+    for (const expected of [labeled, kitchen, painted, original]) {
       fireEvent.click(button('Undo'));
       expect(storage.document()).toEqual(expected);
     }
     expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
-    for (const expected of [resized, painted, kitchen, labeled, propEdited]) {
+    for (const expected of [painted, kitchen, labeled, propEdited]) {
       fireEvent.click(button('Redo'));
       expect(storage.document()).toEqual(expected);
     }
@@ -2067,43 +2082,46 @@ describe('Task 6 populated workspace/label integration', () => {
     view.unmount();
     mount(storage);
     await settled();
-    expect(cells()).toHaveLength(3504);
+    expect(cells()).toHaveLength(grid.length);
     expect(surface().querySelectorAll('[data-label-id]')).toHaveLength(2);
     expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
     expect(storage.document()).toEqual(propEdited);
     switchTo('3D');
     expect(viewport().scene).toEqual(propEdited.draft.scene);
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
-      propEdited.draft.room.walkableHexes
+    expect(viewport().roomAuthoring?.floorCells).toEqual(
+      floorCells(propEdited.draft)
     );
   }, 60000);
 
-  it('sparse maximum fits but fully painted maximum refuses before history/storage without losing prior label edit', async () => {
-    const original = createSparseMaxWorkspaceDocument();
-    expect(workspaceCells(original.draft.workspace)).toHaveLength(16384);
-    expect(original.draft.room.walkableHexes.length).toBeLessThan(16384);
+  // Rewritten (rpg-project#725): the sparse-maximum workspace and its byte
+  // refusal are retired (row runs keep a painted rectangle small); a
+  // castle-sized floor still fits the size cap, and a paint past the floor cap
+  // still refuses before history/storage without losing a prior label edit.
+  it('a castle-sized floor fits the size cap; paint past the floor cap refuses before history/storage without losing a prior label edit', () => {
+    const original = createCastleWorkspaceDocument();
+    expect(floorCells(original.draft)).toHaveLength(3504);
+    expect(() => assertRoomDocumentSize(original)).not.toThrow();
     expectCodecs(original);
-    const fullyPainted = {
-      ...original,
-      draft: updateWalkableHexes(
-        original.draft,
-        workspaceCells(original.draft.workspace),
-        'paint'
-      ),
-    };
-    expect(fullyPainted.draft.room.walkableHexes).toHaveLength(16384);
-    expect(() => assertRoomDocumentSize(fullyPainted)).toThrow(
-      /maximum 500000 characters/
-    );
-    expect(() =>
-      stringifyRoomDraft(fullyPainted.draft, fullyPainted.scope)
-    ).toThrow(/maximum 500000 characters/);
     const storage = new MemoryStorage(original);
-    mount(storage, () => 'max-label');
-    await settled();
-    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(16384);
-    fireEvent.click(button('Label'));
-    createLabelAt('Courtyard', { x: 8, z: 6 });
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        idFactory={() => 'max-label'}
+        studioPresentation={{
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    act(() =>
+      expect(session.createMapLabel('Pantry', { x: 8, z: 9 })).toBe(true)
+    );
     const good = storage.document();
     expect(good).toEqual({
       ...original,
@@ -2112,34 +2130,30 @@ describe('Task 6 populated workspace/label integration', () => {
         scene: {
           ...original.draft.scene,
           mapLabels: [
-            { id: 'max-label', text: 'Courtyard', location: { x: 8, z: 6 } },
+            ...original.draft.scene.mapLabels!,
+            { id: 'max-label', text: 'Pantry', location: { x: 8, z: 9 } },
           ],
         },
       },
     });
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
-    paintWorkspace(storage);
-    expect(screen.getByRole('alert').textContent).toMatch(
-      /maximum 500000 characters/
-    );
+    const pastCap = Array.from({ length: MAX_FLOOR_HEXES + 1 }, (_, i) => ({
+      q: i % 512,
+      r: 100 + Math.floor(i / 512),
+    }));
+    act(() => expect(session.commitFloor(pastCap, 'paint')).toBe(false));
     expect(storage.document()).toEqual(good);
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.roomWrites()).toBe(writes);
-    expect(cells()).toHaveLength(original.draft.room.walkableHexes.length);
-    switchTo('3D');
-    expect(viewport().scene).toEqual(good.draft.scene);
-    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
-      good.draft.room.walkableHexes
-    );
-    switchTo('Layout');
-    fireEvent.click(button('Undo'));
+    expect(session.document).toEqual(good);
+    act(() => session.undo());
     expect(storage.document()).toEqual(original);
-    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(button('Redo'));
+    expect(session.canUndo).toBe(false);
+    act(() => session.redo());
     expect(storage.document()).toEqual(good);
-    expect((button('Redo') as HTMLButtonElement).disabled).toBe(true);
-  }, 60000);
+    expect(session.canRedo).toBe(false);
+  });
 });
 
 describe('compact header canonical naming through the populated owner', () => {
@@ -2277,15 +2291,12 @@ function sampledPoint(storage: MemoryStorage, world: WorldPoint): WorldPoint {
   // Round-trip the injected browser projection, so exact helper comparisons
   // include the same finite coordinate precision as the DOM event, not an epsilon guess.
   const client = pointInDocument(storage, world);
-  const workspace = storage.document().draft.workspace;
   return clientToWorld(
     { x: client.clientX, y: client.clientY },
     createLayoutTransform(
       bounds,
       { center: { x: 0, z: 0 }, zoom: 1 },
-      workspace.kind === 'centered-odd-r'
-        ? workspaceBounds(workspace)
-        : workspace.horizontalLimit
+      documentExtent(storage)
     )
   )!;
 }
@@ -2428,12 +2439,13 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    // Size lives in the room view: nothing selected is the room.
+    // The room view has no Size section: the canvas is unbounded and the
+    // grid is derived (rpg-project#725 R3).
     expect(
-      within(screen.getByRole('region', { name: 'Inspector' })).getByLabelText(
-        'Width (hexes)'
-      )
-    ).toBeTruthy();
+      within(
+        screen.getByRole('region', { name: 'Inspector' })
+      ).queryByLabelText('Width (hexes)')
+    ).toBeNull();
     gesture(zero);
     const floor = storage.document();
     expectPreserved(floor, original);
@@ -2682,14 +2694,19 @@ describe('joined structural walls in the populated Studio document', () => {
     );
     fireEvent.pointerMove(surface(), end);
     fireEvent.pointerUp(surface(), end);
-    changeField('Wall midpoint X', String(wallMidpoint(wall).x + 999));
+    // No workspace bounds a wall now (rpg-project#725 R3); the world bound
+    // still refuses.
+    changeField(
+      'Wall midpoint X',
+      String(wallMidpoint(wall).x + 2 * MAX_WORLD_COORD)
+    );
     submitForm('Arrange selected noun');
     expect(
       screen
         .getAllByRole('alert')
         .map((entry) => entry.textContent)
         .join(' ')
-    ).toMatch(/outside|workspace/i);
+    ).toMatch(/refused|within/i);
     fireEvent.pointerDown(
       wallHit(wall.id),
       pointer(storage, wallMidpoint(wall))
@@ -3074,12 +3091,8 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
         )
       ).toBe(true);
     });
-    act(() =>
-      owner.session.viewportProps.roomAuthoring!.onPlaceMonster!({
-        q: 99999,
-        r: 0,
-      })
-    );
+    // The far-off placement refusal is retired with the stored workspace: the
+    // canvas is unbounded (rpg-project#725 R3), so no cell is out of bounds.
     expect(owner.session.document).toEqual(changed);
     act(() => owner.session.undo());
     expect(owner.session.document.draft.room.monsterDeclarations).toEqual(
@@ -3090,114 +3103,10 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     expect(owner.storage.document()).toEqual(changed);
   });
 
-  it('keeps exact overlapped exterior coverage as a no-op bind through the real owner without rewriting the accepted document', () => {
-    // Sanitized six-line geometry only; no operator document/policy enters tests.
-    const original = createPopulatedStudioDocument();
-    original.draft.workspace = centeredRoomWorkspace(64, 32);
-    const source = original.draft.room.walls![0];
-    const lines = [
-      [
-        { x: -29.444863728670914, z: 16 },
-        { x: -5.196152422706631, z: 16 },
-      ],
-      [
-        { x: -29.44486372867091, z: 16 },
-        { x: -29.44486372867091, z: 7 },
-      ],
-      [
-        { x: -29.444863728670914, z: 7 },
-        { x: -5.196152422706631, z: 7 },
-      ],
-      [
-        { x: -5.196152422706631, z: 16 },
-        { x: -5.196152422706631, z: 7 },
-      ],
-      [
-        { x: -5.196152422706632, z: 7 },
-        { x: 8.660254037844386, z: 7 },
-      ],
-      [
-        { x: -5.196152422706632, z: 16 },
-        { x: 8.660254037844386, z: 16 },
-      ],
-    ];
-    const walls = lines.map(
-      ([start, end], i): StructuralWall => ({
-        ...structuredClone(source),
-        id: i === 0 ? source.id : `coverage-${i}`,
-        label: 'Coverage',
-        line: { start, end },
-        openings: i === 0 ? source.openings : [],
-      })
-    );
-    original.draft.room.walls = walls.slice(0, 4);
-    original.draft = createRoomLabel(
-      original.draft,
-      'room-area',
-      'room-label',
-      'Room',
-      { x: -19.609612065022446, z: 11.406561842131094 }
-    );
-    original.draft.room.walls = walls;
-    const owner = arrangeOwner(original);
-    act(() =>
-      expect(owner.session.mapLabelSelection.select('room-label')).toBe(true)
-    );
-    const before = owner.session.document;
-    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
-    const writes = owner.storage.roomWrites();
-    expect(owner.session.arrange).toMatchObject({
-      kind: 'label',
-      region: { id: 'room-area' },
-      resolution: { status: 'resolved' },
-    });
-    act(() =>
-      expect(owner.session.regionEditing.useEnclosingWalls('room-area')).toBe(
-        true
-      )
-    );
-    expect(owner.session.document).toBe(before);
-    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    expect(owner.storage.roomWrites()).toBe(writes);
-    expect(owner.session.canUndo).toBe(false);
-    owner.switchView('layout');
-    owner.switchView('3d');
-    act(() =>
-      expect(owner.session.regionEditing.useEnclosingWalls('room-area')).toBe(
-        true
-      )
-    );
-    expect(owner.session.document).toBe(before);
-    expect(owner.session.document.draft.room).toEqual(original.draft.room);
-    expect(owner.session.document.scope).toEqual(original.scope);
-    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    // Fresh acquisition uses the same graph, not a bound-only rescue. The
-    // duplicate label conflict is intentional; no other definition wins.
-    act(() =>
-      expect(
-        owner.session.regionEditing.createRoomLabel('Second room', {
-          x: -20,
-          z: 12,
-        })
-      ).toBe(true)
-    );
-    expect(
-      owner.session.document.draft.scene.authoringRegions![1].boundary
-    ).toEqual(before.draft.scene.authoringRegions![0].boundary);
-    expect(
-      owner.session.regionEditing.resolutions.map((r) =>
-        r.status === 'unresolved' ? r.reason : 'resolved'
-      )
-    ).toEqual(['duplicate-room-label', 'duplicate-room-label']);
-    act(() => owner.session.undo());
-    expect(owner.session.document).toEqual(before);
-    owner.unmount();
-    const loaded = arrangeOwner(owner.storage.document());
-    expect(loaded.session.document).toEqual(before);
-    expect(loaded.session.regionEditing.resolutions[0].status).toBe('resolved');
-  });
-
-  it('joins real room definitions, T-wall motion/break/repair, interleaved edits and full-document history without witness adoption', () => {
+  // Rewritten (rpg-project#725 R4): a region is the cells it lists, so walls
+  // never resolve, break or adopt it (enclosure witnesses are retired); wall
+  // motion/break/repair, interleaved edits and full-document history keep it.
+  it('joins real regions, T-wall motion/break/repair, interleaved edits and full-document history; walls never move a region', () => {
     const original = createPopulatedStudioDocument();
     const north = original.draft.room.walls![0];
     const extra = (
@@ -3225,17 +3134,39 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
       expect(owner.storage.roomWrites()).toBe(writes + 1);
       snapshots.push(structuredClone(owner.session.document));
     };
-    accepted(() =>
-      owner.session.regionEditing.createRoomLabel('Left', { x: -2, z: 0 })
+    const newest = (): string =>
+      owner.session.document.draft.room.regions.at(-1)!.id;
+    accepted(() => owner.session.regionEditing.createRegion('Left'));
+    const left = newest();
+    // The new region is selected, so the region tool paints into it.
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'region',
+      region: { id: left, name: 'Left', cells: [] },
+      resolution: { status: 'unresolved', reason: 'empty' },
+    });
+    const leftCells = cellsInWorldRectangle(
+      { x: -3.6, z: -2.6 },
+      { x: -0.4, z: 2.6 }
     );
-    accepted(() =>
-      owner.session.regionEditing.createRoomLabel('Right', { x: 2, z: 0 })
+    accepted(() => owner.session.commitFloor(leftCells, 'paint', left));
+    accepted(() => owner.session.regionEditing.createRegion('Right'));
+    const right = newest();
+    const rightCells = cellsInWorldRectangle(
+      { x: 0.4, z: -2.6 },
+      { x: 3.6, z: 2.6 }
     );
-    const regions = owner.session.document.draft.scene.authoringRegions!;
-    const intent = structuredClone(regions);
-    expect(
-      owner.session.regionEditing.resolutions.map((r) => r.status)
-    ).toEqual(['resolved', 'resolved']);
+    accepted(() => owner.session.commitFloor(rightCells, 'paint', right));
+    const named = (): RoomRegion[] =>
+      owner.session.document.draft.room.regions.filter(
+        (region) => region.id === left || region.id === right
+      );
+    const intent = structuredClone(named());
+    expect(intent.map((region) => region.name)).toEqual(['Left', 'Right']);
+    const statuses = (): string[] =>
+      owner.session.regionEditing.resolutions
+        .filter((r) => r.id === left || r.id === right)
+        .map((r) => r.status);
+    expect(statuses()).toEqual(['resolved', 'resolved']);
     act(() => owner.session.wallEditing.select('middle'));
     const middle = owner.session.document.draft.room.walls!.find(
       (w) => w.id === 'middle'
@@ -3246,10 +3177,8 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
         line: { start: { x: 1, z: -3 }, end: { x: 1, z: 3 } },
       })
     );
-    expect(
-      owner.session.regionEditing.resolutions.map((r) => r.status)
-    ).toEqual(['resolved', 'resolved']);
-    expect(owner.session.document.draft.scene.authoringRegions).toEqual(intent);
+    expect(named()).toEqual(intent);
+    expect(statuses()).toEqual(['resolved', 'resolved']);
     const completeMiddle = owner.session.document.draft.room.walls!.find(
       (w) => w.id === 'middle'
     )!;
@@ -3259,11 +3188,9 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
         line: { ...completeMiddle.line, end: { x: 1, z: 2 } },
       })
     );
-    expect(
-      owner.session.regionEditing.resolutions.every(
-        (r) => r.status === 'unresolved'
-      )
-    ).toBe(true);
+    // A broken enclosure no longer unresolves anything: the cells are listed.
+    expect(named()).toEqual(intent);
+    expect(statuses()).toEqual(['resolved', 'resolved']);
     const broken = owner.session.document;
     const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = owner.storage.roomWrites();
@@ -3273,9 +3200,7 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     expect(owner.storage.roomWrites()).toBe(writes);
     expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     accepted(() => owner.session.wallEditing.edit(completeMiddle));
-    expect(
-      owner.session.regionEditing.resolutions.map((r) => r.status)
-    ).toEqual(['resolved', 'resolved']);
+    expect(named()).toEqual(intent);
     accepted(() => owner.session.createMapLabel('Plain note', { x: 0, z: 4 }));
     accepted(() => owner.session.commitFloor([{ q: 3, r: 0 }], 'paint'));
     act(() => owner.session.viewportProps.onSelect(['table']));
@@ -3286,21 +3211,24 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
         position: { x: 1.25 },
       })
     );
-    expect(owner.session.document.draft.scene.authoringRegions).toEqual(intent);
+    expect(named()).toEqual(intent);
     expect(owner.session.document.scope).toEqual(original.scope);
     expect(owner.session.document.draft.room.doorBindings).toEqual(
       original.draft.room.doorBindings
     );
-    act(() => owner.session.mapLabelSelection.select(regions[0].labelId));
-    const beforeAreaRoom = structuredClone(owner.session.document.draft.room);
-    accepted(() =>
-      owner.session.regionEditing.setExplicitRegionArea(regions[0].id, [])
+    const beforeRemoval = owner.session.document;
+    // Region edits act on the selected region, as the inspector does.
+    act(() => expect(owner.session.selectRegion(left)).toBe(true));
+    accepted(() => owner.session.regionEditing.removeRegion(left));
+    // Removing a region keeps its cells as floor, in the implicit region.
+    const owners = cellOwners(owner.session.document.draft);
+    const implicit = owner.session.document.draft.room.implicitRegionId;
+    expect(
+      leftCells.every((c) => owners.get(`${c.q},${c.r}`) === implicit)
+    ).toBe(true);
+    expect(floorCells(owner.session.document.draft)).toEqual(
+      floorCells(beforeRemoval.draft)
     );
-    expect(owner.session.document.draft.room).toEqual(beforeAreaRoom);
-    expect(owner.session.arrange).toMatchObject({
-      kind: 'label',
-      resolution: { reason: 'empty-explicit' },
-    });
     const final = snapshots[snapshots.length - 1];
     for (const expected of snapshots.slice(0, -1).reverse()) {
       act(() => owner.session.undo());
@@ -3314,101 +3242,83 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     owner.unmount();
     const loaded = arrangeOwner(owner.storage.document());
     expect(loaded.session.document).toEqual(final);
-    expect(loaded.session.regionEditing.resolutions[0]).toMatchObject({
-      reason: 'empty-explicit',
-    });
+    expect(
+      loaded.session.document.draft.room.regions.map((region) => region.name)
+    ).toEqual(final.draft.room.regions.map((region) => region.name));
   });
 
-  it('joins initially unbound label, wall closure, explicit binding and stale link rejection', () => {
+  // Rewritten (rpg-project#725): label binding and enclosing walls are
+  // retired; the retired-callback and stale-target refusals still hold.
+  it('a region edit through a retired callback or a stale target is refused without history', () => {
     const original = createPopulatedStudioDocument();
-    const north = original.draft.room.walls![0];
-    const extra = (
-      id: string,
-      start: WorldPoint,
-      end: WorldPoint
-    ): StructuralWall => ({
-      ...structuredClone(north),
-      id,
-      label: id,
-      line: { start, end },
-      openings: [],
-    });
-    original.draft.room.walls!.push(
-      extra('east', { x: 4, z: -3 }, { x: 4, z: 3 }),
-      extra('south', { x: 4, z: 3 }, { x: -4, z: 3 })
-    );
     const owner = arrangeOwner(original);
     act(() =>
-      expect(
-        owner.session.regionEditing.createRoomLabel('Initially open', {
-          x: 0,
-          z: 0,
-        })
-      ).toBe(true)
+      expect(owner.session.regionEditing.createRegion('Initially open')).toBe(
+        true
+      )
     );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    const intent = structuredClone(region);
-    act(() => owner.session.wallEditing.setAsset(north.appearance.assetRef));
-    act(() =>
-      expect(
-        owner.session.wallEditing.create({
-          start: { x: -4, z: 3 },
-          end: { x: -4, z: -3 },
-        })
-      ).toBe(true)
-    );
-    expect(owner.session.document.draft.scene.authoringRegions![0]).toEqual(
-      intent
-    );
-    expect(owner.session.regionEditing.resolutions[0]).toMatchObject({
-      reason: 'unbound',
+    const region = owner.session.document.draft.room.regions.at(-1)!;
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'region',
+      region: { id: region.id },
     });
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
     const retired = owner.session.regionEditing;
     act(() =>
-      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
-        true
-      )
+      expect(
+        owner.session.commitFloor([{ q: 0, r: 0 }], 'paint', region.id)
+      ).toBe(true)
     );
-    const bound = owner.session.document;
-    expect(owner.session.regionEditing.resolutions[0].status).toBe('resolved');
-    act(() => expect(retired.setExplicitRegionArea(region.id, [])).toBe(false));
+    const painted = owner.session.document;
     const writes = owner.storage.roomWrites();
+    act(() => expect(retired.renameRegion(region.id, 'Late')).toBe(false));
+    act(() => expect(retired.setRegionLighting(region.id, 0.5)).toBe(false));
+    act(() => expect(retired.removeRegion(region.id)).toBe(false));
     act(() =>
-      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
+      expect(
+        owner.session.commitArrange({
+          kind: 'region-edit',
+          target: { kind: 'region', id: 'unrelated' },
+          name: 'Ghost',
+        })
+      ).toBe(false)
+    );
+    act(() =>
+      expect(
+        owner.session.commitFloor([{ q: 5, r: 5 }], 'paint', 'unrelated')
+      ).toBe(false)
+    );
+    // The implicit region is where unassigned paint lands: never removable.
+    const implicit = painted.draft.room.implicitRegionId;
+    act(() => expect(owner.session.selectRegion(implicit)).toBe(true));
+    act(() =>
+      expect(owner.session.regionEditing.removeRegion(implicit)).toBe(false)
+    );
+    expect(owner.session.document).toBe(painted);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    // The live callback, on the selected region, is accepted.
+    act(() => expect(owner.session.selectRegion(region.id)).toBe(true));
+    act(() =>
+      expect(owner.session.regionEditing.renameRegion(region.id, 'Late')).toBe(
         true
       )
     );
-    expect(owner.session.document).toBe(bound);
-    expect(owner.storage.roomWrites()).toBe(writes);
-    act(() =>
-      expect(
-        owner.session.commitArrange({
-          kind: 'region-area',
-          target: { kind: 'label', id: region.labelId },
-          regionId: 'unrelated',
-          cells: [],
-        })
-      ).toBe(false)
-    );
-    act(() =>
-      expect(
-        owner.session.commitArrange({
-          kind: 'label-remove',
-          target: { kind: 'label', id: region.labelId },
-        })
-      ).toBe(false)
-    );
-    expect(owner.session.document).toBe(bound);
+    const renamed = owner.session.document;
+    expect(owner.storage.roomWrites()).toBe(writes + 1);
     act(() => owner.session.undo());
-    expect(owner.session.regionEditing.resolutions[0]).toMatchObject({
-      reason: 'unbound',
-    });
+    expect(owner.session.document).toEqual(painted);
+    act(() => owner.session.undo());
+    expect(
+      owner.session.document.draft.room.regions.find((r) => r.id === region.id)
+    ).toEqual(region);
     act(() => owner.session.redo());
-    expect(owner.session.document).toEqual(bound);
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(renamed);
     owner.unmount();
     const loaded = arrangeOwner(owner.storage.document());
-    expect(loaded.session.regionEditing.resolutions[0].status).toBe('resolved');
+    expect(
+      loaded.session.regionEditing.resolutions.find((r) => r.id === region.id)
+        ?.status
+    ).toBe('resolved');
     expect(loaded.session.document.scope).toEqual(original.scope);
   });
 
@@ -4457,8 +4367,8 @@ describe('Arrange joined presentation and canonical document receipts', () => {
   });
 });
 
-describe('Layout room/explicit area controls joined to the real owner', () => {
-  function regionSeed(open = false): RoomDraftDocument {
+describe('Layout regions joined to the real owner', () => {
+  function regionSeed(): RoomDraftDocument {
     const document = seed();
     const north = document.draft.room.walls![0];
     north.line = { start: { x: 0, z: 0 }, end: { x: 8, z: 0 } };
@@ -4477,19 +4387,17 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
       north,
       wall('east', { x: 8, z: 0 }, { x: 8, z: 4 }),
       wall('south', { x: 8, z: 4 }, { x: 0, z: 4 }),
-      ...(!open
-        ? [
-            wall('west', { x: 0, z: 4 }, { x: 0, z: 0 }),
-            wall('divider', { x: 4, z: 0 }, { x: 4, z: 4 }),
-          ]
-        : []),
+      wall('west', { x: 0, z: 4 }, { x: 0, z: 0 }),
+      wall('divider', { x: 4, z: 0 }, { x: 4, z: 4 }),
     ];
     return document;
   }
+  /** The label tool's room kind names a new region and selects it
+   * (rpg-project#725 R5); a note kind places a note. */
   function place(name: string, x: number, z: number, kind = 'room'): void {
     if (kind === 'room') {
       fireEvent.click(button('Regions'));
-      fireEvent.click(button('Inspector')); // region list/settings in this home
+      fireEvent.click(button('Inspector'));
       fireEvent.click(button('New region'));
     } else fireEvent.click(button('Label'));
     fireEvent.change(screen.getByLabelText('Label name'), {
@@ -4504,103 +4412,112 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     });
     fireEvent.click(button('Place label at coordinates'));
   }
-  function selectLabel(name: string): void {
-    fireEvent.click(
-      button(
-        screen.queryByLabelText(`Edit region ${name}`) ? 'Regions' : 'Build'
-      )
-    );
-    fireEvent.keyDown(
-      screen.getByRole('button', { name: `Select map label ${name}` }),
-      { key: 'Enter' }
-    );
-    fireEvent.click(button('Inspector'));
+  /** A Rooms list row selects its region through session.selectRegion. */
+  function selectRegion(name: string): void {
+    fireEvent.click(button('Build'));
+    fireEvent.click(button(`Edit region ${name}`));
   }
-  function areaCount(): number {
-    return surface().querySelectorAll('[data-region-id]').length;
+  function regionNamed(
+    document: RoomDraftDocument,
+    name: string
+  ): RoomRegion | undefined {
+    return document.draft.room.regions.find((region) => region.name === name);
+  }
+  function areaIds(): string[] {
+    return [...surface().querySelectorAll('[data-region-id]')].map(
+      (node) => node.getAttribute('data-region-id')!
+    );
+  }
+  function status(): string {
+    return within(screen.getByRole('region', { name: 'Inspector' }))
+      .getAllByRole('status')
+      .map((node) => node.textContent)
+      .join(' ');
+  }
+  function dragWorld(
+    storage: MemoryStorage,
+    start: WorldPoint,
+    end: WorldPoint
+  ): void {
+    fireEvent.pointerDown(surface(), pointer(storage, start));
+    fireEvent.pointerMove(surface(), pointer(storage, end));
+    fireEvent.pointerUp(surface(), pointer(storage, end));
   }
   const change = (name: string, value: string): void => {
     fireEvent.change(screen.getByLabelText(name), { target: { value } });
   };
 
-  it('creates two adjacent rooms; divider x4→5 follows without witness writes, break/repair and label crossing have honest status', async () => {
+  // Rewritten (rpg-project#725 R4/R5): a room is a named region of painted
+  // cells, not a label bound to an enclosure; walls never move, adopt or
+  // unresolve it, so the divider's motion, removal and repair leave it be.
+  it('creates two adjacent regions by name and paints them; divider x4→5, removal and repair never move a region', async () => {
     const original = regionSeed();
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
     place('Left room', 1, 2);
+    expect(status()).toMatch(/Not painted yet/);
+    fireEvent.click(button('Paint this region'));
+    fireEvent.click(button('Rectangle region'));
+    dragWorld(storage, { x: 0.4, z: 0.4 }, { x: 3.6, z: 3.6 });
     place('Right room', 7, 2);
-    const pair = structuredClone(
-      storage.document().draft.scene.authoringRegions!
+    fireEvent.click(button('Paint this region'));
+    fireEvent.click(button('Rectangle region'));
+    dragWorld(storage, { x: 4.4, z: 0.4 }, { x: 7.6, z: 3.6 });
+    const painted = storage.document();
+    const left = regionNamed(painted, 'Left room')!;
+    const right = regionNamed(painted, 'Right room')!;
+    const pair = structuredClone([left, right]);
+    expect(regionCells(left)).toEqual(
+      cellsInWorldRectangle({ x: 0.4, z: 0.4 }, { x: 3.6, z: 3.6 }).sort(
+        (a, b) => a.r - b.r || a.q - b.q
+      )
     );
-    expect(pair).toHaveLength(2);
-    expect(areaCount()).toBe(2);
-    expect(storage.document().draft.room).toEqual(original.draft.room);
+    expect(regionCells(right).length).toBeGreaterThan(0);
+    expect(areaIds()).toEqual(expect.arrayContaining([left.id, right.id]));
+    expect(
+      screen.getByRole('button', { name: 'Select region Left room' })
+    ).toBeTruthy();
+    // Regions are gameplay data beside the walls, scene and scope.
+    expect(painted.draft.room.walls).toEqual(original.draft.room.walls);
+    expect(painted.draft.scene).toEqual(original.draft.scene);
+    expect(painted.scope).toEqual(original.scope);
     const writes = storage.roomWrites();
     fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const divider = surface().querySelector('[data-wall-id="divider"]')!;
-    fireEvent.pointerDown(divider, {
-      ...at({ q: 2, r: 1 }),
-      button: 0,
-      pointerId: 7,
-    });
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 2, r: 1 }),
-      button: 0,
-      pointerId: 7,
-    });
+    fireEvent.pointerDown(divider, pointer(storage, { x: 4, z: 2 }));
+    fireEvent.pointerUp(surface(), pointer(storage, { x: 4, z: 2 }));
     change('Wall midpoint X', '5');
     fireEvent.click(button('Apply'));
     expect(storage.roomWrites()).toBe(writes + 1);
-    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
-    expect(areaCount()).toBe(2);
-    expect(
-      surface()
-        .querySelector(`[data-region-fill="${pair[0].id}"]`)
-        ?.getAttribute('d')
-    ).toMatch(/5,0/);
-    // Removing the logical divider cannot adopt the larger outer enclosure.
+    const named = (): RoomRegion[] =>
+      storage
+        .document()
+        .draft.room.regions.filter(
+          (r) => r.id === left.id || r.id === right.id
+        );
+    expect(named()).toEqual(pair);
+    expect(areaIds()).toEqual(expect.arrayContaining([left.id, right.id]));
     fireEvent.click(button('Remove wall'));
-    expect(areaCount()).toBe(0);
-    selectLabel('Left room');
-    expect(
-      screen.getByText(/Automatic · Unresolved/, { selector: 'p' })
-    ).toBeTruthy();
-    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
+    expect(named()).toEqual(pair);
+    expect(areaIds()).toEqual(expect.arrayContaining([left.id, right.id]));
     fireEvent.click(button('Undo'));
-    expect(areaCount()).toBe(2);
-    selectLabel('Left room');
-    const beforeMove = storage.roomWrites();
-    change('Label world X', '7');
-    fireEvent.keyDown(screen.getByLabelText('Label world X'), { key: 'Enter' });
-    expect(storage.roomWrites()).toBe(beforeMove + 1);
-    expect(areaCount()).toBe(1);
-    expect(
-      screen.getByText(/outside its accepted enclosure/, { selector: 'p' })
-    ).toBeTruthy();
-    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
-    fireEvent.click(button('Use enclosing walls'));
-    expect(areaCount()).toBe(0);
-    expect(
-      screen.getByText(/Multiple room labels claim/, { selector: 'p' })
-    ).toBeTruthy();
-    fireEvent.click(button('Undo'));
-    fireEvent.click(button('Undo'));
-    expect(areaCount()).toBe(2);
     const final = storage.document();
+    expect(named()).toEqual(pair);
     expect(final.scope).toEqual(original.scope);
     expect(final.draft.room.doorBindings).toEqual(
       original.draft.room.doorBindings
     );
     expect(final.draft.scene.items).toEqual(original.draft.scene.items);
+    expectCodecs(final);
     mounted.unmount();
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(final);
-    expect(areaCount()).toBe(2);
-    // Reload actual scene3 owner output with only the attached door's initial
-    // state changed. Studio offers no new state-editing control in this slice.
+    expect(areaIds()).toEqual(expect.arrayContaining([left.id, right.id]));
+    // Reload with only the attached door's initial state changed: a door's
+    // state never touches a region.
     cleanup();
     const opened = structuredClone(final);
     const attached = opened.draft.room.walls![0].openings.find(
@@ -4610,21 +4527,28 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     const openStorage = new MemoryStorage(opened);
     mount(openStorage);
     await settled();
-    expect(areaCount()).toBe(2);
-    expect(openStorage.document().draft.scene.authoringRegions).toEqual(pair);
+    expect(areaIds()).toEqual(expect.arrayContaining([left.id, right.id]));
+    expect(
+      openStorage
+        .document()
+        .draft.room.regions.filter((r) => r.id === left.id || r.id === right.id)
+    ).toEqual(pair);
   });
 
-  it('paints forest beside meadow without floor/prop/policy changes, cancels pending area edits, preserves selection through views and shares history', async () => {
+  // Rewritten (rpg-project#725 R5): explicit areas are retired; the region
+  // tool paints into the selected region, reassigning cells (no overlap),
+  // and its erase hands the region's cells back to the implicit region.
+  it('paints forest beside meadow by reassigning floor, cancels pending strokes, preserves selection through views and shares history', async () => {
     const original = seed();
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
+    const implicit = original.draft.room.implicitRegionId;
+    const floor = floorCells(original.draft);
     place('Forest', 0, 0);
-    selectLabel('Forest');
-    expect(
-      screen.getByText(/No enclosure accepted/, { selector: 'p' })
-    ).toBeTruthy();
-    fireEvent.click(button('Define explicit area'));
+    expect(status()).toMatch(/Not painted yet/);
+    const forestId = regionNamed(storage.document(), 'Forest')!.id;
+    fireEvent.click(button('Paint this region'));
     const writes = storage.roomWrites();
     fireEvent.pointerDown(surface(), { ...at(zero), button: 0, pointerId: 7 });
     fireEvent.pointerMove(surface(), { ...at(one), pointerId: 7 });
@@ -4632,26 +4556,26 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
     expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Define explicit area'));
+    fireEvent.click(button('Paint this region'));
     gesture(zero, one);
     expect(storage.roomWrites()).toBe(writes + 1);
-    const forest = storage.document().draft.scene.authoringRegions![0];
-    expect(forest.boundary).toEqual({ kind: 'explicit', cells: [zero, one] });
-    expect(
-      screen.getByText('Explicit · Resolved', { selector: 'p' })
-    ).toBeTruthy();
+    const owner = (cell: RoomHexCell): string | undefined =>
+      cellOwners(storage.document().draft).get(`${cell.q},${cell.r}`);
+    expect(owner(zero)).toBe(forestId);
+    expect(owner(one)).toBe(forestId);
+    // The cells were already floor: painting a region reassigns, never adds.
+    expect(floorCells(storage.document().draft)).toEqual(floor);
+    expect(status()).toMatch(/Painted · 2 hexes/);
     gesture(zero, one);
     expect(storage.roomWrites()).toBe(writes + 1); // accepted no-op
     fireEvent.click(button('Rectangle region'));
     gesture(one, two);
-    expect(
-      storage.document().draft.scene.authoringRegions![0].boundary
-    ).toEqual({ kind: 'explicit', cells: [zero, one, two] });
+    expect(owner(two)).toBe(forestId);
     fireEvent.click(button('Erase region'));
     gesture(two);
-    expect(
-      storage.document().draft.scene.authoringRegions![0].boundary
-    ).toEqual(forest.boundary);
+    expect(owner(two)).toBe(implicit); // handed back, still floor
+    expect(owner(zero)).toBe(forestId);
+    expect(floorCells(storage.document().draft)).toEqual(floor);
     const beforeView = storage.document();
     fireEvent.pointerDown(surface(), { ...at(two), button: 0, pointerId: 7 });
     switchTo('3D');
@@ -4661,138 +4585,87 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(button('Select').getAttribute('aria-pressed')).toBe('true');
     expect(
       screen
-        .getByRole('button', { name: 'Select map label Forest' })
+        .getByRole('button', { name: 'Select region Forest' })
         .getAttribute('aria-pressed')
     ).toBe('true');
     place('Meadow', 4, 0);
-    selectLabel('Meadow');
-    fireEvent.click(button('Define explicit area'));
+    const meadowId = regionNamed(storage.document(), 'Meadow')!.id;
+    fireEvent.click(button('Paint this region'));
     gesture({ q: 3, r: 0 });
-    expect(areaCount()).toBe(2);
+    expect(owner({ q: 3, r: 0 })).toBe(meadowId);
+    expect(areaIds()).toEqual(expect.arrayContaining([forestId, meadowId]));
     const distinctRegions = storage.document();
-    gesture(zero); // explicit overlap is visible, not an implicit membership transfer
-    expect(areaCount()).toBe(0);
-    expect(
-      screen.getByText(/Regions overlap.*no region takes priority/, {
-        selector: 'p',
-      })
-    ).toBeTruthy();
-    expect(storage.document().draft.scene.authoringRegions![0]).toEqual(
-      distinctRegions.draft.scene.authoringRegions![0]
-    );
+    gesture(zero); // brushing with a region active reassigns: no overlap
+    expect(owner(zero)).toBe(meadowId);
+    expect(regionCells(regionNamed(storage.document(), 'Forest')!)).toEqual([
+      one,
+    ]);
     fireEvent.click(button('Undo'));
     expect(storage.document()).toEqual(distinctRegions);
-    expect(areaCount()).toBe(2);
     const afterRegions = storage.document();
-    expect(afterRegions.draft.room).toEqual(original.draft.room);
     expect(afterRegions.scope).toEqual(original.scope);
     expect(afterRegions.draft.scene.items).toEqual(original.draft.scene.items);
     expect(afterRegions.draft.scene.groups).toEqual(
       original.draft.scene.groups
     );
+    expect(afterRegions.draft.room.walls).toEqual(original.draft.room.walls);
     fireEvent.click(button('Done area editing'));
     place('Plain note', -5, 0, 'note');
-    selectLabel('Plain note');
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Select map label Plain note' }),
+      { key: 'Enter' }
+    );
+    fireEvent.click(button('Inspector'));
     expect(
-      screen.queryByRole('button', { name: 'Define explicit area' })
+      screen.queryByRole('button', { name: 'Paint this region' })
     ).toBeNull();
     expect(button('Delete label')).toBeTruthy();
+    const noted = storage.document();
     fireEvent.click(button('Paint'));
     gesture({ q: 4, r: 0 });
     const withFloor = storage.document();
+    expect(owner({ q: 4, r: 0 })).toBe(implicit);
     fireEvent.click(button('Undo'));
-    expect(storage.document().draft.room).toEqual(original.draft.room);
+    expect(storage.document()).toEqual(noted);
     fireEvent.click(button('Redo'));
     expect(storage.document()).toEqual(withFloor);
-    selectLabel('Meadow');
-    fireEvent.click(button('Delete region and label'));
-    expect(storage.document().draft.scene.authoringRegions).toHaveLength(1);
+    selectRegion('Meadow');
+    fireEvent.click(button('Remove region'));
+    expect(regionNamed(storage.document(), 'Meadow')).toBeUndefined();
+    expect(owner({ q: 3, r: 0 })).toBe(implicit); // its cells stay floor
     expect(
       storage
         .document()
-        .draft.scene.mapLabels!.some((label) => label.text === 'Meadow')
-    ).toBe(false);
+        .draft.scene.mapLabels!.some((label) => label.text === 'Plain note')
+    ).toBe(true);
     fireEvent.click(button('Undo'));
     expect(storage.document()).toEqual(withFloor);
     mounted.unmount();
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(withFloor);
-    expect(areaCount()).toBe(2);
+    expect(areaIds()).toEqual(expect.arrayContaining([forestId, meadowId]));
   });
 
-  it('persists a representable true gap through scene3 codecs/reload and resolves only the same repaired boundary', async () => {
-    const original = regionSeed();
-    const storage = new MemoryStorage(original);
-    const mounted = mount(storage);
-    await settled();
-    place('Gap room', 7, 2);
-    const intent = structuredClone(
-      storage.document().draft.scene.authoringRegions
-    );
-    fireEvent.click(button('Build'));
-    fireEvent.click(button('Select'));
-    const north = surface().querySelector('[data-wall-id="studio-wall"]')!;
-    fireEvent.pointerDown(north, { ...at(zero), button: 0, pointerId: 7 });
-    fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
-    change('Wall length', '7.999999');
-    fireEvent.click(button('Apply'));
-    const broken = storage.document();
-    expect(broken.draft.room.walls![0].line.end.x).toBe(7.999999);
-    expect(broken.draft.scene.authoringRegions).toEqual(intent);
-    expect(areaCount()).toBe(0);
-    expectCodecs(broken); // unresolved alone is persistable, with complete scope
-    mounted.unmount();
-    mount(storage);
-    await settled();
-    expect(storage.document()).toEqual(broken);
-    expect(areaCount()).toBe(0);
-    selectLabel('Gap room');
-    expect(
-      screen.getByText(/Automatic · Unresolved/, { selector: 'p' })
-    ).toBeTruthy();
-    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
-    const writes = storage.roomWrites();
-    fireEvent.click(button('Use enclosing walls'));
-    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Build'));
-    fireEvent.click(button('Select'));
-    const reloadedNorth = surface().querySelector(
-      '[data-wall-id="studio-wall"]'
-    )!;
-    fireEvent.pointerDown(reloadedNorth, {
-      ...at(zero),
-      button: 0,
-      pointerId: 7,
-    });
-    fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
-    change('Wall length', '8');
-    fireEvent.click(button('Apply'));
-    expect(areaCount()).toBe(1);
-    expect(storage.document().draft.scene.authoringRegions).toEqual(intent);
-    expect(storage.document().draft.room).toEqual(original.draft.room);
-    expect(storage.document().scope).toEqual(original.scope);
-    expectCodecs(storage.document());
-  });
-
-  it('retires a pending region stroke when selection or history changes and retains an authored empty definition in every codec', async () => {
+  // Rewritten (rpg-project#725): an explicit empty area is retired; a region
+  // declared and not yet painted is its successor and survives every codec.
+  it('retires a pending region stroke when selection or history changes and retains a declared unpainted region in every codec', async () => {
     const storage = new MemoryStorage(seed());
     mount(storage);
     await settled();
     place('Forest', 0, 0);
     place('Meadow', 4, 0);
-    selectLabel('Forest');
-    fireEvent.click(button('Define explicit area'));
+    selectRegion('Forest');
+    fireEvent.click(button('Paint this region'));
     gesture(zero);
     const before = storage.document();
     const writes = storage.roomWrites();
     fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
-    selectLabel('Meadow');
+    selectRegion('Meadow');
     fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Define explicit area'));
+    fireEvent.click(button('Paint this region'));
     gesture(two);
     fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
     fireEvent.click(button('Undo'));
@@ -4801,137 +4674,79 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(storage.document()).toEqual(undone);
     expect(undone).toEqual(before);
     fireEvent.click(button('Redo'));
-    selectLabel('Forest');
-    fireEvent.click(button('Define explicit area'));
-    fireEvent.click(button('Clear explicit area'));
+    selectRegion('Forest');
+    fireEvent.click(button('Paint this region'));
+    fireEvent.click(button('Erase region'));
+    gesture(zero);
     const empty = storage.document();
-    expect(empty.draft.scene.authoringRegions![0].boundary).toEqual({
-      kind: 'explicit',
-      cells: [],
-    });
-    expect(
-      screen.getByText(/Explicit · Unresolved.*empty/, { selector: 'p' })
-    ).toBeTruthy();
+    expect(regionNamed(empty, 'Forest')).toMatchObject({ cells: [] });
+    expect(status()).toMatch(/Not painted yet/);
     expectCodecs(empty);
     const emptyBytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const emptyWrites = storage.roomWrites();
-    fireEvent.click(button('Clear explicit area'));
+    gesture(zero); // the region owns nothing there: nothing to hand back
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(emptyBytes);
     expect(storage.roomWrites()).toBe(emptyWrites);
     cleanup();
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(empty);
-    selectLabel('Forest');
-    expect(
-      screen.getByText(/Explicit · Unresolved.*empty/, { selector: 'p' })
-    ).toBeTruthy();
-  });
-
-  it('keeps initial unbound author intent after wall closure until the explicit bind control, then binding is a no-op', async () => {
-    const original = regionSeed(true);
-    const storage = new MemoryStorage(original);
-    mount(storage);
-    await settled();
-    place('Initially open', 2, 2);
-    selectLabel('Initially open');
-    const unbound = storage.document().draft.scene.authoringRegions![0];
-    expect(unbound.boundary).toEqual({ kind: 'automatic' });
-    // Real wall gesture on the existing owner facade; appearance choice is a UI action.
-    fireEvent.click(button('Wall'));
-    const choices = screen.getByRole('group', {
-      name: 'Wall appearance choices',
-    });
-    const choice = choices.querySelector(
-      `[data-wall-appearance-ref="${original.draft.room.walls![0].appearance.assetRef}"]`
-    )!;
-    expect(choice).not.toBeNull();
-    fireEvent.click(choice);
-    const point = (x: number, z: number) => {
-      const p = worldToClient(
-        { x, z },
-        createLayoutTransform(bounds, { center: { x: 0, z: 0 }, zoom: 1 }, 12)
-      )!;
-      return { clientX: p.x, clientY: p.y, button: 0, pointerId: 7 };
-    };
-    fireEvent.pointerDown(surface(), point(0, 4));
-    fireEvent.pointerMove(surface(), point(0, 0));
-    fireEvent.pointerUp(surface(), point(0, 0));
-    expect(storage.document().draft.room.walls).toHaveLength(4);
-    expect(storage.document().draft.scene.authoringRegions![0]).toEqual(
-      unbound
-    );
-    expect(areaCount()).toBe(0);
-    fireEvent.click(button('Select'));
-    selectLabel('Initially open');
-    expect(
-      screen.getByText(/No enclosure accepted/, { selector: 'p' })
-    ).toBeTruthy();
-    fireEvent.click(button('Use enclosing walls'));
-    expect(areaCount()).toBe(1);
-    expect(
-      screen.getByText('Automatic · Resolved', { selector: 'p' })
-    ).toBeTruthy();
-    const bound = storage.document();
-    const writes = storage.roomWrites();
-    fireEvent.click(button('Use enclosing walls'));
-    expect(storage.document()).toEqual(bound);
-    expect(storage.roomWrites()).toBe(writes);
+    selectRegion('Forest');
+    expect(status()).toMatch(/Not painted yet/);
   });
 });
 
 describe('Studio staged region lighting integrated presentation', () => {
-  it('real Layout selection/form stages, cancels and joins one history step; 3D gets only committed resolution and reload/export retain full payload', async () => {
+  // Rewritten (rpg-project#725): a region's lighting is its own intensity,
+  // edited on the region's view beside its name (its map label).
+  it('real Layout selection/form stages, cancels and joins one history step; 3D gets only committed lighting and reload/export retain full payload', async () => {
     const original = createRegionLightingDocument();
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
-    const select = () => {
+    const select = (name = 'left') => {
       fireEvent.click(button('Regions'));
-      fireEvent.keyDown(button('Select map label left'), { key: 'Enter' });
+      fireEvent.keyDown(button(`Select region ${name}`), { key: 'Enter' });
     };
     const field = (name: string, value: string) =>
       fireEvent.change(screen.getByLabelText(name), { target: { value } });
     select();
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
-    field('Background light (%)', '15');
+    field('Lighting (%)', '15');
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     fireEvent.click(button('Options (N)'));
     fireEvent.click(button('Options (N)'));
     expect(
-      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+      (screen.getByLabelText('Lighting (%)') as HTMLInputElement).value
     ).toBe('15');
-    field('Background light (%)', '15');
+    field('Lighting (%)', '15');
     switchTo('3D');
     expect(viewport().roomAuthoring!.regionLighting!.areas).toEqual([]);
     switchTo('Layout');
     select();
     expect(
-      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
-    ).toBe('');
-    field('Rename label', 'Kitchen');
-    field('Label world X', '-2.25');
-    field('Background light (%)', '15');
-    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+      (screen.getByLabelText('Lighting (%)') as HTMLInputElement).value
+    ).toBe('100');
+    field('Region name', 'Kitchen');
+    field('Lighting (%)', '15');
+    fireEvent.keyDown(screen.getByLabelText('Lighting (%)'), {
       key: 'Enter',
     });
     expect(storage.roomWrites()).toBe(writes + 1);
     const after = storage.document();
-    const expected = structuredClone(original);
-    expected.draft.scene.version = 4;
-    expected.draft.scene.authoringRegions![0].lighting = { background: 0.15 };
-    expected.draft.scene.mapLabels!.find(
-      (l) => l.id === 'lighting-left-label'
-    )!.text = 'Kitchen';
-    expected.draft.scene.mapLabels!.find(
-      (l) => l.id === 'lighting-left-label'
-    )!.location.x = -2.25;
-    expect(after).toEqual(expected);
+    expect(after).toEqual({
+      ...original,
+      draft: setRegionLighting(
+        renameRegion(original.draft, LIGHTING_REGIONS.left, 'Kitchen'),
+        LIGHTING_REGIONS.left,
+        0.15
+      ),
+    });
     switchTo('3D');
     expect(viewport().roomAuthoring!.regionLighting!.areas).toHaveLength(1);
     expect(viewport().roomAuthoring!.regionLighting!.areas[0]).toMatchObject({
-      regionId: 'lighting-left',
+      regionId: LIGHTING_REGIONS.left,
       background: 0.15,
     });
     fireEvent.click(button('Undo'));
@@ -4954,18 +4769,19 @@ describe('Studio staged region lighting integrated presentation', () => {
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(after);
-    fireEvent.click(button('Regions'));
-    fireEvent.keyDown(button('Select map label Kitchen'), { key: 'Enter' });
+    switchTo('Layout');
+    select('Kitchen');
     expect(
-      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+      (screen.getByLabelText('Lighting (%)') as HTMLInputElement).value
     ).toBe('15');
-    fireEvent.click(button('Use baseline appearance'));
-    expect(storage.document()).toEqual(after);
+    field('Lighting (%)', '100');
     fireEvent.click(button('Apply'));
     expect(
-      storage.document().draft.scene.authoringRegions![0]
-    ).not.toHaveProperty('lighting');
-    expect(storage.document().draft.scene.version).toBe(4);
+      storage
+        .document()
+        .draft.room.regions.find((r) => r.id === LIGHTING_REGIONS.left)!
+        .lighting
+    ).toEqual({ intensity: 1 });
   });
 });
 
@@ -5266,11 +5082,9 @@ describe('S4 concealments through the real owner', () => {
     const storage = new MemoryStorage(withStash());
     mount(storage);
     await settled();
-    const cell = storage
-      .document()
-      .draft.room.walkableHexes.find(
-        (hex) => Math.abs(hex.q) <= 2 && hex.r === 1
-      )!;
+    const cell = floorCells(storage.document().draft).find(
+      (hex) => Math.abs(hex.q) <= 2 && hex.r === 1
+    )!;
     expect(cell).toBeTruthy();
     fireEvent.click(button('Encounter'));
     section('Concealments');
@@ -5646,7 +5460,7 @@ describe('S4 scenario bindings follow the exit, not a namesake (rpg-project#578 
     const postern = castle.scope.exits!.find((exit) => exit.id === 'postern')!;
     castle.scope.concealments!.postern = {
       checks: [{ ability: 'investigation', dc: 12 }],
-      cells: [castle.draft.room.walkableHexes[7]!],
+      cells: [floorCells(castle.draft)[7]!],
     };
     castle.scope.scenarios = {
       ...castle.scope.scenarios,
@@ -5745,7 +5559,7 @@ describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', 
         exact: true,
       } as never)
     );
-    const cell = castle.draft.room.walkableHexes.find(
+    const cell = floorCells(castle.draft).find(
       (hex) =>
         Math.abs(hex.q) <= 2 &&
         hex.r === 1 &&
@@ -6457,10 +6271,28 @@ describe('S3 the overview through the real owner', () => {
   it('the footer counts areas, creatures, hexes and doors', async () => {
     mount(new MemoryStorage(createCastleKeepDocument()));
     await settled();
-    // Eight rooms; the castle cast's six placements and the front room's
-    // three; 73 × 48 floor; the studio door and five keep doors.
+    // Eight rooms plus the implicit region holding the rest of the floor
+    // (rpg-project#725: every painted region is an area); the castle cast's
+    // six placements and the front room's three; 73 × 48 floor; the studio
+    // door and five keep doors.
     expect(screen.getByLabelText('Layout counts').textContent).toBe(
-      '8 areas · 9 creatures · 3504 hexes · 6 doors'
+      '9 areas · 9 creatures · 3504 hexes · 6 doors'
+    );
+  });
+
+  it('the real castle counts its nine named regions and the implicit one', async () => {
+    const read = readDraftYaml(referenceCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    expect(
+      read.draft.room.regions.filter(
+        (region) => region.id !== read.draft.room.implicitRegionId
+      )
+    ).toHaveLength(9);
+    expect(floorCells(read.draft)).toHaveLength(1586);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    expect(screen.getByLabelText('Layout counts').textContent).toMatch(
+      /^10 areas · \d+ creatures · 1586 hexes · \d+ doors$/
     );
   });
 
@@ -6474,13 +6306,18 @@ describe('S3 the overview through the real owner', () => {
       .getByRole('button', { name })
       .getAttribute('aria-pressed');
 
-  it('Define explicit area arms the region tool in Layout', async () => {
+  // Rewritten (rpg-project#725 R5): "Define explicit area" is now "Paint
+  // this region"; the armed tool paints the selected region.
+  it('Paint this region arms the region tool in Layout', async () => {
     const storage = new MemoryStorage(createCastleKeepDocument());
     mount(storage);
     await settled();
     fireEvent.click(row('Chapel'));
+    expect(inspector().getByRole('status').textContent).toMatch(
+      /^Painted · \d+ hexes$/
+    );
     fireEvent.click(
-      inspector().getByRole('button', { name: 'Define explicit area' })
+      inspector().getByRole('button', { name: 'Paint this region' })
     );
     const armed = within(
       screen.getByLabelText('Explicit region area controls')
@@ -6499,15 +6336,16 @@ describe('S3 the overview through the real owner', () => {
         .getAttribute('aria-pressed')
     ).toBe('true');
     expect(surface().querySelector('desc')?.textContent).toMatch(
-      /Drag to paint region membership only/
+      /Drag to paint region/
     );
     expect(pressed('Build')).toBe('true');
-    // Escape retires the tool and keeps the region's label selected.
+    // Escape retires the tool and keeps the region selected.
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByLabelText('Explicit region area controls')).toBeNull();
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Chapel'
     );
+    expect(row('Chapel').getAttribute('aria-pressed')).toBe('true');
   });
 
   it("the hex view's Edit region selects the label without changing home", async () => {
@@ -6535,26 +6373,38 @@ describe('S3 the overview through the real owner', () => {
     expect(row('Courtyard').getAttribute('aria-pressed')).toBe('true');
   });
 
+  // Rewritten (rpg-project#725): a region's label is its name, so removing
+  // the region removes its label; its cells stay floor in the implicit region.
   it('Remove region removes the region and its label', async () => {
     const storage = new MemoryStorage(createCastleKeepDocument());
     mount(storage);
     await settled();
     const before = storage.document();
+    expect(
+      surface().querySelector('[data-region-label="region-armoury"]')
+    ).not.toBeNull();
     fireEvent.click(row('Armoury'));
-    fireEvent.click(
-      inspector().getByRole('button', { name: 'Delete region and label' })
-    );
+    fireEvent.click(inspector().getByRole('button', { name: 'Remove region' }));
     const after = storage.document();
-    expect(
-      after.draft.scene.authoringRegions!.map((region) => region.id)
-    ).not.toContain('region-armoury');
-    expect(
-      after.draft.scene.mapLabels!.some((label) => label.id === 'label-armoury')
-    ).toBe(false);
-    expect(after.draft.scene.authoringRegions).toHaveLength(
-      before.draft.scene.authoringRegions!.length - 1
+    expect(after.draft.room.regions.map((region) => region.id)).toEqual(
+      before.draft.room.regions
+        .map((region) => region.id)
+        .filter((id) => id !== 'region-armoury')
     );
-    expect(after.draft.room).toEqual(before.draft.room);
+    expect(floorCells(after.draft)).toEqual(floorCells(before.draft));
+    const owners = cellOwners(after.draft);
+    const armoury = KEEP_ROOMS.find((room) => room.id === 'armoury')!;
+    expect(
+      keepRoomCells(armoury).every(
+        (cell) =>
+          owners.get(`${cell.q},${cell.r}`) ===
+          after.draft.room.implicitRegionId
+      )
+    ).toBe(true);
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(
+      surface().querySelector('[data-region-label="region-armoury"]')
+    ).toBeNull();
     expect(
       within(screen.getByRole('list', { name: 'Room list' })).queryByRole(
         'button',
@@ -6576,9 +6426,12 @@ describe('S3 the overview through the real owner', () => {
     );
     switchTo('3D');
     const labels = viewport().regionLabels!;
-    expect(labels.map((label) => label.text)).toEqual(
-      KEEP_ROOMS.map((room) => room.text)
-    );
+    // The implicit region holds the rest of the painted floor, so it is a
+    // resolved region with a name too (rpg-project#725).
+    expect(labels.map((label) => label.text)).toEqual([
+      'Front Room',
+      ...KEEP_ROOMS.map((room) => room.text),
+    ]);
     for (const label of labels)
       expect(label.colour).toBe(colours.get(label.id));
   });
@@ -6636,9 +6489,10 @@ describe('S3 the overview through the real owner', () => {
   it("a creature at a region's centre is selectable by click in Layout", async () => {
     mount(new MemoryStorage(createCastleKeepDocument()));
     await settled();
-    // The captain stands at the great hall's centre, under its label.
+    // The captain stands at the great hall's centre, under its name, which
+    // is drawn at the region's centroid (rpg-project#725).
     const label = surface().querySelector(
-      '[data-label-id="label-great-hall"]'
+      '[data-region-label="region-great-hall"]'
     )!;
     const ring = glyph('[data-placed-creature="captain"] circle');
     // Later in the SVG is drawn on top and takes the pointer first.
@@ -6651,27 +6505,27 @@ describe('S3 the overview through the real owner', () => {
     );
   });
 
-  it('a room row flags a finish that is not applied while its boundary resolves', async () => {
+  // Rewritten (rpg-project#725): no region is wall-bound, so a carried finish
+  // never applies; its row is flagged even while its material is available.
+  it('a room row flags a carried finish that is not applied while the region is painted', async () => {
     installFinishPreview();
+    const fixture = finishRoomFixture(true);
+    const draft = paintCells(
+      fixture,
+      cellsInWorldRectangle({ x: 0.4, z: 0.4 }, { x: 3.6, z: 3.6 }),
+      'left'
+    );
     const storage = new MemoryStorage({
-      draft: finishRoomFixture(true),
+      draft: {
+        ...draft,
+        scene: {
+          ...draft.scene,
+          version: 6,
+          regionPresentation: { left: { wallFinish: CARRIED_FINISH } },
+        },
+      },
       scope: {},
     });
-    const mounted = mount(storage);
-    await settled();
-    fireEvent.click(row('Left'));
-    fireEvent.change(inspector().getByLabelText('Room masonry'), {
-      target: { value: GRAY_REF },
-    });
-    expect(row('Left').textContent).not.toContain('finish unapplied');
-    mounted.unmount();
-    // The material's resources go missing: the boundary still resolves.
-    materialPreview.catalog = {
-      ...materialPreview.catalog!,
-      materials: materialPreview.catalog!.materials.filter(
-        (material) => material.ref !== GRAY_REF
-      ),
-    };
     mount(storage);
     await settled();
     expect(row('Left').textContent).toMatch(/hexes · .* — finish unapplied$/);
@@ -6716,7 +6570,7 @@ describe('Save and Play through the real owner (S6)', () => {
     expect(accepted).toBe(false);
     expect(session.notice).toMatch(/^Save & Play is running/);
     act(() => {
-      accepted = session.selectHex(seed().draft.room.walkableHexes[0]!);
+      accepted = session.selectHex(floorCells(seed().draft)[0]!);
     });
     expect(accepted).toBe(false);
     act(() => session.undo());
@@ -6742,7 +6596,6 @@ describe('Save and Play through the real owner (S6)', () => {
   it('the wall finish field carries the studio-only help line', () => {
     installFinishPreview();
     const draft = finishRoomFixture();
-    delete draft.scene.authoringRegions;
     delete draft.scene.mapLabels;
     draft.room.walls = [draft.room.walls![0]];
     const storage = new MemoryStorage({ draft, scope: {} });
@@ -6762,7 +6615,7 @@ describe('Save and Play through the real owner (S6)', () => {
       )
     );
     expect(helpText('Region wall finish')).toBe(STUDIO_ONLY);
-    expect(helpText('Background light (%)')).toBe(
+    expect(helpText('Lighting (%)')).toBe(
       'Play does not render this yet; whether it should is undecided.'
     );
   });

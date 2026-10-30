@@ -569,6 +569,12 @@ function StudioSurface({
         return `Door ${target.target.doorId}`;
       case 'hex':
         return `Hex ${target.cell.q}, ${target.cell.r}`;
+      case 'region':
+        return (
+          session.document.draft.room.regions.find(
+            (region) => region.id === target.id
+          )?.name || target.id
+        );
       case 'castMember':
         return castMemberOf(session.document, target.ref)?.name ?? target.ref;
       case 'home':
@@ -597,6 +603,8 @@ function StudioSurface({
         return inspect(session.doorEditing.select(target.target));
       case 'hex':
         return inspect(session.selectHex(target.cell));
+      case 'region':
+        return inspect(session.selectRegion(target.id));
       case 'castMember':
         return inspect(session.cast.select(target.ref));
       case 'home':

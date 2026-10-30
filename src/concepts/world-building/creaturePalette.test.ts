@@ -7,11 +7,11 @@ import {
   validateCreaturePalette,
 } from './creaturePalette';
 import { createMapLabel, renameMapLabel } from './mapLabelEdits';
-import { createRoomLabel, setRegionLighting } from './regionEdits';
+import { createRegion, setRegionLighting } from './regionEdits';
 import {
+  paintCells,
   parseRoomDocumentJson,
   removeRoomMonster,
-  resizeRoomWorkspace,
   stringifyRoomDraft,
 } from './roomDraft';
 import { validateScene } from './serialization';
@@ -60,7 +60,7 @@ describe('editor creature palette', () => {
       validateScene({ ...document.draft.scene, version: 4 })
     ).toThrow(/actorNames/);
   });
-  it('persists without creating actors and survives existing label/region/lighting/resize operations', () => {
+  it('persists without creating actors and survives existing label/region/lighting/paint operations', () => {
     const original = createPopulatedStudioDocument();
     let draft = {
       ...original.draft,
@@ -71,20 +71,13 @@ describe('editor creature palette', () => {
     );
     draft = createMapLabel(draft, 'palette-note', 'Note', { x: 0, z: 0 });
     draft = renameMapLabel(draft, 'palette-note', 'Changed');
-    draft = createRoomLabel(
-      draft,
-      'palette-region',
-      'palette-region-label',
-      'Room',
-      { x: 0, z: 0 }
-    );
-    draft = setRegionLighting(draft, 'palette-region', { background: 0.25 });
-    draft = setRegionLighting(draft, 'palette-region', null);
-    const document = resizeRoomWorkspace(
-      { draft, scope: original.scope },
-      64,
-      32
-    );
+    draft = createRegion(draft, 'palette-region', 'Room');
+    draft = setRegionLighting(draft, 'palette-region', 0.25);
+    draft = setRegionLighting(draft, 'palette-region', 1);
+    // The workspace resize is retired (unbounded canvas, rpg-project#725);
+    // painting the floor is the room-shape edit that survives.
+    draft = paintCells(draft, [{ q: 30, r: 10 }], 'palette-region');
+    const document = { draft, scope: original.scope };
     expect(document.draft.scene.version).toBe(5);
     expect(document.draft.scene.creaturePalette).toEqual([recipe]);
     const stored = parseRoomDocumentJson(

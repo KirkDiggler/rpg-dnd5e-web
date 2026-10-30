@@ -24,11 +24,13 @@ import {
   decodeWorldBuilderV4Site,
   WORLD_BUILDER_V4_SITE_YAML,
 } from './fixtures/worldBuilderV4Site';
+import { createRegion } from './regionEdits';
 import * as roomDraftCodec from './roomDraft';
 import {
   createRoomDraft,
-  LEGACY_ROOM_DRAFT_STORAGE_KEY,
-  resizeRoomWorkspace,
+  eraseCells,
+  floorCells,
+  paintCells,
   ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
@@ -49,7 +51,6 @@ import type { SiteScope } from './siteScope';
 import { repeatableWallAssetRefs } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
-import { workspaceCells } from './workspaceGeometry';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 import {
   WorldBuildingPaletteCard,
@@ -1522,10 +1523,10 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         transform: { x: 0.5, y: 0.25, z: -0.5, rotationY: 0.3 },
       },
     ];
-    remote.room.walkableHexes = [
+    remote.room = paintCells(remote, [
       { q: 0, r: 0 },
       { q: 1, r: 0 },
-    ];
+    ]).room;
     remote.room.propDeclarations = {
       'remote-prop-1': {
         blocksMovement: true,
@@ -1995,7 +1996,10 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
   });
 
-  it('keeps corrupt current bytes and untouched legacy bytes until an explicit save', () => {
+  it('keeps corrupt current bytes and untouched retired-key bytes until an explicit save', () => {
+    // The v2 key is no longer read (rpg-project#725); its bytes are still never
+    // removed or rewritten.
+    const RETIRED_V2_STORAGE_KEY = 'rpg.concepts.world-building.room-draft.v2';
     const storage = new MemoryStorage();
     const corrupt = '{bad-v3';
     const legacyEnvelope = JSON.parse(
@@ -2008,7 +2012,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     delete legacyEnvelope.draft.monsters;
     const legacyRaw = JSON.stringify(legacyEnvelope);
     storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
-    storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
+    storage.values.set(RETIRED_V2_STORAGE_KEY, legacyRaw);
 
     render(
       <WorldBuildingConcept
@@ -2037,7 +2041,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
-    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+    expect(storage.values.get(RETIRED_V2_STORAGE_KEY)).toBe(legacyRaw);
 
     // Only an explicit valid save replaces them, and it writes v3 to the
     // current key alone; legacy bytes are never removed or rewritten.
@@ -2051,33 +2055,49 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
     ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
-    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+    expect(storage.values.get(RETIRED_V2_STORAGE_KEY)).toBe(legacyRaw);
   });
 
-  it('loads valid v2 and migrates valid v1 while leaving the legacy recovery copy intact', () => {
-    const valid = createRoomDraft(createEmptyScene('scene-v2'), 'room-v2');
-    const v2Storage = new MemoryStorage();
-    v2Storage.values.set(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(valid));
+  it('loads a current-envelope draft, refuses a pre-regions envelope by name, and never reads the retired v1 key', () => {
+    // Envelopes 1–5 stored a walkable list and are refused, not migrated; the
+    // v1 legacy key is no longer read (rpg-project#725).
+    const valid = createRoomDraft(createEmptyScene('scene-v6'), 'room-v6');
+    const v6Storage = new MemoryStorage();
+    v6Storage.values.set(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(valid));
     const first = render(
       <WorldBuildingConcept
         roomMode
-        storage={v2Storage}
+        storage={v6Storage}
         idFactory={deterministicIds()}
       />
     );
     expect(
       JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
         .draft.id
-    ).toBe('room-v2');
+    ).toBe('room-v6');
     first.unmount();
 
-    const legacyEnvelope = JSON.parse(stringifyRoomDraft(valid));
-    legacyEnvelope.version = 1;
-    legacyEnvelope.draft.version = 1;
-    delete legacyEnvelope.draft.workspace;
-    const legacyRaw = JSON.stringify(legacyEnvelope);
+    const oldEnvelope = JSON.parse(stringifyRoomDraft(valid));
+    oldEnvelope.version = 5;
+    const oldRaw = JSON.stringify(oldEnvelope);
+    const v5Storage = new MemoryStorage();
+    v5Storage.values.set(ROOM_DRAFT_STORAGE_KEY, oldRaw);
+    const second = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={v5Storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /saved before regions were the floor \(it is a version 5 envelope/
+    );
+    expect(v5Storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(oldRaw);
+    second.unmount();
+
+    const RETIRED_V1_STORAGE_KEY = 'rpg.concepts.world-building.room-draft.v1';
     const v1Storage = new MemoryStorage();
-    v1Storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
+    v1Storage.values.set(RETIRED_V1_STORAGE_KEY, oldRaw);
     render(
       <WorldBuildingConcept
         roomMode
@@ -2085,13 +2105,11 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         idFactory={deterministicIds()}
       />
     );
-    // THE MIGRATED DRAFT IS REWRITTEN AT THE CURRENT ENVELOPE VERSION, while
-    // the LEGACY RECOVERY COPY IS LEFT EXACTLY AS IT WAS — which is the claim
-    // this test exists to make (rpg-project#501 §6.1 moved the number to 5).
     expect(
-      JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
-    expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.id
+    ).not.toBe('room-v6');
+    expect(v1Storage.values.get(RETIRED_V1_STORAGE_KEY)).toBe(oldRaw);
   });
 
   it('preserves corrupt storage when explicit save or reset encounters a storage failure', () => {
@@ -2128,29 +2146,6 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
   });
 
-  it('expands room workspace metadata without moving content or painting cells', () => {
-    render(
-      <WorldBuildingConcept
-        roomMode
-        storage={new MemoryStorage()}
-        idFactory={deterministicIds()}
-      />
-    );
-    const room = () =>
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft;
-    const before = structuredClone(room());
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Expand workspace · radius 6 → 10' })
-    );
-
-    expect(room().workspace).toEqual({ hexRadius: 10, horizontalLimit: 20 });
-    expect({ ...room(), workspace: before.workspace }).toEqual(before);
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(room()).toEqual(before);
-  });
-
   it('commits one rectangle release as one undoable room-history action', () => {
     render(
       <WorldBuildingConcept
@@ -2165,8 +2160,10 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.room.walkableHexes
+      floorCells(
+        JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+          .draft
+      )
     ).toEqual([
       { q: 0, r: 0 },
       { q: 1, r: 0 },
@@ -2177,8 +2174,10 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.room.walkableHexes
+      floorCells(
+        JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+          .draft
+      )
     ).toEqual([]);
     expect(
       (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
@@ -2196,8 +2195,10 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     ).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
     expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.room.walkableHexes
+      floorCells(
+        JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+          .draft
+      )
     ).toHaveLength(2);
   });
 
@@ -2337,8 +2338,10 @@ describe('room actor authoring', () => {
     // A structurally valid placement on unpainted ground is retained: the
     // encounter decides legality at Play, not this editor.
     expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.room.walkableHexes
+      floorCells(
+        JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+          .draft
+      )
     ).toEqual([]);
     expect(actors().selectedActorId).toBe(placed.id);
 
@@ -2574,7 +2577,7 @@ function seedImportedRoom(storageInstance: MemoryStorage): RoomDraft {
     'room-imported-1'
   );
   draft.name = 'Imported room title';
-  draft.room.walkableHexes = [{ q: 0, r: 0 }];
+  draft.room = paintCells(draft, [{ q: 0, r: 0 }]).room;
   storageInstance.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
   return draft;
 }
@@ -2624,7 +2627,7 @@ describe('WorldBuildingConcept concealment authoring', () => {
     expect(stored().scope.concealments['secret-1'].cells).toEqual([
       { q: 0, r: 0 },
     ]);
-    expect(stored().draft.room.walkableHexes).toEqual([{ q: 0, r: 0 }]);
+    expect(floorCells(stored().draft)).toEqual([{ q: 0, r: 0 }]);
     fireEvent.click(screen.getByLabelText('Edit'));
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(stored().scope.concealments['secret-1'].cells).toBeUndefined();
@@ -2648,7 +2651,7 @@ describe('WorldBuildingConcept concealment authoring', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
-    expect(stored().draft.room.walkableHexes).toHaveLength(2);
+    expect(floorCells(stored().draft)).toHaveLength(2);
     expect(stored().scope.concealments['secret-1'].cells).toHaveLength(1);
   });
 });
@@ -2782,7 +2785,8 @@ describe('WorldBuildingConcept room publishing', () => {
     const emittedYaml = publishRpc.puts.find(
       (put) => !put.request.validateOnly
     )!.request.yaml;
-    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 (rpg-project#725).
+    expect(emittedYaml.startsWith('version: 5\n')).toBe(true);
     const emitted = decodeSingleRoomDungeon(emittedYaml);
     expect(emitted.factions).toEqual(fixture.factions);
     expect(emitted.dispositions).toEqual(fixture.dispositions);
@@ -2901,7 +2905,8 @@ describe('WorldBuildingConcept room publishing', () => {
     const emittedYaml = publishRpc.puts.find(
       (put) => !put.request.validateOnly
     )!.request.yaml;
-    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 (rpg-project#725).
+    expect(emittedYaml.startsWith('version: 5\n')).toBe(true);
     const emitted = decodeSingleRoomDungeon(emittedYaml);
     expect(emitted.factions?.map((faction) => faction.id)).toEqual(['goblins']);
     expect(emitted.dispositions?.[0]?.between).toEqual(['goblins', 'party']);
@@ -3003,7 +3008,8 @@ describe('WorldBuildingConcept room publishing', () => {
     const emittedYaml = publishRpc.puts.find(
       (put) => !put.request.validateOnly
     )!.request.yaml;
-    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 (rpg-project#725).
+    expect(emittedYaml.startsWith('version: 5\n')).toBe(true);
     const emitted = decodeSingleRoomDungeon(emittedYaml);
     const bindings = emitted.draft.room.monsterBindings ?? {};
     const ids = Object.keys(bindings);
@@ -3205,7 +3211,8 @@ describe('WorldBuildingConcept room publishing', () => {
     const emittedYaml = publishRpc.puts.find(
       (put) => !put.request.validateOnly
     )!.request.yaml;
-    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 (rpg-project#725).
+    expect(emittedYaml.startsWith('version: 5\n')).toBe(true);
     const emitted = decodeSingleRoomDungeon(emittedYaml);
     expect(emitted.intel).toEqual([
       { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
@@ -3871,10 +3878,10 @@ describe('structural wall authoring (Task 3)', () => {
 
   function seedRoomWithWall(storage: MemoryStorage): RoomDraft {
     const draft = createRoomDraft(createEmptyScene('wall-scene'), 'wall-room');
-    draft.room.walkableHexes = [
+    draft.room = paintCells(draft, [
       { q: 0, r: 0 },
       { q: 1, r: 0 },
-    ];
+    ]).room;
     draft.room.walls = [seededWall()];
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
     return draft;
@@ -3883,13 +3890,19 @@ describe('structural wall authoring (Task 3)', () => {
   it.each(['cardinal', 'panel'] as const)(
     'refuses an out-of-bounds %s wall edit before history or autosave changes',
     (mode) => {
+      // The canvas is unbounded (rpg-project#725); the bound is now the world
+      // coordinate limit, ±100000 scene units.
       const storage = new MemoryStorage();
       const draft = seedRoomWithWall(storage);
-      if (mode === 'cardinal')
+      if (mode === 'cardinal') {
+        // No floor near the origin: the derived grid spans all content and
+        // is capped at 1024 hexes a side.
+        draft.room = eraseCells(draft, floorCells(draft)).room;
         draft.room.walls![0].line = {
-          start: { x: 0, z: 10 },
-          end: { x: 12, z: 10 },
+          start: { x: 0, z: 99_995 },
+          end: { x: 12, z: 99_995 },
         };
+      }
       storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
       render(
         <WorldBuildingConcept
@@ -3911,7 +3924,7 @@ describe('structural wall authoring (Task 3)', () => {
       else {
         fireEvent.click(screen.getByText('Advanced transform values'));
         fireEvent.change(screen.getByLabelText('Move Z'), {
-          target: { value: '20' },
+          target: { value: '200000' },
         });
         fireEvent.click(screen.getByRole('button', { name: 'Apply move' }));
       }
@@ -3922,7 +3935,7 @@ describe('structural wall authoring (Task 3)', () => {
           .disabled
       ).toBe(true);
       expect(screen.getByRole('alert').textContent).toMatch(
-        /Edit rejected.*workspace/
+        /Edit rejected.*room\.room\.walls\[0\]\.line\.(start|end)\.z/
       );
     }
   );
@@ -4081,10 +4094,10 @@ describe('structural wall authoring (Task 3)', () => {
   it('draws, undoes and redoes as one transaction, persists it, and reloads the exact wall', () => {
     const storage = new MemoryStorage();
     const draft = createRoomDraft(createEmptyScene('wall-scene'), 'wall-room');
-    draft.room.walkableHexes = [
+    draft.room = paintCells(draft, [
       { q: 0, r: 0 },
       { q: 1, r: 0 },
-    ];
+    ]).room;
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
     const { unmount } = render(
       <WorldBuildingConcept
@@ -4120,7 +4133,7 @@ describe('structural wall authoring (Task 3)', () => {
     expect(screen.getByTestId('viewport-selected-wall').textContent).toBe(
       drawn[0]!.id
     );
-    expect(publishedDraft().room.walkableHexes).toEqual([
+    expect(floorCells(publishedDraft())).toEqual([
       { q: 0, r: 0 },
       { q: 1, r: 0 },
     ]);
@@ -4147,7 +4160,7 @@ describe('structural wall authoring (Task 3)', () => {
       />
     );
     expect(draftWalls()).toEqual(drawn);
-    expect(publishedDraft().room.walkableHexes).toEqual([
+    expect(floorCells(publishedDraft())).toEqual([
       { q: 0, r: 0 },
       { q: 1, r: 0 },
     ]);
@@ -4213,7 +4226,7 @@ describe('structural wall authoring (Task 3)', () => {
       'opening-1',
       'window',
     ]);
-    expect(publishedDraft().room.walkableHexes).toEqual([
+    expect(floorCells(publishedDraft())).toEqual([
       { q: 0, r: 0 },
       { q: 1, r: 0 },
     ]);
@@ -4569,30 +4582,14 @@ describe('Room transaction compatibility and retirement', () => {
     ).toEqual([{ id: 'intel-1', reveals: { fact: 'author-chosen-fact' } }]);
   });
 
-  it('ordinary region bind/area/pair removal preserve unfinished policy while label and resize gates stay strict', () => {
+  it('ordinary region create/rename/lighting/removal preserve unfinished policy while label gates stay strict', () => {
+    // Rewritten for rpg-project#725: regions are listed places edited through
+    // ordinary commits (no label pair, no enclosure); note labels stay strict.
     const storage = new MemoryStorage();
     const document = createPopulatedStudioDocument();
-    const north = document.draft.room.walls![0];
-    const points = [
-      { x: -4, z: -3 },
-      { x: 4, z: -3 },
-      { x: 4, z: 3 },
-      { x: -4, z: 3 },
-    ];
-    for (let i = 1; i < 4; i++)
-      document.draft.room.walls!.push({
-        ...structuredClone(north),
-        id: `side-${i}`,
-        label: 'Side',
-        line: { start: points[i], end: points[(i + 1) % 4] },
-        openings: [],
-      });
     document.draft.scene.version = 3;
     document.draft.scene.mapLabels = [
-      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
-    ];
-    document.draft.scene.authoringRegions = [
-      { id: 'region', labelId: 'room-label', boundary: { kind: 'automatic' } },
+      { id: 'note', text: 'Note', location: { x: 0, z: 0 } },
     ];
     storage.setItem(
       ROOM_DRAFT_STORAGE_KEY,
@@ -4620,50 +4617,28 @@ describe('Room transaction compatibility and retirement', () => {
       />
     );
     const policy = session!.document.scope;
-    const beforeCreation = session!.document;
+    const writesBefore = storage.writes;
+    act(() => expect(session!.regionEditing.createRegion('Hall')).toBe(true));
+    const created = session!.document.draft.room.regions.find(
+      (region) => region.name === 'Hall'
+    )!;
+    expect(created.lighting).toEqual({ intensity: 1 });
+    expect(session!.document.scope).toEqual(policy);
+    act(() =>
+      expect(session!.regionEditing.setRegionLighting(created.id, 0.15)).toBe(
+        true
+      )
+    );
     act(() =>
       expect(
-        session!.regionEditing.createRoomLabel('Refused pair', { x: 1, z: 0 })
-      ).toBe(false)
+        session!.regionEditing.renameRegion(created.id, 'Great hall')
+      ).toBe(true)
     );
-    expect(session!.document).toBe(beforeCreation);
-    const region = session!.document.draft.scene.authoringRegions![0];
-    act(() => session!.mapLabelSelection.select(region.labelId));
-    const beforeLighting = session!.document;
-    const writesBeforeLighting = storage.writes;
-    const lightingIntent = {
-      kind: 'label-edit' as const,
-      target: { kind: 'label' as const, id: region.labelId },
-      regionLighting: { regionId: region.id, value: { background: 0.15 } },
-    };
-    for (const explicitLabel of [
-      { text: 'Room' },
-      { location: { x: 0, z: 0 } },
-    ]) {
-      act(() =>
-        expect(
-          session!.commitArrange({ ...lightingIntent, ...explicitLabel })
-        ).toBe(false)
-      );
-      expect(session!.document).toBe(beforeLighting);
-    }
-    act(() =>
-      expect(
-        session!.commitArrange({
-          kind: 'label-edit',
-          target: lightingIntent.target,
-        })
-      ).toBe(false)
-    );
-    act(() => expect(session!.commitArrange(lightingIntent)).toBe(true));
     const lit = session!.document;
-    expect(lit.draft.scene.version).toBe(4);
-    expect(lit.draft.scene.authoringRegions![0].lighting).toEqual({
-      background: 0.15,
-    });
+    expect(
+      lit.draft.room.regions.find((region) => region.id === created.id)
+    ).toMatchObject({ name: 'Great hall', lighting: { intensity: 0.15 } });
     expect(lit.scope).toEqual(policy);
-    act(() => expect(session!.commitArrange(lightingIntent)).toBe(true));
-    expect(session!.document).toBe(lit);
     act(() => session!.saveLocalDraft());
     expect(() => stringifyRoomDraft(lit.draft, lit.scope)).toThrow(
       /must name a fact/
@@ -4675,38 +4650,31 @@ describe('Room transaction compatibility and retirement', () => {
         ...lit.scope,
       })
     ).toThrow(/must name a fact/);
-    expect(storage.writes).toBe(writesBeforeLighting);
+    expect(storage.writes).toBe(writesBefore);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() =>
-      expect(session!.regionEditing.setExplicitRegionArea(region.id, [])).toBe(
-        true
+      expect(session!.renameMapLabel('note', 'Strict rename')).toBe(false)
+    );
+    act(() =>
+      expect(session!.moveMapLabel('note', { x: 1, z: 0 })).toBe(false)
+    );
+    expect(session!.document).toBe(lit);
+    act(() =>
+      expect(session!.regionEditing.removeRegion(created.id)).toBe(true)
+    );
+    expect(
+      session!.document.draft.room.regions.some(
+        (region) => region.id === created.id
       )
-    );
-    act(() =>
-      expect(session!.regionEditing.useEnclosingWalls(region.id)).toBe(true)
-    );
-    expect(session!.regionEditing.resolutions[0].status).toBe('resolved');
-    const explicit = session!.document;
-    expect(explicit.scope).toEqual(policy);
-    act(() =>
-      expect(session!.renameMapLabel(region.labelId, 'Strict rename')).toBe(
-        false
-      )
-    );
-    act(() =>
-      expect(session!.moveMapLabel(region.labelId, { x: 1, z: 0 })).toBe(false)
-    );
-    act(() => expect(session!.resizeWorkspace(73, 48)).toBe(false));
-    expect(session!.document).toBe(explicit);
-    act(() =>
-      expect(session!.regionEditing.removeRegionAndLabel(region.id)).toBe(true)
-    );
+    ).toBe(false);
     expect(session!.document.scope).toEqual(policy);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(session!.notice).toMatch(/must name a fact/);
   });
 
-  it('new resize/label intents refuse unfinished scope without dropping the editable policy', () => {
+  it('new label intents refuse unfinished scope without dropping the editable policy', () => {
+    // Resize is retired (unbounded canvas, rpg-project#725); a region is no
+    // longer a label pair, so only the note label gate is strict here.
     const storage = new MemoryStorage();
     let session: EncounterStudioSession | undefined;
     const idFactory = deterministicIds();
@@ -4732,21 +4700,11 @@ describe('Room transaction compatibility and retirement', () => {
     const before = session!.document;
     const writes = storage.writes;
     act(() =>
-      expect(
-        session!.regionEditing.createRoomLabel('Refused room', { x: 0, z: 0 })
-      ).toBe(false)
-    );
-    expect(session!.document).toBe(before);
-    expect(session!.document.draft.scene).not.toHaveProperty(
-      'authoringRegions'
-    );
-    expect(session!.document.draft.scene).not.toHaveProperty('mapLabels');
-    expect(storage.writes).toBe(writes);
-    act(() =>
       expect(session!.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(false)
     );
-    act(() => expect(session!.resizeWorkspace(73, 48)).toBe(false));
     expect(session!.document).toBe(before);
+    expect(session!.document.draft.scene).not.toHaveProperty('mapLabels');
+    expect(storage.writes).toBe(writes);
     expect(session!.document.scope.intel).toEqual([
       { id: 'intel-1', reveals: { fact: '' } },
     ]);
@@ -4830,11 +4788,20 @@ describe('Room transaction compatibility and retirement', () => {
       )
     );
     expect(
-      JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).draft.room
-        .walkableHexes
+      floorCells(JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).draft)
     ).toContainEqual({ q: 3, r: 0 });
   });
 });
+
+/** One cell per row run: 300 rows of every other q, under the paint cap
+ * (MAX_FLOOR_HEXES). Serialized as runs it is far past the 500000-character
+ * budget (rpg-project#725). */
+function checkerboardCells(): { q: number; r: number }[] {
+  const cells: { q: number; r: number }[] = [];
+  for (let r = 0; r < 300; r++)
+    for (let q = 0; q < 400; q += 2) cells.push({ q, r });
+  return cells;
+}
 
 describe('Studio owner facade', () => {
   function mountStudio(storage = new MemoryStorage(), strict = false) {
@@ -4932,7 +4899,9 @@ describe('Studio owner facade', () => {
     expect(owner.session.wallEditing.selectedId).toBeNull();
   });
 
-  it('selectHex refuses a cell outside the workspace without a history entry', () => {
+  it('selectHex selects any cell, far or near, without a history entry', () => {
+    // The canvas is unbounded (rpg-project#725 R3): no cell is outside a
+    // workspace, so a far cell is selectable and simply is not floor.
     const storage = populatedStorage();
     const owner = mountStudio(storage);
     const writes = storage.writes;
@@ -4941,8 +4910,12 @@ describe('Studio owner facade', () => {
     act(() => {
       accepted = owner.session.selectHex({ q: 40, r: 0 });
     });
-    expect(accepted).toBe(false);
-    expect(owner.session.arrange).toBeNull();
+    expect(accepted).toBe(true);
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'hex',
+      cell: { q: 40, r: 0 },
+      walkable: false,
+    });
     act(() => {
       accepted = owner.session.selectHex({ q: 1, r: 1 });
     });
@@ -4962,7 +4935,7 @@ describe('Studio owner facade', () => {
   describe('exits on the hex view (rpg-project#578)', () => {
     it('adding an exit writes exits[] with its cell', () => {
       const owner = mountStudio(populatedStorage());
-      const cell = owner.session.document.draft.room.walkableHexes.find(
+      const cell = floorCells(owner.session.document.draft).find(
         (hex) => !(hex.q === 2 && hex.r === 0)
       )!;
       const before = owner.session.document;
@@ -4984,7 +4957,7 @@ describe('Studio owner facade', () => {
 
     it('a duplicate id and an unwalkable hex are refused without history', () => {
       const owner = mountStudio(populatedStorage());
-      const walkable = owner.session.document.draft.room.walkableHexes;
+      const walkable = floorCells(owner.session.document.draft);
       const cell = walkable.find((hex) => !(hex.q === 2 && hex.r === 0))!;
       const before = owner.session.document;
       act(() => {
@@ -5114,19 +5087,11 @@ describe('Studio owner facade', () => {
     });
   });
 
-  it('reserves scene3 region identities in transient door placement without changing author intent', () => {
+  it('reserves listed region identities in transient door placement without changing author intent', () => {
+    // Rewritten for rpg-project#725: the reserved ids are the listed regions
+    // (room.room.regions); scene.authoringRegions is retired.
     const document = createPopulatedStudioDocument();
-    document.draft.scene.version = 3;
-    document.draft.scene.mapLabels = [
-      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
-    ];
-    document.draft.scene.authoringRegions = [
-      {
-        id: 'preview-door',
-        labelId: 'room-label',
-        boundary: { kind: 'automatic' },
-      },
-    ];
+    document.draft = createRegion(document.draft, 'preview-door', 'Room');
     const storage = new MemoryStorage();
     storage.setItem(
       ROOM_DRAFT_STORAGE_KEY,
@@ -5155,99 +5120,89 @@ describe('Studio owner facade', () => {
       throw new Error('Expected a valid door placement preview');
     expect(preview.target.doorId).toBe('preview-door-');
     expect(owner.session.document).toBe(before);
-    expect(owner.session.document.draft.scene.authoringRegions).toEqual(
-      document.draft.scene.authoringRegions
+    expect(owner.session.document.draft.room.regions).toEqual(
+      document.draft.room.regions
     );
     expect(owner.session.canUndo).toBe(false);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.writes).toBe(writes);
   });
 
-  it('region facade creates one pair transaction, reuses label selection, rejects raw deletion and paints no floor', () => {
+  it('region facade creates one listed unpainted region, selects it, paints no floor, and removes it back to the implicit region', () => {
+    // Rewritten for rpg-project#725: a region is a listed place (no label
+    // pair, no enclosure); its cells come from painting into it.
     const owner = mountStudio(populatedStorage());
     const before = structuredClone(owner.session.document);
     const stale = owner.session.regionEditing;
     act(() =>
-      expect(
-        owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
-      ).toBe(true)
+      expect(owner.session.regionEditing.createRegion('Forest')).toBe(true)
     );
     const created = owner.session.document;
     const resolutions = owner.session.regionEditing.resolutions;
     owner.rerender();
     expect(owner.session.regionEditing.resolutions).toBe(resolutions);
-    const region = created.draft.scene.authoringRegions![0];
-    expect(created.draft.scene.version).toBe(3);
-    expect(created.draft.room).toEqual(before.draft.room);
-    expect(created.scope).toEqual(before.scope);
-    expect(owner.session.regionEditing.resolutions).toEqual([
-      { id: region.id, status: 'unresolved', reason: 'unbound' },
-    ]);
-    act(() =>
-      expect(stale.createRoomLabel('Retired document', { x: 1, z: 0 })).toBe(
-        false
-      )
-    );
-    act(() =>
-      expect(
-        owner.session.regionEditing.setExplicitRegionArea(region.id, [])
-      ).toBe(false)
-    );
-    act(() =>
-      expect(owner.session.mapLabelSelection.select(region.labelId)).toBe(true)
-    );
-    expect(owner.session.arrange).toMatchObject({
-      kind: 'label',
-      region,
-      resolution: { reason: 'unbound' },
+    const region = created.draft.room.regions.at(-1)!;
+    expect(region).toMatchObject({
+      name: 'Forest',
+      lighting: { intensity: 1 },
+      cells: [],
     });
-    act(() => expect(owner.session.deleteMapLabel(region.labelId)).toBe(false));
+    expect(floorCells(created.draft)).toEqual(floorCells(before.draft));
+    expect(created.draft.scene).toEqual(before.draft.scene);
+    expect(created.scope).toEqual(before.scope);
+    expect(
+      owner.session.regionEditing.resolutions.find((r) => r.id === region.id)
+    ).toEqual({ id: region.id, status: 'unresolved', reason: 'empty' });
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'region',
+      region,
+      resolution: { reason: 'empty' },
+      implicit: false,
+    });
+    act(() => expect(stale.createRegion('Retired document')).toBe(false));
     act(() =>
       expect(
-        owner.session.commitArrange({
-          kind: 'label-remove',
-          target: { kind: 'label', id: region.labelId },
-        })
-      ).toBe(false)
-    );
-    expect(owner.session.document).toBe(created);
-    act(() =>
-      expect(
-        owner.session.regionEditing.setExplicitRegionArea(region.id, [
-          { q: 0, r: 0 },
-        ])
+        owner.session.selectRegion(created.draft.room.implicitRegionId)
       ).toBe(true)
     );
+    act(() =>
+      expect(
+        owner.session.regionEditing.removeRegion(
+          created.draft.room.implicitRegionId
+        )
+      ).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/implicit region cannot be removed/);
+    expect(owner.session.document).toBe(created);
+    const cell = floorCells(created.draft)[0]!;
+    act(() =>
+      expect(owner.session.commitFloor([cell], 'paint', region.id)).toBe(true)
+    );
     const painted = owner.session.document;
-    expect(painted.draft.room).toEqual(before.draft.room);
+    expect(floorCells(painted.draft)).toEqual(floorCells(before.draft));
+    expect(
+      owner.session.regionEditing.resolutions.find((r) => r.id === region.id)
+    ).toEqual({
+      id: region.id,
+      status: 'resolved',
+      area: { kind: 'hex-union', cells: [cell] },
+    });
     expect(painted.scope).toEqual(before.scope);
     const writes = owner.storage.writes;
     act(() =>
-      expect(
-        owner.session.regionEditing.setExplicitRegionArea(region.id, [
-          { q: 0, r: 0 },
-          { q: 0, r: 0 },
-        ])
-      ).toBe(true)
+      expect(owner.session.commitFloor([cell], 'paint', region.id)).toBe(true)
     );
     expect(owner.session.document).toBe(painted);
     expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.selectRegion(region.id));
     act(() =>
-      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
-        false
-      )
+      expect(owner.session.regionEditing.removeRegion(region.id)).toBe(true)
     );
-    expect(owner.session.document).toBe(painted);
-    act(() =>
-      expect(owner.session.regionEditing.removeRegionAndLabel(region.id)).toBe(
-        true
-      )
+    const removed = owner.session.document;
+    expect(removed.draft.room.regions.some((r) => r.id === region.id)).toBe(
+      false
     );
-    expect(owner.session.document.draft.scene).not.toHaveProperty(
-      'authoringRegions'
-    );
-    expect(owner.session.document.draft.scene).not.toHaveProperty('mapLabels');
-    expect(owner.session.document.draft.scene.version).toBe(3);
+    expect(floorCells(removed.draft)).toEqual(floorCells(before.draft));
     for (const expected of [painted, created, before]) {
       act(() => owner.session.undo());
       expect(owner.session.document).toEqual(expected);
@@ -5262,14 +5217,13 @@ describe('Studio owner facade', () => {
     expect(loaded.session.document).toEqual(painted);
   });
 
-  it('one joined label form is one history step; absence/authored1/reset, noops and reload preserve the whole payload', () => {
+  it('one region form is one history step; no-ops and reload preserve the whole payload', () => {
+    // Rewritten for rpg-project#725: the region form (name + intensity) is
+    // the region-edit intent; the label-edit lighting join is retired.
     const owner = mountStudio(populatedStorage(), true);
-    act(() =>
-      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
-    );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
-    const target = { kind: 'label' as const, id: region.labelId };
+    act(() => owner.session.regionEditing.createRegion('Room'));
+    const region = owner.session.document.draft.room.regions.at(-1)!;
+    const target = { kind: 'region' as const, id: region.id };
     const before = structuredClone(owner.session.document);
     const baselineDocument = owner.session.document;
     const baselineBytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
@@ -5278,36 +5232,40 @@ describe('Studio owner facade', () => {
       act(() =>
         expect(
           owner.session.commitArrange({
-            kind: 'label-edit',
+            kind: 'region-edit',
             target,
-            regionLighting: { regionId: region.id, value: null },
+            name: 'Room',
+            intensity: 1,
           })
         ).toBe(true)
       );
     expect(owner.session.document).toBe(baselineDocument);
-    expect(owner.session.document.draft.scene.version).toBe(3);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(baselineBytes);
     expect(owner.storage.writes).toBe(baselineWrites);
     const joined = {
-      kind: 'label-edit' as const,
+      kind: 'region-edit' as const,
       target,
-      text: 'Kitchen',
-      location: { x: 1, z: 0 },
-      regionLighting: { regionId: region.id, value: { background: 1 } },
+      name: 'Kitchen',
+      intensity: 0.15,
     };
     act(() => expect(owner.session.commitArrange(joined)).toBe(true));
     const accepted = owner.session.document;
     const expected = structuredClone(before);
-    expected.draft.scene.version = 4;
-    expected.draft.scene.mapLabels![0].text = 'Kitchen';
-    expected.draft.scene.mapLabels![0].location = { x: 1, z: 0 };
-    expected.draft.scene.authoringRegions![0].lighting = { background: 1 };
+    const index = expected.draft.room.regions.findIndex(
+      (r) => r.id === region.id
+    );
+    expected.draft.room.regions[index] = {
+      ...expected.draft.room.regions[index]!,
+      name: 'Kitchen',
+      lighting: { intensity: 0.15 },
+    };
     expect(accepted).toEqual(expected);
     expect(owner.session.arrange).toMatchObject({
-      kind: 'label',
-      region: { lighting: { background: 1 } },
-      resolution: { reason: 'unbound' },
+      kind: 'region',
+      region: { name: 'Kitchen', lighting: { intensity: 0.15 } },
+      resolution: { reason: 'empty' },
     });
+    // Unpainted, so nothing to light.
     expect(owner.session.viewportProps.roomAuthoring?.regionLighting).toEqual({
       areas: [],
     });
@@ -5320,37 +5278,21 @@ describe('Studio owner facade', () => {
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() => owner.session.undo());
     expect(owner.session.document).toEqual(before);
-    expect(
-      owner.session.document.draft.scene.authoringRegions![0]
-    ).not.toHaveProperty('lighting');
     act(() => owner.session.redo());
     expect(owner.session.document).toEqual(accepted);
     act(() =>
       expect(
         owner.session.commitArrange({
-          kind: 'label-edit',
+          kind: 'region-edit',
           target,
-          regionLighting: { regionId: region.id, value: null },
+          intensity: 1,
         })
       ).toBe(true)
     );
     const reset = owner.session.document;
-    expect(reset.draft.scene.version).toBe(4);
-    expect(reset.draft.scene.authoringRegions![0]).not.toHaveProperty(
-      'lighting'
-    );
-    const resetWrites = owner.storage.writes;
-    act(() =>
-      expect(
-        owner.session.commitArrange({
-          kind: 'label-edit',
-          target,
-          regionLighting: { regionId: region.id, value: null },
-        })
-      ).toBe(true)
-    );
-    expect(owner.session.document).toBe(reset);
-    expect(owner.storage.writes).toBe(resetWrites);
+    expect(
+      reset.draft.room.regions.find((r) => r.id === region.id)!.lighting
+    ).toEqual({ intensity: 1 });
     act(() => owner.session.undo());
     expect(owner.session.document).toEqual(accepted);
     act(() => owner.session.redo());
@@ -5360,90 +5302,69 @@ describe('Studio owner facade', () => {
     expect(loaded.session.document).toEqual(reset);
   });
 
-  it('invalid joined lighting and stale/wrong linked targets refuse atomically with zero history or storage writes', () => {
+  it('invalid region intensity or name and stale/wrong region targets refuse atomically with zero history or storage writes', () => {
     const owner = mountStudio(populatedStorage());
-    act(() =>
-      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
-    );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
-    const target = { kind: 'label' as const, id: region.labelId };
+    act(() => owner.session.regionEditing.createRegion('Room'));
+    const region = owner.session.document.draft.room.regions.at(-1)!;
+    const target = { kind: 'region' as const, id: region.id };
     const before = owner.session.document;
     const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     const writes = owner.storage.writes;
-    for (const value of [
-      undefined,
-      {},
-      { background: 101 },
-      { background: NaN },
-      { background: Infinity },
-      { background: 0.15, tint: 'red' },
-    ]) {
+    for (const intensity of [1.01, -0.1, NaN, Infinity])
       act(() =>
         expect(
           owner.session.commitArrange({
-            kind: 'label-edit',
+            kind: 'region-edit',
             target,
-            text: 'Valid rename',
-            location: { x: 1 },
-            regionLighting: { regionId: region.id, value: value as never },
-          })
-        ).toBe(false)
-      );
-      expect(owner.session.document).toBe(before);
-    }
-    for (const regionId of ['missing', 'studio-wall'])
-      act(() =>
-        expect(
-          owner.session.commitArrange({
-            kind: 'label-edit',
-            target,
-            text: 'Valid rename',
-            regionLighting: { regionId, value: { background: 0.15 } },
+            name: 'Valid rename',
+            intensity,
           })
         ).toBe(false)
       );
     act(() =>
       expect(
         owner.session.commitArrange({
-          kind: 'label-edit',
+          kind: 'region-edit',
           target,
-          text: 'Valid rename',
-          location: { x: 9999 },
-          regionLighting: { regionId: region.id, value: { background: 0.15 } },
+          name: '   ',
+          intensity: 0.5,
         })
       ).toBe(false)
     );
     expect(owner.session.document).toBe(before);
+    for (const id of ['missing', before.draft.room.implicitRegionId])
+      act(() =>
+        expect(
+          owner.session.commitArrange({
+            kind: 'region-edit',
+            target: { kind: 'region', id },
+            name: 'Valid rename',
+          })
+        ).toBe(false)
+      );
+    expect(owner.session.document).toBe(before);
     expect(owner.storage.writes).toBe(writes);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() => owner.session.undo());
-    expect(owner.session.document.draft.scene).not.toHaveProperty(
-      'authoringRegions'
-    );
+    expect(
+      owner.session.document.draft.room.regions.some((r) => r.id === region.id)
+    ).toBe(false);
     expect(owner.session.canUndo).toBe(false);
   });
 
-  it('owner projection follows accepted area edits, not wall gesture previews, and clears on unresolved intent', () => {
+  it('owner projection follows accepted paint edits, not wall gesture previews, and clears when the region is unpainted', () => {
     const owner = mountStudio(populatedStorage());
-    act(() =>
-      owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
-    );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
-    const target = { kind: 'label' as const, id: region.labelId };
+    act(() => owner.session.regionEditing.createRegion('Forest'));
+    const region = owner.session.document.draft.room.regions.at(-1)!;
+    const target = { kind: 'region' as const, id: region.id };
     act(() =>
       owner.session.commitArrange({
-        kind: 'label-edit',
+        kind: 'region-edit',
         target,
-        regionLighting: { regionId: region.id, value: { background: 0.15 } },
+        intensity: 0.15,
       })
     );
-    act(() =>
-      owner.session.regionEditing.setExplicitRegionArea(region.id, [
-        { q: 0, r: 0 },
-      ])
-    );
+    act(() => owner.session.commitFloor([{ q: 0, r: 0 }], 'paint', region.id));
     const field = owner.session.viewportProps.roomAuthoring!.regionLighting;
     expect(field).toEqual({
       areas: [
@@ -5468,36 +5389,33 @@ describe('Studio owner facade', () => {
       field
     );
     act(() => owner.session.cancelTransients());
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
-    act(() => owner.session.regionEditing.setExplicitRegionArea(region.id, []));
+    act(() => owner.session.commitFloor([{ q: 0, r: 0 }], 'erase'));
     expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toEqual({
       areas: [],
     });
     expect(
-      owner.session.document.draft.scene.authoringRegions![0].lighting
-    ).toEqual({ background: 0.15 });
+      owner.session.document.draft.room.regions.find((r) => r.id === region.id)!
+        .lighting
+    ).toEqual({ intensity: 0.15 });
     act(() => owner.session.undo());
     expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toEqual(
       field
     );
   });
 
-  it('lighting callbacks retire on target round-trip, epoch, view, document, preview and unmount', () => {
+  it('region-edit callbacks retire on target round-trip, epoch, view, document, preview and unmount', () => {
     const owner = mountStudio(populatedStorage(), true);
-    act(() =>
-      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
-    );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    act(() => owner.session.regionEditing.createRegion('Room'));
+    const region = owner.session.document.draft.room.regions.at(-1)!;
     const intent = {
-      kind: 'label-edit' as const,
-      target: { kind: 'label' as const, id: region.labelId },
-      regionLighting: { regionId: region.id, value: { background: 0.15 } },
+      kind: 'region-edit' as const,
+      target: { kind: 'region' as const, id: region.id },
+      intensity: 0.15,
     };
     const stale = [owner.session];
     act(() => {
       owner.session.wallEditing.select('studio-wall');
-      owner.session.mapLabelSelection.select(region.labelId);
+      owner.session.selectRegion(region.id);
       expect(stale[0].commitArrange(intent)).toBe(false);
     });
     stale.push(owner.session);
@@ -5522,7 +5440,7 @@ describe('Studio owner facade', () => {
     expect(owner.storage.writes).toBe(writes);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() => owner.session.cancelTransients());
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    act(() => owner.session.selectRegion(region.id));
     const unmounted = owner.session;
     owner.unmount();
     expect(unmounted.commitArrange(intent)).toBe(false);
@@ -5531,13 +5449,7 @@ describe('Studio owner facade', () => {
 
   it('fresh region facade refuses every definition intent under the publishing lock', async () => {
     const document = createPopulatedStudioDocument();
-    document.draft.scene.version = 3;
-    document.draft.scene.mapLabels = [
-      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
-    ];
-    document.draft.scene.authoringRegions = [
-      { id: 'region', labelId: 'room-label', boundary: { kind: 'automatic' } },
-    ];
+    document.draft = createRegion(document.draft, 'region', 'Room');
     const storage = new MemoryStorage();
     storage.setItem(
       ROOM_DRAFT_STORAGE_KEY,
@@ -5557,9 +5469,7 @@ describe('Studio owner facade', () => {
         studioPresentation={{ view: '3d', render: capture }}
       />
     );
-    act(() =>
-      expect(session!.mapLabelSelection.select('room-label')).toBe(true)
-    );
+    act(() => expect(session!.selectRegion('region')).toBe(true));
     mounted.rerender(
       <WorldBuildingConcept
         roomMode
@@ -5579,26 +5489,29 @@ describe('Studio owner facade', () => {
       />
     );
     expect(session!.arrange).toMatchObject({
-      kind: 'label',
+      kind: 'region',
       region: { id: 'region' },
     });
     const before = session!.document;
     const writes = storage.writes;
     const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     act(() => {
-      expect(
-        session!.regionEditing.createRoomLabel('Locked', { x: 0, z: 0 })
-      ).toBe(false);
-      expect(session!.regionEditing.useEnclosingWalls('region')).toBe(false);
-      expect(session!.regionEditing.setExplicitRegionArea('region', [])).toBe(
+      expect(session!.regionEditing.createRegion('Locked')).toBe(false);
+      expect(session!.regionEditing.renameRegion('region', 'Locked')).toBe(
         false
       );
-      expect(session!.regionEditing.removeRegionAndLabel('region')).toBe(false);
+      expect(session!.regionEditing.setRegionLighting('region', 0.15)).toBe(
+        false
+      );
+      expect(session!.regionEditing.removeRegion('region')).toBe(false);
+      expect(session!.commitFloor([{ q: 0, r: 0 }], 'paint', 'region')).toBe(
+        false
+      );
       expect(
         session!.commitArrange({
-          kind: 'label-edit',
-          target: { kind: 'label', id: 'room-label' },
-          regionLighting: { regionId: 'region', value: { background: 0.15 } },
+          kind: 'region-edit',
+          target: { kind: 'region', id: 'region' },
+          intensity: 0.15,
         })
       ).toBe(false);
     });
@@ -5610,38 +5523,35 @@ describe('Studio owner facade', () => {
   it('region callbacks retire synchronously on selection round trips, epoch, view, undo and unmount', () => {
     const owner = mountStudio(populatedStorage(), true);
     act(() =>
-      expect(
-        owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
-      ).toBe(true)
+      expect(owner.session.regionEditing.createRegion('Forest')).toBe(true)
     );
-    const region = owner.session.document.draft.scene.authoringRegions![0];
-    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const region = owner.session.document.draft.room.regions.at(-1)!;
     const selected = owner.session.regionEditing;
     act(() => {
       owner.session.wallEditing.select('studio-wall');
-      expect(selected.setExplicitRegionArea(region.id, [])).toBe(false);
-      owner.session.mapLabelSelection.select(region.labelId);
-      expect(selected.removeRegionAndLabel(region.id)).toBe(false);
+      expect(selected.setRegionLighting(region.id, 0.5)).toBe(false);
+      owner.session.selectRegion(region.id);
+      expect(selected.removeRegion(region.id)).toBe(false);
     });
     const canceled = owner.session.regionEditing;
     act(() => {
       owner.session.cancelTransients();
-      expect(canceled.createRoomLabel('Canceled', { x: 1, z: 0 })).toBe(false);
-      expect(canceled.setExplicitRegionArea(region.id, [])).toBe(false);
+      expect(canceled.createRegion('Canceled')).toBe(false);
+      expect(canceled.renameRegion(region.id, 'Canceled')).toBe(false);
     });
     const switched = owner.session.regionEditing;
     owner.switchView('layout');
     owner.switchView('3d');
-    act(() => expect(switched.useEnclosingWalls(region.id)).toBe(false));
+    act(() => expect(switched.setRegionLighting(region.id, 0.5)).toBe(false));
     const beforeUndo = owner.session.regionEditing;
     act(() => {
       owner.session.undo();
-      expect(beforeUndo.removeRegionAndLabel(region.id)).toBe(false);
+      expect(beforeUndo.removeRegion(region.id)).toBe(false);
     });
     act(() => owner.session.redo());
     const retired = owner.session.regionEditing;
     owner.unmount();
-    expect(retired.createRoomLabel('Unmounted', { x: 0, z: 0 })).toBe(false);
+    expect(retired.createRegion('Unmounted')).toBe(false);
   });
 
   it('renames through the canonical ordinary commit, preserving identity/scope and one no-op-safe history', () => {
@@ -5941,26 +5851,13 @@ describe('Studio owner facade', () => {
     expect(owner.storage.writes).toBe(writes);
   });
 
-  it('resize and the complete label lifecycle are atomic shared-history transactions', () => {
+  it('the complete label lifecycle is atomic shared-history transactions', () => {
+    // Resize is retired (unbounded canvas, rpg-project#725); the label
+    // lifecycle it shared history with survives.
     const owner = mountStudio(populatedStorage());
     act(() => owner.session.viewportProps.onSelect(['table']));
     const initial = structuredClone(owner.session.document);
     const snapshots = [initial];
-    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
-    snapshots.push(structuredClone(owner.session.document));
-    expect(owner.session.document.draft.workspace).toMatchObject({
-      kind: 'centered-odd-r',
-      widthHexes: 73,
-      heightHexes: 48,
-    });
-    expect(owner.session.document.draft.scene.version).toBe(2);
-    expect(owner.session.document.draft.room).toEqual(initial.draft.room);
-    expect(owner.session.document.draft.scene.items).toEqual(
-      initial.draft.scene.items
-    );
-    expect(owner.session.document.draft.scene.groups).toEqual(
-      initial.draft.scene.groups
-    );
     act(() =>
       expect(owner.session.createMapLabel(' Kitchen ', { x: 0, z: 0 })).toBe(
         true
@@ -5985,11 +5882,8 @@ describe('Studio owner facade', () => {
     for (const snapshot of snapshots) {
       expect(snapshot.scope).toEqual(initial.scope);
       expect(snapshot.draft.room).toEqual(initial.draft.room);
-      expect(snapshot.draft.workspace).toEqual(
-        snapshot === initial
-          ? initial.draft.workspace
-          : snapshots[1].draft.workspace
-      );
+      expect(snapshot.draft.scene.items).toEqual(initial.draft.scene.items);
+      expect(snapshot.draft.scene.groups).toEqual(initial.draft.scene.groups);
     }
     for (let i = snapshots.length - 2; i >= 0; i--) {
       act(() => owner.session.undo());
@@ -6002,10 +5896,10 @@ describe('Studio owner facade', () => {
     }
   });
 
-  it('reload preserves resized workspace, labels and complete authored data and retires the old owner', () => {
+  it('reload preserves labels and complete authored data and retires the old owner', () => {
+    // Resize is retired (rpg-project#725); the reload/retirement claim survives.
     const storage = populatedStorage();
     const owner = mountStudio(storage);
-    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
     act(() =>
       expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
     );
@@ -6021,7 +5915,6 @@ describe('Studio owner facade', () => {
     const writes = storage.writes;
     act(() => {
       expect(retired.deleteMapLabel(id)).toBe(false);
-      expect(retired.resizeWorkspace(20, 20)).toBe(false);
       retired.viewportProps.onTransformCommit(retired.viewportProps.scene);
     });
     expect(reopened.session.document).toEqual(before);
@@ -6037,9 +5930,10 @@ describe('Studio owner facade', () => {
     );
   });
 
-  it('label-only edits retain the legacy workspace; missing/no-op/refused intents write no history', () => {
+  it('missing/no-op/refused label intents write no history', () => {
+    // No workspace is stored any more (rpg-project#725); the bound a label
+    // move can exceed is the world coordinate limit.
     const owner = mountStudio(populatedStorage());
-    const workspace = structuredClone(owner.session.document.draft.workspace);
     act(() =>
       expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
     );
@@ -6057,11 +5951,9 @@ describe('Studio owner facade', () => {
       expect(owner.session.moveMapLabel(id, { x: 0, z: 0 })).toBe(true);
       expect(owner.session.createMapLabel(' ', { x: 0, z: 0 })).toBe(false);
       expect(owner.session.renameMapLabel(id, 'x'.repeat(121))).toBe(false);
-      expect(owner.session.moveMapLabel(id, { x: 999, z: 0 })).toBe(false);
-      expect(owner.session.resizeWorkspace(0, 48)).toBe(false);
+      expect(owner.session.moveMapLabel(id, { x: 200_000, z: 0 })).toBe(false);
     });
     expect(owner.session.document).toBe(before);
-    expect(owner.session.document.draft.workspace).toEqual(workspace);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(owner.storage.writes).toBe(writes);
     act(() => owner.session.undo());
@@ -6069,37 +5961,10 @@ describe('Studio owner facade', () => {
     expect(owner.session.document.draft.scene.version).toBe(1);
   });
 
-  it('same-dimension no-op and unsafe shrink preserve storage and history with an offender notice', () => {
+  it('ordinary prop edits beyond the world coordinate bound are refused before history', () => {
+    // Rewritten for rpg-project#725: no rectangular membership; the only
+    // horizontal bound is ±MAX_WORLD_COORD.
     const owner = mountStudio(populatedStorage());
-    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
-    act(() =>
-      expect(owner.session.createMapLabel('Outer ward', { x: 18, z: 0 })).toBe(
-        true
-      )
-    );
-    const before = owner.session.document;
-    const id = before.draft.scene.mapLabels![0].id;
-    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
-    const writes = owner.storage.writes;
-    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
-    expect(owner.session.document).toBe(before);
-    // The right edge moves in (R13 default): columns -36..8 keep the
-    // populated room and cut only the label at x 18.
-    act(() => expect(owner.session.resizeWorkspace(45, 48)).toBe(false));
-    expect(owner.session.notice).toContain(id);
-    expect(owner.session.document).toBe(before);
-    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    expect(owner.storage.writes).toBe(writes);
-    act(() => owner.session.undo());
-    expect(owner.session.document.draft.scene.mapLabels).toBeUndefined();
-    expect(owner.session.document.draft.workspace).toEqual(
-      before.draft.workspace
-    );
-  });
-
-  it('ordinary prop edits cannot escape rectangular membership through the scalar envelope', () => {
-    const owner = mountStudio(populatedStorage());
-    act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(true));
     act(() =>
       owner.session.viewportProps.onSelect([
         owner.session.document.draft.scene.items[0].id,
@@ -6109,12 +5974,9 @@ describe('Studio owner facade', () => {
     const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     const writes = owner.storage.writes;
     const next = structuredClone(before.draft.scene);
-    next.items[0].transform.x = 18;
-    expect(next.items[0].transform.x).toBeLessThan(
-      before.draft.workspace.horizontalLimit
-    );
+    next.items[0].transform.x = 200_000;
     act(() => owner.session.viewportProps.onTransformCommit(next));
-    expect(owner.session.notice).toMatch(/outside.*workspace/);
+    expect(owner.session.notice).toMatch(/transform/);
     expect(owner.session.document).toBe(before);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(owner.storage.writes).toBe(writes);
@@ -6123,18 +5985,16 @@ describe('Studio owner facade', () => {
   });
 
   it('500000-character overflow is refused before floor history or storage insertion', () => {
+    // Row runs compress a rectangle, so the overflow is a checkerboard (one
+    // run per cell) under the paint cap (rpg-project#725).
     const owner = mountStudio(populatedStorage());
-    act(() => expect(owner.session.resizeWorkspace(128, 128)).toBe(true));
     const before = owner.session.document;
     const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     const writes = owner.storage.writes;
     act(() =>
-      expect(
-        owner.session.commitFloor(
-          workspaceCells(before.draft.workspace),
-          'paint'
-        )
-      ).toBe(false)
+      expect(owner.session.commitFloor(checkerboardCells(), 'paint')).toBe(
+        false
+      )
     );
     expect(owner.session.notice).toMatch(/too large.*500000/);
     expect(owner.session.document).toBe(before);
@@ -6142,26 +6002,24 @@ describe('Studio owner facade', () => {
     expect(owner.storage.writes).toBe(writes);
     act(() => owner.session.undo());
     expect(owner.session.canUndo).toBe(false);
-    expect(owner.session.document.draft.workspace.kind).toBeUndefined();
   });
 
   it('a label edit exceeding the complete serialized budget is refused before history', () => {
-    const document = resizeRoomWorkspace(
-      createPopulatedStudioDocument(),
-      128,
-      128
-    );
+    const document = createPopulatedStudioDocument();
+    document.draft.scene.version = 2;
     document.draft.scene.mapLabels = [
       { id: 'near-budget', text: 'L', location: { x: 0, z: 0 } },
     ];
-    const cells = workspaceCells(document.draft.workspace);
+    const base = document.draft;
+    // A checkerboard: row runs cannot compress it (rpg-project#725).
+    const cells = checkerboardCells();
     // Locate the largest persistable floor with the real codec, not a copied
     // size formula. One extra 120-character label must cross the remaining gap.
-    let low = document.draft.room.walkableHexes.length;
+    let low = 0;
     let high = cells.length;
     while (low < high) {
       const mid = Math.ceil((low + high) / 2);
-      document.draft.room.walkableHexes = cells.slice(0, mid);
+      document.draft = paintCells(base, cells.slice(0, mid));
       try {
         stringifyRoomDraft(document.draft, document.scope);
         low = mid;
@@ -6169,7 +6027,8 @@ describe('Studio owner facade', () => {
         high = mid - 1;
       }
     }
-    document.draft.room.walkableHexes = cells.slice(0, low);
+    expect(low).toBeLessThan(cells.length);
+    document.draft = paintCells(base, cells.slice(0, low));
     const storage = new MemoryStorage();
     storage.setItem(
       ROOM_DRAFT_STORAGE_KEY,
@@ -6208,7 +6067,7 @@ describe('Studio owner facade', () => {
         owner.session.document.draft.scene.mapLabels!.map((label) => label.id)
       ).size
     ).toBe(2);
-    expect(owner.session.document.draft.room.walkableHexes).toEqual(
+    expect(floorCells(owner.session.document.draft)).toEqual(
       expect.arrayContaining([
         { q: 3, r: 0 },
         { q: 4, r: 0 },
@@ -6230,7 +6089,6 @@ describe('Studio owner facade', () => {
     act(() => owner.session.cancelTransients());
     act(() => {
       expect(canceled.createMapLabel('Canceled', { x: 0, z: 0 })).toBe(false);
-      expect(canceled.resizeWorkspace(73, 48)).toBe(false);
       expect(canceled.moveMapLabel('missing', { x: 0, z: 0 })).toBe(false);
       expect(canceled.renameMapLabel('missing', 'Ignored')).toBe(false);
       expect(canceled.deleteMapLabel('missing')).toBe(false);
@@ -6247,7 +6105,11 @@ describe('Studio owner facade', () => {
     const viewContext = owner.session;
     owner.switchView('layout');
     owner.switchView('3d');
-    act(() => expect(viewContext.resizeWorkspace(73, 48)).toBe(false));
+    act(() =>
+      expect(viewContext.createMapLabel('Abandoned view', { x: 0, z: 0 })).toBe(
+        false
+      )
+    );
     expect(owner.session.document).toBe(initial);
     expect(owner.session.canUndo).toBe(false);
     act(() =>
@@ -6341,15 +6203,16 @@ describe('Studio owner facade', () => {
     expect(screen.queryByLabelText('Factions')).toBeNull();
   });
 
-  it('one floor gesture changes only walkableHexes and carries the complete scope', () => {
+  it('one floor gesture changes only the room regions and carries the complete scope', () => {
+    // The floor is the union of the regions (rpg-project#725).
     const owner = mountStudio(populatedStorage());
     const before = structuredClone(owner.session.document);
     act(() => {
       expect(owner.session.commitFloor([{ q: 3, r: 0 }], 'paint')).toBe(true);
     });
     const after = structuredClone(owner.session.document);
-    expect(after.draft.room.walkableHexes).toContainEqual({ q: 3, r: 0 });
-    after.draft.room.walkableHexes = before.draft.room.walkableHexes;
+    expect(floorCells(after.draft)).toContainEqual({ q: 3, r: 0 });
+    after.draft.room.regions = before.draft.room.regions;
     expect(after).toEqual(before);
     expect(owner.session.canUndo).toBe(true);
   });
@@ -6386,7 +6249,8 @@ describe('Studio owner facade', () => {
     );
     const before = owner.session.document;
     const bad = structuredClone(before.draft.scene);
-    bad.items[0].transform.x = 9999;
+    // Beyond the world coordinate bound (rpg-project#725: no workspace).
+    bad.items[0].transform.x = 200_000;
     act(() => {
       owner.session.viewportProps.onTransformCommit(bad);
     });
@@ -6589,14 +6453,14 @@ describe('Studio owner facade', () => {
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).not.toBe('{broken');
   });
 
-  it('new label/resize transactions retain corrupt-byte protection and quota failure semantics', () => {
+  it('new label transactions retain corrupt-byte protection and quota failure semantics', () => {
+    // Resize is retired (rpg-project#725); the label transaction keeps the claim.
     const storage = new MemoryStorage();
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, '{broken');
     const owner = mountStudio(storage, true);
     act(() =>
       expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
     );
-    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe('{broken');
     expect(owner.session.autosaveBlocked).toBe(true);
     storage.failSet = true;
@@ -6631,7 +6495,7 @@ describe('Studio owner facade', () => {
     act(() => {
       owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
     });
-    expect(owner.session.document.draft.room.walkableHexes).toContainEqual({
+    expect(floorCells(owner.session.document.draft)).toContainEqual({
       q: 3,
       r: 0,
     });
@@ -6678,7 +6542,7 @@ describe('Orbit thumbnail update isolation', () => {
     );
     expect(serialize).toHaveBeenCalled();
     const painted = JSON.parse(json());
-    expect(painted.draft.room.walkableHexes).toEqual([{ q: 0, r: 0 }]);
+    expect(floorCells(painted.draft)).toEqual([{ q: 0, r: 0 }]);
     serialize.mockClear();
     completeThumbnail();
     expect(serialize).not.toHaveBeenCalled();
@@ -6689,7 +6553,7 @@ describe('Orbit thumbnail update isolation', () => {
     expect(serialize).toHaveBeenCalled();
     const invalid = json();
     expect(JSON.parse(invalid).error).toMatch(/must name a fact/);
-    expect(serialize.mock.calls.at(-1)![0].room.walkableHexes).toEqual([
+    expect(floorCells(serialize.mock.calls.at(-1)![0])).toEqual([
       { q: 0, r: 0 },
     ]);
     serialize.mockClear();

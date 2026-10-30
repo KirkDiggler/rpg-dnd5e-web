@@ -15,7 +15,21 @@ import {
   vi,
   type Mock,
 } from 'vitest';
-import { walkableCellsInWorldRectangle } from '../world-building/roomDraft';
+import {
+  contentWorkspace,
+  LAYOUT_GRID_MARGIN,
+} from '../world-building/contentGrid';
+import { toRows } from '../world-building/regionRuns';
+import {
+  cellsInWorldRectangle,
+  createRoomDraft,
+  eraseCells,
+  floorCells,
+  paintCells,
+  regionCells,
+  type RoomDraft,
+  type RoomRegion,
+} from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
   rotateWall,
@@ -24,8 +38,12 @@ import {
 } from '../world-building/structuralWallEditing';
 import {
   centeredRoomWorkspace,
+  rectangleOf,
   workspaceBounds,
+  workspaceCells,
+  type WorkspaceBounds,
 } from '../world-building/workspaceGeometry';
+import { castleRectangleCells } from './fixtures/castleWorkspace';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
   createLayoutTransform,
@@ -33,7 +51,7 @@ import {
   worldToClient,
   type LayoutBounds,
 } from './layoutGeometry';
-import { LayoutViewport } from './LayoutViewport';
+import { LayoutViewport as LayoutViewportUnderTest } from './LayoutViewport';
 import type {
   LayoutFrame,
   LayoutViewportProps,
@@ -102,6 +120,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  renderedFit = populatedFit;
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -125,11 +144,27 @@ function surface(): SVGSVGElement {
     name: 'Layout floor surface',
   }) as unknown as SVGSVGElement;
 }
+/** Layout fits the grid derived from the draft's content (rpg-project#725
+ * R3); the default extent is the populated document's. */
+function fitOf(draft: Pick<RoomDraft, 'room' | 'scene'>) {
+  return workspaceBounds(contentWorkspace(draft));
+}
+const populatedFit = fitOf(createPopulatedStudioDocument().draft);
+/** The draft Layout last rendered: its derived grid is the transform's fit. */
+let renderedFit: WorkspaceBounds = populatedFit;
+function LayoutViewport(input: LayoutViewportProps): React.JSX.Element {
+  renderedFit = fitOf(input.draft);
+  return <LayoutViewportUnderTest {...input} />;
+}
 function position(
   world: WorldPoint,
-  frame: LayoutFrame = initialFrame
+  frame: LayoutFrame = initialFrame,
+  fit: WorkspaceBounds | number = renderedFit
 ): { clientX: number; clientY: number } {
-  const point = worldToClient(world, createLayoutTransform(bounds, frame, 12))!;
+  const point = worldToClient(
+    world,
+    createLayoutTransform(bounds, frame, fit)
+  )!;
   return { clientX: point.x, clientY: point.y };
 }
 function at(
@@ -140,6 +175,11 @@ function at(
 }
 const zero = { q: 0, r: 0 };
 const one = { q: 1, r: 0 };
+/** The derived grid's fit is irrational in world units, so a pointer
+ * round-trip lands within float noise of the requested point. */
+function near(point: WorldPoint): WorldPoint {
+  return { x: expect.closeTo(point.x, 9), z: expect.closeTo(point.z, 9) };
+}
 function previewCells(): string[] {
   return [...surface().querySelectorAll('[data-preview-cell]')].map(
     (node) => node.getAttribute('data-preview-cell')!
@@ -150,45 +190,51 @@ function brush(): void {
   fireEvent.pointerMove(surface(), { ...at(one), pointerId: 7 });
 }
 
-describe('controlled rectangular Layout', () => {
+/** A room whose floor is the w × h rectangle centred on the origin. */
+function floorDraft(w: number, h: number): RoomDraft {
+  const draft = createRoomDraft(
+    { version: 1, id: 'scene', name: 'Floor', items: [], groups: [] },
+    'room'
+  );
+  return paintCells(
+    draft,
+    w === 73 && h === 48
+      ? castleRectangleCells()
+      : workspaceCells(centeredRoomWorkspace(w, h))
+  );
+}
+
+// The grid is derived from content plus a margin (rpg-project#725 R3): a
+// painted w × h floor draws (w + 2m) × (h + 2m) cells, never a stored size.
+describe('controlled derived-grid Layout', () => {
   it.each([
-    [73, 48, 3504],
-    [128, 128, 16384],
+    [73, 48],
+    [128, 128],
   ])(
-    'draws actual %s × %s (%s) cells, not its enclosing disk',
-    (w, h, count) => {
-      const input = props();
-      input.draft = { ...input.draft, workspace: centeredRoomWorkspace(w, h) };
+    'draws the derived grid around an actual %s × %s floor, not its enclosing disk',
+    (w, h) => {
+      const input = props({ draft: floorDraft(w, h) });
       render(<LayoutViewport {...input} />);
-      expect(surface().querySelectorAll('[data-cell]')).toHaveLength(count);
-      const transform = createLayoutTransform(
-        bounds,
-        initialFrame,
-        workspaceBounds(input.draft.workspace)
-      )!;
-      const point = worldToClient(
-        layoutCellCenter({ q: -36, r: 0 }),
-        transform
-      )!;
+      const grid = contentWorkspace(input.draft);
+      expect(grid).toMatchObject({
+        widthHexes: w + 2 * LAYOUT_GRID_MARGIN,
+        heightHexes: h + 2 * LAYOUT_GRID_MARGIN,
+      });
+      expect(surface().querySelectorAll('[data-cell]')).toHaveLength(
+        (w + 2 * LAYOUT_GRID_MARGIN) * (h + 2 * LAYOUT_GRID_MARGIN)
+      );
+      expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
+        w * h
+      );
       fireEvent.pointerDown(surface(), {
-        clientX: point.x,
-        clientY: point.y,
+        ...at({ q: -36, r: 0 }),
         pointerId: 7,
       });
-      const positive = worldToClient(
-        layoutCellCenter({ q: 36, r: 0 }),
-        transform
-      )!;
       fireEvent.pointerMove(surface(), {
-        clientX: positive.x,
-        clientY: positive.y,
+        ...at({ q: 36, r: 0 }),
         pointerId: 7,
       });
-      fireEvent.pointerUp(surface(), {
-        clientX: positive.x,
-        clientY: positive.y,
-        pointerId: 7,
-      });
+      fireEvent.pointerUp(surface(), { ...at({ q: 36, r: 0 }), pointerId: 7 });
       expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
         [
           { q: -36, r: 0 },
@@ -196,21 +242,11 @@ describe('controlled rectangular Layout', () => {
         ],
         'paint'
       );
-      const outside = worldToClient(
-        layoutCellCenter({ q: 37, r: 0 }),
-        transform
-      )!;
       if (h === 48) {
-        fireEvent.pointerDown(surface(), {
-          clientX: outside.x,
-          clientY: outside.y,
-          pointerId: 8,
-        });
-        fireEvent.pointerUp(surface(), {
-          clientX: outside.x,
-          clientY: outside.y,
-          pointerId: 8,
-        });
+        // One column past the margin is outside the drawn grid.
+        const outside = at({ q: 36 + LAYOUT_GRID_MARGIN + 1, r: 0 });
+        fireEvent.pointerDown(surface(), { ...outside, pointerId: 8 });
+        fireEvent.pointerUp(surface(), { ...outside, pointerId: 8 });
         expect(previewCells()).toEqual([]);
         expect(input.onCommit).toHaveBeenCalledTimes(1);
       }
@@ -218,37 +254,16 @@ describe('controlled rectangular Layout', () => {
   );
 
   it.each(['rectangle', 'erase'] as const)(
-    'uses actual expanded bounds for a %s gesture',
+    'uses the derived bounds for a %s gesture',
     (tool) => {
-      const input = props({ tool });
-      input.draft = {
-        ...input.draft,
-        workspace: centeredRoomWorkspace(73, 48),
-      };
+      const input = props({ tool, draft: floorDraft(73, 48) });
       render(<LayoutViewport {...input} />);
-      const transform = createLayoutTransform(
-        bounds,
-        initialFrame,
-        workspaceBounds(input.draft.workspace)
-      )!;
-      const a = worldToClient(layoutCellCenter({ q: -36, r: 0 }), transform)!,
-        b = worldToClient(layoutCellCenter({ q: 36, r: 0 }), transform)!;
-      fireEvent.pointerDown(surface(), {
-        clientX: a.x,
-        clientY: a.y,
-        pointerId: 7,
-      });
-      fireEvent.pointerMove(surface(), {
-        clientX: b.x,
-        clientY: b.y,
-        pointerId: 7,
-      });
+      const a = at({ q: -36, r: 0 }),
+        b = at({ q: 36, r: 0 });
+      fireEvent.pointerDown(surface(), { ...a, pointerId: 7 });
+      fireEvent.pointerMove(surface(), { ...b, pointerId: 7 });
       expect(previewCells()).toHaveLength(tool === 'rectangle' ? 73 : 2);
-      fireEvent.pointerUp(surface(), {
-        clientX: b.x,
-        clientY: b.y,
-        pointerId: 7,
-      });
+      fireEvent.pointerUp(surface(), { ...b, pointerId: 7 });
       const expected =
         tool === 'rectangle'
           ? Array.from({ length: 73 }, (_, i) => ({ q: i - 36, r: 0 }))
@@ -263,19 +278,28 @@ describe('controlled rectangular Layout', () => {
     }
   );
 
-  it.each(['document', 'workspace'])(
+  // A document replacement that grows the derived grid is the old
+  // workspace replacement (rpg-project#725).
+  it.each(['document', 'grid'])(
     'cancels captured previews across %s replacement without a history callback',
     (reason) => {
       const input = props();
       const view = render(<LayoutViewport {...input} />);
       brush();
       const draft =
-        reason === 'workspace'
-          ? { ...input.draft, workspace: centeredRoomWorkspace(73, 48) }
-          : {
-              ...input.draft,
-              room: { ...input.draft.room, walkableHexes: [{ q: 2, r: 0 }] },
-            };
+        reason === 'grid'
+          ? paintCells(input.draft, castleRectangleCells())
+          : eraseCells(input.draft, [
+              floorCells(input.draft)[
+                Math.floor(floorCells(input.draft).length / 2)
+              ],
+            ]);
+      if (reason === 'grid')
+        expect(contentWorkspace(draft)).not.toEqual(
+          contentWorkspace(input.draft)
+        );
+      else
+        expect(contentWorkspace(draft)).toEqual(contentWorkspace(input.draft));
       view.rerender(<LayoutViewport {...input} draft={draft} />);
       expect(previewCells()).toEqual([]);
       expect(release).toHaveBeenCalledWith(7);
@@ -341,11 +365,7 @@ describe('controlled Layout floor surface', () => {
       );
       // Exact boundary semantics are the canonical helper's, not axial-box selection.
       expect(
-        walkableCellsInWorldRectangle(
-          layoutCellCenter(zero),
-          layoutCellCenter(one),
-          6
-        )
+        cellsInWorldRectangle(layoutCellCenter(zero), layoutCellCenter(one))
       ).toEqual([zero, one]);
     }
   );
@@ -513,17 +533,18 @@ describe('controlled Layout floor surface', () => {
     }
   );
 
-  it('workspace boundary filters outside cells without altering committed content', () => {
+  it('the derived grid boundary filters outside cells without altering committed content', () => {
     const input = props();
     const original = structuredClone(input.draft);
     render(<LayoutViewport {...input} />);
-    fireEvent.pointerDown(surface(), { ...at({ q: 6, r: 0 }), pointerId: 7 });
-    fireEvent.pointerMove(surface(), { ...at({ q: 7, r: 0 }), pointerId: 7 });
-    fireEvent.pointerUp(surface(), { ...at({ q: 7, r: 0 }), pointerId: 7 });
-    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
-      [{ q: 6, r: 0 }],
-      'paint'
-    );
+    // The last column of the derived grid on row 0 (rpg-project#725 R3).
+    const rect = rectangleOf(contentWorkspace(input.draft))!;
+    const edge = { q: rect.minCol + rect.widthHexes - 1, r: 0 };
+    const past = { q: edge.q + 1, r: 0 };
+    fireEvent.pointerDown(surface(), { ...at(edge), pointerId: 7 });
+    fireEvent.pointerMove(surface(), { ...at(past), pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(past), pointerId: 7 });
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith([edge], 'paint');
     expect(input.draft).toEqual(original);
   });
 
@@ -586,19 +607,26 @@ describe('controlled Layout floor surface', () => {
       );
     }
     render(<Controlled />);
+    // The fit scale comes from the derived grid (rpg-project#725 R3).
+    const { scale } = createLayoutTransform(bounds, initialFrame, renderedFit)!;
+    const expectCenter = (x: number, z: number): void => {
+      expect(latest.center.x).toBeCloseTo(x, 9);
+      expect(latest.center.z).toBeCloseTo(z, 9);
+      expect(latest.zoom).toBe(1);
+    };
     fireEvent.pointerDown(surface(), { ...at(zero), pointerId: 7, button: 1 });
     fireEvent.pointerMove(surface(), {
       clientX: 560,
       clientY: 345,
       pointerId: 7,
     });
-    expect(latest).toEqual({ center: { x: -2, z: 1 }, zoom: 1 });
+    expectCenter(-50 / scale, 25 / scale);
     fireEvent.pointerMove(surface(), {
       clientX: 585,
       clientY: 345,
       pointerId: 7,
     });
-    expect(latest).toEqual({ center: { x: -3, z: 1 }, zoom: 1 });
+    expectCenter(-75 / scale, 25 / scale);
     fireEvent.pointerUp(surface(), {
       clientX: 585,
       clientY: 345,
@@ -811,7 +839,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     });
     expect(armed.labelEditing.onCreate).toHaveBeenCalledExactlyOnceWith(
       'Courtyard',
-      { x: 2, z: -1 }
+      near({ x: 2, z: -1 })
     );
     expect(input.onCommit).not.toHaveBeenCalled();
   });
@@ -831,7 +859,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     finish();
     expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
       'kitchen',
-      { x: 1, z: 1 }
+      near({ x: 1, z: 1 })
     );
     expect(input.onCommit).not.toHaveBeenCalled();
     fireEvent.pointerDown(surface(), { ...at(one), pointerId: 8, button: 0 });
@@ -873,7 +901,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     finish();
     expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
       'kitchen',
-      { x: 1, z: 1 }
+      near({ x: 1, z: 1 })
     );
     expect(Number(label().getAttribute('x'))).toBe(bounds.width / 2);
     expect(input.onCommit).not.toHaveBeenCalled();
@@ -917,7 +945,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     const text = label();
     const anchor = worldToClient(
       { x: 0, z: 0 },
-      createLayoutTransform(bounds, frame, 12)
+      createLayoutTransform(bounds, frame, renderedFit)
     )!;
     expect(Number(text.getAttribute('x'))).toBeCloseTo(anchor.x - bounds.left);
     expect(Number(text.getAttribute('y'))).toBeCloseTo(anchor.y - bounds.top);
@@ -931,8 +959,11 @@ describe('2D map label pointer ownership and shared transforms', () => {
       ...position({ x: 1.25, z: 1.5 }, frame),
       pointerId: 7,
     });
+    // One world unit right, at the derived fit's scale (zoom included).
     expect(Number(label().getAttribute('x'))).toBeCloseTo(
-      anchor.x - bounds.left + 50
+      anchor.x -
+        bounds.left +
+        createLayoutTransform(bounds, frame, renderedFit)!.scale
     );
     fireEvent.pointerUp(surface(), {
       ...position({ x: 1.25, z: 1.5 }, frame),
@@ -941,7 +972,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     });
     expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
       'kitchen',
-      { x: 1, z: 1 }
+      near({ x: 1, z: 1 })
     );
   });
   it.each([
@@ -1021,31 +1052,27 @@ describe('2D map label pointer ownership and shared transforms', () => {
     });
     expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
       'kitchen',
-      { x: 2, z: 1 }
+      near({ x: 2, z: 1 })
     );
     expect(nextMove).not.toHaveBeenCalled();
   });
-  it('rejects enclosing-envelope-only label points and an invalid move release instead of using last valid preview', () => {
+  // The envelope is gone with the stored workspace (rpg-project#725 R3): a
+  // point outside the derived grid is refused for placement and move release.
+  it('rejects label points outside the derived grid and an invalid move release instead of using last valid preview', () => {
     const input = labelled();
-    input.draft = { ...input.draft, workspace: centeredRoomWorkspace(3, 3) };
     input.labelEditing!.placementText = 'Courtyard';
-    const transform = createLayoutTransform(
-      bounds,
-      initialFrame,
-      workspaceBounds(input.draft.workspace)
-    )!;
-    const atWorld = (p: WorldPoint): { clientX: number; clientY: number } => {
-      const client = worldToClient(p, transform)!;
-      return { clientX: client.x, clientY: client.y };
-    };
     const { rerender } = render(<LayoutViewport {...input} />);
+    const outside = {
+      x: workspaceBounds(contentWorkspace(input.draft)).maxX + 1,
+      z: 0,
+    };
     fireEvent.pointerDown(surface(), {
-      ...atWorld({ x: 5, z: 0 }),
+      ...position(outside),
       pointerId: 7,
       button: 0,
     });
     fireEvent.pointerUp(surface(), {
-      ...atWorld({ x: 5, z: 0 }),
+      ...position(outside),
       pointerId: 7,
       button: 0,
     });
@@ -1057,22 +1084,23 @@ describe('2D map label pointer ownership and shared transforms', () => {
       />
     );
     fireEvent.pointerDown(label(), {
-      ...atWorld({ x: 0, z: 0 }),
+      ...position({ x: 0, z: 0 }),
       pointerId: 7,
       button: 0,
     });
     fireEvent.pointerMove(surface(), {
-      ...atWorld({ x: 1, z: 0 }),
+      ...position({ x: 1, z: 0 }),
       pointerId: 7,
     });
     fireEvent.pointerUp(surface(), {
-      ...atWorld({ x: 5, z: 0 }),
+      ...position(outside),
       pointerId: 7,
       button: 0,
     });
     expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
     expect(input.onCommit).not.toHaveBeenCalled();
   });
+
   it('keyboard selects labels without floor edits and Enter on the surface places at the actual frame center', () => {
     const input = labelled({ frame: { center: { x: 1, z: 2 }, zoom: 1.5 } });
     input.labelEditing!.placementText = 'Courtyard';
@@ -1085,7 +1113,7 @@ describe('2D map label pointer ownership and shared transforms', () => {
     fireEvent.keyDown(surface(), { key: 'Enter' });
     expect(input.labelEditing!.onCreate).toHaveBeenCalledExactlyOnceWith(
       'Courtyard',
-      { x: 1, z: 2 }
+      near({ x: 1, z: 2 })
     );
     expect(input.onCommit).not.toHaveBeenCalled();
   });
@@ -1847,7 +1875,7 @@ describe('controlled Layout wall gestures', () => {
     );
     const previewClient = worldToClient(
       { x: -3, z: -2 },
-      createLayoutTransform(bounds, frame, 12)
+      createLayoutTransform(bounds, frame, renderedFit)
     )!;
     expect(Number(handle('start').getAttribute('cx'))).toBeCloseTo(
       previewClient.x - bounds.left
@@ -1856,7 +1884,7 @@ describe('controlled Layout wall gestures', () => {
     up({ x: 1, z: -2 });
     expect(nextEdit).not.toHaveBeenCalled();
     const candidate = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
-    expect(candidate.line.start).toEqual({ x: -3, z: -2 });
+    expect(candidate.line.start).toEqual(near({ x: -3, z: -2 }));
   });
   it.each([
     'escape',
@@ -1947,7 +1975,7 @@ describe('controlled Layout wall gestures', () => {
     up({ x: 2, z: 1 });
     expect(input.wallEditing.create).toHaveBeenCalledExactlyOnceWith({
       start: { x: 0, z: 0 },
-      end: { x: 2, z: 1 },
+      end: near({ x: 2, z: 1 }),
     });
     down(surface(), { x: 0, z: 0 }, 9);
     down(surface(), { x: 2, z: 1 }, 9, 2);
@@ -2013,11 +2041,15 @@ describe('controlled Layout wall gestures', () => {
   );
 });
 
-describe('explicit region gesture routing', () => {
-  const region = {
+// The region tool paints into the selected region (rpg-project#725 R5):
+// paint reassigns the stroked cells to it; erase hands the stroked cells it
+// owns back to the implicit region. Floor membership is never erased.
+describe('region tool gesture routing', () => {
+  const region: RoomRegion = {
     id: 'forest',
-    labelId: 'forest-label',
-    boundary: { kind: 'explicit' as const, cells: [{ q: 0, r: 0 }] },
+    name: 'Forest',
+    lighting: { intensity: 1 },
+    cells: toRows([{ q: 0, r: 0 }]),
   };
   function regionProps(
     overrides: Partial<LayoutViewportProps> = {}
@@ -2028,15 +2060,15 @@ describe('explicit region gesture routing', () => {
       regionTool: 'paint',
       regionEditing: {
         resolutions: [],
-        createRoomLabel: vi.fn(),
-        useEnclosingWalls: vi.fn(),
-        removeRegionAndLabel: vi.fn(),
-        setExplicitRegionArea: vi.fn(() => true),
+        createRegion: vi.fn(() => true),
+        renameRegion: vi.fn(() => true),
+        setRegionLighting: vi.fn(() => true),
+        removeRegion: vi.fn(() => true),
       },
       ...overrides,
     });
   }
-  it('stages membership only and releases one whole replacement; region hits never move labels or touch floor', () => {
+  it('stages the stroke and releases one paint into the selected region; region hits never move labels', () => {
     const input = regionProps();
     const create = vi.fn();
     const move = vi.fn();
@@ -2045,7 +2077,7 @@ describe('explicit region gesture routing', () => {
         {...input}
         labelEditing={{
           active: false,
-          selectedId: 'forest-label',
+          selectedId: 'forest-note',
           placementText: null,
           onSelect: vi.fn(),
           onCreate: create,
@@ -2060,21 +2092,21 @@ describe('explicit region gesture routing', () => {
       pointerId: 1,
     });
     fireEvent.pointerMove(surface(), { ...at({ q: 2, r: 0 }), pointerId: 1 });
-    expect(input.regionEditing!.setExplicitRegionArea).not.toHaveBeenCalled();
+    expect(previewCells()).toEqual(['1,0', '2,0']);
     expect(input.onCommit).not.toHaveBeenCalled();
     fireEvent.pointerUp(surface(), {
       ...at({ q: 2, r: 0 }),
       button: 0,
       pointerId: 1,
     });
-    expect(
-      input.regionEditing!.setExplicitRegionArea
-    ).toHaveBeenCalledExactlyOnceWith('forest', [
-      { q: 0, r: 0 },
-      { q: 1, r: 0 },
-      { q: 2, r: 0 },
-    ]);
-    expect(input.onCommit).not.toHaveBeenCalled();
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+      [
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+      ],
+      'paint',
+      'forest'
+    );
     expect(move).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
@@ -2109,25 +2141,39 @@ describe('explicit region gesture routing', () => {
       button: 0,
       pointerId: 1,
     });
-    expect(input.regionEditing!.setExplicitRegionArea).not.toHaveBeenCalled();
     expect(input.onCommit).not.toHaveBeenCalled();
   });
-  it('erases only selected membership; rectangle sampling never falls through to floor', () => {
+  it('erase hands back only cells the region owns; rectangle paints into the region and never erases floor', () => {
     const input = regionProps({ regionTool: 'erase' });
+    const implicit = input.draft.room.implicitRegionId;
     const { rerender } = render(<LayoutViewport {...input} />);
+    // A stroke over cells the region does not own changes nothing.
+    fireEvent.pointerDown(surface(), {
+      ...at({ q: 1, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 1, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    expect(input.onCommit).not.toHaveBeenCalled();
     fireEvent.pointerDown(surface(), {
       ...at({ q: 0, r: 0 }),
       button: 0,
       pointerId: 1,
     });
+    fireEvent.pointerMove(surface(), { ...at({ q: 1, r: 0 }), pointerId: 1 });
     fireEvent.pointerUp(surface(), {
-      ...at({ q: 0, r: 0 }),
+      ...at({ q: 1, r: 0 }),
       button: 0,
       pointerId: 1,
     });
-    expect(input.regionEditing!.setExplicitRegionArea).toHaveBeenLastCalledWith(
-      'forest',
-      []
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+      [{ q: 0, r: 0 }],
+      'paint',
+      implicit
     );
     rerender(<LayoutViewport {...input} regionTool="rectangle" />);
     fireEvent.pointerDown(surface(), {
@@ -2141,18 +2187,36 @@ describe('explicit region gesture routing', () => {
       button: 0,
       pointerId: 1,
     });
-    expect(input.regionEditing!.setExplicitRegionArea).toHaveBeenLastCalledWith(
-      'forest',
+    expect(input.onCommit).toHaveBeenLastCalledWith(
       [
         { q: 0, r: 0 },
         { q: 1, r: 0 },
-      ]
+      ],
+      'paint',
+      'forest'
     );
+    expect(input.onCommit).toHaveBeenCalledTimes(2);
+  });
+  it('erase with the implicit region selected hands nothing back', () => {
+    const base = props();
+    const implicit = base.draft.room.regions.find(
+      (r) => r.id === base.draft.room.implicitRegionId
+    )!;
+    const input = regionProps({
+      regionTool: 'erase',
+      selectedRegion: implicit,
+    });
+    render(<LayoutViewport {...input} />);
+    const owned = regionCells(implicit)[0];
+    fireEvent.pointerDown(surface(), { ...at(owned), button: 0, pointerId: 1 });
+    fireEvent.pointerUp(surface(), { ...at(owned), button: 0, pointerId: 1 });
     expect(input.onCommit).not.toHaveBeenCalled();
   });
 });
 
-it('selecting a linked room label preserves the initiating drag when its region projection appears', () => {
+// Labels are notes (rpg-project#725): a region selection appearing during a
+// label drag does not retire that drag.
+it('a region selection appearing mid label drag preserves the initiating drag', () => {
   const draft = createPopulatedStudioDocument().draft;
   draft.scene.mapLabels = [
     { id: 'label', text: 'Room', location: { x: 0, z: 0 } },
@@ -2167,8 +2231,9 @@ it('selecting a linked room label preserves the initiating drag when its region 
           selected
             ? {
                 id: 'region',
-                labelId: 'label',
-                boundary: { kind: 'automatic' },
+                name: 'Room',
+                lighting: { intensity: 1 },
+                cells: [],
               }
             : undefined
         }

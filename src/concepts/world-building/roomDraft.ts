@@ -604,6 +604,12 @@ export function eraseCells(
   return withOwners(draft, owners, draft.room.regions);
 }
 
+/** A placement names one whole hex; anywhere on the unbounded canvas. */
+function requireWholeHex(cell: RoomHexCell, what: string): void {
+  if (!Number.isSafeInteger(cell.q) || !Number.isSafeInteger(cell.r))
+    throw new Error(`${what} must be a whole hex.`);
+}
+
 /** Actor placements, moves and removals are authoring metadata only: each
  * helper shapes data for one whole-room history transaction committed by the
  * editor, and none of them rejects a structurally valid cell as game-illegal.
@@ -613,6 +619,7 @@ export function placeRoomMonster(
   placement: RoomMonsterPlacement
 ): RoomDraft {
   if (!placement.id) throw new Error('Monster placement requires a stable id.');
+  requireWholeHex(placement.startingCell.location, 'Monster placement');
   if (
     draft.room.monsterDeclarations.some(
       (monster) => monster.id === placement.id
@@ -658,6 +665,7 @@ export function moveRoomMonster(
   id: string,
   cell: RoomHexCell
 ): RoomDraft {
+  requireWholeHex(cell, 'Monster placement');
   if (!draft.room.monsterDeclarations.some((monster) => monster.id === id))
     return draft;
   // MOVING KEEPS THE FACING. A creature moved to another hex is the same
@@ -779,6 +787,7 @@ export function setRoomPartyStart(
   draft: RoomDraft,
   cell: RoomHexCell
 ): RoomDraft {
+  requireWholeHex(cell, 'Party start');
   if (
     draft.room.partyStart &&
     draft.room.partyStart.q === cell.q &&
@@ -1453,6 +1462,10 @@ function validateDraft(value: unknown): RoomDraft {
     throw new Error(
       'room.room.monsters: monsters has been renamed to monsterDeclarations; rename this key'
     );
+  if (Object.hasOwn(room, 'walkableHexes'))
+    throw new Error(
+      'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
+    );
   rejectUnknownKeys(
     room,
     [
@@ -1469,10 +1482,6 @@ function validateDraft(value: unknown): RoomDraft {
     ],
     'Room gameplay data'
   );
-  if (Object.hasOwn(room, 'walkableHexes'))
-    throw new Error(
-      'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
-    );
   if (
     typeof room.implicitRegionId !== 'string' ||
     !room.implicitRegionId ||

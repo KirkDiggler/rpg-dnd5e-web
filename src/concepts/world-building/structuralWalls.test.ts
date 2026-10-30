@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import {
   createRoomDraft,
+  floorCells,
   loadRoomDraft,
+  paintCells,
   parseRoomDraftJson,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
@@ -41,8 +43,10 @@ function wall(): StructuralWall {
 }
 
 function draft() {
-  const result = createRoomDraft(createEmptyScene('scene'), 'room');
-  result.room.walkableHexes = [{ q: 0, r: 0 }];
+  const result = paintCells(
+    createRoomDraft(createEmptyScene('scene'), 'room'),
+    [{ q: 0, r: 0 }]
+  );
   result.room.walls = [wall()];
   return result;
 }
@@ -107,36 +111,40 @@ describe('structural walls in the shared room document', () => {
     const source = draft();
     expect(parseRoomDraftJson(stringifyRoomDraft(source))).toEqual(source);
     const yaml = encodeSingleRoomDungeon({ key: 'walls', draft: source });
-    expect(parse(yaml).version).toBe(4);
+    expect(parse(yaml).version).toBe(5);
     expect(parse(yaml).room.version).toBe(3);
     const result = decodeSingleRoomDungeon(yaml).draft;
     expect(result).toEqual(source);
     expect(result.room.walls?.[0].blocker.footprint.width).toBe(22);
-    expect(result.room.walkableHexes).toEqual(source.room.walkableHexes);
+    expect(floorCells(result)).toEqual(floorCells(source));
     expect(result.scene).toEqual(source.scene);
   });
 
-  it('retains legacy bytes and root version when walls are absent or empty', () => {
+  // The root is version 5 always (rpg-project#725); walls no longer bump it.
+  it('retains bytes and root version when walls are absent or empty', () => {
     const source = createRoomDraft(createEmptyScene('scene'), 'room');
     const before = encodeSingleRoomDungeon({ key: 'walls', draft: source });
     source.room.walls = [];
     expect(encodeSingleRoomDungeon({ key: 'walls', draft: source })).toBe(
       before
     );
-    expect(parse(before).version).toBe(3);
+    expect(parse(before).version).toBe(5);
     expect(
       parseRoomDraftJson(stringifyRoomDraft(source)).room
     ).not.toHaveProperty('walls');
   });
 
-  it('refuses walls under a falsely claimed v3 root', () => {
+  // Roots 3 and 4 are retired outright (rpg-project#725), walls or not.
+  it('refuses walls under a retired v3 or v4 root', () => {
     const document = parse(
       encodeSingleRoomDungeon({ key: 'walls', draft: draft() })
     );
-    document.version = 3;
-    expect(() => decodeSingleRoomDungeon(stringify(document))).toThrow(
-      /version|v4|walls/i
-    );
+    for (const version of [3, 4]) {
+      document.version = version;
+      expect(() => decodeSingleRoomDungeon(stringify(document))).toThrow(
+        'version: versions 3 and 4 are retired; regions are the floor (rpg-project#725)'
+      );
+    }
   });
 
   it('does not alias caller-owned data', () => {

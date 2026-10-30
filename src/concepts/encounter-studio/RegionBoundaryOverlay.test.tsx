@@ -1,23 +1,19 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { layoutCellCorners } from './layoutGeometry';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 import { regionStatus } from './StudioArrangeFields';
 import type { RegionResolution } from './studioSession';
 
 describe('Layout region boundary projection', () => {
-  it('draws current polygons and explicit cell unions but never unresolved stale areas', () => {
+  // Regions are the floor (rpg-project#725): every resolved area is a hex
+  // union; polygons and stale automatic reasons are gone.
+  it('draws resolved cell unions but never an unpainted region', () => {
     const resolutions: RegionResolution[] = [
       {
         id: 'room',
         status: 'resolved',
-        area: {
-          kind: 'polygon',
-          ring: [
-            { x: 0, z: 0 },
-            { x: 4, z: 0 },
-            { x: 4, z: 4 },
-          ],
-        },
+        area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
       },
       {
         id: 'forest',
@@ -25,12 +21,12 @@ describe('Layout region boundary projection', () => {
         area: {
           kind: 'hex-union',
           cells: [
-            { q: 0, r: 0 },
-            { q: 1, r: 0 },
+            { q: 3, r: 0 },
+            { q: 4, r: 0 },
           ],
         },
       },
-      { id: 'broken', status: 'unresolved', reason: 'boundary-changed' },
+      { id: 'unpainted', status: 'unresolved', reason: 'empty' },
     ];
     const { container, rerender } = render(
       <svg>
@@ -43,7 +39,11 @@ describe('Layout region boundary projection', () => {
     );
     expect(
       container.querySelector('[data-region-fill="room"]')?.getAttribute('d')
-    ).toBe('M0,0L4,0L4,4Z');
+    ).toBe(
+      `M${layoutCellCorners({ q: 0, r: 0 })
+        .map((p) => `${p.x},${p.z}`)
+        .join('L')}Z`
+    );
     // One hexagon per counted cell in the union's one fill path.
     expect(
       container
@@ -51,7 +51,12 @@ describe('Layout region boundary projection', () => {
         ?.getAttribute('d')
         ?.match(/Z/g)
     ).toHaveLength(2);
-    expect(container.querySelector('[data-region-id="broken"]')).toBeNull();
+    expect(container.querySelector('[data-region-id="unpainted"]')).toBeNull();
+    expect(
+      container
+        .querySelector('.es-region-boundaries')
+        ?.getAttribute('transform')
+    ).toBe('scale(2)');
     expect(
       container
         .querySelector('.es-region-boundaries')
@@ -60,7 +65,7 @@ describe('Layout region boundary projection', () => {
     rerender(
       <svg>
         <RegionBoundaryOverlay
-          resolutions={[{ id: 'room', status: 'unresolved', reason: 'open' }]}
+          resolutions={[{ id: 'room', status: 'unresolved', reason: 'empty' }]}
         />
       </svg>
     );
@@ -95,7 +100,7 @@ describe('Layout region boundary projection', () => {
     const { container } = render(
       <svg>
         <RegionBoundaryOverlay
-          resolutions={[{ id: 'hall', status: 'unresolved', reason: 'open' }]}
+          resolutions={[{ id: 'hall', status: 'unresolved', reason: 'empty' }]}
           colours={new Map([['hall', '#5cc98a']])}
         />
       </svg>
@@ -130,18 +135,32 @@ describe('Layout region boundary projection', () => {
         ?.match(/M/g)
     ).toHaveLength(10);
   });
-  it('names automatic/explicit modes and actionable unresolved reasons without a conflict winner', () => {
+  // Automatic/explicit modes and their reasons are retired; a region is
+  // painted or not.
+  it('names a painted region by its hex count and an unpainted one by the action', () => {
     expect(
-      regionStatus(
-        { id: 'a', labelId: 'l', boundary: { kind: 'automatic' } },
-        { id: 'a', status: 'unresolved', reason: 'unbound' }
-      )
-    ).toMatch(/Automatic · Unresolved.*Use enclosing walls/);
+      regionStatus({
+        id: 'a',
+        status: 'resolved',
+        area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+      })
+    ).toBe('Painted · 1 hex');
     expect(
-      regionStatus(
-        { id: 'a', labelId: 'l', boundary: { kind: 'explicit', cells: [] } },
-        { id: 'a', status: 'unresolved', reason: 'overlap' }
-      )
-    ).toMatch(/Explicit · Unresolved.*no region takes priority/);
+      regionStatus({
+        id: 'a',
+        status: 'resolved',
+        area: {
+          kind: 'hex-union',
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+          ],
+        },
+      })
+    ).toBe('Painted · 2 hexes');
+    expect(
+      regionStatus({ id: 'a', status: 'unresolved', reason: 'empty' })
+    ).toBe('Not painted yet. Arm the region tool and paint its cells.');
+    expect(regionStatus(undefined)).toMatch(/^Not painted yet/);
   });
 });

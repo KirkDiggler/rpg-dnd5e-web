@@ -35,7 +35,7 @@ room:
     regions:
       - id: room-1-region
         name: Untitled room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells: []
     propDeclarations:
       prop-1:

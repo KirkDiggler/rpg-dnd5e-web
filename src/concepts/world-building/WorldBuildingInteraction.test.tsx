@@ -5,11 +5,9 @@ import { createRef, useEffect, type ReactNode } from 'react';
 import * as THREE from 'three';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import type { StructuralWall } from './structuralWalls';
-import { validateWorkspaceContent } from './workspaceContentBounds';
-import { centeredRoomWorkspace } from './workspaceGeometry';
+import { MAX_WORLD_COORD } from './worldBounds';
 import {
   WorldBuildingDropInteraction,
   WorldBuildingTransformGizmo,
@@ -136,18 +134,22 @@ async function setup(mode: 'move' | 'rotate' = 'move') {
   };
 }
 
-describe('rectangular interaction boundary', () => {
-  it('rejects a wall preview/release inside scalar L but outside actual cells; keeps its doors unchanged', async () => {
+/*
+ * The canvas is unbounded (rpg-project#725): the studio passes no workspace to
+ * these interactions and the document no longer refuses content outside one
+ * (workspaceContentBounds.ts is deleted). The tests below drive the props the
+ * viewport passes now. Retired with the workspace: the rectangular-cell
+ * refusal of a wall release, the cancel-on-workspace-change of an active
+ * transform, the drop mask outside a rectangle and the document's
+ * footprint-overhang refusal.
+ */
+describe('unbounded interaction', () => {
+  it('commits a far wall release within the world bound and keeps its doors unchanged', async () => {
     const h = await setup();
-    const workspace = centeredRoomWorkspace(73, 48);
     await renderer!.update(
       <WorldBuildingTransformGizmo
         {...h.props}
-        wallTarget={{
-          ...h.props.wallTarget,
-          workspace,
-          horizontalLimit: workspace.horizontalLimit,
-        }}
+        wallTarget={{ ...h.props.wallTarget, horizontalLimit: MAX_WORLD_COORD }}
       />
     );
     const proxy = renderer!.scene.findByProps({
@@ -155,45 +157,23 @@ describe('rectangular interaction boundary', () => {
     }).instance as THREE.Group;
     await act(async () => {
       control.props!.onMouseDown();
-      proxy.position.z += 40;
+      proxy.position.z += 400;
       control.props!.onObjectChange();
       control.props!.onMouseUp();
     });
-    expect(h.onPreview).toHaveBeenLastCalledWith(null);
-    expect(h.onCommit).not.toHaveBeenCalled();
-    expect(h.onReject).toHaveBeenCalledWith(
-      expect.stringContaining('outside the authoring workspace')
-    );
+    expect(h.onReject).not.toHaveBeenCalled();
+    const committed = h.onCommit.mock.lastCall![0] as StructuralWall;
+    expect(h.onCommit).toHaveBeenCalledOnce();
+    expect(committed.line).toEqual({
+      start: { x: 0, z: 400 },
+      end: { x: 10, z: 400 },
+    });
+    expect(committed.openings).toEqual(source.openings);
     expect(h.wall.openings).toEqual(source.openings);
   });
 
-  it('cancels active gizmo transforms when only workspace changes', async () => {
+  it('previews and commits a scene anchor move once, leaving the source scene untouched', async () => {
     const h = await setup();
-    const view = (width: number) => (
-      <WorldBuildingTransformGizmo
-        {...h.props}
-        workspace={centeredRoomWorkspace(width, 48)}
-      />
-    );
-    await renderer!.update(view(73));
-    const proxy = renderer!.scene.findByProps({
-      name: 'world-building-selection-pivot',
-    }).instance as THREE.Group;
-    await act(async () => {
-      control.props!.onMouseDown();
-      proxy.position.x += 2;
-      control.props!.onObjectChange();
-    });
-    expect(h.onPreview.mock.lastCall![0].line.start.x).toBe(2);
-    await renderer!.update(view(74));
-    await act(async () => control.props!.onMouseUp());
-    expect(h.onCommit).not.toHaveBeenCalled();
-    expect(h.onPreview).toHaveBeenLastCalledWith(null);
-  });
-
-  it('previews anchors with available data but the canonical document gate finally refuses footprint overhang', async () => {
-    const h = await setup();
-    const workspace = centeredRoomWorkspace(1, 1);
     const scene = {
       ...createEmptyScene('prop'),
       version: 2 as const,
@@ -207,33 +187,13 @@ describe('rectangular interaction boundary', () => {
         },
       ],
     };
-    const draft = { ...createRoomDraft(scene, 'room'), workspace };
-    draft.room.propDeclarations = {
-      books: {
-        footprint: { width: 1, depth: 0.2, offsetX: 0, offsetZ: 0 },
-        blocksMovement: false,
-        blocksLineOfSight: false,
-      },
-    };
-    validateWorkspaceContent(draft, {});
-    let accepted = false,
-      refusal = '';
-    const onCommit = vi.fn((candidate) => {
-      try {
-        validateWorkspaceContent({ ...draft, scene: candidate }, {});
-        accepted = true;
-      } catch (error) {
-        refusal = String(error);
-      }
-    });
     await renderer!.update(
       <WorldBuildingTransformGizmo
         {...h.props}
         wallTarget={undefined}
         scene={scene}
-        workspace={workspace}
+        sceneHorizontalLimit={MAX_WORLD_COORD}
         selectedIds={['books']}
-        onCommit={onCommit}
       />
     );
     const proxy = renderer!.scene.findByProps({
@@ -241,113 +201,18 @@ describe('rectangular interaction boundary', () => {
     }).instance as THREE.Group;
     await act(async () => {
       control.props!.onMouseDown();
-      proxy.position.x += 0.5;
+      proxy.position.x += 50.5;
       control.props!.onObjectChange();
     });
-    expect(h.onScenePreview.mock.lastCall![0].items[0].transform.x).toBe(0.5);
+    expect(h.onScenePreview.mock.lastCall![0].items[0].transform.x).toBe(50.5);
     await act(async () => control.props!.onMouseUp());
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(accepted).toBe(false);
-    expect(refusal).toMatch(/books.*workspace/);
+    expect(h.onSceneCommit).toHaveBeenCalledOnce();
+    expect(h.onSceneCommit.mock.lastCall![0].items[0].transform.x).toBe(50.5);
+    expect(h.onReject).not.toHaveBeenCalled();
     expect(scene.items[0]!.transform.x).toBe(0);
   });
 
-  it('allows a contained drop anchor preview but leaves declared-footprint refusal to the final document gate', async () => {
-    const workspace = centeredRoomWorkspace(1, 1);
-    const payload = { kind: 'prop' as const, id: 'dnd5e:props:books' };
-    const draft = {
-      ...createRoomDraft({ ...createEmptyScene('drop'), version: 2 }, 'room'),
-      workspace,
-    };
-    let canvas!: HTMLCanvasElement,
-      accepted = false,
-      refusal = '';
-    const capture = (value: HTMLCanvasElement) => {
-      canvas = value;
-    };
-    const onDrop = vi.fn((_payload, target) => {
-      const candidate = {
-        ...draft,
-        scene: {
-          ...draft.scene,
-          items: [
-            {
-              id: 'books',
-              kind: 'prop' as const,
-              assetRef: payload.id,
-              label: 'Books',
-              transform: { ...target.point, y: 0, rotationY: 0 },
-            },
-          ],
-        },
-        room: {
-          ...draft.room,
-          propDeclarations: {
-            books: {
-              footprint: { width: 1, depth: 0.2, offsetX: 0, offsetZ: 0 },
-              blocksMovement: false,
-              blocksLineOfSight: false,
-            },
-          },
-        },
-      };
-      try {
-        validateWorkspaceContent(candidate, {});
-        accepted = true;
-      } catch (error) {
-        refusal = String(error);
-      }
-    });
-    renderer = await ReactThreeTestRenderer.create(
-      <>
-        <CanvasProbe capture={capture} />
-        <WorldBuildingDropInteraction
-          activeDrag={payload}
-          workspace={workspace}
-          floorY={0}
-          onDrop={onDrop}
-          onDragFinished={vi.fn()}
-        />
-      </>
-    );
-    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
-      left: 0,
-      top: 0,
-      width: 800,
-      height: 600,
-      right: 800,
-      bottom: 600,
-    } as DOMRect);
-    const ground = new THREE.Mesh();
-    ground.userData.worldBuildingGround = true;
-    const intersections = vi
-      .spyOn(THREE.Raycaster.prototype, 'intersectObjects')
-      .mockReturnValue([
-        { object: ground, point: new THREE.Vector3(0.5, 0, 0), distance: 1 },
-      ]);
-    const event = (name: string): Event => {
-      const e = new Event(name, { cancelable: true });
-      Object.defineProperties(e, {
-        clientX: { value: 400 },
-        clientY: { value: 300 },
-        dataTransfer: { value: { getData: () => JSON.stringify(payload) } },
-      });
-      return e;
-    };
-    await act(async () => canvas.dispatchEvent(event('dragover')));
-    expect(
-      renderer.scene.findAllByProps({ name: 'world-building-drop-preview' })
-    ).toHaveLength(1);
-    await act(async () => canvas.dispatchEvent(event('drop')));
-    expect(onDrop).toHaveBeenCalledOnce();
-    expect(accepted).toBe(false);
-    expect(refusal).toMatch(/books.*workspace/);
-    expect(draft.scene.items).toEqual([]);
-    intersections.mockRestore();
-  });
-
-  it('filters ground/surface drop anchors, clears previews on workspace change, and ignores abandoned transfers', async () => {
-    const workspace = centeredRoomWorkspace(73, 48);
+  it('previews and drops at ground and surface anchors anywhere, and ignores abandoned transfers', async () => {
     const payload = { kind: 'prop' as const, id: 'dnd5e:props:books' };
     let canvas!: HTMLCanvasElement;
     const capture = (element: HTMLCanvasElement) => {
@@ -355,12 +220,11 @@ describe('rectangular interaction boundary', () => {
     };
     const onDrop = vi.fn(),
       onDragFinished = vi.fn();
-    const view = (activeDrag: typeof payload | null, ws = workspace) => (
+    const view = (activeDrag: typeof payload | null) => (
       <>
         <CanvasProbe capture={capture} />
         <WorldBuildingDropInteraction
           activeDrag={activeDrag}
-          workspace={ws}
           floorY={0}
           onDrop={onDrop}
           onDragFinished={onDragFinished}
@@ -413,31 +277,39 @@ describe('rectangular interaction boundary', () => {
       kind: 'ground',
       point: p,
     });
+    // Past where a 73 × 48 workspace used to end: the canvas is unbounded.
     p = cubeToWorld({ x: 37, y: -37, z: 0 }, HEX_SIZE);
-    await act(async () => {
-      canvas.dispatchEvent(event('dragover'));
-      canvas.dispatchEvent(event('drop'));
+    await act(async () => canvas.dispatchEvent(event('drop')));
+    expect(onDrop).toHaveBeenCalledTimes(2);
+    expect(onDrop).toHaveBeenLastCalledWith(payload, {
+      kind: 'ground',
+      point: p,
     });
-    expect(
-      renderer.scene.findAllByProps({ name: 'world-building-drop-preview' })
-    ).toHaveLength(0);
-    expect(onDrop).toHaveBeenCalledTimes(1);
     ground.userData.worldBuildingSupportId = 'support';
     await act(async () => {
       canvas.dispatchEvent(event('dragover'));
       canvas.dispatchEvent(event('drop'));
     });
-    expect(onDrop).toHaveBeenCalledTimes(1); // Surface overhang is not an anchor permission.
+    // With no workspace mask, an upward support face anchors a surface drop
+    // wherever it is (its overhang was refused only past the workspace).
+    expect(onDrop).toHaveBeenCalledTimes(3);
+    expect(onDrop).toHaveBeenLastCalledWith(payload, {
+      kind: 'surface',
+      point: { x: p.x, y: 0, z: p.z },
+      supportId: 'support',
+    });
     ground.userData.worldBuildingSupportId = undefined;
     p = { x: 0, z: 0 };
     await act(async () => canvas.dispatchEvent(event('dragover')));
-    await renderer.update(view(payload, centeredRoomWorkspace(74, 48)));
+    expect(
+      renderer.scene.findAllByProps({ name: 'world-building-drop-preview' })
+    ).toHaveLength(1);
+    await renderer.update(view(null));
     expect(
       renderer.scene.findAllByProps({ name: 'world-building-drop-preview' })
     ).toHaveLength(0);
-    await renderer.update(view(null));
     await act(async () => canvas.dispatchEvent(event('drop')));
-    expect(onDrop).toHaveBeenCalledTimes(1);
+    expect(onDrop).toHaveBeenCalledTimes(3);
     intersections.mockRestore();
   });
 });
@@ -523,7 +395,7 @@ describe('shared transform gizmo wall target', () => {
     expect(h.wall).toEqual(source);
   });
 
-  it('rejects out-of-workspace release and restores the drag-start proxy', async () => {
+  it('rejects a release past the wall limit and restores the drag-start proxy', async () => {
     const h = await setup();
     await act(async () => {
       control.props!.onMouseDown();

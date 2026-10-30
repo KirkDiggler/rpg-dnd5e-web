@@ -2,7 +2,7 @@
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { describe, expect, it, vi } from 'vitest';
 import { worldToClient } from '../encounter-studio/layoutGeometry';
-import { setRegionWallFinish } from './regionFinishEdits';
+import type { RoomDraft } from './roomDraft';
 import {
   finishRoomFixture,
   finishWall,
@@ -10,7 +10,11 @@ import {
   GRAY_REF,
 } from './roomFinishTestFixtures';
 import * as roomCharts from './roomWallFinishes';
-import { projectRoomWallFinishes } from './roomWallFinishes';
+import {
+  projectRoomWallFinishes,
+  surfaceRepeatSceneUnits,
+  type WallFinishSpan,
+} from './roomWallFinishes';
 import { setWallFinishes } from './wallFinishEdits';
 import {
   projectWallFinishes,
@@ -62,25 +66,77 @@ const catalog: WorldMaterialCatalog = {
     },
   ],
 };
+/** A region finish as a saved file carries it. No edit can choose one now —
+ * no region is wall-bound (rpg-project#725) — so it is carried, unapplied. */
+function carried(draft: RoomDraft, ...ids: string[]): RoomDraft {
+  return {
+    ...draft,
+    scene: {
+      ...draft.scene,
+      version: 6,
+      regionPresentation: Object.fromEntries(
+        ids.map((id) => [
+          id,
+          {
+            wallFinish: {
+              materialRef: GRAY_REF,
+              patternStart: {
+                incoming: {
+                  wallId: 'west',
+                  direction: 'end-to-start' as const,
+                },
+                outgoing: {
+                  wallId: 'north',
+                  direction: 'start-to-end' as const,
+                },
+              },
+            },
+          },
+        ])
+      ),
+    },
+  };
+}
+function regionSpan(
+  regionId: string,
+  start: number,
+  end: number
+): WallFinishSpan {
+  return {
+    regionId,
+    wallId: 'north',
+    side: 'positive-z',
+    start,
+    end,
+    provider: catalog.surfaces[0],
+    material: catalog.materials[0],
+    chart: {
+      surfaceId: 'front',
+      phase: start,
+      direction: 1,
+      repeat: surfaceRepeatSceneUnits(catalog.materials[0]),
+      elevation: 0,
+    },
+  };
+}
+
 describe('wall choices over optional room defaults', () => {
   it('fails closed if a region-chart provider violates the certified non-overlap contract', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
+    const draft = finishRoomFixture();
     draft.scene = setWallFinishes(draft.scene, 'north', {
       'positive-z': small,
     });
-    const defaults = projectRoomWallFinishes(draft, catalog),
-      north = defaults.spans.find((span) => span.wallId === 'north')!;
+    const defaults = projectRoomWallFinishes(draft, catalog);
     // Fault injection at the producer boundary, not a claim that valid authored
-    // regions can overlap. Pin the defensive guard to its actual failure path.
+    // regions can overlap. No region is wall-bound now (rpg-project#725), so
+    // the provider rows are built by hand. Pin the guard to its failure path.
     const provider = vi
       .spyOn(roomCharts, 'projectRoomWallFinishes')
       .mockReturnValue({
         ...defaults,
         spans: [
-          ...defaults.spans,
-          { ...north, regionId: 'overlapping-provider-row' },
+          regionSpan('left', 0, 8),
+          regionSpan('overlapping-provider-row', 0, 8),
         ],
       });
     try {
@@ -120,10 +176,8 @@ describe('wall choices over optional room defaults', () => {
     });
     expect(rotated).toEqual({ a: { x: -0.5, z: 4 }, b: { x: 0.5, z: 4 } });
   });
-  it('finishes both sides of a standalone wall with no region and fixed Start-relative phase', () => {
+  it('finishes both sides of a standalone wall with no region chart and fixed Start-relative phase', () => {
     const draft = finishRoomFixture();
-    delete draft.scene.authoringRegions;
-    delete draft.scene.mapLabels;
     draft.room.walls = [draft.room.walls![0]];
     draft.scene = setWallFinishes(draft.scene, 'north', {
       'positive-z': GRAY_REF,
@@ -131,7 +185,9 @@ describe('wall choices over optional room defaults', () => {
     });
     const before = structuredClone(draft),
       p = projectWallFinishes(draft, catalog);
-    expect(p.regions).toEqual([]);
+    // Regions are always listed now (rpg-project#725); unfinished, they lend
+    // no chart.
+    expect(p.regions.every((r) => r.status === 'none')).toBe(true);
     expect(p.walls.map((w) => w.status)).toEqual(['ready', 'ready']);
     expect(
       p.spans.map((s) => [
@@ -170,47 +226,33 @@ describe('wall choices over optional room defaults', () => {
     expect(p.spans.filter((s) => s.wallId === 'stub')).toHaveLength(2);
     expect(p.walls.every((s) => s.status === 'ready')).toBe(true);
   });
-  it('overrides all face intervals, retaining each resolved room chart and using a local chart for an unowned tail', () => {
-    let draft = finishRoomFixture(true);
+  // Carried region finishes never resolve a chart now (rpg-project#725), so
+  // an explicit choice covers the whole face with the wall's local chart.
+  it('overrides the whole face with a local chart while carried region finishes stay unapplied', () => {
+    let draft = carried(finishRoomFixture(true), 'left', 'right');
     draft.room.walls![0] = {
       ...draft.room.walls![0],
       line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
     };
-    draft = setRegionWallFinish(
-      setRegionWallFinish(draft, 'left', { materialRef: GRAY_REF }),
-      'right',
-      { materialRef: GRAY_REF }
-    );
-    const defaults = projectRoomWallFinishes(draft, catalog),
-      base = defaults.spans.filter((s) => s.wallId === 'north');
-    expect(base).toHaveLength(2);
-    draft.scene = setWallFinishes(draft.scene, 'north', {
-      'positive-z': small,
-    });
+    const defaults = projectRoomWallFinishes(draft, catalog);
+    expect(defaults.spans).toEqual([]);
+    draft = {
+      ...draft,
+      scene: setWallFinishes(draft.scene, 'north', { 'positive-z': small }),
+    };
     const p = projectWallFinishes(draft, catalog),
       north = p.spans.filter((s) => s.wallId === 'north');
     expect(north.map((s) => [s.start, s.end, s.regionId])).toEqual([
-      [0, 4, 'left'],
-      [4, 8, 'right'],
-      [8, 10, undefined],
+      [0, 10, undefined],
     ]);
-    for (let i = 0; i < 2; i++) {
-      expect(north[i].chart.phase).toBe(base[i].chart.phase);
-      expect(north[i].chart.direction).toBe(base[i].chart.direction);
-      expect(north[i].chart.repeat[0]).not.toBe(base[i].chart.repeat[0]);
-    }
-    expect(north[2].chart.phase).toBe(0);
-    expect(north.every((s) => s.material.ref === small)).toBe(true);
-    expect(p.spans.filter((s) => s.wallId !== 'north')).toEqual(
-      defaults.spans.filter((s) => s.wallId !== 'north')
-    );
+    expect(north[0].chart.phase).toBe(0);
+    expect(north[0].material.ref).toBe(small);
+    expect(p.regions).toEqual(defaults.regions);
     draft.scene = setWallFinishes(draft.scene, 'north', { 'positive-z': null });
     expect(projectWallFinishes(draft, catalog).spans).toEqual(defaults.spans);
   });
-  it('never hides an invalid explicit choice behind a valid room default, and leaves the other face independent', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
+  it('never hides an invalid explicit choice behind a carried room default, and leaves the other face independent', () => {
+    const draft = carried(finishRoomFixture(), 'left');
     draft.scene = setWallFinishes(draft.scene, 'north', {
       'positive-z': 'dnd5e:material:missing:look',
       'negative-z': small,
@@ -229,9 +271,7 @@ describe('wall choices over optional room defaults', () => {
     ).toBe(true);
   });
   it('keeps room-only behavior unchanged and refuses an unenrolled wall rather than inferring capability', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
+    const draft = carried(finishRoomFixture(), 'left');
     expect(projectWallFinishes(draft, catalog)).toEqual({
       ...projectRoomWallFinishes(draft, catalog),
       walls: [],

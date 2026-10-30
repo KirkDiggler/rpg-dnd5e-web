@@ -24,7 +24,7 @@ import sample04FrontRoom from './04-front-room-in-v4.yaml?raw';
  *
  * The rules the engine caught while these were being written, recorded here
  * because they are easy to get wrong and expensive to discover at play:
- *   - a placement's cell must be in the authored `walkableHexes`
+ *   - a placement's cell must be in the authored floor (the union of `room.room.regions`)
  *     ("at author's axial q=2 r=0: is not standable");
  *   - a faction of MANY that waits on a fact must name a `mind`
  *     ("name a mind, or the faction cannot learn"). A faction of one does not:
