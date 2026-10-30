@@ -85,6 +85,7 @@ import {
   enemyBandPhrase,
   factLabel,
   heardLabel,
+  threatLabel,
   whenShorthand,
 } from './answerVocabulary';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
@@ -304,6 +305,8 @@ const isMapping = (value: unknown): value is Record<string, unknown> =>
  * express an illegal state. Two conditions are two entries of the list. */
 type WhenBaseForm =
   | { kind: 'enemy'; band: string }
+  /** `threat: none | walk | dash` (rpg-project#671 R18). */
+  | { kind: 'threat'; word: string }
   | {
       kind: 'deed';
       deed: string;
@@ -328,6 +331,7 @@ interface WhenConditionForm {
 
 function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
   if ('enemy' in condition) return { kind: 'enemy', band: condition.enemy };
+  if ('threat' in condition) return { kind: 'threat', word: condition.threat };
   if ('heard' in condition)
     return {
       kind: 'heard',
@@ -375,6 +379,8 @@ function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
   switch (base.kind) {
     case 'enemy':
       return { enemy: base.band };
+    case 'threat':
+      return { threat: base.word };
     case 'heard':
       return { heard: { kind: base.sound, within: base.within } };
     case 'fact':
@@ -412,6 +418,7 @@ const SELF_SCOPE = '__self__';
 function pickerValue(base: WhenBaseForm | undefined): string {
   if (base === undefined) return 'any';
   if (base.kind === 'enemy') return `enemy:${base.band}`;
+  if (base.kind === 'threat') return `threat:${base.word}`;
   if (base.kind === 'deed') return `deed:${base.deed}`;
   return base.kind;
 }
@@ -429,6 +436,8 @@ function baseForPicker(
       : ANSWER_WHEN.minimumWithin;
   if (next.startsWith('enemy:'))
     return { kind: 'enemy', band: next.slice('enemy:'.length) };
+  if (next.startsWith('threat:'))
+    return { kind: 'threat', word: next.slice('threat:'.length) };
   if (next === 'heard')
     return {
       kind: 'heard',
@@ -534,6 +543,11 @@ function WhenConditionRow({
           ))}
           <option value="heard">{heardLabel()}</option>
           <option value="fact">{factLabel()}</option>
+          {ANSWER_WHEN.threatWords.map((word) => (
+            <option key={`threat:${word}`} value={`threat:${word}`}>
+              {threatLabel(word)}
+            </option>
+          ))}
         </select>
       )}
       {base?.kind === 'deed' && (

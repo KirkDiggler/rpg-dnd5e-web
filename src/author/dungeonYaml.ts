@@ -36,9 +36,7 @@ import {
 } from 'yaml';
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
-  ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
-  ANSWER_PATH_SELECTOR,
   ANSWER_SEARCH,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
@@ -78,6 +76,7 @@ import {
   unknownSelectorRefusal,
   unknownTemperRefusal,
   unknownTriggerRefusal,
+  walksTo,
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
@@ -1491,8 +1490,8 @@ function answerSelector(
       );
     }
     if (hasPath && Array.isArray(v.path)) {
-      // A ROUTE IS WALKED, and only `toward` walks one (R7).
-      if (word !== ANSWER_PATH_SELECTOR.onlyWord) {
+      // A ROUTE IS WALKED, and only `toward` and `dash` walk one (R7).
+      if (!walksTo(word)) {
         throw new DungeonParseError(
           `${rowPathOf(path, word)}: ${HEARING_SENTENCES.pathNotToward(word)}`
         );
@@ -1599,9 +1598,9 @@ function answerSelectorRules(
   if (word === undefined || selector === undefined) return;
   const selectorLine = lineOf([...yamlPath, word]);
   if (selector.at !== undefined) {
-    // The one word `at:` is legal on is READ from the declaration rather
+    // The words `at:` is legal on are READ from the declaration rather
     // than restated here (review round 1, finding 4).
-    if (word !== ANSWER_AT_SELECTOR.onlyWord) {
+    if (!walksTo(word)) {
       throw new DungeonParseError(
         `${path}.${word}: ${withLine(atSelectorRefusal(word), selectorLine)}`
       );

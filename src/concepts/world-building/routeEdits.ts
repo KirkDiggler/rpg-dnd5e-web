@@ -26,14 +26,14 @@ import type {
 } from './answerTableShape';
 
 /** Whether a table word walks to a place, so it may take a cell or a route:
- * the word the declaration names for each (`toward` today; the engine's
- * `dash` arrives with the web's v5 reader, rpg-project#725). */
+ * the words the declaration names (`toward`, and the engine's `dash`, a run
+ * toward, rpg-project#671 R17). */
 export function wordTakesCell(word: string): boolean {
-  return word === ANSWER_AT_SELECTOR.onlyWord;
+  return ANSWER_AT_SELECTOR.words.includes(word);
 }
 
 export function wordTakesRoute(word: string): boolean {
-  return word === ANSWER_PATH_SELECTOR.onlyWord;
+  return ANSWER_PATH_SELECTOR.words.includes(word);
 }
 
 /** A waypoint in the reader's key order: q, r, then wait, then facing. A

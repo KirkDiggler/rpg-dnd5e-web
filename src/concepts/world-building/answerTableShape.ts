@@ -82,7 +82,9 @@ import {
   unknownScopeRefusal,
   unknownSelectorKeyRefusal,
   unknownSelectorRefusal,
+  unknownThreatRefusal,
   unknownTriggerRefusal,
+  walksTo,
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
@@ -195,6 +197,9 @@ export type AnswerWhenCondition =
   | { fled: AnswerWhenDeed }
   | { heard: AnswerWhenHeard }
   | { fact: string }
+  /** `threat: none | walk | dash` (rpg-project#671 R18): who else could
+   * reach where this row lands, and swing. */
+  | { threat: string }
   | { not: AnswerWhenCondition };
 
 /** A `when:` AS WRITTEN — one condition as a single mapping, or a LIST of
@@ -263,6 +268,9 @@ export interface AnswerEntryShape {
   hold?: Record<string, unknown>;
   attack?: AnswerSelectorShape;
   toward?: AnswerSelectorShape;
+  /** `dash: <selector>` (rpg-project#671 R17): a run at the target, taking
+   * `toward`'s selectors. */
+  dash?: AnswerSelectorShape;
   away?: AnswerSelectorShape;
   /** `search: { distance }` (rpg-project#668 R4); distance absent is the
    * engine's six, carried absent so the file's bytes round-trip. */
@@ -507,6 +515,7 @@ function validateAnswerEntry(
       const selector = validateAnswerSelector(raw, `${path}.${word}`, word);
       if (word === 'attack') entry.attack = selector;
       else if (word === 'toward') entry.toward = selector;
+      else if (word === 'dash') entry.dash = selector;
       else if (word === 'away') entry.away = selector;
     } else if (shape === 'search') {
       entry.search = validateAnswerSearch(raw, `${path}.${word}`);
@@ -528,9 +537,11 @@ function validateAnswerEntry(
         ? entry.attack
         : word === 'toward'
           ? entry.toward
-          : word === 'away'
-            ? entry.away
-            : undefined;
+          : word === 'dash'
+            ? entry.dash
+            : word === 'away'
+              ? entry.away
+              : undefined;
     if (selector === undefined) continue;
     // A deed named POSITIVELY by any entry of the list: a negated deed has no
     // actor to have been.
@@ -554,6 +565,7 @@ const GROUP_CARRIED_KEYS: readonly string[] = Object.freeze([
   'hold',
   'attack',
   'toward',
+  'dash',
   'away',
   'flee',
   'search',
@@ -731,6 +743,17 @@ function validateWhenCondition(
         wrap(HEARING_SENTENCES.insideNot(s))
       ),
     };
+  }
+
+  if (key === ANSWER_WHEN.threatKey) {
+    // A SEALED WORD, refused in the dialect's voice (`WhenSpec`'s threat arm).
+    const word = scalarText(value.threat);
+    if (
+      typeof value.threat !== 'string' ||
+      !ANSWER_WHEN.threatWords.includes(word)
+    )
+      fail(path, unknownThreatRefusal(word));
+    return { threat: word };
   }
 
   if (key === 'enemy') {
@@ -929,14 +952,13 @@ function validateAnswerSelector(
       fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
     if (!routeWritten && hasAt) {
       if (at === null) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
-      if (word !== ANSWER_AT_SELECTOR.onlyWord)
-        fail(path, atSelectorRefusal(word));
+      if (!walksTo(word)) fail(path, atSelectorRefusal(word));
     }
     // mind/behavior's shape, at the ROW (`Selector.validate`).
     if (hasAt && route.length > 0)
       fail(rowPathOf(path, word), HEARING_SENTENCES.selectorNamesBoth(word));
     if (route.length > 0) {
-      if (word !== ANSWER_PATH_SELECTOR.onlyWord)
+      if (!walksTo(word))
         fail(rowPathOf(path, word), HEARING_SENTENCES.pathNotToward(word));
       return { path: route };
     }

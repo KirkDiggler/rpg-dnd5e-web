@@ -43,6 +43,8 @@ const VERBS = {
   doNot: { I: 'do not', it: 'does not' },
   attack: { I: 'attack', it: 'attacks' },
   walk: { I: 'walk', it: 'walks' },
+  dash: { I: 'dash', it: 'dashes' },
+  land: { I: 'I land', it: 'it lands' },
   hold: { I: 'hold', it: 'holds' },
   search: { I: 'search', it: 'searches' },
   flee: { I: 'flee', it: 'flees' },
@@ -59,11 +61,17 @@ export function roundsPhrase(n: number): string {
   return n === 1 ? '1 round' : `${n} rounds`;
 }
 
-/** One enemy band, the five exclusive answers to "where is the enemy". */
+/** One enemy band, the five exclusive answers to "where is the enemy" — and
+ * the three move words (rpg-project#671), what this turn's movement buys
+ * against it: a walk puts me in reach, only a dash does, or not even a
+ * dash. */
 export function enemyBandPhrase(band: string): string {
   if (band === 'none') return 'no enemy is seen or remembered';
   if (band === 'reach') return 'an enemy is in reach';
   if (band === 'lost') return 'an enemy is lost where it was last seen';
+  if (band === 'walk') return 'an enemy is a walk away';
+  if (band === 'dash') return 'an enemy is only a dash away';
+  if (band === 'far') return 'an enemy is beyond a dash';
   return `an enemy is ${band}`;
 }
 
@@ -72,7 +80,40 @@ function notEnemyBandPhrase(band: string): string {
   if (band === 'none') return 'an enemy is seen or remembered';
   if (band === 'reach') return 'no enemy is in reach';
   if (band === 'lost') return 'no enemy is lost';
+  if (band === 'walk') return 'no enemy is a walk away';
+  if (band === 'dash') return 'no enemy is only a dash away';
+  if (band === 'far') return 'no enemy is beyond a dash';
   return `no enemy is ${band}`;
+}
+
+/** `threat:` (rpg-project#671 R18) — who ELSE could reach where the row's
+ * move lands and swing next turn: nobody, a walking foe, or only a dashing
+ * one. Judged at the row's landing cell; the row's own target does not
+ * count. */
+export function threatPhrase(
+  word: string,
+  subject: Subject,
+  negated = false
+): string {
+  const where = `where ${verb('land', subject)}`;
+  if (word === 'none')
+    return negated
+      ? `someone else could reach ${where}`
+      : `nobody else could reach ${where}`;
+  if (word === 'walk')
+    return negated
+      ? `no walking foe could reach ${where}`
+      : `a walking foe could reach ${where}`;
+  if (word === 'dash')
+    return negated
+      ? `it is not so that only a dashing foe could reach ${where}`
+      : `only a dashing foe could reach ${where}`;
+  return `threat ${word}`;
+}
+
+/** The `threat` picker's label for one word. */
+export function threatLabel(word: string, subject: Subject = 'I'): string {
+  return threatPhrase(word, subject);
 }
 
 type DeedScope = Pick<AnswerWhenDeed, 'on' | 'as'>;
@@ -166,6 +207,8 @@ function clause(
     return negated
       ? `${subject} ${verb('doNot', subject)} know ${condition.fact}`
       : `${subject} ${verb('know', subject)} ${condition.fact}`;
+  if ('threat' in condition)
+    return threatPhrase(condition.threat, subject, negated);
   const deed = deedOf(condition);
   if (deed === undefined) return 'a condition this build cannot read';
   const [word, body] = deed;
@@ -271,9 +314,14 @@ export function loopPhrase(
 
 /** `toward` on a selector: a figure is walked TOWARD, a cell is walked ONTO
  * ("walks to {q: 1, r: 1}"), and a route is walked round, its waypoints named
- * ("walks its loop by {q: -5, r: 8} (waits 1, faces ne) and …"). */
-function towardPhrase(selector: AnswerSelectorShape, subject: Subject): string {
-  const walk = verb('walk', subject);
+ * ("walks its loop by {q: -5, r: 8} (waits 1, faces ne) and …"). `dash`
+ * reads the same with its own verb: "dashes toward the enemy". */
+function towardPhrase(
+  selector: AnswerSelectorShape,
+  subject: Subject,
+  how: 'walk' | 'dash' = 'walk'
+): string {
+  const walk = verb(how, subject);
   const cell = selectorCell(selector);
   if (cell !== undefined) return `${walk} to ${cellPhrase(cell)}`;
   const route = selectorRoute(selector);
@@ -302,6 +350,8 @@ export function wordPhrase(
   if (entry.attack !== undefined)
     return `${verb('attack', subject)} ${selectorPhrase(entry.attack, subject)}`;
   if (entry.toward !== undefined) return towardPhrase(entry.toward, subject);
+  if (entry.dash !== undefined)
+    return towardPhrase(entry.dash, subject, 'dash');
   if (entry.away !== undefined)
     return `${verb('walk', subject)} away from ${selectorPhrase(entry.away, subject)}`;
   if (entry.search !== undefined)
@@ -341,6 +391,7 @@ export function conditionShorthand(condition: AnswerWhenCondition): string {
   if ('heard' in condition)
     return `heard ${condition.heard.kind} within ${condition.heard.within}`;
   if ('fact' in condition) return `fact ${condition.fact}`;
+  if ('threat' in condition) return `threat ${condition.threat}`;
   if (isNotCondition(condition))
     return `not ${conditionShorthand(condition.not)}`;
   const deed = deedOf(condition);

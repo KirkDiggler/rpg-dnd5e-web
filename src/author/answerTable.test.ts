@@ -137,6 +137,7 @@ describe('the vocabulary declaration is the single source', () => {
       'hold',
       'attack',
       'toward',
+      'dash',
       'away',
       'search',
     ]);
@@ -157,6 +158,7 @@ describe('the vocabulary declaration is the single source', () => {
       'hold',
       'attack',
       'toward',
+      'dash',
       'away',
       'search',
     ]);
@@ -171,6 +173,10 @@ describe('the vocabulary declaration is the single source', () => {
       'remembered',
       'lost',
       'none',
+      // rpg-project#671: the three move words, after the bands.
+      'walk',
+      'dash',
+      'far',
     ]);
     expect(ANSWER_WHEN.deeds).toEqual([
       'attacked',
