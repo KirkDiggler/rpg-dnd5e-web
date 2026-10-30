@@ -64,13 +64,18 @@ export type PredicateDoc =
   | { down: string }
   | { fact: string }
   | { stance: { between: [string, string]; is: Stance } }
+  /** `{ left: <exit id> }` (rpg-project#716): the last standing party
+   * member has left by that exit. LEGAL ONLY AS AN ENDING'S `when`, bare or
+   * under a `not`; refused by name everywhere else ([leftOnlyEndings]). */
+  | { left: string }
   | { not: PredicateDoc };
 
 export const PREDICATE_FORMS = ['round', 'down', 'fact', 'stance'] as const;
 export type PredicateForm = (typeof PREDICATE_FORMS)[number];
 
-/** A form, or `not` around one (rpg-project#719). */
-export type PredicateKind = PredicateForm | 'not';
+/** A form, `left` (an ending's alone), or `not` around one
+ * (rpg-project#719). */
+export type PredicateKind = PredicateForm | 'left' | 'not';
 
 /** Which form a predicate is — the one key it carries. */
 export function predicateForm(p: PredicateDoc): PredicateKind {
@@ -78,8 +83,47 @@ export function predicateForm(p: PredicateDoc): PredicateKind {
   if ('round' in p) return 'round';
   if ('down' in p) return 'down';
   if ('fact' in p) return 'fact';
+  if ('left' in p) return 'left';
   return 'stance';
 }
+
+/** `leftOnlyEndings` (`dungeonspec/factions.go`): `left` anywhere but an
+ * ending's `when`, bare or under a `not`. */
+export function leftOnlyEndings(exit: string): string {
+  return (
+    '`left` waits for the party to walk out, and only an ending waits for that ' +
+    '(`endings: [{ id, when: { left: ' +
+    exit +
+    ' }, outcome: success|failure }]`)'
+  );
+}
+
+/** The two outcomes an ending names (`encounter.ResultSuccess`,
+ * `ResultFailure`). */
+export const ENDING_OUTCOMES = ['success', 'failure'] as const;
+export type EndingOutcome = (typeof ENDING_OUTCOMES)[number];
+
+/** THE ENGINE'S ENDING SENTENCES (`dungeonspec/grammar.go` `endings`,
+ * `endingIf`, rpg-project#716), word for word. */
+export const ENDING_SENTENCES = Object.freeze({
+  /** An `outcome` that is neither word. */
+  outcome: (word: string): string =>
+    `\`outcome: ${word}\`: an ending's outcome is success or failure`,
+  /** An ending with no `when`. */
+  noWhen: (): string =>
+    `the ending does not say when it fires — ${PREDICATE_SHAPE}, or { left: <exit id> }`,
+  /** An `if` beside a `when` that is not a leave. */
+  ifOnlyBesideLeft: (): string =>
+    'only an ending that waits for the party to leave, `when: { left: <exit id> }`, has an `if`',
+  /** A leave ending with no `outcome`. */
+  leaveNeedsOutcome: (): string =>
+    'an ending on leaving says what leaving means: `outcome: success` or `outcome: failure`',
+  /** An `if` of a form it cannot be (`round`, `holds`, `left`). */
+  ifWrongForm: (form: string): string =>
+    "an ending's `if` is { down: <placement id> }, { fact: <id> } or " +
+    '{ stance: { between: [a, b], is: hostile|neutral|allied } }, or { not: } one of them, ' +
+    `and \`${form}\` is none of them`,
+});
 
 /** The predicate grammar, spelled for a refusal a streamer can act on. */
 export const PREDICATE_SHAPE =

@@ -40,6 +40,10 @@ export function waitedNotRefusal(p: PredicateDoc): string | undefined {
   if (!('not' in p)) return undefined;
   if ('not' in p.not) return NOT_OF_NOT_REFUSAL;
   if ('stance' in p.not) return undefined;
+  // `{ not: { left } }` on an ending's `when` is a leave ending — the last
+  // one out by any other door (rpg-project#719) — and fires; anywhere else
+  // `left` is refused in its own sentence (`leftOnlyEndings`).
+  if ('left' in p.not) return undefined;
   return NOT_HOLDS_FROM_THE_START_REFUSAL;
 }
 

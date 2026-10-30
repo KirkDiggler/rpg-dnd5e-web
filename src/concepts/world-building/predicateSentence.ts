@@ -17,7 +17,12 @@ import { MONSTERS, PARTY, type PredicateDoc } from '@/author/factionVocabulary';
 import { turnsTo } from './engineLaws';
 import { documentPlacementNames } from './placementNames';
 import type { RoomDraftDocument, RoomGameplayData } from './roomDraft';
-import type { SiteDisposition, SiteScope } from './siteScope';
+import {
+  isLeaveEnding,
+  type SiteDisposition,
+  type SiteEnding,
+  type SiteScope,
+} from './siteScope';
 
 export interface PredicateContext {
   /** Who must know a fact, as a noun phrase: "captain, the garrison's mind".
@@ -52,6 +57,8 @@ export function predicateSentence(
     return ctx.mindName !== undefined
       ? `${ctx.mindName}${ctx.mindName.includes(',') ? ',' : ''} knows ${predicate.fact}`
       : `${predicate.fact} is known`;
+  if ('left' in predicate)
+    return `the last one standing leaves by ${predicate.left}`;
   const [a, b] = predicate.stance.between;
   return `${sideName(a)} and ${sideName(b)} are ${predicate.stance.is}`;
 }
@@ -67,6 +74,8 @@ function notSentence(inner: PredicateDoc, ctx: PredicateContext): string {
     return ctx.mindName !== undefined
       ? `${ctx.mindName}${ctx.mindName.includes(',') ? ',' : ''} does not know ${inner.fact}`
       : `${inner.fact} is not known`;
+  if ('left' in inner)
+    return `the last one standing leaves by any way out but ${inner.left}`;
   const [a, b] = inner.stance.between;
   return `${sideName(a)} and ${sideName(b)} are no longer ${inner.stance.is}`;
 }
@@ -158,4 +167,21 @@ function untilClause(
         ? pairMindName(document, disposition.between)
         : undefined,
   });
+}
+
+/** One ending as the clause after "The run ends when …" (rpg-project#716):
+ * a leave reads "the last one standing leaves by front-door, success if
+ * King is down"; any other ending its predicate, and its outcome when it
+ * names one. */
+export function endingClause(
+  ending: Readonly<SiteEnding>,
+  ctx: PredicateContext
+): string {
+  const head = predicateSentence(ending.when, ctx);
+  if (!isLeaveEnding(ending.when))
+    return ending.outcome !== undefined ? `${head}, ${ending.outcome}` : head;
+  const outcome = ending.outcome ?? 'with no outcome';
+  return ending.if !== undefined
+    ? `${head}, ${outcome} if ${predicateSentence(ending.if, ctx)}`
+    : `${head}, ${outcome}`;
 }

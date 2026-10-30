@@ -30,10 +30,14 @@ import {
   unknownTemperRefusal,
 } from '@/author/answerVocabulary';
 import {
+  ENDING_OUTCOMES,
+  ENDING_SENTENCES,
+  leftOnlyEndings,
   PARTY,
   PREDICATE_FORMS,
   PREDICATE_SHAPE,
   STANCES,
+  type EndingOutcome,
   type PredicateDoc,
   type Stance,
 } from '@/author/factionVocabulary';
@@ -47,6 +51,7 @@ import {
   validateMonsterTemplates,
   type SiteTemplates,
 } from './monsterTemplates';
+import { NOT_OF_NOT_REFUSAL } from './predicateNot';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 
 /** A faction id has the same grammar as the room key: lower-case, digits,
@@ -196,12 +201,27 @@ export interface SiteExit {
   cell: SiteRoomCell;
 }
 
-/** One authored ending — `{ id, when }`. `when` is the SAME `PredicateSpec` a
- * disposition's `until` and a binding's `arrives` carry, judged by the one
- * grammar. Carried, not interpreted. */
+/** One authored ending — `{ id, when, if?, outcome? }`. `when` is the SAME
+ * `PredicateSpec` a disposition's `until` and a binding's `arrives` carry,
+ * judged by the one grammar — plus `{ left: <exit id> }`, the run ending at
+ * the door (rpg-project#716), bare or under a `not`. A LEAVE ENDING says what
+ * leaving means with `outcome`, and may read one state when the party leaves
+ * with `if`. */
 export interface SiteEnding {
   id: string;
   when: PredicateDoc;
+  /** One state read when the party leaves: `down`, `fact`, `stance`, or
+   * `not` of one. Only beside a leave. */
+  if?: PredicateDoc;
+  /** `success` or `failure`; required beside a leave. */
+  outcome?: EndingOutcome;
+}
+
+/** Whether an ending's `when` waits for the party to leave: `{ left }`, or
+ * `{ not: { left } }` — the last one out by any other door
+ * (`grammar.endings`). */
+export function isLeaveEnding(when: PredicateDoc): boolean {
+  return 'left' in when || ('not' in when && 'left' in when.not);
 }
 
 /** The scenario bindings — a map from scenario id to `{ fieldKey: id }`
@@ -257,7 +277,7 @@ const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
 const INTEL_KEYS = ['id', 'reveals'] as const;
 const REVEALS_KEYS = ['door', 'fact', 'concealment'] as const;
 const EXIT_KEYS = ['id', 'cell'] as const;
-const ENDING_KEYS = ['id', 'when'] as const;
+const ENDING_KEYS = ['id', 'when', 'if', 'outcome'] as const;
 const CELL_KEYS = ['q', 'r'] as const;
 const CONCEALMENT_KEYS = [
   'notice',
@@ -574,12 +594,50 @@ export function validateSiteEndings(value: unknown): SiteEnding[] {
       fail(path, 'needs an id such as held-out');
     if (ids.has(raw.id)) fail(path, `duplicate ending id: ${raw.id}`);
     ids.add(raw.id);
-    if (raw.when === undefined)
-      fail(`${path} when`, 'an ending needs a predicate that fires it');
-    const when = validatePredicate(raw.when, `${path} when`);
-    endings.push({ id: raw.id, when });
+    // THE ENGINE'S ORDER (`grammar.endings`): the outcome's word, the
+    // `when`, then what a leave needs and what only a leave may carry.
+    let outcome: EndingOutcome | undefined;
+    if (raw.outcome !== undefined && raw.outcome !== null) {
+      const word = typeof raw.outcome === 'string' ? raw.outcome : '';
+      if (!(ENDING_OUTCOMES as readonly string[]).includes(word))
+        fail(`${path} outcome`, ENDING_SENTENCES.outcome(String(raw.outcome)));
+      outcome = word as EndingOutcome;
+    }
+    if (raw.when === undefined || raw.when === null)
+      fail(`${path} when`, ENDING_SENTENCES.noWhen());
+    const when = validatePredicate(raw.when, `${path} when`, { left: true });
+    const leave = isLeaveEnding(when);
+    const hasIf = raw.if !== undefined && raw.if !== null;
+    if (!leave && hasIf)
+      fail(`${path} if`, ENDING_SENTENCES.ifOnlyBesideLeft());
+    if (leave && outcome === undefined)
+      fail(`${path} outcome`, ENDING_SENTENCES.leaveNeedsOutcome());
+    const ending: SiteEnding = { id: raw.id, when };
+    if (hasIf) ending.if = validateEndingIf(raw.if, `${path} if`);
+    if (outcome !== undefined) ending.outcome = outcome;
+    endings.push(ending);
   }
   return endings;
+}
+
+/** A leave ending's `if` (`grammar.endingIf`): `{ down }`, `{ fact }` or `{
+ * stance }`, or `{ not: }` one of them, never a `not` of a `not`. Any other
+ * form the predicate grammar names — `round`, `holds`, `left` — is refused
+ * in the engine's sentence naming it. Whether a `down` names a placed
+ * monster, or a stance's factions exist, is the engine's at Save & Play. */
+function validateEndingIf(value: unknown, path: string): PredicateDoc {
+  if (isMapping(value) && Object.keys(value).length === 1) {
+    const form = Object.keys(value)[0]!;
+    if (form === 'not') {
+      const inner = value.not;
+      if (isMapping(inner) && Object.keys(inner).length === 1 && 'not' in inner)
+        fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
+      return { not: validateEndingIf(inner, `${path}.not`) };
+    }
+    if (form === 'round' || form === 'holds' || form === 'left')
+      fail(path, ENDING_SENTENCES.ifWrongForm(form));
+  }
+  return validatePredicate(value, path);
 }
 
 /** The site's `scenarios:` — a map of scenario id to its `{ field: id }`
@@ -862,7 +920,14 @@ function validateFactionPair(value: unknown, path: string): [string, string] {
  * EXPORTED since rpg-dnd5e-web#1176: a creature's `arrives` carries the SAME
  * `PredicateSpec` a disposition's `until` does, so it is validated by this one
  * function rather than by a second transcription of the grammar. */
-export function validatePredicate(value: unknown, path: string): PredicateDoc {
+export function validatePredicate(
+  value: unknown,
+  path: string,
+  /** An ending's `when` (and its `if`, which refuses `left` in its own
+   * sentence): the one place `{ left: <exit id> }` is a predicate
+   * (rpg-project#716). Everywhere else it is refused by name. */
+  { left = false }: { left?: boolean } = {}
+): PredicateDoc {
   if (!isMapping(value) || Object.keys(value).length !== 1)
     fail(path, PREDICATE_SHAPE);
   const form = Object.keys(value)[0];
@@ -870,7 +935,14 @@ export function validatePredicate(value: unknown, path: string): PredicateDoc {
   // down. Whether its inner can fire where it stands is the engine's
   // judgement at its own path (`predicateNot.ts` mirrors the sentences).
   if (form === 'not')
-    return { not: validatePredicate(value.not, `${path}.not`) };
+    return { not: validatePredicate(value.not, `${path}.not`, { left }) };
+  if (form === 'left') {
+    const exit = value.left;
+    if (typeof exit !== 'string' || !exit)
+      fail(`${path}.left`, 'must name an exit id');
+    if (!left) fail(`${path}.left`, leftOnlyEndings(exit));
+    return { left: exit };
+  }
   if (!(PREDICATE_FORMS as readonly string[]).includes(form))
     fail(path, PREDICATE_SHAPE);
 

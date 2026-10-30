@@ -2420,6 +2420,7 @@ export function predicateText(p: PredicateDoc): string {
   if ('round' in p) return `{ round: ${p.round} }`;
   if ('down' in p) return `{ down: ${scalar(p.down)} }`;
   if ('fact' in p) return `{ fact: ${scalar(p.fact)} }`;
+  if ('left' in p) return `{ left: ${scalar(p.left)} }`;
   const [a, b] = p.stance.between;
   return `{ stance: { between: [${scalar(a)}, ${scalar(b)}], is: ${p.stance.is} } }`;
 }

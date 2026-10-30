@@ -113,12 +113,19 @@ export function factIndexOf(
       label: id,
       target: { home: 'tables', id },
     });
-  for (const faction of scope.factions ?? [])
+  for (const faction of scope.factions ?? []) {
     table(faction.on, {
       kind: 'table-row',
       label: faction.id,
       target: { home: 'factions', id: faction.id },
     });
+    // A SIDE'S LINES (rpg-project#718) write and read facts like a
+    // creature's own.
+    options(faction.id, faction.options, {
+      home: 'factions',
+      id: faction.id,
+    });
+  }
   (scope.dispositions ?? []).forEach((d, index) =>
     predicate(d.until, {
       kind: 'disposition',
@@ -133,12 +140,17 @@ export function factIndexOf(
         label: `intel ${record.id}`,
         target: { home: 'intel', id: record.id },
       });
-  for (const ending of scope.endings ?? [])
-    predicate(ending.when, {
+  for (const ending of scope.endings ?? []) {
+    const use: FactUse = {
       kind: 'ending',
       label: `ending ${ending.id}`,
       target: { home: 'endings', id: ending.id },
-    });
+    };
+    predicate(ending.when, use);
+    // A leave ending's `if` reads a fact as the party leaves
+    // (rpg-project#716).
+    predicate(ending.if, use);
+  }
 
   const names = documentPlacementNames(document);
   const room = document.draft.room;
