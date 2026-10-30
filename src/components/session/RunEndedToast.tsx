@@ -15,10 +15,12 @@
  * NOTHING HERE NAVIGATES BY ITSELF. Leaving is a button, never a timer: the
  * modal's primary action kept its place and lost its power to interrupt.
  */
+import { EndingResult } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
 import {
   endingDetail,
+  endingResultLine,
   RUN_ENDED_TOAST_MS,
   runEndedHeadline,
   runOutcome,
@@ -26,10 +28,19 @@ import {
 
 export function RunEndedToast({
   ending,
+  result = EndingResult.UNSPECIFIED,
   carrierLine,
+  companionsLine,
   onLeave,
 }: {
   ending: string;
+  /** The result the ending declares, read off the ended entry
+   *  (rpg-project#733). Unspecified for an ending that states none and for a
+   *  run recorded before results existed: the toast then shows no result. */
+  result?: EndingResult;
+  /** Who came with the party: allied creatures still standing at the end.
+   *  Absent when none did. */
+  companionsLine?: string;
   /** Who walked out holding what, when anybody did. Absent otherwise, and
    *  never invented: a run that ended another way had no carrier. */
   carrierLine?: string;
@@ -47,7 +58,8 @@ export function RunEndedToast({
 
   if (dismissed) return null;
 
-  const outcome = runOutcome(ending);
+  const outcome = runOutcome(ending, result);
+  const resultLine = endingResultLine(ending, result);
   return (
     <div
       data-testid="run-ended-toast"
@@ -78,7 +90,9 @@ export function RunEndedToast({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <strong style={{ fontSize: 16 }}>{runEndedHeadline(ending)}</strong>
+        <strong style={{ fontSize: 16 }}>
+          {runEndedHeadline(ending, result)}
+        </strong>
         <button
           type="button"
           data-testid="run-ended-toast-dismiss"
@@ -95,10 +109,20 @@ export function RunEndedToast({
           ×
         </button>
       </div>
+      {resultLine && (
+        <p data-testid="run-ended-result" style={{ margin: '6px 0 0' }}>
+          {resultLine}
+        </p>
+      )}
       <p style={{ margin: '6px 0 0' }}>{endingDetail(ending)}</p>
       {carrierLine && (
         <p data-testid="run-ended-carrier" style={{ margin: '6px 0 0' }}>
           {carrierLine}
+        </p>
+      )}
+      {companionsLine && (
+        <p data-testid="run-ended-companions" style={{ margin: '6px 0 0' }}>
+          {companionsLine}
         </p>
       )}
       <div style={{ marginTop: 10 }}>
