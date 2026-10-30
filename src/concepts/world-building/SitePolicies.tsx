@@ -42,6 +42,7 @@ import {
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
+  MONSTERS,
   PREDICATE_FORMS,
   STANCES,
   type PredicateDoc,
@@ -151,14 +152,17 @@ import {
   addSiteAnswerEntry,
   addSiteDisposition,
   addSiteFaction,
+  addSiteFactionOption,
   entryWord,
   patchSiteAnswerEntry,
   patchSiteFaction,
   removeSiteAnswerEntry,
   removeSiteDisposition,
   removeSiteFaction,
+  removeSiteFactionOption,
   renameSiteFaction,
   setAnswerEntryWord,
+  setSiteFactionOption,
   updateSiteDisposition,
 } from './sitePolicyEdits';
 import type {
@@ -1845,6 +1849,48 @@ function FactionRow({
             onChange={onChange}
           />
 
+          {/* THE SIDE'S LINES (rpg-project#718): what a character can say to
+              ANY member, written once. Layered the way `on:` is — a member
+              with its own lines speaks those and none of these. */}
+          <div
+            className="wb-policy-block"
+            data-testid={`faction-options-${faction.id}`}
+          >
+            <h6>Lines — what a character can say to any member</h6>
+            <p className="wb-help">
+              A member with no lines of its own speaks these; a member that
+              writes its own speaks only those.
+            </p>
+            {room ? (
+              <OptionsEditor
+                titled={false}
+                owner={faction.id}
+                options={faction.options ?? []}
+                room={room}
+                isProp={false}
+                onAdd={() => onChange(addSiteFactionOption(scope, faction.id))}
+                onChange={(index, option) =>
+                  onChange(
+                    setSiteFactionOption(scope, faction.id, index, option)
+                  )
+                }
+                onRemove={(index) =>
+                  onChange(removeSiteFactionOption(scope, faction.id, index))
+                }
+              />
+            ) : (faction.options ?? []).length === 0 ? (
+              <p className="wb-help">This faction has no lines.</p>
+            ) : (
+              <ul className="wb-policy-table">
+                {(faction.options ?? []).map((option) => (
+                  <li key={option.id} className="wb-help">
+                    {optionText(option)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <button
             type="button"
             className="wb-danger"
@@ -2652,6 +2698,23 @@ export function CreatureOrders({
         className="wb-policy-block"
         about={<p>The lines a character can say to this creature.</p>}
       >
+        {(binding?.options ?? []).length === 0 &&
+          (() => {
+            // A MEMBER WITH NO LINES SPEAKS ITS FACTION'S (rpg-project#718).
+            const side = (scope.factions ?? []).find(
+              (f) => f.id === (binding?.faction ?? MONSTERS)
+            );
+            if (!side?.options?.length) return null;
+            return (
+              <p
+                className="wb-help"
+                data-testid="creature-options-from-faction"
+              >
+                It has no lines of its own, so it speaks the {side.id}{' '}
+                faction’s: {side.options.map((o) => o.id).join(', ')}.
+              </p>
+            );
+          })()}
         {onOrdersChange !== undefined ? (
           <OptionsEditor
             titled={false}

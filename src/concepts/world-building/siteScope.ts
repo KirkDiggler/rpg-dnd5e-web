@@ -37,7 +37,12 @@ import {
   type PredicateDoc,
   type Stance,
 } from '@/author/factionVocabulary';
-import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
+import {
+  validateAnswerTable,
+  validateOptions,
+  type AnswerTableShape,
+  type OptionShape,
+} from './answerTableShape';
 import {
   validateMonsterTemplates,
   type SiteTemplates,
@@ -68,7 +73,18 @@ export interface SiteFaction {
   table?: string;
   on?: AnswerTableShape;
   temper?: SiteTemper;
+  /** The lines a character can say to ANY member of this faction
+   * (rpg-project#718): a placement's `options`, written once for the side.
+   * LAYERED THE WAY `on:` IS: a member that writes its own options speaks
+   * those and none of these; a member that writes none speaks these. */
+  options?: OptionShape[];
 }
+
+/** `errOptionsEmpty` (`dungeonspec/grammar.go`): `options` is a layered key,
+ * so `options: []` would silence the faction's lines rather than mean "none
+ * of my own" — refused whole. */
+export const OPTIONS_EMPTY_REFUSAL =
+  '`options` lists nothing — omit it, or write a line it can be spoken to with';
 
 /** One authored answer table at the root, keyed by its id in
  * [SiteScope.tables] (rpg-toolkit#1897).
@@ -229,7 +245,14 @@ export interface SiteConcealmentSpec {
 /** The root `concealments:` map, keyed by id — the secret-vault shape. */
 export type SiteConcealments = Record<string, SiteConcealmentSpec>;
 
-const FACTION_KEYS = ['id', 'mind', 'table', 'on', 'temper'] as const;
+const FACTION_KEYS = [
+  'id',
+  'mind',
+  'table',
+  'on',
+  'temper',
+  'options',
+] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
 const INTEL_KEYS = ['id', 'reveals'] as const;
 const REVEALS_KEYS = ['door', 'fact', 'concealment'] as const;
@@ -309,6 +332,14 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
       faction.on = validateAnswerTable(raw.on, `${path} on`);
     if (Object.hasOwn(raw, 'temper'))
       faction.temper = validateFactionTemper(raw.temper, `${path} temper`);
+    // THE ONE OPTION GRAMMAR a creature's own lines get (`grammar.options`
+    // at `factions[i]`): a faction's members are monsters, so `flee` is
+    // legal here as it is on a binding.
+    if (raw.options !== undefined && raw.options !== null) {
+      if (Array.isArray(raw.options) && raw.options.length === 0)
+        fail(`${path} options`, OPTIONS_EMPTY_REFUSAL);
+      faction.options = validateOptions(raw.options, `${path} options`, false);
+    }
     factions.push(faction);
   }
   return factions;

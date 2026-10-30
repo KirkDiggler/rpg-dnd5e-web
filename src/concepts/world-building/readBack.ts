@@ -30,6 +30,7 @@ import { castMemberOf } from './cast';
 import { ENGINE_LAWS, type EngineLawId } from './engineLaws';
 import { walkFacts } from './factWalk';
 import {
+  factionOf,
   layeredOrders,
   type OrdersLayer,
   type OrdersSource,
@@ -413,8 +414,26 @@ function optionSentence(
 
 function spokenToParagraph(
   document: Readonly<RoomDraftDocument>,
-  options: readonly OptionShape[] | undefined
+  options: readonly OptionShape[] | undefined,
+  /** The creature's faction, when it declares lines (rpg-project#718). */
+  side?: { id: string; options: readonly OptionShape[] }
 ): ReadBackParagraph {
+  // A MEMBER WITH NO LINES SPEAKS ITS FACTION'S: the key is layered the way
+  // `on:` is, nearest wins wholesale, so its own lines (any) hide these.
+  if ((options === undefined || options.length === 0) && side !== undefined) {
+    const text = `It has no lines of its own, so it speaks the ${side.id} faction’s.`;
+    return {
+      heading: 'spoken-to',
+      lead: 'It can be spoken to.',
+      sentences: [
+        sentence('It can be spoken to.'),
+        sentence(text, [
+          { text: side.id, target: { kind: 'faction', id: side.id } },
+        ]),
+      ],
+      items: side.options.map((option) => optionSentence(document, option)),
+    };
+  }
   if (options === undefined || options.length === 0)
     return {
       heading: 'spoken-to',
@@ -505,7 +524,12 @@ export function readBackOf(
         walkFacts(row.when, (fact) => reads.add(fact));
         if (row.fact !== undefined) writes.add(row.fact);
       }
-    optionFacts(binding?.options, writes, reads);
+    const faction = factionOf(document, selection.id);
+    const side =
+      (binding?.options ?? []).length === 0 && faction?.options?.length
+        ? { id: faction.id, options: faction.options }
+        : undefined;
+    optionFacts(side?.options ?? binding?.options, writes, reads);
     if (binding?.arrives && 'fact' in binding.arrives)
       reads.add(binding.arrives.fact);
     return [
@@ -515,7 +539,7 @@ export function readBackOf(
         selection.id
       ),
       ordersParagraph(document, selection.id),
-      spokenToParagraph(document, binding?.options),
+      spokenToParagraph(document, binding?.options, side),
       knowsParagraph(document, binding?.holds, writes, reads),
     ];
   }
