@@ -13,6 +13,7 @@ import { BundlesPanel } from '../world-building/BundlesPanel';
 import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
+import { regionLabelPoint } from '../world-building/regionLabel';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
@@ -155,7 +156,7 @@ function StudioSurface({
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
-    session.arrange?.kind === 'label' ? session.arrange.region : undefined;
+    session.arrange?.kind === 'region' ? session.arrange.region : undefined;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sections, setSections] = useState<
@@ -245,24 +246,16 @@ function StudioSurface({
   );
   /** One 3D label per resolved region, in its overview colour (S3-T7). */
   const regionLabels = useMemo(() => {
-    const scene = session.document.draft.scene;
-    return (scene.authoringRegions ?? []).flatMap((region) => {
+    return session.document.draft.room.regions.flatMap((region) => {
       const colour = overview.sizes.get(region.id)
         ? overview.colours.get(region.id)
         : undefined;
-      const label = scene.mapLabels?.find((l) => l.id === region.labelId);
-      return colour && label
-        ? [
-            {
-              id: region.id,
-              text: label.text,
-              location: label.location,
-              colour,
-            },
-          ]
+      const location = regionLabelPoint(region);
+      return colour && location && region.name
+        ? [{ id: region.id, text: region.name, location, colour }]
         : [];
     });
-  }, [session.document.draft.scene, overview]);
+  }, [session.document.draft.room.regions, overview]);
   const finishProjection = session.regionEditing.finishes?.projection;
   const unappliedFinishes = useMemo(
     () =>
@@ -1117,8 +1110,8 @@ function StudioSurface({
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
                 onOpenCastMember={(ref) => session.cast.select(ref)}
-                onOpenRegion={(labelId) => {
-                  session.mapLabelSelection.select(labelId);
+                onOpenRegion={(regionId) => {
+                  session.selectRegion(regionId);
                 }}
                 onDefineRegion={view === 'layout' ? defineRegion : undefined}
               />
@@ -1139,9 +1132,9 @@ function StudioSurface({
                 <LayoutRoomList
                   draft={session.document.draft}
                   overview={overview}
-                  selectedLabelId={session.mapLabelSelection.selectedId}
-                  onSelect={(labelId, bounds) => {
-                    if (!session.mapLabelSelection.select(labelId)) return;
+                  selectedRegionId={selectedRegion?.id ?? null}
+                  onSelect={(regionId, bounds) => {
+                    if (!session.selectRegion(regionId)) return;
                     setSidebarOpen(true);
                     if (bounds) frameBounds(bounds);
                   }}
@@ -1166,6 +1159,9 @@ function StudioSurface({
                     doorEditing={layoutDoorEditing}
                     regionEditing={session.regionEditing}
                     selectedRegion={selectedRegion}
+                    onSelectRegion={(id) => {
+                      if (session.selectRegion(id)) setSidebarOpen(true);
+                    }}
                     patternStart={
                       session.regionEditing.finishes?.projection.regions.find(
                         (r) => r.id === selectedRegion?.id

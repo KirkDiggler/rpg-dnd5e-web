@@ -15,6 +15,7 @@ import {
   type OptionShape,
 } from './answerTableShape';
 import { setActorName } from './creaturePalette';
+import { fromRows, rowCellCount, toRows, type RoomCellRow } from './regionRuns';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
   validatePredicate,
@@ -28,37 +29,18 @@ import {
 } from './structuralWalls';
 import type { KeyValueStorage, WorldScene } from './types';
 import { pruneWallFinishes } from './wallFinishEdits';
-import { validateWorkspaceContent } from './workspaceContentBounds';
-import {
-  containsWorkspaceCell,
-  DEFAULT_RESIZE_EDGES,
-  growRoomWorkspace,
-  rectangleOf,
-  ROOM_WORKSPACE_STEPS,
-  validateWorkspace,
-  workspaceCells,
-  type ResizeEdges,
-  type RoomHexCell,
-  type RoomWorkspace,
-} from './workspaceGeometry';
+import { type RoomHexCell } from './workspaceGeometry';
+import { MAX_WORLD_COORD } from './worldBounds';
 
 // Re-exported so every sibling strict decoder keeps importing them from here
 // (rpg-dnd5e-web#1136 moved the definitions to `strictShape.ts` so the
 // answer-table adapter is not an import cycle; the words are unchanged).
+export { type RoomCellRow } from './regionRuns';
 export { objectShape, rejectUnknownKeys } from './strictShape';
-export {
-  MAX_ROOM_WORKSPACE_HEXES,
-  ROOM_WORKSPACE_STEPS,
-  type RoomHexCell,
-  type RoomWorkspace,
-} from './workspaceGeometry';
+export { type RoomHexCell } from './workspaceGeometry';
 
 export const ROOM_DRAFT_STORAGE_KEY =
   'rpg.concepts.world-building.room-draft.v3';
-export const LEGACY_ROOM_DRAFT_STORAGE_KEY =
-  'rpg.concepts.world-building.room-draft.v2';
-export const LEGACY_V1_ROOM_DRAFT_STORAGE_KEY =
-  'rpg.concepts.world-building.room-draft.v1';
 export const ROOM_DRAFT_KIND = 'rpg-room-authoring-draft' as const;
 export interface RoomFootprint {
   /** Rectangle dimensions in WorldScene coordinate units, local to owner. */
@@ -248,13 +230,45 @@ export interface RoomMonsterBinding extends RoomMonsterInteraction {
    * the first frame. */
   arrives?: PredicateDoc;
 }
+/** A region's lighting: the encounter's word, as the v2 dialect spells it. */
+export interface RoomLighting {
+  /** 0 (dark) .. 1 (bright). */
+  intensity: number;
+}
+
+/**
+ * ONE AUTHORED PLACE (rpg-project#725). A region is what it lists: an id, a
+ * name (its label on the map), a lighting level, and the cells it owns as
+ * canonical row runs. THE FLOOR IS THE UNION OF THE REGIONS: there is no
+ * walkable list beside them, so there is one source of truth for where the
+ * floor is. No cell belongs to two regions. A region may list no cells — a
+ * place declared and not yet painted.
+ *
+ * Regions own PRESENTATION — name, lighting, label. Mechanics (hearing,
+ * seats, arrival) are the wall partitions the engine derives; an authored
+ * edge between two regions blocks, costs and counts nothing (R4).
+ */
+export interface RoomRegion {
+  id: string;
+  name: string;
+  lighting: RoomLighting;
+  /** Pointy-top axial cells as canonical row runs (`regionRuns.ts`). */
+  cells: RoomCellRow[];
+}
+
+/** The most floor cells one draft may paint. A paint cap, not a map size:
+ * the canvas is unbounded (R3). */
+export const MAX_FLOOR_HEXES = 65536;
+
 export interface RoomGameplayData {
+  /** The region unassigned paint lands in. Every site has one; it names a
+   * listed region, or none until the first cell is painted into it. */
   implicitRegionId: string;
   /** Authored wall geometry and appearance; generated pieces are never stored.
-   * Absent on existing documents. Does not change walkable membership. */
+   * Absent on existing documents. Does not change floor membership. */
   walls?: StructuralWall[];
-  /** Pointy-top axial q/r cells using shared HEX_SIZE=1 scene units. */
-  walkableHexes: RoomHexCell[];
+  /** The authored places; their union is the floor. */
+  regions: RoomRegion[];
   /** Stable WorldProp id -> authored declaration. */
   propDeclarations: Record<string, RoomPropDeclaration>;
   /** Arrangement id -> template prop id declarations, remapped on each stamp. */
@@ -334,14 +348,14 @@ export interface RoomDraft {
     hexRadius: 1;
     footprintFrame: 'owner-local-xz';
   };
-  workspace: RoomWorkspace;
   scene: WorldScene;
   room: RoomGameplayData;
 }
 /**
  * What a renderer needs to draw an authored room, and nothing else: the
- * frame its transforms are expressed in, the workspace extent that sizes
- * the floor, and the scene graph itself.
+ * frame its transforms are expressed in, the scene graph, and the room whose
+ * content bounds size the floor (the canvas is unbounded and no extent is
+ * stored, rpg-project#725 R3).
  *
  * It is a `Pick` of `RoomDraft` deliberately — ONE type, never a second
  * copy of the shape. Both producers hand over a `RoomDraft`: the editor
@@ -353,7 +367,7 @@ export interface RoomDraft {
  */
 export type RoomScenePresentation = Pick<
   RoomDraft,
-  'coordinateFrame' | 'workspace' | 'scene'
+  'coordinateFrame' | 'scene' | 'room'
 >;
 
 /** The local-storage envelope. `version` is the ENVELOPE version, separate
@@ -379,29 +393,40 @@ export type RoomScenePresentation = Pick<
  * envelope around the room it just parsed, and it must mint the CURRENT shape
  * rather than borrow `room.version` (which is the room draft's own axis and
  * stays 3). Two copies of this number would be two things to forget. */
-export const ROOM_DRAFT_ENVELOPE_VERSION = 5;
+/**
+ * **v6 IS REGIONS AS THE FLOOR** (rpg-project#725). A v5 draft stores a
+ * `walkableHexes` list and a `workspace`; v6 stores `room.regions` and no
+ * workspace. The bump follows the v5 precedent exactly: the old bytes are
+ * refused BY NAME with a sentence saying to rebuild, never migrated.
+ */
+export const ROOM_DRAFT_ENVELOPE_VERSION = 6;
 
 interface RoomDraftEnvelope {
   kind: typeof ROOM_DRAFT_KIND;
-  version: 3 | 4 | 5;
+  version: 6;
   draft: RoomDraft;
   scope?: SiteScope;
 }
 
 const cellKey = (cell: RoomHexCell) => `${cell.q},${cell.r}`;
-const defaultRoom = (id: string): RoomGameplayData => ({
+/** The implicit region a new room starts with: listed, bright, unpainted. */
+export function implicitRegionOf(id: string, name: string): RoomRegion {
+  return { id, name, lighting: { intensity: 1 }, cells: [] };
+}
+const defaultRoom = (id: string, name: string): RoomGameplayData => ({
   implicitRegionId: `${id}-region`,
-  walkableHexes: [],
+  regions: [implicitRegionOf(`${id}-region`, name)],
   propDeclarations: {},
   arrangementDeclarations: {},
   monsterDeclarations: [],
 });
 
 export function createRoomDraft(scene: WorldScene, id: string): RoomDraft {
+  const name = 'Untitled room';
   return {
     version: 3,
     id,
-    name: 'Untitled room',
+    name,
     coordinateFrame: {
       horizontalPlane: 'world-xz',
       verticalAxis: 'world-y-up',
@@ -409,90 +434,185 @@ export function createRoomDraft(scene: WorldScene, id: string): RoomDraft {
       hexRadius: 1,
       footprintFrame: 'owner-local-xz',
     },
-    workspace: { ...ROOM_WORKSPACE_STEPS[0] },
     scene: structuredClone(scene),
-    room: defaultRoom(id),
+    room: defaultRoom(id, name),
   };
 }
 
-/** Select complete cells whose shared-hex world centres fall inside an X/Z box. */
-export function walkableCellsInWorldRectangle(
+/** Select complete cells whose shared-hex world centres fall inside an X/Z
+ * box. The canvas is unbounded (rpg-project#725 R3), so any box selects; the
+ * rows the box spans are enumerated directly, never a stored grid. Refused
+ * past the paint cap rather than allocating an unbounded list. */
+export function cellsInWorldRectangle(
   start: WorldPos,
-  end: WorldPos,
-  workspace: RoomWorkspace | number = ROOM_WORKSPACE_STEPS[0]
+  end: WorldPos
 ): RoomHexCell[] {
   const minX = Math.min(start.x, end.x);
   const maxX = Math.max(start.x, end.x);
   const minZ = Math.min(start.z, end.z);
   const maxZ = Math.max(start.z, end.z);
+  // Pointy-top axial: z = 1.5 r, x = sqrt3 (q + r/2) at HEX_SIZE.
+  const rowStep = 1.5 * HEX_SIZE;
+  const colStep = Math.sqrt(3) * HEX_SIZE;
   const cells: Array<RoomHexCell & { worldX: number; worldZ: number }> = [];
-  for (const { q, r } of workspaceCells(workspace)) {
-    const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
-    if (
-      center.x >= minX &&
-      center.x <= maxX &&
-      center.z >= minZ &&
-      center.z <= maxZ
-    )
-      cells.push({ q, r, worldX: center.x, worldZ: center.z });
+  for (let r = Math.ceil(minZ / rowStep); r * rowStep <= maxZ; r++) {
+    const qFirst = Math.ceil(minX / colStep - r / 2);
+    for (let q = qFirst; (q + r / 2) * colStep <= maxX; q++) {
+      const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
+      if (
+        center.x >= minX &&
+        center.x <= maxX &&
+        center.z >= minZ &&
+        center.z <= maxZ
+      )
+        cells.push({
+          q: q || 0,
+          r: r || 0,
+          worldX: center.x,
+          worldZ: center.z,
+        });
+      if (cells.length > MAX_FLOOR_HEXES)
+        throw new Error(
+          `A rectangle selects at most ${MAX_FLOOR_HEXES} cells.`
+        );
+    }
   }
   return cells
     .sort((a, b) => a.worldZ - b.worldZ || a.worldX - b.worldX)
     .map(({ q, r }) => ({ q, r }));
 }
 
-export function updateWalkableHexes(
-  draft: RoomDraft,
-  cells: readonly RoomHexCell[],
-  mode: 'paint' | 'erase'
-): RoomDraft {
-  const byKey = new Map(
-    draft.room.walkableHexes.map((cell) => [cellKey(cell), cell])
-  );
-  let changed = false;
-  cells.forEach((cell) => {
-    if (!isCellWithinWorkspace(cell, draft.workspace)) return;
-    const key = cellKey(cell);
-    if (mode === 'paint') {
-      if (!byKey.has(key)) {
-        byKey.set(key, { ...cell });
-        changed = true;
-      }
-    } else if (byKey.delete(key)) {
-      changed = true;
-    }
-  });
-  if (!changed) return draft;
-  return {
-    ...draft,
-    room: {
-      ...draft.room,
-      walkableHexes: [...byKey.values()].sort((a, b) => a.q - b.q || a.r - b.r),
-    },
-  };
+/** One region's cells, in canonical order. Memoised on the rows array: a
+ * committed document is immutable, so the same rows always list the same
+ * cells. The rows are trusted — they passed `validateDraft`. */
+const expanded = new WeakMap<readonly RoomCellRow[], RoomHexCell[]>();
+export function regionCells(region: Pick<RoomRegion, 'cells'>): RoomHexCell[] {
+  let cells = expanded.get(region.cells);
+  if (!cells) {
+    cells = fromRows(region.cells, 'region.cells');
+    expanded.set(region.cells, cells);
+  }
+  return cells;
 }
 
-/** Structural workspace membership for any axial cell: integral and inside
- * the authored workspace. Numeric callers retain legacy radius semantics. */
-export function isCellWithinWorkspace(
-  cell: RoomHexCell,
-  workspace: RoomWorkspace | number
+/** THE FLOOR: the union of every region's cells, rows ascending then q. */
+export function floorCells(draft: Pick<RoomDraft, 'room'>): RoomHexCell[] {
+  return draft.room.regions
+    .flatMap((region) => regionCells(region))
+    .sort((a, b) => a.r - b.r || a.q - b.q);
+}
+
+/** How many floor cells the draft has, without listing them. */
+export function floorCellCount(draft: Pick<RoomDraft, 'room'>): number {
+  return draft.room.regions.reduce(
+    (count, region) => count + rowCellCount(region.cells),
+    0
+  );
+}
+
+/** Cell key `q,r` -> the id of the region that owns it. */
+export function cellOwners(
+  draft: Pick<RoomDraft, 'room'>
+): Map<string, string> {
+  const owners = new Map<string, string>();
+  for (const region of draft.room.regions)
+    for (const cell of regionCells(region))
+      owners.set(cellKey(cell), region.id);
+  return owners;
+}
+
+/** Whether a cell is floor: some region owns it. */
+export function isFloorCell(
+  draft: Pick<RoomDraft, 'room'>,
+  cell: RoomHexCell
 ): boolean {
-  return containsWorkspaceCell(workspace, cell);
+  return draft.room.regions.some((region) =>
+    region.cells.some(
+      (row) =>
+        row.r === cell.r && row.q.some(([a, b]) => cell.q >= a && cell.q <= b)
+    )
+  );
+}
+
+/** Rebuild every region's rows from an owner map; regions keep their order,
+ * identity and lighting, and a region that loses its last cell stays listed
+ * (declared, unpainted). Returns the same draft when nothing moved. */
+function withOwners(
+  draft: RoomDraft,
+  owners: ReadonlyMap<string, string>,
+  regions: readonly RoomRegion[]
+): RoomDraft {
+  const byRegion = new Map<string, RoomHexCell[]>(
+    regions.map((region) => [region.id, []])
+  );
+  for (const [key, id] of owners) {
+    const [q, r] = key.split(',').map(Number);
+    byRegion.get(id)!.push({ q, r });
+  }
+  if (owners.size > MAX_FLOOR_HEXES)
+    throw new Error(
+      `The floor holds at most ${MAX_FLOOR_HEXES} cells (rpg-project#725).`
+    );
+  let changed = regions.length !== draft.room.regions.length;
+  const next = regions.map((region) => {
+    const rows = toRows(byRegion.get(region.id)!);
+    if (JSON.stringify(rows) === JSON.stringify(region.cells)) return region;
+    changed = true;
+    return { ...region, cells: rows };
+  });
+  if (!changed) return draft;
+  return { ...draft, room: { ...draft.room, regions: next } };
+}
+
+/**
+ * PAINT INTO A REGION (rpg-project#725 R5). Each cell joins `regionId` and
+ * leaves whichever region held it — brushing with a region active
+ * REASSIGNS. The default is the implicit region; painting into it when it is
+ * not listed lists it (named after the room, bright). Any other id must name
+ * a listed region. Returns the same draft when nothing changes.
+ */
+export function paintCells(
+  draft: RoomDraft,
+  cells: readonly RoomHexCell[],
+  regionId: string = draft.room.implicitRegionId
+): RoomDraft {
+  let regions = draft.room.regions;
+  if (!regions.some((region) => region.id === regionId)) {
+    if (regionId !== draft.room.implicitRegionId)
+      throw new Error(`Region does not exist: ${regionId}.`);
+    if (cells.length === 0) return draft;
+    regions = [implicitRegionOf(regionId, draft.name), ...regions];
+  }
+  const owners = cellOwners(draft);
+  for (const cell of cells) {
+    if (!Number.isSafeInteger(cell.q) || !Number.isSafeInteger(cell.r))
+      throw new Error('Painted cells must be integral axial coordinates.');
+    owners.set(cellKey(cell), regionId);
+  }
+  return withOwners(draft, owners, regions);
+}
+
+/** ERASE: the cells stop being floor, whichever region held them. */
+export function eraseCells(
+  draft: RoomDraft,
+  cells: readonly RoomHexCell[]
+): RoomDraft {
+  const owners = cellOwners(draft);
+  let removed = false;
+  for (const cell of cells) removed = owners.delete(cellKey(cell)) || removed;
+  if (!removed) return draft;
+  return withOwners(draft, owners, draft.room.regions);
 }
 
 /** Actor placements, moves and removals are authoring metadata only: each
  * helper shapes data for one whole-room history transaction committed by the
  * editor, and none of them rejects a structurally valid cell as game-illegal.
- * Out-of-workspace cells are refused because the draft format itself is
- * bounded, not because of encounter rules. */
+ * The canvas is unbounded (rpg-project#725 R3), so no cell is out of bounds. */
 export function placeRoomMonster(
   draft: RoomDraft,
   placement: RoomMonsterPlacement
 ): RoomDraft {
   if (!placement.id) throw new Error('Monster placement requires a stable id.');
-  if (!isCellWithinWorkspace(placement.startingCell.location, draft.workspace))
-    throw new Error('Monster placement is outside the authoring floor.');
   if (
     draft.room.monsterDeclarations.some(
       (monster) => monster.id === placement.id
@@ -538,8 +658,6 @@ export function moveRoomMonster(
   id: string,
   cell: RoomHexCell
 ): RoomDraft {
-  if (!isCellWithinWorkspace(cell, draft.workspace))
-    throw new Error('Monster placement is outside the authoring floor.');
   if (!draft.room.monsterDeclarations.some((monster) => monster.id === id))
     return draft;
   // MOVING KEEPS THE FACING. A creature moved to another hex is the same
@@ -661,8 +779,6 @@ export function setRoomPartyStart(
   draft: RoomDraft,
   cell: RoomHexCell
 ): RoomDraft {
-  if (!isCellWithinWorkspace(cell, draft.workspace))
-    throw new Error('Party start is outside the authoring floor.');
   if (
     draft.room.partyStart &&
     draft.room.partyStart.q === cell.q &&
@@ -751,19 +867,6 @@ export function remapRoomDeclarations(
     if (declaration) mapped[target] = structuredClone(declaration);
   }
   return { ...structuredClone(room), propDeclarations: mapped };
-}
-
-export function expandRoomWorkspace(draft: RoomDraft): RoomDraft {
-  if (rectangleOf(draft.workspace)) return draft;
-  // The next preset LARGER than the floor there is: a radius workspace off
-  // the presets (rpg-dnd5e-web#1311) never shrinks to the first one.
-  const next = ROOM_WORKSPACE_STEPS.find(
-    (step) =>
-      step.hexRadius > draft.workspace.hexRadius ||
-      (step.hexRadius === draft.workspace.hexRadius &&
-        step.horizontalLimit > draft.workspace.horizontalLimit)
-  );
-  return next ? { ...draft, workspace: { ...next } } : draft;
 }
 
 function validateCell(cell: unknown, field: string): RoomHexCell {
@@ -1230,6 +1333,84 @@ function validateCoordinateFrame(frame: Record<string, unknown>): void {
   }
 }
 
+const REGION_KEYS = ['id', 'name', 'lighting', 'cells'] as const;
+
+/** Where in a region's rows a cell is listed: `cells[j].q[k]`. */
+function spanPathOf(rows: readonly RoomCellRow[], cell: RoomHexCell): string {
+  for (const [j, row] of rows.entries()) {
+    if (row.r !== cell.r) continue;
+    const k = row.q.findIndex(([a, b]) => cell.q >= a && cell.q <= b);
+    if (k >= 0) return `[${j}].q[${k}]`;
+  }
+  return '';
+}
+
+/**
+ * The authored regions, judged in the toolkit's words at the toolkit's paths
+ * (`dungeonspec.regionValues`): a non-empty list; each region an id no other
+ * region has, a name, a lighting intensity in [0, 1] and canonical rows; and
+ * no cell in two regions — refused at the later listing, naming the region
+ * that owns it first. "No region owns a cell" is the engine's to say at
+ * PutDungeon: a new room is an unpainted implicit region, and it must save.
+ */
+function validateRegions(value: unknown): RoomRegion[] {
+  if (!Array.isArray(value))
+    throw new Error('room.room.regions: must be a list');
+  if (value.length === 0)
+    throw new Error('room.room.regions: must not be empty');
+  const ids = new Set<string>();
+  const owner = new Map<string, string>();
+  let total = 0;
+  return value.map((source, i): RoomRegion => {
+    const path = `room.room.regions[${i}]`;
+    const input = objectShape(source, path);
+    rejectUnknownKeys(input, REGION_KEYS, path);
+    if (typeof input.id !== 'string' || !input.id || input.id.length > 120)
+      throw new Error(`${path}.id: is required`);
+    if (ids.has(input.id))
+      throw new Error(`${path}.id: duplicate identity ${input.id}.`);
+    ids.add(input.id);
+    if (typeof input.name !== 'string')
+      throw new Error(`${path}.name: must be a string`);
+    const lighting = objectShape(input.lighting, `${path}.lighting`);
+    rejectUnknownKeys(lighting, ['intensity'], `${path}.lighting`);
+    const intensity = lighting.intensity;
+    if (
+      typeof intensity !== 'number' ||
+      !Number.isFinite(intensity) ||
+      intensity < 0 ||
+      intensity > 1
+    )
+      throw new Error(`${path}.lighting.intensity: must be between 0 and 1`);
+    const cellsPath = `${path}.cells`;
+    const cells = fromRows(input.cells, cellsPath);
+    total += cells.length;
+    if (total > MAX_FLOOR_HEXES)
+      throw new Error(
+        `${cellsPath}: the site lists more cells than the studio paints (at most ${MAX_FLOOR_HEXES})`
+      );
+    const rows = input.cells as RoomCellRow[];
+    for (const cell of cells) {
+      const key = cellKey(cell);
+      const first = owner.get(key);
+      if (first !== undefined)
+        throw new Error(
+          `${cellsPath}${spanPathOf(rows, cell)}: already belongs to region "${first}"`
+        );
+      owner.set(key, input.id);
+    }
+    return {
+      id: input.id,
+      name: input.name,
+      lighting: { intensity },
+      cells: rows.map((row) => ({
+        r: row.r,
+        q: row.q.map(([a, b]) => [a, b] as [number, number]),
+      })),
+    };
+  });
+}
+
 function validateDraft(value: unknown): RoomDraft {
   if (!value || typeof value !== 'object')
     throw new Error('Room draft must be an object.');
@@ -1239,13 +1420,19 @@ function validateDraft(value: unknown): RoomDraft {
     typeof input.id !== 'string' ||
     typeof input.name !== 'string' ||
     !input.coordinateFrame ||
-    !input.workspace ||
     !input.room
   )
     throw new Error('Unsupported room draft.');
+  // THE CANVAS IS UNBOUNDED (rpg-project#725 R3): the document carries no
+  // workspace dimensions, only content and its frame. Refused by name, so a
+  // pre-#725 room says what changed rather than "unsupported field".
+  if (Object.hasOwn(input, 'workspace'))
+    throw new Error(
+      'room.workspace: the canvas is unbounded and the file carries no workspace (rpg-project#725); remove the key'
+    );
   rejectUnknownKeys(
     input as Record<string, unknown>,
-    ['version', 'id', 'name', 'coordinateFrame', 'workspace', 'scene', 'room'],
+    ['version', 'id', 'name', 'coordinateFrame', 'scene', 'room'],
     'Room draft'
   );
   const frame = objectShape(input.coordinateFrame, 'Room coordinate frame');
@@ -1261,19 +1448,6 @@ function validateDraft(value: unknown): RoomDraft {
     ],
     'Room coordinate frame'
   );
-  const workspace = validateWorkspace(input.workspace);
-  if (
-    rectangleOf(workspace) &&
-    input.scene?.version !== 2 &&
-    input.scene?.version !== 3 &&
-    input.scene?.version !== 4 &&
-    input.scene?.version !== 5 &&
-    input.scene?.version !== 6 &&
-    input.scene?.version !== 7
-  )
-    throw new Error(
-      'Centered room workspace requires scene version 2 or later.'
-    );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
     throw new Error(
@@ -1284,7 +1458,7 @@ function validateDraft(value: unknown): RoomDraft {
     [
       'implicitRegionId',
       'walls',
-      'walkableHexes',
+      'regions',
       'propDeclarations',
       'arrangementDeclarations',
       'partyStart',
@@ -1295,9 +1469,13 @@ function validateDraft(value: unknown): RoomDraft {
     ],
     'Room gameplay data'
   );
+  if (Object.hasOwn(room, 'walkableHexes'))
+    throw new Error(
+      'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
+    );
   if (
     typeof room.implicitRegionId !== 'string' ||
-    !Array.isArray(room.walkableHexes) ||
+    !room.implicitRegionId ||
     !room.propDeclarations ||
     typeof room.propDeclarations !== 'object' ||
     Array.isArray(room.propDeclarations) ||
@@ -1306,30 +1484,19 @@ function validateDraft(value: unknown): RoomDraft {
     Array.isArray(room.arrangementDeclarations)
   )
     throw new Error('Invalid room gameplay data.');
-  const walkableHexes: RoomHexCell[] = [];
-  for (const cell of room.walkableHexes) {
-    const parsed = validateCell(cell, 'Walkable cell');
-    if (!isCellWithinWorkspace(parsed, workspace))
-      throw new Error(
-        `room.walkableHexes (${parsed.q},${parsed.r}) is outside the authoring floor.`
-      );
-    walkableHexes.push(parsed);
-  }
+  const regions = validateRegions(room.regions);
   /** Presence must mean an actual integral-cell object; absence stays
    * absent, never an invented origin or a null placeholder. */
   let partyStart: RoomHexCell | undefined;
   if (Object.hasOwn(room, 'partyStart')) {
-    const start = validateCell(room.partyStart, 'Party start');
-    if (!isCellWithinWorkspace(start, workspace))
-      throw new Error('Party start is outside the authoring floor.');
-    partyStart = start;
+    partyStart = validateCell(room.partyStart, 'Party start');
   }
   const propDeclarations: Record<string, RoomPropDeclaration> = {};
   const itemIds = new Set((input.scene?.items ?? []).map((item) => item.id));
   const walls = Object.hasOwn(room, 'walls')
     ? validateStructuralWalls({
         value: room.walls,
-        horizontalLimit: workspace.horizontalLimit,
+        horizontalLimit: MAX_WORLD_COORD,
         itemIds,
       })
     : [];
@@ -1353,12 +1520,6 @@ function validateDraft(value: unknown): RoomDraft {
     );
   }
   const monsters = validateMonsters(room.monsterDeclarations);
-  for (const monster of monsters) {
-    if (!isCellWithinWorkspace(monster.startingCell.location, workspace))
-      throw new Error(
-        `Monster ${monster.id} startingCell is outside the authoring floor.`
-      );
-  }
   // The bindings are validated AFTER the monsters, because a binding names a
   // creature: an orphan can only be detected once the roster is known.
   const monsterBindings = Object.hasOwn(room, 'monsterBindings')
@@ -1416,14 +1577,13 @@ function validateDraft(value: unknown): RoomDraft {
       hexRadius: 1,
       footprintFrame: 'owner-local-xz',
     },
-    workspace: { ...workspace },
     scene: validateScene(input.scene, {
-      workspace,
+      horizontalLimit: MAX_WORLD_COORD,
     }),
     room: {
       implicitRegionId: room.implicitRegionId,
       ...(walls.length > 0 ? { walls } : {}),
-      walkableHexes,
+      regions,
       propDeclarations,
       arrangementDeclarations,
       monsterDeclarations: monsters,
@@ -1467,13 +1627,22 @@ function validateDraft(value: unknown): RoomDraft {
       ]),
     ]),
   ]);
-  for (const region of draft.scene.authoringRegions ?? []) {
+  // A REGION ID IS A NEW OWNER like any other, except the implicit region,
+  // whose id `implicitRegionId` already names.
+  ownedIds.delete(draft.room.implicitRegionId);
+  for (const [index, region] of draft.room.regions.entries()) {
     if (ownedIds.has(region.id))
       throw new Error(
-        `scene.authoringRegions: duplicate region identity ${region.id}.`
+        `room.room.regions[${index}].id: duplicate identity ${region.id}.`
       );
     ownedIds.add(region.id);
   }
+  // A region's look follows the region: an entry naming no region is an
+  // orphan, refused as `propDeclarations` refuses one.
+  const regionIds = new Set(draft.room.regions.map((region) => region.id));
+  for (const id of Object.keys(draft.scene.regionPresentation ?? {}))
+    if (!regionIds.has(id))
+      throw new Error(`scene.regionPresentation.${id}: names no region.`);
   return draft;
 }
 
@@ -1491,7 +1660,6 @@ function normalizeRoomDocument(
 ): RoomDraftDocument {
   const draft = validateDraft(document.draft);
   const scope = validateSiteScope(document.scope, gate);
-  validateWorkspaceContent(draft, scope);
   return { draft, scope };
 }
 
@@ -1500,7 +1668,7 @@ function serializeRoomDocument(document: RoomDraftDocument): string {
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
-      // Envelope 5 and embedded draft 3 remain separate axes; scope stays absent when empty.
+      // Envelope 6 and embedded draft 3 remain separate axes; scope stays absent when empty.
       version: ROOM_DRAFT_ENVELOPE_VERSION,
       draft: document.draft,
       ...(carriesScope ? { scope: document.scope } : {}),
@@ -1551,41 +1719,6 @@ export function validateRoomDocument(
   return normalized;
 }
 
-/** Explicit immutable intent; existing poses/cells are never moved. */
-/** Resize by moving only the chosen edges (default right and top), so no
- * cell, wall, prop, label or creature changes its coordinate. A shrink that
- * would leave content outside is refused by the content gate. */
-export function resizeRoomWorkspace(
-  document: RoomDraftDocument,
-  widthHexes: number,
-  heightHexes: number,
-  edges: ResizeEdges = DEFAULT_RESIZE_EDGES
-): RoomDraftDocument {
-  const workspace = growRoomWorkspace(
-    document.draft.workspace,
-    widthHexes,
-    heightHexes,
-    edges
-  );
-  const next = {
-    draft: {
-      ...document.draft,
-      workspace,
-      scene: {
-        ...document.draft.scene,
-        version:
-          document.draft.scene.version >= 2
-            ? document.draft.scene.version
-            : (2 as const),
-      },
-    },
-    scope: document.scope,
-  };
-  const validated = validateRoomDocument(next);
-  if (JSON.stringify(validated) === JSON.stringify(document)) return document;
-  return validated;
-}
-
 /**
  * Read the envelope, scope and all. The envelope VERSION decides whether a
  * scope is read (rpg-dnd5e-web#1160): v4 carries one, v3 and the legacy v1/v2
@@ -1609,71 +1742,24 @@ export function parseRoomDocumentJson(
   };
   if (envelope.kind !== ROOM_DRAFT_KIND)
     throw new Error('Expected a room authoring draft.');
-  if (envelope.version === 1) {
-    if (envelope.draft?.version !== 1)
-      throw new Error(
-        'Expected a version 1 room authoring draft in the legacy envelope.'
-      );
-    if (Object.hasOwn(envelope, 'scope'))
-      throw new Error(
-        'A version 1 room authoring draft carries no site scope.'
-      );
-    if (
-      envelope.draft?.workspace &&
-      typeof envelope.draft.workspace === 'object' &&
-      ('kind' in envelope.draft.workspace ||
-        'widthHexes' in envelope.draft.workspace ||
-        'heightHexes' in envelope.draft.workspace)
-    )
-      throw new Error(
-        'Version 1 room envelope cannot carry centered workspace metadata.'
-      );
-    return validateRoomDocument({
-      draft: {
-        ...envelope.draft,
-        version: 3,
-        workspace: { ...ROOM_WORKSPACE_STEPS[0] },
-        room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
-      } as unknown as RoomDraft,
-      scope: {},
-    });
-  }
-  if (envelope.version === 2) {
-    if (envelope.draft?.version !== 2)
-      throw new Error(
-        'Expected a version 2 room authoring draft in the legacy envelope.'
-      );
-    if (Object.hasOwn(envelope, 'scope'))
-      throw new Error(
-        'A version 2 room authoring draft carries no site scope.'
-      );
-    return validateRoomDocument({
-      draft: {
-        ...envelope.draft,
-        version: 3,
-        room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
-      } as unknown as RoomDraft,
-      scope: {},
-    });
-  }
+  // EVERY EARLIER ENVELOPE IS REFUSED BY NAME (rpg-project#725). v6 is the
+  // first that stores regions as the floor and no workspace; a v1..v5 draft
+  // stores a walkable list this build no longer reads. Kirk ruled migration
+  // out for the v5 bump and the same holds here: rebuild, once, clearly.
   if (
-    envelope.version !== 3 &&
-    envelope.version !== 4 &&
-    envelope.version !== 5
+    typeof envelope.version === 'number' &&
+    Number.isInteger(envelope.version) &&
+    envelope.version >= 1 &&
+    envelope.version < ROOM_DRAFT_ENVELOPE_VERSION
   )
-    throw new Error('Expected a version 1, 2, 3, 4 or 5 room authoring draft.');
-  // v3 AND v4 STORE THE OLD MONSTER SHAPE, so they are refused BY NAME rather
-  // than handed to `validateDraft` to fail somewhere inside with a sentence
-  // about a missing field (rpg-project#501 §6.1). Kirk ruled migration out:
-  // there is one custom dungeon and rebuilding it is cheap. So the author is
-  // told the one thing that helps — this draft predates the change, rebuild it
-  // — instead of being told a monster is missing its `startingCell`.
-  if (envelope.version === 3 || envelope.version === 4)
     throw new Error(
-      `This room authoring draft was saved before monsters carried a \`startingCell\` ` +
-        `(it is a version ${envelope.version} envelope, and this build writes version 5), ` +
-        'so its creatures store a bare `cell` this build no longer reads. ' +
-        'Rebuild the room rather than migrating it.'
+      `This room authoring draft was saved before regions were the floor ` +
+        `(it is a version ${envelope.version} envelope, and this build writes version ${ROOM_DRAFT_ENVELOPE_VERSION}), ` +
+        'so it stores a walkable list this build no longer reads: rebuild, no migration (rpg-project#725).'
+    );
+  if (envelope.version !== ROOM_DRAFT_ENVELOPE_VERSION)
+    throw new Error(
+      `Expected a version ${ROOM_DRAFT_ENVELOPE_VERSION} room authoring draft.`
     );
   return validateRoomDocument(
     {
@@ -1777,16 +1863,6 @@ export function loadRoomDraft(
           ? { strippedLifetime: migrated.strippedFrom }
           : {}),
       };
-    }
-    const legacyV2 = storage.getItem(LEGACY_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV2 !== null) {
-      const document = parseRoomDocumentJson(legacyV2);
-      return { value: document.draft, scope: document.scope };
-    }
-    const legacyV1 = storage.getItem(LEGACY_V1_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV1 !== null) {
-      const document = parseRoomDocumentJson(legacyV1);
-      return { value: document.draft, scope: document.scope };
     }
     return { value: fallback, scope: {} };
   } catch (error) {

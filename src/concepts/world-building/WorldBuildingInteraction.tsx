@@ -395,7 +395,6 @@ export function WorldBuildingTransformGizmo({
         const validated = validateStructuralWalls({
           value: [next.value],
           horizontalLimit: target.horizontalLimit,
-          workspace: target.workspace,
           itemIds: new Set(),
         });
         target.onCommit(validated[0]!);
@@ -404,7 +403,6 @@ export function WorldBuildingTransformGizmo({
         onCommit(
           validateScene(next.value, {
             horizontalLimit: sceneHorizontalLimit,
-            workspace,
           })
         );
       }

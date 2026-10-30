@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { contentWorkspace } from './contentGrid';
+import type { RoomDraft } from './roomDraft';
 import { rectangleOf, type RoomWorkspace } from './workspaceGeometry';
 
 /** Value-stable presentation input, not a document cache. Owner normalization
@@ -51,4 +53,13 @@ export function usePresentationWorkspace(
     minCol,
     minRow,
   ]);
+}
+
+/** The derived grid for a draft (rpg-project#725 R3), value-stable by its
+ * dimensions so geometry and camera resources survive unrelated commits. */
+export function useContentWorkspace(
+  draft: Pick<RoomDraft, 'room' | 'scene'>
+): RoomWorkspace {
+  const workspace = useMemo(() => contentWorkspace(draft), [draft]);
+  return usePresentationWorkspace(workspace)!;
 }

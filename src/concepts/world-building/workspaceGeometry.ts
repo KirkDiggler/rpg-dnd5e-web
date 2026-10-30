@@ -66,18 +66,22 @@ export interface WorkspaceBounds {
   maxZ: number;
 }
 
+/** The largest grid the studio derives and draws (rpg-project#725 R3): the
+ * paint cap's floor plus its margin. A drawing budget, never stored. */
+export const MAX_GRID_SIDE = 1024;
+export const MAX_GRID_HEXES = 1 << 17;
 function dimensions(width: number, height: number): void {
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
     width < 1 ||
     height < 1 ||
-    width > 128 ||
-    height > 128 ||
-    width * height > MAX_ROOM_WORKSPACE_HEXES
+    width > MAX_GRID_SIDE ||
+    height > MAX_GRID_SIDE ||
+    width * height > MAX_GRID_HEXES
   )
     throw new Error(
-      'Room workspace widthHexes/heightHexes must be integers in 1..128 (at most 16384 cells).'
+      `Grid widthHexes/heightHexes must be integers in 1..${MAX_GRID_SIDE} (at most ${MAX_GRID_HEXES} cells).`
     );
 }
 function origin(value: number, field: string): void {

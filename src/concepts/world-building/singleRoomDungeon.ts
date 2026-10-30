@@ -1,10 +1,10 @@
 import {
+  Document,
   isMap,
   isPair,
   isScalar,
   isSeq,
   parseDocument,
-  stringify,
   visit,
   type Scalar,
 } from 'yaml';
@@ -39,7 +39,6 @@ import {
   type SiteFaction,
   type SiteIntelRecord,
   type SiteScenarios,
-  type SiteScope,
   type SiteTables,
 } from './siteScope';
 
@@ -52,7 +51,7 @@ export interface EncodeSingleRoomDungeonInput {
   /** The site scope (rpg-dnd5e-web#1136, rpg-project#477): identity and policy
    * that belong to the place rather than to a selection. Omitted means the
    * document does not carry it, which is what keeps a room with no scope
-   * emitting v3 exactly as it always did. */
+   * emitting exactly what it emitted before these keys existed. */
   /* Carried, never interpreted: the site's intel records (web#933's section
    * ported to the site root). Omitted means the document does not carry them. */
   /** The answer tables this site declares, keyed by id — the shared thing a
@@ -123,25 +122,23 @@ const ROOT_KEYS = [
 ] as const;
 
 /**
- * The versions this decoder accepts. **4 is the seam, and this slice lands its
- * first keys inside it.**
+ * THE VERSION THIS DECODER ACCEPTS: 5, regions are the floor (rpg-project#725).
  *
- * Two waves want v4 — the authored-door contract (rpg-project#468, consumer
- * rpg-dnd5e-web#1117) and the site scope plus `monsterBindings`
- * (rpg-project#477, this slice). The bump landed once, ahead of either key
- * (rpg-dnd5e-web#1140), so each key then arrives *inside* a version rather
- * than behind a second one. A `doorBindings` wave adds a key here, not a
- * version.
- *
- * v3 is not deprecated and nothing about it changes. The ENCODER emits the
- * LOWEST version that carries the document (see `encodeSingleRoomDungeon`),
- * so a document with none of the v4 keys is byte-identical to what it emitted
- * before this constant existed. A version is a statement about what a file
- * may contain, and a file that contains nothing new has no reason to claim
- * otherwise.
+ * A version-5 file lists `room.room.regions` — each region's cells as row runs
+ * — and no `walkableHexes` and no `room.workspace`. Versions 3 and 4 are
+ * RETIRED, refused by name in the engine's own sentence, never read: the
+ * content converts once by script (R6) and there is no dual-dialect period.
+ * The encoder always writes 5, so `carriesV4Keys`' lowest-version rule retired
+ * with the versions it chose between.
  */
-const SUPPORTED_VERSIONS = [3, 4] as const;
+const SUPPORTED_VERSIONS = [5] as const;
 type SupportedVersion = (typeof SUPPORTED_VERSIONS)[number];
+/** The engine's sentence for a retired root version (`dungeonspec`). */
+export const RETIRED_VERSIONS_REFUSAL =
+  'versions 3 and 4 are retired; regions are the floor (rpg-project#725)';
+/** Below this the file speaks the multi-room dialect, which this codec does
+ * not read; 3 and 4 still claim to be a single room and are refused. */
+const FIRST_SINGLE_ROOM_VERSION = 3;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) &&
@@ -149,69 +146,30 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !Array.isArray(value) &&
   !(value instanceof Date);
 
-/** Whether the document carries any key v3 has no place for: a site scope
- * entry, a creature's `faction`, or an orders block. A version is a statement
- * about what a file MAY contain, so this is exactly the set of authored facts
- * that need one.
- *
- * The embedded ROOM draft's own version is a separate artifact and stays 3:
- * root 4 with room 3 is the only combination this build produces, and the Go
- * decoder's half of the seam says the same (`acceptedRootVersions`). */
-function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
-  // Structural authoring extends v4; documents without walls keep their bytes.
-  if ((draft.room.walls?.length ?? 0) > 0) return true;
-  // A ROOT TABLE IS A v4 FACT TOO (rpg-toolkit#1897): a room whose only
-  // authored orders are a named table must still claim v4, the same argument a
-  // `factions`-only or `doorBindings`-only room makes below.
-  if (Object.keys(scope.templates ?? {}).length > 0) return true;
-  if (Object.keys(scope.bundles ?? {}).length > 0) return true;
-  if (Object.keys(scope.tables ?? {}).length > 0) return true;
-  if ((scope.factions?.length ?? 0) > 0) return true;
-  if ((scope.dispositions?.length ?? 0) > 0) return true;
-  if ((scope.intel?.length ?? 0) > 0) return true;
-  // The four root keys the engine added after intel (rpg-project#488 R1 rule 3,
-  // rpg-project#490) — a room whose ONLY v4 fact is an exit, an ending, a
-  // scenario binding or a concealment must still claim v4, the same argument a
-  // `doorBindings`-only room makes below.
-  if ((scope.exits?.length ?? 0) > 0) return true;
-  if ((scope.endings?.length ?? 0) > 0) return true;
-  if (scope.scenarios && Object.keys(scope.scenarios).length > 0) return true;
-  if (scope.concealments && Object.keys(scope.concealments).length > 0)
-    return true;
-  if (
-    draft.room.monsterBindings &&
-    Object.keys(draft.room.monsterBindings).length > 0
-  )
-    return true;
-  // `doorBindings` and `propBindings` are v4-only keys too. Doors were missed
-  // when the door wave landed, so a room whose ONLY v4 fact was a door emitted
-  // `version: 3` while carrying a key v3 has no place for — the version is a
-  // statement about what a file MAY contain, and that statement was false.
-  if (
-    draft.room.doorBindings &&
-    Object.keys(draft.room.doorBindings).length > 0
-  )
-    return true;
-  if (
-    draft.room.propBindings &&
-    Object.keys(draft.room.propBindings).length > 0
-  )
-    return true;
-  // A MONSTER'S START IS A v4 FACT, AND SO IS ITS FACING
-  // (rpg-toolkit#1900, rpg-project#501 §6.1). A room whose ONLY v4 fact is a
-  // placement's `startingCell` must still claim v4 — THIS IS THE DOOR BUG
-  // AGAIN, in the shape the comment above warns about: `startingCell` has no
-  // place in v3, so a `version: 3` document carrying one states something
-  // false.
-  //
-  // `startingCell` is NOT itself the marker, because every monster has one —
-  // the marker is the SHAPE being authored rather than a bare `cell`. This
-  // dialect emits `startingCell` for every placement, so any monster at all
-  // makes the document v4. That is the honest reading: a v3 document cannot
-  // express this build's `monsterDeclarations:` block.
-  if (draft.room.monsterDeclarations.length > 0) return true;
-
-  return false;
+/**
+ * A REGION'S ROWS READ AS ROWS. Each region's `lighting` and each row's `q`
+ * spans are written in flow style — `lighting: {intensity: 1}`,
+ * `q: [[-2, 2], [6, 9]]` — so a row is one line and the file grows by runs,
+ * not by cells (design R1's file budget). Everything else stays block style,
+ * byte for byte what the encoder wrote before.
+ */
+function flowRegionRows(document: Document): void {
+  const regions = document.getIn(['room', 'room', 'regions'], true);
+  if (!isSeq(regions)) return;
+  for (const region of regions.items) {
+    if (!isMap(region)) continue;
+    const lighting = region.get('lighting', true);
+    if (isMap(lighting)) lighting.flow = true;
+    const cells = region.get('cells', true);
+    if (!isSeq(cells)) continue;
+    // An unpainted region writes `cells: []`.
+    cells.flow = cells.items.length === 0;
+    for (const row of cells.items) {
+      if (!isMap(row)) continue;
+      const q = row.get('q', true);
+      if (isSeq(q)) q.flow = true;
+    }
+  }
 }
 
 export function encodeSingleRoomDungeon(
@@ -233,8 +191,8 @@ export function encodeSingleRoomDungeon(
   // `validateSiteScope` already owns the per-key validation AND the
   // "an empty value is an absent key" rule this block was open-coding.
   const scope = draft.scope;
-  return stringify({
-    version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
+  const document = new Document({
+    version: 5,
     key: input.key,
     play: { ...PLAY_CONTRACT },
     // ABSENT, NOT EMPTY: a document with no site scope emits the bytes it
@@ -245,6 +203,8 @@ export function encodeSingleRoomDungeon(
     ...renderScope(scope),
     room: draft.draft,
   });
+  flowRegionRows(document);
+  return document.toString({ flowCollectionPadding: false });
 }
 
 /**
@@ -268,8 +228,6 @@ export function encodeSingleRoomDungeon(
 export type SingleRoomDungeonRead =
   | ({ dialect: 'single-room' } & DecodeSingleRoomDungeonResult)
   | { dialect: 'other'; version: number };
-
-const FIRST_SINGLE_ROOM_VERSION = SUPPORTED_VERSIONS[0];
 
 export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
   const root = parseSingleRoomSource(source);
@@ -351,6 +309,8 @@ function decodeSingleRoomRoot(
       throw new Error(`Unsupported single-room field: ${key}.`);
   }
   const version = root.version;
+  if (version === 3 || version === 4)
+    throw new Error(`version: ${RETIRED_VERSIONS_REFUSAL}`);
   if (
     typeof version !== 'number' ||
     !SUPPORTED_VERSIONS.includes(version as SupportedVersion) ||
@@ -410,9 +370,9 @@ function decodeSingleRoomRoot(
   // THREE VERSION AXES MEET HERE, AND THIS LINE USED TO CONFLATE TWO
   // (rpg-project#501 §6.1):
   //
-  //   root `version:`       the DIALECT — 3 or 4, which keys the file may hold
+  //   root `version:`       the DIALECT — 5, which keys the file may hold
   //   `room.version:`       the ROOM DRAFT's shape — stays 3, a separate
-  //                         artifact (`carriesV4Keys` says so above)
+  //                         artifact
   //   the ENVELOPE version  the shape of the STORED draft this wrapper mints
   //
   // This wrote `version: roomVersion ?? 3`, borrowing the room's number for the
@@ -443,12 +403,6 @@ function decodeSingleRoomRoot(
     },
   });
   const draft = parseRoomDocumentJson(draftJson).draft;
-  if (version === 3 && Object.keys(templates).length)
-    throw new Error('templates: authored stat blocks require root version 4.');
-  if (version === 3 && (draft.room.walls?.length ?? 0) > 0)
-    throw new Error(
-      'room.room.walls: structural walls require root version 4.'
-    );
   // EVERY `table:` NAME MUST RESOLVE, and this is the one place both halves are
   // visible (rpg-toolkit#1897): the room reader carries a name without judging
   // it, and the scope reader declares the universe. Refused here so the author

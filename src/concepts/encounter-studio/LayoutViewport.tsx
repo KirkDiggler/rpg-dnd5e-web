@@ -30,13 +30,14 @@ import type {
   WorldPoint,
 } from './studioSession';
 
+import { floorCells, regionCells } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
   snapWallEndpoint,
   snapWallPoint,
   translateWall,
 } from '../world-building/structuralWallEditing';
-import { usePresentationWorkspace } from '../world-building/usePresentationWorkspace';
+import { useContentWorkspace } from '../world-building/usePresentationWorkspace';
 import {
   constrainWallPoint,
   pointOnWallAxis,
@@ -97,13 +98,14 @@ type Gesture = {
   client: ClientPoint;
   moved: boolean;
   commitFloor: LayoutViewportProps['onCommit'];
+  /** The region tool's stroke (rpg-project#725 R5): paint reassigns the
+   * stroked cells to this region; erase hands this region's stroked cells
+   * back to the implicit region, so only membership changes. */
   region?: {
     id: string;
-    initial: readonly RoomHexCell[];
     mode: LayoutFloorTool;
-    commit: NonNullable<
-      LayoutViewportProps['regionEditing']
-    >['setExplicitRegionArea'];
+    implicitId: string;
+    owned: ReadonlySet<string>;
   };
   wall?: {
     source?: StructuralWall;
@@ -203,6 +205,7 @@ export function LayoutViewport({
   doorEditing,
   regionEditing,
   selectedRegion,
+  onSelectRegion,
   patternStart,
   regionTool = 'paint',
   onExitRegionTool,
@@ -341,7 +344,8 @@ export function LayoutViewport({
     )
       abandon();
   }, [doorEditing?.selectedTarget, abandon]);
-  const presentationWorkspace = usePresentationWorkspace(draft.workspace)!;
+  // The grid is derived from the content, never stored (rpg-project#725 R3).
+  const presentationWorkspace = useContentWorkspace(draft);
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(presentationWorkspace),
     [presentationWorkspace]
@@ -413,8 +417,8 @@ export function LayoutViewport({
     [presentationWorkspace]
   );
   const committed = useMemo(
-    () => new Set(draft.room.walkableHexes.map(cellKey)),
-    [draft.room.walkableHexes]
+    () => new Set(floorCells(draft).map(cellKey)),
+    [draft]
   );
   const resolutions = regionEditing?.resolutions;
   const overview = useMemo(
@@ -646,7 +650,11 @@ export function LayoutViewport({
       const cells = rectangleCells(gesture.anchor, world);
       gesture.cells = new Map(cells.map((cell) => [cellKey(cell), cell]));
     } else {
-      const cell = pickLayoutCell(point, currentTransform, draft.workspace);
+      const cell = pickLayoutCell(
+        point,
+        currentTransform,
+        presentationWorkspace
+      );
       if (cell) gesture.cells.set(cellKey(cell), cell);
     }
     setPreview([...gesture.cells.values()]);
@@ -771,7 +779,7 @@ export function LayoutViewport({
         labelEditing?.onSelect(null);
         doorEditing?.select(null);
         // Bare floor selects that hex; off the floor selects nothing.
-        const cell = workspaceCellAtPoint(draft.workspace, anchor);
+        const cell = workspaceCellAtPoint(presentationWorkspace, anchor);
         if (cell) onSelectHex?.(cell);
         else onClearSelection?.();
         return;
@@ -809,12 +817,9 @@ export function LayoutViewport({
     ) {
       gesture.region = {
         id: selectedRegion.id,
-        initial:
-          selectedRegion.boundary.kind === 'explicit'
-            ? selectedRegion.boundary.cells
-            : [],
         mode: regionTool,
-        commit: regionEditing.setExplicitRegionArea,
+        implicitId: draft.room.implicitRegionId,
+        owned: new Set(regionCells(selectedRegion).map(cellKey)),
       };
     }
     if (event.button === 0 && wallEditing && (tool === 'wall' || source)) {
@@ -964,12 +969,12 @@ export function LayoutViewport({
       }
     } else if (gesture.region && cells.length > 0) {
       const edit = gesture.region;
-      const next = new Map(edit.initial.map((cell) => [cellKey(cell), cell]));
-      for (const cell of cells) {
-        if (edit.mode === 'erase') next.delete(cellKey(cell));
-        else next.set(cellKey(cell), cell);
+      if (edit.mode !== 'erase') gesture.commitFloor(cells, 'paint', edit.id);
+      else {
+        const handed = cells.filter((cell) => edit.owned.has(cellKey(cell)));
+        if (handed.length > 0 && edit.id !== edit.implicitId)
+          gesture.commitFloor(handed, 'paint', edit.implicitId);
       }
-      edit.commit(edit.id, [...next.values()]);
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
       gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
@@ -1160,8 +1165,9 @@ export function LayoutViewport({
           transform={transform}
           selectedId={labelEditing.selectedId}
           preview={labelPreview}
-          regions={draft.scene.authoringRegions}
-          resolutions={regionEditing?.resolutions}
+          regions={draft.room.regions}
+          selectedRegionId={selectedRegion?.id ?? null}
+          onSelectRegion={onSelectRegion}
           colours={overview?.colours}
           onSelect={(id): void => {
             labelEditing.onSelect(id);

@@ -134,8 +134,8 @@ export function useDungeonScene(
             read.dialect === 'single-room'
               ? {
                   coordinateFrame: read.draft.coordinateFrame,
-                  workspace: read.draft.workspace,
                   scene: read.draft.scene,
+                  room: read.draft.room,
                 }
               : null,
           placedPropIds,

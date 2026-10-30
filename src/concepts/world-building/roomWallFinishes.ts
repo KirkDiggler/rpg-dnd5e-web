@@ -6,6 +6,7 @@ import type {
 } from '@/rendering/worldMaterialCatalog';
 import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
 import { projectRegionWallBoundaries } from './regionBoundaryGeometry';
+import { regionLabelPoint } from './regionLabel';
 import {
   resolvePatternStart,
   type RegionBoundaryCorner,
@@ -65,12 +66,11 @@ export function projectRoomWallFinishes(
   catalog: WorldMaterialCatalog | null
 ): RoomWallFinishProjection {
   const result: RoomWallFinishProjection = { regions: [], spans: [] };
-  if (
-    !catalog &&
-    !(draft.scene.authoringRegions ?? []).some((r) => r.wallFinish)
-  )
+  const finishOf = (id: string) =>
+    draft.scene.regionPresentation?.[id]?.wallFinish;
+  if (!catalog && !draft.room.regions.some((r) => finishOf(r.id)))
     return {
-      regions: (draft.scene.authoringRegions ?? []).map((r) => ({
+      regions: draft.room.regions.map((r) => ({
         id: r.id,
         status: 'none',
         corners: [],
@@ -81,7 +81,8 @@ export function projectRoomWallFinishes(
   const walls = new Map(
     (draft.room.walls ?? []).map((wall) => [wall.id, wall])
   );
-  for (const region of draft.scene.authoringRegions ?? []) {
+  for (const { id } of draft.room.regions) {
+    const region = { id, wallFinish: finishOf(id) };
     const boundary = boundaries.find((row) => row.id === region.id)!;
     const corners = boundary.status === 'resolved' ? boundary.corners : [];
     const status: RoomFinishStatus = { id: region.id, corners, status: 'none' };
@@ -221,10 +222,10 @@ export function projectRoomWallFinishes(
     } catch (error) {
       status.status = 'unresolved';
       status.reason = error instanceof Error ? error.message : String(error);
-      const label = draft.scene.mapLabels?.find(
-        (row) => row.id === region.labelId
+      const at = regionLabelPoint(
+        draft.room.regions.find((row) => row.id === region.id)!
       );
-      if (label) status.diagnosticPoint = { ...label.location };
+      if (at) status.diagnosticPoint = at;
     }
   }
   return result;
