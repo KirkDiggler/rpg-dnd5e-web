@@ -177,7 +177,7 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }'
     );
     expect(unknownSelectorRefusal('nobody')).toBe(
-      '"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }'
+      '"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or { at: [col, row] }, or { path: [[col, row], …] }'
     );
     expect(selectorShapeRefusal()).toBe(
       'a selector is one of enemy, attacker, actor, sound, ally, or { at: [col, row] }, or { path: [[col, row], …] }'
