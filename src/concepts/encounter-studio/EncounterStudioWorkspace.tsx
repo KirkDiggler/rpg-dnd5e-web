@@ -14,6 +14,7 @@ import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { regionLabelPoint } from '../world-building/regionLabel';
+import type { SiteScope } from '../world-building/siteScope';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
@@ -62,6 +63,7 @@ import {
   type EncounterStudioView,
   type LayoutFrame,
   type LayoutTool,
+  type RoomDraft,
   type RoomHexCell,
   type StudioDoorEditing,
   type StudioHome,
@@ -259,6 +261,28 @@ function StudioSurface({
         return rect && rect.width > 0 ? [rect] : [];
       },
     }));
+  /** A REPLACED DOCUMENT IS FRAMED WHOLE (rpg-project#725 R3). Zoom is
+   * relative to the derived grid's fit, and the view keeps its on-screen scale
+   * while paint grows the grid — but an import or an open replaces the whole
+   * document, so the view refits to the new content instead of keeping the
+   * old room's scale and centre. */
+  const [refitPending, setRefitPending] = useState(false);
+  useEffect(() => {
+    if (!refitPending) return;
+    setRefitPending(false);
+    frameBounds(contentBounds(session.document.draft));
+  }, [refitPending, session.document]);
+  const replaceDocument = (draft: RoomDraft, scope: SiteScope): boolean => {
+    if (!session.importDocument(draft, scope)) return false;
+    setRefitPending(true);
+    return true;
+  };
+  const replacingSession = useMemo(
+    () => ({ ...session, importDocument: replaceDocument }),
+    // replaceDocument closes over session only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session]
+  );
   const overview = useMemo(
     () =>
       regionOverview(session.document.draft, session.regionEditing.resolutions),
@@ -397,7 +421,7 @@ function StudioSurface({
     draft: session.document.draft,
     scope: session.document.scope,
     capability,
-    onImportDraft: session.importDocument,
+    onImportDraft: replaceDocument,
     onBusyChange: session.publishing.setBusy,
     previewEnabled: gate.state === 'live',
     rememberedSavedKey: rememberedKey,
@@ -485,7 +509,7 @@ function StudioSurface({
    * next Save and Play does not ask (R16); another member's file or a
    * reference is a copy: a fresh key and no remembered save. */
   const openFile = ({ read, key, source }: OpenedFile): void => {
-    if (!session.importDocument(read.draft, read.scope)) return;
+    if (!replaceDocument(read.draft, read.scope)) return;
     const roomId = read.draft.id;
     setSiteOperation('save');
     if (source === 'mine') {
@@ -851,7 +875,7 @@ function StudioSurface({
             <StudioDraftFile
               key={siteOperation}
               mode={siteOperation === 'import' ? 'import' : 'export'}
-              session={session}
+              session={replacingSession}
               draftKey={publishing.key}
               onKeyChange={publishing.setKey}
               onFileKey={adoptFileKey}

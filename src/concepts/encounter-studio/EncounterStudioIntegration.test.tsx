@@ -5348,6 +5348,31 @@ describe('S4 the draft as a file through the real owner', () => {
     expect(storage.document()).toEqual(castle);
   });
 
+  // An import replaces the whole document, so the Layout refits to it
+  // (rpg-project#725 R3); before this, the castle opened cropped on the
+  // previous room's frame until Show entire was pressed.
+  it('an accepted import frames the imported content whole', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+    await settled();
+    const content = contentBounds(storage.document().draft);
+    for (const corner of [
+      { x: content.minX, z: content.minZ },
+      { x: content.maxX, z: content.maxZ },
+    ]) {
+      const client = toClient(corner, documentFit(storage));
+      expect(client.clientX).toBeGreaterThanOrEqual(bounds.left);
+      expect(client.clientX).toBeLessThanOrEqual(bounds.left + bounds.width);
+      expect(client.clientY).toBeGreaterThanOrEqual(bounds.top);
+      expect(client.clientY).toBeLessThanOrEqual(bounds.top + bounds.height);
+    }
+  });
+
   it('the next export defaults to the imported key', async () => {
     const storage = new MemoryStorage(createPopulatedStudioDocument());
     mount(storage);
