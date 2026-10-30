@@ -148,7 +148,7 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       'on.time[0].attack: a cell is somewhere to walk toward, and `attack` acts on a creature'
     );
     expect(table({ time: [{ away: { path: [{ q: 1, r: 1 }] } }] })).toThrow(
-      'on.time[0]: `away` cannot take a `path`: a route is walked, and only `toward` walks one'
+      'on.time[0]: `away` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one'
     );
     expect(
       table({
@@ -167,20 +167,20 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       'on.time[0].patrol: `patrol` is not a word: a patrol is a route, write toward: { path: [{ q, r }, …] }'
     );
     expect(table({ time: [{ toward: 'nobody' }] })).toThrow(
-      'on.time[0].toward: "nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }'
+      'on.time[0].toward: "nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }'
     );
     expect(table({ time: [{ toward: 3 }] })).toThrow(
-      'on.time[0].toward: a selector is one of enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }'
+      'on.time[0].toward: a selector is one of enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }'
     );
     // The v2 spelling is the default, word for word what it always was.
     expect(HEARING_SENTENCES.patrol()).toBe(
       '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }'
     );
     expect(unknownSelectorRefusal('nobody')).toBe(
-      '"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }'
+      '"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or { at: [col, row] }, or { path: [[col, row], …] }'
     );
     expect(selectorShapeRefusal()).toBe(
-      'a selector is one of enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }'
+      'a selector is one of enemy, attacker, actor, sound, ally, or { at: [col, row] }, or { path: [[col, row], …] }'
     );
     expect(unknownSelectorRefusal('x', SINGLE_ROOM_CELL_FORMS)).toContain(
       '{ at: { q, r } }'
@@ -190,11 +190,15 @@ describe('the single room reads a cell and a route as { q, r }', () => {
 
 describe('a cell and a route in words', () => {
   it('reads a route and a cell back as places', () => {
-    expect(wordPhrase(PATROL, 'it')).toBe('walks a route through 4 cells');
+    // A route reads as the loop it walks, every waypoint named in order
+    // (rpg-project#720).
+    expect(wordPhrase(PATROL, 'it')).toBe(
+      'walks its loop by {q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0} and {q: 0, r: 2}'
+    );
     expect(wordPhrase(MARCH, 'it')).toBe('walks to {q: 1, r: 1}');
     expect(wordPhrase(MARCH, 'I')).toBe('walk to {q: 1, r: 1}');
     expect(wordPhrase({ toward: { path: [{ q: 0, r: 0 }] } }, 'it')).toBe(
-      'walks a route through 1 cell'
+      'walks its loop by {q: 0, r: 0}'
     );
   });
 
@@ -306,7 +310,7 @@ describe('a route waypoint carries its pause', () => {
 
   it('shows each pause on the route, in words and in the shorthand', () => {
     expect(wordPhrase(GUARD, 'it')).toBe(
-      'walks a route through 4 cells, standing 2 rounds facing se at {q: -7, r: 9}, 2 rounds facing sw at {q: -1, r: 9} and 1 round at {q: -9, r: 12}'
+      'walks its loop by {q: -7, r: 9} (waits 2, faces se), {q: -1, r: 9} (waits 2, faces sw), {q: -3, r: 12} and {q: -9, r: 12} (waits 1)'
     );
     expect(wordShorthand(GUARD, 'toward')).toBe(
       'toward path {q: -7, r: 9, wait: 2, facing: se} {q: -1, r: 9, wait: 2, facing: sw} {q: -3, r: 12} {q: -9, r: 12, wait: 1}'

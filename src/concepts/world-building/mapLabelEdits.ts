@@ -1,9 +1,12 @@
 import type { RoomDraft } from './roomDraft';
 import { validateMapLabels } from './serialization';
 import type { MapLabel, WorldPoint } from './types';
+import { MAX_WORLD_COORD } from './worldBounds';
 
 function withLabels(draft: RoomDraft, labels: MapLabel[]): RoomDraft {
-  const valid = validateMapLabels(labels, { workspace: draft.workspace });
+  const valid = validateMapLabels(labels, {
+    horizontalLimit: MAX_WORLD_COORD,
+  });
   const scene = {
     ...draft.scene,
     version: draft.scene.version >= 2 ? draft.scene.version : (2 as const),
@@ -63,10 +66,6 @@ export function renameMapLabel(
 }
 export function deleteMapLabel(draft: RoomDraft, id: string): RoomDraft {
   if (!draft.scene.mapLabels?.some((label) => label.id === id)) return draft;
-  if (draft.scene.authoringRegions?.some((region) => region.labelId === id))
-    throw new Error(
-      'Linked room labels require explicit region-and-label deletion.'
-    );
   return withLabels(
     draft,
     draft.scene.mapLabels.filter((label) => label.id !== id)

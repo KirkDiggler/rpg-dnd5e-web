@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { regionSizeText } from '../world-building/regionSize';
 import type { RoomDraft } from '../world-building/roomDraft';
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
@@ -5,14 +6,19 @@ import { layoutFooterText } from './layoutFooterText';
 import type { RegionOverview } from './overviewColours';
 import { cellsBounds } from './overviewFrame';
 
-/** Layout's room list (R7): every region by its label, with its colour and
- * its size. Selecting a row selects the region's label, the one selection
- * the inspector reads, and frames the region. */
+/** Layout's regions list (R7, rpg-project#725 R5): every authored region by
+ * its name — its label on the map — with its colour, its size and its light.
+ * Selecting a row selects the region, the one selection the inspector reads,
+ * and frames it. The radio picks the ACTIVE region, where Paint and Rectangle
+ * put the cells they brush. New region creates one, named, and makes it
+ * active. */
 export function LayoutRoomList({
   draft,
   overview,
-  selectedLabelId,
+  selectedRegionId,
+  activeRegionId,
   onSelect,
+  onActivate,
   onCreate,
   onShowEntire,
   unappliedFinishes,
@@ -23,14 +29,18 @@ export function LayoutRoomList({
    * resolve while its finish does not, so this is its own flag. */
   unappliedFinishes?: ReadonlySet<string>;
   overview: RegionOverview;
-  selectedLabelId: string | null;
-  /** Bounds are null for an unresolved region: it is selected, not framed. */
-  onSelect(labelId: string, bounds: WorkspaceBounds | null): void;
-  onCreate(): void;
+  selectedRegionId: string | null;
+  /** The region paint lands in. */
+  activeRegionId: string;
+  /** Bounds are null for an unpainted region: it is selected, not framed. */
+  onSelect(regionId: string, bounds: WorkspaceBounds | null): void;
+  onActivate(regionId: string): void;
+  /** False when the owner refuses the name; the field keeps it. */
+  onCreate(name: string): boolean;
   onShowEntire(): void;
 }): React.JSX.Element {
-  const regions = draft.scene.authoringRegions ?? [];
-  const labels = draft.scene.mapLabels ?? [];
+  const regions = draft.room.regions;
+  const [name, setName] = useState('');
   return (
     <aside className="es-room-list wb-panel" aria-label="Rooms">
       <div className="es-room-list-header">
@@ -41,29 +51,33 @@ export function LayoutRoomList({
       </div>
       {regions.length === 0 ? (
         <p className="es-help">
-          No rooms yet. A room or outdoor area is a named label with a boundary.
+          No rooms yet. A room or outdoor area is a named region of painted
+          hexes.
         </p>
       ) : (
         <ul className="es-region-list" aria-label="Room list">
           {regions.map((region) => {
-            const text =
-              labels.find((label) => label.id === region.labelId)?.text ??
-              region.id;
+            const text = region.name || region.id;
             const size = overview.sizes.get(region.id) ?? null;
             const colour = size ? overview.colours.get(region.id) : undefined;
             const unapplied = unappliedFinishes?.has(region.id) ?? false;
+            const light = Math.round(region.lighting.intensity * 100);
             return (
-              <li key={region.id}>
+              <li key={region.id} className="es-region-row">
+                <input
+                  type="radio"
+                  name="es-active-region"
+                  aria-label={`Paint into ${text}`}
+                  checked={activeRegionId === region.id}
+                  onChange={() => onActivate(region.id)}
+                />
                 <button
                   type="button"
                   data-region-row={region.id}
-                  aria-pressed={selectedLabelId === region.labelId}
-                  aria-label={`Room ${text}, ${regionSizeText(size)}${unapplied ? ', finish unapplied' : ''}`}
+                  aria-pressed={selectedRegionId === region.id}
+                  aria-label={`Room ${text}, ${regionSizeText(size)}, light ${light}%${unapplied ? ', finish unapplied' : ''}`}
                   onClick={() =>
-                    onSelect(
-                      region.labelId,
-                      size ? cellsBounds(size.cells) : null
-                    )
+                    onSelect(region.id, size ? cellsBounds(size.cells) : null)
                   }
                 >
                   <span
@@ -78,7 +92,7 @@ export function LayoutRoomList({
                   />
                   <span className="es-room-name">{text}</span>
                   <small className="es-room-size">
-                    {regionSizeText(size)}
+                    {regionSizeText(size)} · light {light}%
                     {unapplied && ' — finish unapplied'}
                   </small>
                 </button>
@@ -87,9 +101,25 @@ export function LayoutRoomList({
           })}
         </ul>
       )}
-      <button type="button" onClick={onCreate}>
-        New region
-      </button>
+      <form
+        className="es-buttons"
+        aria-label="New region"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (onCreate(name)) setName('');
+        }}
+      >
+        <input
+          aria-label="New region name"
+          placeholder="Region name"
+          value={name}
+          maxLength={120}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button type="submit" disabled={!name.trim()}>
+          New region
+        </button>
+      </form>
     </aside>
   );
 }

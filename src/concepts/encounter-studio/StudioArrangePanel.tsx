@@ -96,7 +96,8 @@ function SelectedArrange({
   session,
   selection,
   expanded,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   onConfigure,
   onMoveCreature,
   heading = true,
@@ -110,7 +111,9 @@ function SelectedArrange({
   selection: StudioArrangeSelection;
   onMoveCreature?(): void;
   expanded: boolean;
-  onDefineRegion?(): void;
+  /** The region paint lands in, and how to make another one it. */
+  activeRegionId?: string;
+  onMakeActive?(regionId: string): void;
   onConfigure?(section: StudioSocialSection): void;
 } & ArrangeComposition): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
@@ -164,7 +167,9 @@ function SelectedArrange({
     (field) => regionControls || field.key !== 'background'
   );
   const region =
-    regionControls && selection.kind === 'label' ? selection.region : undefined;
+    regionControls && selection.kind === 'region'
+      ? selection.region
+      : undefined;
   const renderField = (field: ArrangeField): React.JSX.Element => (
     <StudioArrangeField
       key={field.key}
@@ -298,30 +303,19 @@ function SelectedArrange({
             </p>
           </>
         )}
-        {selection.kind === 'label' && region && (
-          <div className="es-region-controls" aria-label="Room boundary">
-            <p role="status">{regionStatus(region, selection.resolution)}</p>
-            {onDefineRegion && (
+        {selection.kind === 'region' && region && (
+          <div className="es-region-controls" aria-label="Region cells">
+            <p role="status">{regionStatus(selection.resolution)}</p>
+            {onMakeActive && (
               <div className="es-buttons">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (
-                      !session.commitArrange({
-                        kind: 'region-bind',
-                        target: selection.target,
-                        regionId: region.id,
-                      })
-                    )
-                      setError(
-                        'Binding refused. No supported enclosure at this label; define an explicit area or repair the walls.'
-                      );
-                  }}
+                  aria-pressed={activeRegionId === region.id}
+                  onClick={() => onMakeActive(region.id)}
                 >
-                  Use enclosing walls
-                </button>
-                <button type="button" onClick={onDefineRegion}>
-                  Define explicit area
+                  {activeRegionId === region.id
+                    ? 'Active · Paint lands here'
+                    : 'Make active'}
                 </button>
               </div>
             )}
@@ -383,34 +377,11 @@ function SelectedArrange({
               </details>
             )}
           </div>
-          {selection.kind === 'label' && region && (
-            <div className="es-region-controls" aria-label="Region lighting">
-              <p className="es-help">
-                {region.lighting
-                  ? selection.resolution?.status === 'resolved'
-                    ? 'Background lighting only · placed lights stay independent. Not gameplay visibility.'
-                    : 'Lighting saved · not applied until boundary resolves'
-                  : 'Baseline · no region light authored'}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    background: '',
-                    baseline: 'reset',
-                  }));
-                  setError(null);
-                }}
-              >
-                Use baseline appearance
-              </button>
-              {draft.baseline === 'reset' && (
-                <p role="status">
-                  Baseline appearance staged · Apply to reset.
-                </p>
-              )}
-            </div>
+          {selection.kind === 'region' && region && (
+            <p className="es-help">
+              The region's encounter lighting · placed lights stay independent.
+              Its name is its label on the map.
+            </p>
           )}
           {selection.kind === 'wall' && (
             <>
@@ -456,6 +427,7 @@ function SelectedArrange({
             </button>
             {(selection.kind === 'wall' ||
               selection.kind === 'label' ||
+              (selection.kind === 'region' && !selection.implicit) ||
               selection.kind === 'door') && (
               <button
                 type="button"
@@ -472,11 +444,10 @@ function SelectedArrange({
                             kind: 'door-remove',
                             target: selection.target,
                           })
-                        : selection.region
+                        : selection.kind === 'region'
                           ? session.commitArrange({
                               kind: 'region-remove',
                               target: selection.target,
-                              regionId: selection.region.id,
                             })
                           : session.commitArrange({
                               kind: 'label-remove',
@@ -490,8 +461,8 @@ function SelectedArrange({
                   ? 'Remove wall'
                   : selection.kind === 'door'
                     ? 'Delete doorway'
-                    : selection.region
-                      ? 'Delete region and label'
+                    : selection.kind === 'region'
+                      ? 'Remove region'
                       : 'Delete label'}
               </button>
             )}
@@ -554,7 +525,8 @@ function SelectedArrange({
 export function StudioArrangePanel({
   session,
   expanded,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   onConfigure,
   onMoveCreature,
   ...composition
@@ -562,7 +534,9 @@ export function StudioArrangePanel({
   session: EncounterStudioSession;
   onMoveCreature?(): void;
   expanded: boolean;
-  onDefineRegion?(): void;
+  /** The region paint lands in, and how to make another one it. */
+  activeRegionId?: string;
+  onMakeActive?(regionId: string): void;
   onConfigure?(section: StudioSocialSection): void;
 } & ArrangeComposition): React.JSX.Element | null {
   return session.arrange ? (
@@ -571,7 +545,8 @@ export function StudioArrangePanel({
       session={session}
       selection={session.arrange}
       expanded={expanded}
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
       {...composition}

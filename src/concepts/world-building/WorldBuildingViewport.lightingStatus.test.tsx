@@ -60,13 +60,17 @@ const projection = (background: number): RegionLightingProjection => ({
     {
       regionId: 'room',
       background,
+      // Region areas are painted cells (rpg-project#725); polygons are retired.
       area: {
-        kind: 'polygon',
-        ring: [
-          { x: -2, z: -2 },
-          { x: 2, z: -2 },
-          { x: 2, z: 2 },
-          { x: -2, z: 2 },
+        kind: 'hex-union',
+        cells: [
+          { q: 0, r: 0 },
+          { q: 1, r: 0 },
+          { q: -1, r: 0 },
+          { q: 0, r: 1 },
+          { q: 0, r: -1 },
+          { q: 1, r: -1 },
+          { q: -1, r: 1 },
         ],
       },
     },
@@ -93,7 +97,7 @@ async function mount(initial: RegionLightingProjection) {
       roomAuthoring={{
         tool: 'select',
         workspace: { hexRadius: 6, horizontalLimit: 12 },
-        walkableHexes: [],
+        floorCells: [],
         propDeclarations: {},
         onWalkableGesture: vi.fn(),
         regionLighting,

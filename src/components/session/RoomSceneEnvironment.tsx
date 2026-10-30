@@ -2,6 +2,7 @@ import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '@/concepts/world-building/catalog';
 import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import type { WorldProp } from '@/concepts/world-building/types';
+import { useContentWorkspace } from '@/concepts/world-building/usePresentationWorkspace';
 import { WorkspaceFloorSurface } from '@/concepts/world-building/WorkspaceFloorUnderlay';
 import { WorldPropModel } from '@/concepts/world-building/WorldPropModel';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
@@ -216,15 +217,17 @@ function RoomSceneFloorMarker({
   );
 }
 
-/** The whole authored workspace floor — the same Crypt geometry/UV
- * contract the editor presents (`WorkspaceFloorSurface`), at the
- * complete workspace (legacy envelope or rectangular cell union). Catalog or texture trouble is
- * reported by name, never by quietly dropping the floor. */
+/** The authored floor surface — the same Crypt geometry/UV contract the
+ * editor presents (`WorkspaceFloorSurface`), over the grid derived from the
+ * room's content bounds (rpg-project#725 R3: no workspace is stored).
+ * Catalog or texture trouble is reported by name, never by quietly dropping
+ * the floor. */
 function RoomSceneFloor({
-  workspace,
+  presentation,
 }: {
-  workspace: RoomScenePresentation['workspace'];
+  presentation: RoomScenePresentation;
 }) {
+  const workspace = useContentWorkspace(presentation);
   const radius = workspace.horizontalLimit + 1;
   const shellCatalog = useDungeonShellCatalog();
   if (shellCatalog.status !== 'ready') {
@@ -272,9 +275,7 @@ export function RoomSceneEnvironment({
     : presentation.scene.items;
   return (
     <>
-      {renderWorkspaceFloor && (
-        <RoomSceneFloor workspace={presentation.workspace} />
-      )}
+      {renderWorkspaceFloor && <RoomSceneFloor presentation={presentation} />}
       {items.map((item) => (
         <RoomSceneItem
           key={item.id}

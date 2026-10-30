@@ -1,38 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import { createMapLabel } from './mapLabelEdits';
-import {
-  createRoomLabel,
-  setExplicitRegionArea,
-  setRegionLighting,
-} from './regionEdits';
+import { createRegion, setRegionLighting } from './regionEdits';
 import {
   assertRoomDocumentSize,
+  cellOwners,
+  cellsInWorldRectangle,
   clearRoomPartyStart,
   createRoomDraft,
-  expandRoomWorkspace,
-  isCellWithinWorkspace,
-  LEGACY_ROOM_DRAFT_STORAGE_KEY,
-  LEGACY_V1_ROOM_DRAFT_STORAGE_KEY,
+  eraseCells,
+  floorCellCount,
+  floorCells,
+  isFloorCell,
   loadRoomDraft,
+  MAX_FLOOR_HEXES,
   moveRoomMonster,
+  paintCells,
   parseRoomDocumentJson,
   parseRoomDraftJson,
   placeRoomMonster,
   reconcileRoomDraft,
   remapRoomDeclarations,
   removeRoomMonster,
-  resizeRoomWorkspace,
   ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
-  ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
   setRoomMonsterFacing,
   setRoomPartyStart,
   stringifyRoomDraft,
-  updateWalkableHexes,
   validateRoomDocument,
-  walkableCellsInWorldRectangle,
   type RoomDraft,
   type RoomPropDeclaration,
 } from './roomDraft';
@@ -44,7 +40,6 @@ import {
 import { validateScene } from './serialization';
 import type { SiteScope } from './siteScope';
 import type { KeyValueStorage } from './types';
-import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 describe('room authoring draft', () => {
   it('sets all compass facings and deletes default without altering location or bindings', () => {
@@ -85,36 +80,32 @@ describe('room authoring draft', () => {
   });
   it('round trips a versioned room envelope separately from composer data', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    const painted = updateWalkableHexes(draft, [{ q: 1, r: -2 }], 'paint');
+    const painted = paintCells(draft, [{ q: 1, r: -2 }]);
     expect(parseRoomDraftJson(stringifyRoomDraft(painted))).toEqual(painted);
     expect(stringifyRoomDraft(painted)).toContain('rpg-room-authoring-draft');
   });
 
-  it('expands only workspace metadata by a bounded deterministic step', () => {
+  // THE CANVAS IS UNBOUNDED (rpg-project#725 R3): the draft carries no
+  // workspace, so the old expand/radius-preset tests have nothing to grow.
+  // What they guarded — that a stored extent is never invented or clipped —
+  // is now that no extent is stored at all, and one sent is refused by name.
+  it('carries no workspace, and refuses one by name', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    const before = structuredClone(draft);
-    const expanded = expandRoomWorkspace(draft);
-
-    expect(expanded.workspace).toEqual(ROOM_WORKSPACE_STEPS[1]);
-    expect({ ...expanded, workspace: before.workspace }).toEqual(before);
-    expect(
-      expandRoomWorkspace(expandRoomWorkspace(expanded)).workspace
-    ).toEqual(ROOM_WORKSPACE_STEPS[2]);
-  });
-
-  it('expands a radius off the presets to the next larger preset, never a smaller one', () => {
-    const draft = {
-      ...createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
-      workspace: { hexRadius: 9, horizontalLimit: 20 },
-    };
-    expect(expandRoomWorkspace(draft).workspace).toEqual(
-      ROOM_WORKSPACE_STEPS[1]
+    expect(draft).not.toHaveProperty('workspace');
+    expect(JSON.parse(stringifyRoomDraft(draft)).draft).not.toHaveProperty(
+      'workspace'
     );
-    const large = {
-      ...draft,
-      workspace: { hexRadius: 20, horizontalLimit: 40 },
-    };
-    expect(expandRoomWorkspace(large)).toBe(large);
+    expect(() =>
+      parseRoomDraftJson(
+        JSON.stringify({
+          kind: 'rpg-room-authoring-draft',
+          version: ROOM_DRAFT_ENVELOPE_VERSION,
+          draft: { ...draft, workspace: { hexRadius: 6, horizontalLimit: 12 } },
+        })
+      )
+    ).toThrow(
+      'room.workspace: the canvas is unbounded and the file carries no workspace (rpg-project#725); remove the key'
+    );
   });
 
   /** THE FRAME STATES ITS SCALE (rpg-dnd5e-web#1311). Before, The Watch
@@ -146,50 +137,46 @@ describe('room authoring draft', () => {
     );
   });
 
-  it('migrates a version 1 small draft without moving or clipping authored data', () => {
+  // Envelope 6 is regions-as-floor (rpg-project#725); every earlier envelope
+  // stores a walkable list, and is refused by name rather than migrated —
+  // the v1/v2 migrations this test used to pin retired with that list.
+  it('refuses every envelope before version 6 by name: rebuild, no migration', () => {
     const current = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    const legacyDraft = {
-      ...current,
-      version: 1,
-      workspace: undefined,
-      room: { ...current.room, walkableHexes: [{ q: 6, r: -6 }] },
-    };
-    const migrated = parseRoomDraftJson(
-      JSON.stringify({
-        kind: 'rpg-room-authoring-draft',
-        version: 1,
-        draft: legacyDraft,
-      })
-    );
-
-    expect(migrated.version).toBe(3);
-    expect(migrated.workspace).toEqual(ROOM_WORKSPACE_STEPS[0]);
-    expect(migrated.room.walkableHexes).toEqual([{ q: 6, r: -6 }]);
-    expect(migrated.scene).toEqual(current.scene);
+    for (const version of [1, 2, 3, 4, 5])
+      expect(() =>
+        parseRoomDraftJson(
+          JSON.stringify({
+            kind: 'rpg-room-authoring-draft',
+            version,
+            draft: current,
+          })
+        )
+      ).toThrow(
+        `This room authoring draft was saved before regions were the floor (it is a version ${version} envelope, and this build writes version 6), so it stores a walkable list this build no longer reads: rebuild, no migration (rpg-project#725).`
+      );
+    expect(ROOM_DRAFT_ENVELOPE_VERSION).toBe(6);
   });
 
-  it('accepts expanded room coordinates and cells while standalone scenes keep +/-12', () => {
-    const draft = expandRoomWorkspace(
-      createRoomDraft(createEmptyScene('scene-1'), 'room-1')
-    );
+  // No extent bounds a room any more (R3): a cell or a prop far from the
+  // origin is authored as written. Standalone composer scenes keep +/-12.
+  it('accepts far room coordinates and cells while standalone scenes keep +/-12', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     draft.scene.items.push({
       id: 'table',
       kind: 'prop',
       assetRef: 'dnd5e:props:torture-table',
       label: 'table',
-      transform: { x: 15, y: 0, z: 0, rotationY: 0 },
+      transform: { x: 1500, y: 0, z: 0, rotationY: 0 },
     });
-    const painted = updateWalkableHexes(draft, [{ q: 8, r: -8 }], 'paint');
+    const painted = paintCells(draft, [{ q: 800, r: -8 }]);
 
     expect(parseRoomDraftJson(stringifyRoomDraft(painted))).toEqual(painted);
-    expect(painted.room.walkableHexes).toContainEqual({ q: 8, r: -8 });
+    expect(floorCells(painted)).toContainEqual({ q: 800, r: -8 });
     expect(() => validateScene(draft.scene)).toThrow(/between -12 and 12/);
   });
 
-  it('keeps duplicate and arrangement stamp paths valid in expanded room space', () => {
-    const draft = expandRoomWorkspace(
-      createRoomDraft(createEmptyScene('scene-1'), 'room-1')
-    );
+  it('keeps duplicate and arrangement stamp paths valid in room space', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     draft.scene.items.push({
       id: 'table',
       kind: 'prop',
@@ -228,36 +215,15 @@ describe('room authoring draft', () => {
     ]);
   });
 
-  it('rejects unsupported or excessive workspace input without clipping', () => {
-    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    expect(() =>
-      parseRoomDraftJson(
-        JSON.stringify({
-          kind: 'rpg-room-authoring-draft',
-          // THE CURRENT VERSION, because this probes WORKSPACE bounds
-          // (rpg-project#501 §6.1). A v3 envelope is refused earlier and by
-          // name — it stored the old monster shape — so pinning 3 here would
-          // test the wrong refusal.
-          version: ROOM_DRAFT_ENVELOPE_VERSION,
-          draft: {
-            ...draft,
-            workspace: { hexRadius: 100, horizontalLimit: 200 },
-          },
-        })
-      )
-    ).toThrow(/Unsupported room workspace extent/);
-  });
-
   it('returns the same draft for logical no-op paint and erase', () => {
-    const draft = updateWalkableHexes(
+    const draft = paintCells(
       createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
-      [{ q: 0, r: 0 }],
-      'paint'
+      [{ q: 0, r: 0 }]
     );
 
-    expect(updateWalkableHexes(draft, [{ q: 0, r: 0 }], 'paint')).toBe(draft);
-    expect(updateWalkableHexes(draft, [{ q: 1, r: 0 }], 'erase')).toBe(draft);
-    expect(updateWalkableHexes(draft, [{ q: 99, r: 0 }], 'paint')).toBe(draft);
+    expect(paintCells(draft, [{ q: 0, r: 0 }])).toBe(draft);
+    expect(eraseCells(draft, [{ q: 1, r: 0 }])).toBe(draft);
+    expect(paintCells(draft, [])).toBe(draft);
   });
 
   it('remaps declarations by stable identity and never asset ref', () => {
@@ -299,11 +265,11 @@ describe('room authoring draft', () => {
   });
 
   it('selects supported hexes by world-space centre inside a forward or reverse rectangle', () => {
-    const forward = walkableCellsInWorldRectangle(
+    const forward = cellsInWorldRectangle(
       { x: -0.2, z: -0.2 },
       { x: 2, z: 1.6 }
     );
-    const reverse = walkableCellsInWorldRectangle(
+    const reverse = cellsInWorldRectangle(
       { x: 2, z: 1.6 },
       { x: -0.2, z: -0.2 }
     );
@@ -316,23 +282,23 @@ describe('room authoring draft', () => {
   });
 
   it('uses an axis-aligned world X/Z box rather than an axial parallelogram', () => {
-    expect(
-      walkableCellsInWorldRectangle({ x: -1, z: -1.6 }, { x: 1, z: 1.6 })
-    ).toEqual([
-      { q: 0, r: -1 },
-      { q: 1, r: -1 },
-      { q: 0, r: 0 },
-      { q: -1, r: 1 },
-      { q: 0, r: 1 },
-    ]);
+    expect(cellsInWorldRectangle({ x: -1, z: -1.6 }, { x: 1, z: 1.6 })).toEqual(
+      [
+        { q: 0, r: -1 },
+        { q: 1, r: -1 },
+        { q: 0, r: 0 },
+        { q: -1, r: 1 },
+        { q: 0, r: 1 },
+      ]
+    );
   });
 
   it('returns the same candidates for preview and release and safely allows an empty box', () => {
     const start = { x: 0.2, z: 0.2 };
     const end = { x: 0.3, z: 0.3 };
-    expect(walkableCellsInWorldRectangle(start, end)).toEqual([]);
-    expect(walkableCellsInWorldRectangle(start, { x: 3.5, z: 3.1 })).toEqual(
-      walkableCellsInWorldRectangle(start, { x: 3.5, z: 3.1 })
+    expect(cellsInWorldRectangle(start, end)).toEqual([]);
+    expect(cellsInWorldRectangle(start, { x: 3.5, z: 3.1 })).toEqual(
+      cellsInWorldRectangle(start, { x: 3.5, z: 3.1 })
     );
   });
 
@@ -364,108 +330,6 @@ describe('room authoring draft', () => {
  * (which now produces v3): fractional and negative world poses, nested
  * group/support relations, an explicit light, nondefault height, explicit
  * false flags, and complete declaration shapes. */
-function legacyV2Envelope(): Record<string, unknown> {
-  return {
-    kind: 'rpg-room-authoring-draft',
-    version: 2,
-    draft: {
-      version: 2,
-      id: 'legacy-room',
-      name: 'Legacy cellar',
-      coordinateFrame: {
-        horizontalPlane: 'world-xz',
-        verticalAxis: 'world-y-up',
-        distanceUnit: 'world-scene-unit',
-        hexRadius: 1,
-        footprintFrame: 'owner-local-xz',
-      },
-      workspace: { hexRadius: 10, horizontalLimit: 20 },
-      scene: {
-        version: 1,
-        id: 'legacy-scene',
-        name: 'Legacy cellar scene',
-        items: [
-          {
-            id: 'prop-table',
-            kind: 'prop',
-            assetRef: 'dnd5e:props:torture-table',
-            label: 'Long table',
-            transform: { x: -2.25, y: 1.2, z: 1.3, rotationY: 0.37 },
-            heightScale: 1.5,
-          },
-          {
-            id: 'prop-candles',
-            kind: 'prop',
-            assetRef: 'dnd5e:props:candles',
-            label: 'Candles',
-            transform: { x: -2.1, y: 1.17, z: 1.25, rotationY: -0.41 },
-            parentId: 'group-1',
-            supportId: 'prop-table',
-            pointLight: {
-              enabled: true,
-              offset: { x: 0, y: 0.5, z: 0 },
-              color: '#ff9d52',
-              intensity: 1.1,
-              range: 2.6,
-            },
-          },
-        ],
-        groups: [
-          {
-            id: 'group-1',
-            kind: 'group',
-            label: 'Cluster',
-            transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
-          },
-        ],
-      },
-      room: {
-        implicitRegionId: 'legacy-room-region',
-        walkableHexes: [
-          { q: 0, r: 0 },
-          { q: 2, r: -1 },
-          { q: -3, r: 1 },
-        ],
-        propDeclarations: {
-          'prop-table': {
-            blocksMovement: true,
-            blocksLineOfSight: false,
-            footprint: {
-              width: 1.2,
-              depth: 0.5,
-              offsetX: 0.1,
-              offsetZ: -0.2,
-            },
-          },
-        },
-        arrangementDeclarations: {
-          'arrangement-1': {
-            'prop-table': {
-              blocksMovement: false,
-              blocksLineOfSight: false,
-              footprint: {
-                width: 0.6,
-                depth: 0.5,
-                offsetX: 0,
-                offsetZ: 0,
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-}
-
-function legacyV1Envelope(): Record<string, unknown> {
-  const envelope = legacyV2Envelope();
-  envelope.version = 1;
-  const draft = envelope.draft as Record<string, unknown>;
-  draft.version = 1;
-  delete draft.workspace;
-  return envelope;
-}
-
 class RecordingStorage implements KeyValueStorage {
   values = new Map<string, string>();
   writes: Array<{ key: string; value: string }> = [];
@@ -478,101 +342,15 @@ class RecordingStorage implements KeyValueStorage {
   }
 }
 
-function draftOfEnvelope(envelope: Record<string, unknown>): RoomDraft {
-  return parseRoomDraftJson(JSON.stringify(envelope));
-}
-
-describe('room draft v3 migration and structural exactness', () => {
-  it('upgrades a fixed legacy version 2 envelope losslessly into v3', () => {
-    const legacy = legacyV2Envelope();
-    const migrated = draftOfEnvelope(legacy);
-
-    expect(migrated.version).toBe(3);
-    expect(migrated.id).toBe('legacy-room');
-    expect(migrated.name).toBe('Legacy cellar');
-    expect(migrated.workspace).toEqual({
-      hexRadius: 10,
-      horizontalLimit: 20,
-    });
-    expect(migrated.scene.items[0]?.transform).toEqual({
-      x: -2.25,
-      y: 1.2,
-      z: 1.3,
-      rotationY: 0.37,
-    });
-    expect(migrated.scene.items[1]?.heightScale).toBeUndefined();
-    expect(migrated.room.walkableHexes).toEqual([
-      { q: 0, r: 0 },
-      { q: 2, r: -1 },
-      { q: -3, r: 1 },
-    ]);
-    expect(migrated.room.propDeclarations['prop-table']).toEqual({
-      blocksMovement: true,
-      blocksLineOfSight: false,
-      footprint: { width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2 },
-    });
-    expect(
-      migrated.room.arrangementDeclarations['arrangement-1']['prop-table']
-        .blocksMovement
-    ).toBe(false);
-    // Lossless v2 -> v3: monsters arrive empty and no start is invented.
-    expect(migrated.room.monsterDeclarations).toEqual([]);
-    expect('partyStart' in migrated.room).toBe(false);
-  });
-
-  it('migrates a fixed legacy version 1 envelope through its default workspace', () => {
-    const migrated = draftOfEnvelope(legacyV1Envelope());
-    expect(migrated.version).toBe(3);
-    expect(migrated.workspace).toEqual(ROOM_WORKSPACE_STEPS[0]);
-    expect(migrated.room.walkableHexes).toContainEqual({ q: -3, r: 1 });
-    expect(migrated.room.monsterDeclarations).toEqual([]);
-  });
-
-  it('keeps legacy stored bytes byte-identical and writes only v3 to the current key', () => {
-    const storage = new RecordingStorage();
-    const legacyRaw = JSON.stringify(legacyV2Envelope());
-    storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
-
-    const loaded = loadRoomDraft(
-      storage,
-      createRoomDraft(createEmptyScene('blank'), 'blank')
-    );
-    expect(loaded.error).toBeUndefined();
-    const painted = updateWalkableHexes(
-      loaded.value,
-      [{ q: 1, r: 0 }],
-      'paint'
-    );
-    const withActor = placeRoomMonster(painted, {
-      id: 'actor-1',
-      ref: 'dnd5e:monsters:zombie',
-      startingCell: { location: { q: 2, r: -1 } },
-    });
-    expect(saveRoomDraft(storage, withActor)).toBeNull();
-
-    // Old local bytes are never removed or rewritten during load or save.
-    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
-    expect(storage.writes.map((write) => write.key)).toEqual([
-      ROOM_DRAFT_STORAGE_KEY,
-    ]);
-    const written = JSON.parse(
-      storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
-    ) as { version: number; draft: RoomDraft };
-    // The CURRENT envelope version, whatever it is this build — this test is
-    // about which KEY is written and that legacy bytes are left alone, not
-    // about the number (rpg-project#501 §6.1 moved it to 5).
-    expect(written.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
-    expect(written.draft.room.monsterDeclarations).toHaveLength(1);
-  });
-
-  it('never recovers older keys when the current v3 record is empty or malformed', () => {
-    const legacyV2 = JSON.stringify(legacyV2Envelope());
-    const legacyV1 = JSON.stringify(legacyV1Envelope());
-    for (const corrupt of ['', '{bad-v3', JSON.stringify(null)]) {
+describe('room draft structural exactness', () => {
+  // The v1/v2 migrations and the legacy-key recovery retired with the
+  // walkable list (rpg-project#725: earlier envelopes are refused by name).
+  // What survives is the current key's own discipline: a present but
+  // unreadable record keeps the fallback and is never overwritten by a load.
+  it('never reinterprets or overwrites a current record that is empty or malformed', () => {
+    for (const corrupt of ['', '{bad-v6', JSON.stringify(null)]) {
       const storage = new RecordingStorage();
       storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
-      storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyV2);
-      storage.values.set(LEGACY_V1_ROOM_DRAFT_STORAGE_KEY, legacyV1);
       const fallback = createRoomDraft(
         createEmptyScene('fallback-scene'),
         'fallback-room'
@@ -581,15 +359,32 @@ describe('room draft v3 migration and structural exactness', () => {
       const result = loadRoomDraft(storage, fallback);
       expect(result.value.id).toBe('fallback-room');
       expect(result.error).toMatch(/Room draft load failed/);
-      // The present-but-invalid record is not reinterpreted, not recovered
-      // from older bytes, and not overwritten by this load.
       expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
-      expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyV2);
-      expect(storage.values.get(LEGACY_V1_ROOM_DRAFT_STORAGE_KEY)).toBe(
-        legacyV1
-      );
       expect(storage.writes).toEqual([]);
     }
+  });
+
+  it('writes only the current key, at the current envelope version', () => {
+    const storage = new RecordingStorage();
+    const painted = paintCells(
+      createRoomDraft(createEmptyScene('blank'), 'blank'),
+      [{ q: 1, r: 0 }]
+    );
+    const withActor = placeRoomMonster(painted, {
+      id: 'actor-1',
+      ref: 'dnd5e:monsters:zombie',
+      startingCell: { location: { q: 2, r: -1 } },
+    });
+    expect(saveRoomDraft(storage, withActor)).toBeNull();
+    expect(storage.writes.map((write) => write.key)).toEqual([
+      ROOM_DRAFT_STORAGE_KEY,
+    ]);
+    const written = JSON.parse(
+      storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+    ) as { version: number; draft: RoomDraft };
+    expect(written.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
+    expect(written.draft.room.monsterDeclarations).toHaveLength(1);
+    expect(loadRoomDraft(storage, painted).value).toEqual(withActor);
   });
 
   it('refuses unknown draft, frame, room and placement fields instead of dropping them', () => {
@@ -605,7 +400,7 @@ describe('room draft v3 migration and structural exactness', () => {
       (draft as unknown as Record<string, unknown>).bossPin = { q: 0, r: 0 };
     }, /Room draft has an unsupported field: bossPin/);
     expectRejected((draft) => {
-      draft.room.walkableHexes.push({ q: 1, r: 0 });
+      draft.room.regions[0]!.cells = [{ r: 0, q: [[1, 1]] }];
       (draft.room as unknown as Record<string, unknown>).monstersPerCell = 1;
     }, /Room gameplay data has an unsupported field: monstersPerCell/);
     expectRejected((draft) => {
@@ -613,7 +408,7 @@ describe('room draft v3 migration and structural exactness', () => {
         'feet';
     }, /Room coordinate frame has an unsupported field: engineUnit/);
     expectRejected((draft) => {
-      draft.room.walkableHexes = [{ q: 0, r: 0 }];
+      draft.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
       draft.room.monsterDeclarations = [
         {
           id: 'm',
@@ -799,16 +594,19 @@ describe('room draft v3 migration and structural exactness', () => {
       ],
       /must contain integral axial coordinates/
     );
-    expectRejected(
-      [
-        {
-          id: 'm1',
-          ref: 'dnd5e:monsters:zombie',
-          startingCell: { location: { q: 7, r: 0 } },
-        },
-      ],
-      /outside the authoring floor/
-    );
+    // No extent bounds a start any more (rpg-project#725 R3): a far cell is
+    // written as authored.
+    expect(() =>
+      stringifyRoomDraft(
+        withMonsters([
+          {
+            id: 'm1',
+            ref: 'dnd5e:monsters:zombie',
+            startingCell: { location: { q: 700, r: 0 } },
+          },
+        ])
+      )
+    ).not.toThrow();
     expectRejected(
       [
         {
@@ -845,7 +643,7 @@ describe('room draft v3 migration and structural exactness', () => {
       createEmptyScene('scene-facing'),
       'room-facing'
     );
-    base.room.walkableHexes = [{ q: 0, r: 0 }];
+    base.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
     const placed = placeRoomMonster(base, {
       id: 'guard-1',
       ref: 'dnd5e:monsters:thug',
@@ -865,7 +663,7 @@ describe('room draft v3 migration and structural exactness', () => {
     // The vocabulary is closed, so a word outside it is refused with the names
     // that ARE legal rather than carried to the engine.
     const base = createRoomDraft(createEmptyScene('scene-bad'), 'room-bad');
-    base.room.walkableHexes = [{ q: 0, r: 0 }];
+    base.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
     expect(() =>
       stringifyRoomDraft({
         ...base,
@@ -888,10 +686,7 @@ describe('room draft v3 migration and structural exactness', () => {
     // and must not silently re-aim it at the asset's default, which is exactly
     // what dropping the field would do.
     const base = createRoomDraft(createEmptyScene('scene-move'), 'room-move');
-    base.room.walkableHexes = [
-      { q: 0, r: 0 },
-      { q: 1, r: 0 },
-    ];
+    base.room.regions[0]!.cells = [{ r: 0, q: [[0, 1]] }];
     const placed = placeRoomMonster(base, {
       id: 'guard-1',
       ref: 'dnd5e:monsters:thug',
@@ -1259,7 +1054,7 @@ describe('room draft v3 migration and structural exactness', () => {
 
   it('writes no doorBindings when no door was authored', () => {
     const draft = createRoomDraft(createEmptyScene('scene-no-doors'), 'room-0');
-    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    draft.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
     const json = stringifyRoomDraft(draft);
     expect(json).not.toContain('doorBindings');
   });
@@ -1376,7 +1171,7 @@ describe('room draft v3 migration and structural exactness', () => {
 
   it('retains structurally valid actor arrangements that are merely game-illegal', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    draft.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
     // Off painted floor and overlapping the party start: the encounter owns
     // legality, so this draft must stay retainable verbatim.
     const withActor = placeRoomMonster(draft, {
@@ -1433,9 +1228,18 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(clearRoomPartyStart(moved).room.partyStart).toBeUndefined();
     const cleared = clearRoomPartyStart(moved);
     expect(clearRoomPartyStart(cleared)).toBe(cleared);
+    // The canvas is unbounded (rpg-project#725 R3): a far cell is a cell,
+    // and only a cell that is not whole is refused.
+    expect(
+      moveRoomMonster(draft, 'skeleton-a', { q: 900, r: 0 }).room
+        .monsterDeclarations[0]!.startingCell.location
+    ).toEqual({ q: 900, r: 0 });
     expect(() =>
       moveRoomMonster(draft, 'skeleton-a', { q: 9.5, r: 0 })
-    ).toThrow(/outside the authoring floor/);
+    ).toThrow('Monster placement must be a whole hex.');
+    expect(() => setRoomPartyStart(draft, { q: 0, r: 0.5 })).toThrow(
+      'Party start must be a whole hex.'
+    );
     expect(() =>
       placeRoomMonster(draft, {
         id: 'skeleton-a',
@@ -1448,12 +1252,20 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(removed.room.partyStart).toEqual({ q: 0, r: 0 });
   });
 
-  it('checks workspace membership structurally for any axial cell', () => {
-    expect(isCellWithinWorkspace({ q: 0, r: 0 }, 6)).toBe(true);
-    expect(isCellWithinWorkspace({ q: 6, r: -3 }, 6)).toBe(true);
-    expect(isCellWithinWorkspace({ q: 7, r: -3 }, 6)).toBe(false);
-    expect(isCellWithinWorkspace({ q: 0.5, r: 0 }, 6)).toBe(false);
-    expect(isCellWithinWorkspace({ q: NaN, r: 0 }, 6)).toBe(false);
+  // Workspace membership retired with the workspace (R3); what a cell is
+  // now asked is whether it is floor — whether some region lists it.
+  it('answers floor membership from the regions for any axial cell', () => {
+    const draft = paintCells(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      [
+        { q: 0, r: 0 },
+        { q: 6, r: -3 },
+      ]
+    );
+    expect(isFloorCell(draft, { q: 0, r: 0 })).toBe(true);
+    expect(isFloorCell(draft, { q: 6, r: -3 })).toBe(true);
+    expect(isFloorCell(draft, { q: 7, r: -3 })).toBe(false);
+    expect(isFloorCell(draft, { q: 0.5, r: 0 })).toBe(false);
   });
 });
 
@@ -1519,12 +1331,10 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
     expect(() => parseRoomDraftJson(stringifyRoomDraft(draft, scope))).toThrow(
       /carries a site scope/
     );
-    // A PRE-`startingCell` ENVELOPE IS REFUSED BY NAME (rpg-project#501 §6.1),
-    // which is now what a v3 envelope means — it stored `monsters[].cell`, a
-    // shape this build no longer reads. The sentence names the change and says
-    // to rebuild, because Kirk ruled migration out (there is one custom
-    // dungeon). A scope riding along does not change that: the shape is the
-    // older one either way.
+    // AN EARLIER ENVELOPE IS REFUSED BY NAME: a v3 envelope predates both
+    // `startingCell` (rpg-project#501 §6.1) and regions as the floor
+    // (rpg-project#725), and the sentence now names the later change and says
+    // to rebuild. A scope riding along does not change that.
     const v3 = JSON.stringify({
       kind: 'rpg-room-authoring-draft',
       version: 3,
@@ -1532,7 +1342,7 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
       scope,
     });
     expect(() => parseRoomDocumentJson(v3)).toThrow(
-      /saved before monsters carried a `startingCell`/
+      /saved before regions were the floor .*rebuild, no migration/
     );
   });
 
@@ -1558,8 +1368,8 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
   });
 });
 
-describe('complete centered document gate', () => {
-  it('normalizes the full scope, promotes explicit resize even with no labels, and keeps legacy bytes unchanged', () => {
+describe('complete document gate', () => {
+  it('normalizes the full scope and keeps the bytes of a valid document unchanged', () => {
     const original = createRoomDraft(createEmptyScene('scene'), 'room');
     const bytes = stringifyRoomDraft(original);
     expect(
@@ -1567,67 +1377,25 @@ describe('complete centered document gate', () => {
         validateRoomDocument({ draft: original, scope: {} }).draft
       )
     ).toBe(bytes);
-    const next = resizeRoomWorkspace({ draft: original, scope: {} }, 73, 48);
-    expect(next.draft.scene.version).toBe(2);
-    expect(next.draft.scene).not.toHaveProperty('mapLabels');
-    expect(next.draft.room).toEqual(original.room);
-    expect(next.draft.workspace).toEqual(centeredRoomWorkspace(73, 48));
-    expect(parseRoomDocumentJson(stringifyRoomDraft(next.draft))).toEqual(next);
-    expect(resizeRoomWorkspace(next, 73, 48)).toBe(next);
     expect(original.scene.version).toBe(1);
   });
-  it('uses rectangle membership in room editing helpers while preserving numeric compatibility callers', () => {
-    const draft = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      2,
-      2
-    ).draft;
+  // Rectangle membership retired with the workspace (rpg-project#725 R3):
+  // a rectangle selects every cell whose centre it holds, anywhere, and the
+  // paint cap — not a stored extent — is what bounds one gesture.
+  it('selects a rectangle anywhere on the canvas and refuses one past the paint cap', () => {
     expect(
-      walkableCellsInWorldRectangle(
-        { x: -100, z: -100 },
-        { x: 100, z: 100 },
-        draft.workspace
-      )
-    ).toEqual(workspaceCells(draft.workspace));
+      cellsInWorldRectangle({ x: 999, z: 999 }, { x: 1001.5, z: 1000.6 })
+    ).toEqual(
+      cellsInWorldRectangle({ x: 1001.5, z: 1000.6 }, { x: 999, z: 999 })
+    );
     expect(
-      walkableCellsInWorldRectangle({ x: -100, z: -100 }, { x: 100, z: 100 }, 1)
-    ).toHaveLength(7);
-    expect(
-      updateWalkableHexes(
-        draft,
-        [
-          { q: 1, r: 0 },
-          { q: 1, r: -1 },
-        ],
-        'paint'
-      ).room.walkableHexes
-    ).toEqual([{ q: 1, r: -1 }]);
-    expect(() => setRoomPartyStart(draft, { q: 1, r: 0 })).toThrow(/outside/);
+      cellsInWorldRectangle({ x: 999, z: 999 }, { x: 1001.5, z: 1000.6 }).length
+    ).toBeGreaterThan(0);
     expect(() =>
-      placeRoomMonster(draft, {
-        id: 'actor',
-        ref: 'dnd5e:monsters:skeleton',
-        startingCell: { location: { q: 1, r: 0 } },
-      })
-    ).toThrow(/outside/);
-    expect(() => moveRoomMonster(draft, 'actor', { q: 1, r: 0 })).toThrow(
-      /outside/
-    );
-    expect(expandRoomWorkspace(draft)).toBe(draft);
+      cellsInWorldRectangle({ x: -400, z: -400 }, { x: 400, z: 400 })
+    ).toThrow('A rectangle selects at most 65536 cells.');
   });
-  it('refuses version/metadata mismatch and false workspace envelopes rather than stripping dimensions or labels', () => {
-    const rectangle = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      2,
-      2
-    ).draft;
-    const badScene = {
-      ...rectangle,
-      scene: { ...rectangle.scene, version: 1 as const },
-    };
-    expect(() => validateRoomDocument({ draft: badScene, scope: {} })).toThrow(
-      /scene version 2/
-    );
+  it('refuses a label on a version 1 scene, and the retired envelopes by name', () => {
     const labeled = createMapLabel(
       createRoomDraft(createEmptyScene('scene'), 'room'),
       'label',
@@ -1640,22 +1408,7 @@ describe('complete centered document gate', () => {
         scene: { ...labeled.scene, version: 1 },
       })
     ).toThrow(/version 1 cannot carry/);
-    expect(() =>
-      stringifyRoomDraft({
-        ...rectangle,
-        workspace: { ...rectangle.workspace, hexRadius: 99 },
-      })
-    ).toThrow(/derived/);
-    expect(() =>
-      parseRoomDocumentJson(
-        JSON.stringify({
-          kind: 'rpg-room-authoring-draft',
-          version: 1,
-          draft: { ...rectangle, version: 1 },
-        })
-      )
-    ).toThrow(/cannot carry centered workspace metadata/);
-    for (const version of [3, 4])
+    for (const version of [3, 4, 5])
       expect(() =>
         parseRoomDocumentJson(
           JSON.stringify({
@@ -1664,7 +1417,7 @@ describe('complete centered document gate', () => {
             draft: labeled,
           })
         )
-      ).toThrow(/Rebuild/);
+      ).toThrow(/rebuild, no migration \(rpg-project#725\)/);
   });
   it('allows an unfinished intel row through size checking without making it persistable', () => {
     const document = {
@@ -1693,107 +1446,111 @@ describe('complete centered document gate', () => {
     );
     expect(document).toEqual(before);
   });
-  it('refuses oversized full scope and maximum painted floor before returning a transaction, without mutation', () => {
-    const draft = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      128,
-      128
-    ).draft;
-    const full = {
-      draft: {
-        ...draft,
-        room: { ...draft.room, walkableHexes: workspaceCells(draft.workspace) },
-      },
-      scope: {},
-    };
-    const before = structuredClone(full);
-    expect(() => validateRoomDocument(full)).toThrow(/too large/);
-    expect(full).toEqual(before);
+  // The floor is capped by MAX_FLOOR_HEXES, not by a workspace; a paint that
+  // would pass it is refused before any transaction, with no mutation.
+  it('refuses oversized full scope and a floor past the paint cap, without mutation', () => {
+    const draft = createRoomDraft(createEmptyScene('scene'), 'room');
+    const before = structuredClone(draft);
+    const tooMany = Array.from({ length: MAX_FLOOR_HEXES + 1 }, (_, i) => ({
+      q: i % 512,
+      r: Math.floor(i / 512),
+    }));
+    expect(() => paintCells(draft, tooMany)).toThrow(
+      'The floor holds at most 65536 cells (rpg-project#725).'
+    );
+    expect(draft).toEqual(before);
     const hugeScope = { scenarios: { test: { custom: 'x'.repeat(500001) } } };
     expect(() => validateRoomDocument({ draft, scope: hugeScope })).toThrow(
       /too large/
     );
-    expect(() =>
-      resizeRoomWorkspace({ draft, scope: hugeScope }, 73, 48)
-    ).toThrow(/too large/);
   });
 });
 
-describe('scene3 authoring intent codec and identity boundary', () => {
+// The scene3/4 authoring-intent tests (automatic witnesses, explicit areas,
+// label links) retired with `scene.authoringRegions` (rpg-project#725 G4).
+// What they guarded — that authored regions, their look and their identities
+// survive reload byte for byte, that unreadable stored bytes are protected,
+// and that a region id cannot collide with another owner — is pinned here
+// against `room.room.regions` and `scene.regionPresentation`.
+type RawDraft = {
+  scene: Record<string, unknown>;
+  room: Record<string, unknown> & { regions: Array<Record<string, unknown>> };
+};
+
+describe('regions are the floor: codec and identity boundary (rpg-project#725)', () => {
   function regionDraft(): RoomDraft {
-    const draft = createRoomDraft(createEmptyScene('scene'), 'room');
+    let draft = createRoomDraft(createEmptyScene('scene'), 'room');
     draft.scene.version = 3;
-    draft.scene.mapLabels = [
-      { id: 'label', text: 'Kitchen', location: { x: 0, z: 0 } },
-    ];
-    draft.scene.authoringRegions = [
-      {
-        id: 'region',
-        labelId: 'label',
-        boundary: {
-          kind: 'automatic',
-          witness: {
-            walk: [
-              { wallId: 'C-missing', direction: 'start-to-end' },
-              { wallId: 'A-missing', direction: 'start-to-end' },
-              { wallId: 'B-missing', direction: 'start-to-end' },
-              { wallId: 'C-missing', direction: 'start-to-end' },
-            ],
-          },
-        },
-      },
-    ];
+    draft = createRegion(draft, 'region', 'Kitchen');
+    draft = paintCells(
+      draft,
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+      'region'
+    );
+    draft = paintCells(draft, [{ q: 3, r: 1 }]);
+    draft = setRegionLighting(draft, 'region', 0.3);
+    draft = createRegion(draft, 'unpainted', 'Cellar');
     return draft;
   }
-  it('retains stale oriented walk bytes and unbound/empty intent across reload and resize without upgrade or demotion', () => {
+  it('round trips named, lit, painted and unpainted regions and a verbatim construction', () => {
     const draft = regionDraft();
+    draft.scene.regionPresentation = {
+      region: { construction: { rectangles: [[0, 0, 2, 1]], tool: 'drag' } },
+    };
     const before = structuredClone(draft);
     const bytes = stringifyRoomDraft(draft);
     expect(JSON.parse(bytes).version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     const reopened = parseRoomDocumentJson(bytes);
     expect(reopened.draft).toEqual(before);
     expect(stringifyRoomDraft(reopened.draft)).toBe(bytes);
-    const resized = resizeRoomWorkspace(reopened, 7, 7);
-    expect(resized.draft.scene.version).toBe(3);
-    expect(resized.draft.scene.authoringRegions).toEqual(
-      before.scene.authoringRegions
-    );
-    expect(resizeRoomWorkspace(resized, 7, 7)).toBe(resized);
-    for (const boundary of [
-      { kind: 'automatic' as const },
-      { kind: 'explicit' as const, cells: [] },
-    ]) {
-      draft.scene.authoringRegions![0].boundary = boundary;
-      expect(
-        parseRoomDraftJson(stringifyRoomDraft(draft)).scene.authoringRegions![0]
-          .boundary
-      ).toEqual(boundary);
-    }
-    delete draft.scene.authoringRegions;
-    expect(
-      parseRoomDraftJson(stringifyRoomDraft(draft)).scene
-    ).not.toHaveProperty('authoringRegions');
-    expect(parseRoomDraftJson(stringifyRoomDraft(draft)).scene.version).toBe(3);
+    expect(reopened.draft.room.regions).toEqual([
+      {
+        id: 'room-region',
+        name: 'Untitled room',
+        lighting: { intensity: 1 },
+        cells: [{ r: 1, q: [[3, 3]] }],
+      },
+      {
+        id: 'region',
+        name: 'Kitchen',
+        lighting: { intensity: 0.3 },
+        cells: [{ r: 0, q: [[0, 1]] }],
+      },
+      {
+        id: 'unpainted',
+        name: 'Cellar',
+        lighting: { intensity: 1 },
+        cells: [],
+      },
+    ]);
+    expect(reopened.draft.scene.version).toBe(3);
   });
-  it('protects current stored bytes for unknown scene3 metadata and dangling links; unresolved intent remains valid', () => {
+  it('protects current stored bytes the regions refuse; an unpainted region remains valid', () => {
     const draft = regionDraft();
     const valid = JSON.parse(stringifyRoomDraft(draft));
     const storage = new RecordingStorage();
     for (const mutate of [
-      (scene: Record<string, unknown>) => {
-        scene.futureIntent = true;
+      (d: RawDraft) => {
+        d.scene.futureIntent = true;
       },
-      (scene: Record<string, unknown>) => {
-        scene.authoringRegions = [
-          { id: 'region', labelId: 'missing', boundary: { kind: 'automatic' } },
-        ];
+      (d: RawDraft) => {
+        d.scene.authoringRegions = [];
       },
-      (scene: Record<string, unknown>) => {
-        scene.version = 2;
+      (d: RawDraft) => {
+        d.scene.regionPresentation = { missing: { construction: 1 } };
+      },
+      (d: RawDraft) => {
+        d.room.walkableHexes = [{ q: 0, r: 0 }];
+      },
+      (d: RawDraft) => {
+        d.room.regions[0].cells = [{ r: 0, q: [[0, 0]] }];
       },
     ]) {
       const invalid = structuredClone(valid);
-      mutate(invalid.draft.scene);
+      mutate(invalid.draft);
       const bytes = JSON.stringify(invalid);
       storage.values.set(ROOM_DRAFT_STORAGE_KEY, bytes);
       const result = loadRoomDraft(storage, draft);
@@ -1803,19 +1560,12 @@ describe('scene3 authoring intent codec and identity boundary', () => {
       expect(storage.writes).toEqual([]);
     }
     expect(() => validateRoomDocument({ draft, scope: {} })).not.toThrow();
-    expect(() =>
-      validateRoomDocument({
-        draft,
-        scope: { intel: [{ id: 'unfinished', reveals: { fact: '' } }] },
-      })
-    ).toThrow(/must name a fact/);
   });
-  it('rejects new region IDs colliding with actual document owners while keeping missing wall references unresolved', () => {
+  it('refuses a region id colliding with an actual document owner, in its own words', () => {
     for (const collision of [
       'room',
       'scene',
       'room-region',
-      'label',
       'actor',
       'wall',
       'opening',
@@ -1859,22 +1609,16 @@ describe('scene3 authoring intent codec and identity boundary', () => {
           startingCell: { location: { q: 0, r: 0 } },
         },
       ];
-      draft.scene.authoringRegions![0].id = collision;
+      draft.room.regions[1]!.id = collision;
       expect(() => stringifyRoomDraft(draft)).toThrow(
-        /duplicate region identity/
+        `room.room.regions[1].id: duplicate identity ${collision}.`
       );
     }
   });
-  it('charges source walks to the existing 500000-character document budget without inventing a wall cap', () => {
+  it('charges a carried construction to the existing 500000-character document budget', () => {
     const draft = regionDraft();
-    draft.scene.authoringRegions![0].boundary = {
-      kind: 'automatic',
-      witness: {
-        walk: Array.from({ length: 8000 }, (_, i) => ({
-          wallId: `missing-${i}`,
-          direction: 'start-to-end' as const,
-        })),
-      },
+    draft.scene.regionPresentation = {
+      region: { construction: { notes: 'x'.repeat(500001) } },
     };
     const storage = new RecordingStorage();
     const prior = stringifyRoomDraft(regionDraft());
@@ -1888,41 +1632,26 @@ describe('scene3 authoring intent codec and identity boundary', () => {
   });
 });
 
-it('scene4 full document JSON/reload/resize retains settings, scope and independent version axes', () => {
+it('full document JSON/reload retains region lighting, scope and independent version axes', () => {
   const document = createPopulatedStudioDocument();
   document.draft = setRegionLighting(
-    createRoomLabel(
-      document.draft,
-      'lighting-region',
-      'lighting-label',
-      'Room',
-      { x: 0, z: 0 }
-    ),
+    createRegion(document.draft, 'lighting-region', 'Room'),
     'lighting-region',
-    { background: 0.153728 }
+    0.153728
   );
   const bytes = stringifyRoomDraft(document.draft, document.scope);
   expect(JSON.parse(bytes).version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
   const loaded = parseRoomDocumentJson(bytes);
   expect(loaded).toEqual(document);
   expect(stringifyRoomDraft(loaded.draft, loaded.scope)).toBe(bytes);
-  const resized = resizeRoomWorkspace(loaded, 73, 48);
-  const expected = structuredClone(document);
-  expected.draft.workspace = resized.draft.workspace;
-  expect(resized).toEqual(expected);
-  expect(resizeRoomWorkspace(resized, 73, 48)).toBe(resized);
   for (const draft of [
     document.draft,
-    setExplicitRegionArea(document.draft, 'lighting-region', []),
-    setRegionLighting(document.draft, 'lighting-region', null),
+    paintCells(document.draft, [{ q: 0, r: 0 }], 'lighting-region'),
+    setRegionLighting(document.draft, 'lighting-region', 1),
   ]) {
     expect(parseRoomDraftJson(stringifyRoomDraft(draft))).toEqual(draft);
-    expect(draft.scene.version).toBe(4);
+    expect(draft.scene.version).toBe(document.draft.scene.version);
   }
-  delete document.draft.scene.authoringRegions;
-  expect(
-    parseRoomDraftJson(stringifyRoomDraft(document.draft)).scene.version
-  ).toBe(4);
 });
 
 describe('options on a binding (rpg-project#569)', () => {
@@ -2053,7 +1782,7 @@ describe('options on a binding (rpg-project#569)', () => {
           })
       )
     ).toThrow(
-      'options[0].requires: an option requires { fact: <id> } or { holds: <prop id> }, and `round` is neither'
+      'options[0].requires: an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, and `round` is none of them'
     );
     expect(refusal((d) => (goblin(d)[0].failure = []))).toThrow(
       'options[0].failure: `failure` lists nothing — omit it, or write what is answered'
@@ -2094,6 +1823,12 @@ describe('options on a binding (rpg-project#569)', () => {
     expect(
       refusal((d) => (goblin(d)[1].requires = { holds: 'altar' }))
     ).toThrow('"altar" is a prop nobody can pick up, so nobody can hold it');
+    // A `not` of a holding names its prop one level down (rpg-project#719).
+    expect(
+      refusal((d) => (goblin(d)[1].requires = { not: { holds: 'crown' } }))
+    ).toThrow(
+      'Monster binding for goblin-1 options[1].requires.not.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
+    );
     expect(
       refusal(
         (d) =>
@@ -2103,58 +1838,139 @@ describe('options on a binding (rpg-project#569)', () => {
   });
 });
 
-describe('resize grows on chosen edges without moving content (R13)', () => {
-  function furnished() {
-    const base = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      20,
-      20
-    );
-    let draft = updateWalkableHexes(
-      base.draft,
-      [
-        { q: 0, r: 0 },
-        { q: 3, r: -2 },
-        { q: -4, r: 5 },
-      ],
-      'paint'
-    );
-    draft = placeRoomMonster(draft, {
-      id: 'guard',
-      ref: 'dnd5e:monsters:skeleton',
-      startingCell: { location: { q: 2, r: 1 } },
-    });
-    draft = setRoomPartyStart(draft, { q: -1, r: 0 });
-    return { draft, scope: base.scope };
-  }
+describe('painting into regions (rpg-project#725 R5)', () => {
+  const blank = () => createRoomDraft(createEmptyScene('scene'), 'room');
 
-  it("resize keeps a monster's starting cell, the party start and every walkable cell", () => {
-    const original = furnished();
-    for (const edges of [
-      undefined,
-      { columns: 'left', rows: 'bottom' },
-    ] as const) {
-      const grown = resizeRoomWorkspace(original, 24, 22, edges);
-      expect(grown.draft.workspace.kind).toBe('odd-r-rect');
-      expect(grown.draft.room).toEqual(original.draft.room);
-      expect(grown.draft.scene).toEqual(original.draft.scene);
-      for (const cell of original.draft.room.walkableHexes)
-        expect(isCellWithinWorkspace(cell, grown.draft.workspace)).toBe(true);
-      expect(parseRoomDocumentJson(stringifyRoomDraft(grown.draft))).toEqual(
-        grown
-      );
-    }
+  it('paints into the implicit region by default, and the floor is the union', () => {
+    const draft = paintCells(blank(), [
+      { q: 2, r: 0 },
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 0, r: -1 },
+    ]);
+    expect(draft.room.regions).toEqual([
+      {
+        id: 'room-region',
+        name: 'Untitled room',
+        lighting: { intensity: 1 },
+        cells: [
+          { r: -1, q: [[0, 0]] },
+          { r: 0, q: [[0, 2]] },
+        ],
+      },
+    ]);
+    expect(floorCells(draft)).toEqual([
+      { q: 0, r: -1 },
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    expect(floorCellCount(draft)).toBe(4);
   });
 
-  it('a shrink that cuts a wall is refused with no history entry', () => {
-    const populated = createPopulatedStudioDocument();
-    const document = resizeRoomWorkspace(populated, 20, 20);
-    const before = JSON.stringify(document);
-    // The wall spans x -4..4; keeping only the four leftmost columns cuts it.
-    expect(() => resizeRoomWorkspace(document, 4, 20)).toThrow(/outside/);
-    expect(() =>
-      resizeRoomWorkspace(document, 4, 20, { columns: 'left', rows: 'top' })
-    ).toThrow(/outside/);
-    expect(JSON.stringify(document)).toBe(before);
+  it('lists the implicit region again when paint lands in it after it was dropped', () => {
+    const draft = createRegion(blank(), 'hall', 'Hall');
+    draft.room.regions = draft.room.regions.filter((r) => r.id === 'hall');
+    const painted = paintCells(draft, [{ q: 0, r: 0 }]);
+    expect(painted.room.regions.map((r) => r.id)).toEqual([
+      'room-region',
+      'hall',
+    ]);
+    expect(() => paintCells(draft, [{ q: 0, r: 0 }], 'nowhere')).toThrow(
+      'Region does not exist: nowhere.'
+    );
+  });
+
+  it('reassigns a cell another region held: brushing with a region active moves it, the floor does not change', () => {
+    let draft = paintCells(blank(), [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    draft = createRegion(draft, 'gatehouse', 'Gatehouse');
+    const floor = floorCells(draft);
+    const moved = paintCells(draft, [{ q: 1, r: 0 }], 'gatehouse');
+    expect(floorCells(moved)).toEqual(floor);
+    expect(cellOwners(moved).get('1,0')).toBe('gatehouse');
+    expect(moved.room.regions[0]!.cells).toEqual([
+      {
+        r: 0,
+        q: [
+          [0, 0],
+          [2, 2],
+        ],
+      },
+    ]);
+    expect(moved.room.regions[1]!.cells).toEqual([{ r: 0, q: [[1, 1]] }]);
+    expect(paintCells(moved, [{ q: 1, r: 0 }], 'gatehouse')).toBe(moved);
+  });
+
+  it('erases to no region: the cell stops being floor, its region stays listed', () => {
+    let draft = createRegion(blank(), 'cellar', 'Cellar');
+    draft = paintCells(draft, [{ q: 4, r: 4 }], 'cellar');
+    const erased = eraseCells(draft, [{ q: 4, r: 4 }]);
+    expect(isFloorCell(erased, { q: 4, r: 4 })).toBe(false);
+    expect(erased.room.regions.find((r) => r.id === 'cellar')).toEqual({
+      id: 'cellar',
+      name: 'Cellar',
+      lighting: { intensity: 1 },
+      cells: [],
+    });
+  });
+
+  it('refuses a cell in two regions at the later listing, naming the first owner, as the engine does', () => {
+    const draft = createRegion(blank(), 'yard', 'Yard');
+    draft.room.regions[0]!.cells = [{ r: 0, q: [[-3, 0]] }];
+    draft.room.regions[1]!.cells = [{ r: 0, q: [[0, 2]] }];
+    expect(() => stringifyRoomDraft(draft)).toThrow(
+      'room.room.regions[1].cells[0].q[0]: already belongs to region "room-region"'
+    );
+  });
+
+  it('judges each region in the engine words: id, lighting, rows', () => {
+    const reject = (mutate: (draft: RoomDraft) => void) => {
+      const draft = paintCells(blank(), [{ q: 0, r: 0 }]);
+      mutate(draft);
+      return () => stringifyRoomDraft(draft);
+    };
+    expect(
+      reject((d) => {
+        d.room.regions[0]!.lighting = { intensity: 1.5 };
+      })
+    ).toThrow(
+      'room.room.regions[0].lighting.intensity: must be between 0 and 1'
+    );
+    expect(
+      reject((d) => {
+        d.room.regions[0]!.cells = [
+          {
+            r: 0,
+            q: [
+              [1, 3],
+              [4, 6],
+            ],
+          },
+        ];
+      })
+    ).toThrow(
+      'room.room.regions[0].cells[0].q[1]: spans must be ascending and merged'
+    );
+    expect(
+      reject((d) => {
+        d.room.regions = [];
+      })
+    ).toThrow('room.room.regions: must not be empty');
+    expect(
+      reject((d) => {
+        d.room.regions.push({ ...d.room.regions[0]!, cells: [] });
+      })
+    ).toThrow('room.room.regions[1].id: duplicate identity room-region.');
+    expect(
+      reject((d) => {
+        (d.room as unknown as Record<string, unknown>).walkableHexes = [];
+      })
+    ).toThrow(
+      'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
+    );
   });
 });

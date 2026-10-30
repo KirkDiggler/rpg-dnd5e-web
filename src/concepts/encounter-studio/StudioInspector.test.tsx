@@ -6,8 +6,12 @@ import {
   within,
 } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { createRegion, setRegionLighting } from '../world-building/regionEdits';
 import type { RoomWallFinish } from '../world-building/regionFinishTypes';
 import {
+  eraseCells,
+  floorCells,
+  paintCells,
   parseRoomDocumentJson,
   placeRoomMonster,
   setRoomPartyStart,
@@ -131,45 +135,50 @@ describe('StudioInspector', () => {
     ).toBeTruthy();
   });
 
-  it("room view shows size, notes, party start and each region's room-default wall finish, and no floor default", () => {
+  // Regions are the floor (rpg-project#725): the Size section is retired,
+  // every map label is a note, and a region's finish rides in
+  // scene.regionPresentation keyed by the region id.
+  it("room view shows notes, party start and each region's room-default wall finish, and no size or floor default", () => {
     const session = createFakeStudioSession();
-    const draft = setRoomPartyStart(session.document.draft, { q: 1, r: 0 });
+    let draft = setRoomPartyStart(session.document.draft, { q: 1, r: 0 });
+    draft = createRegion(draft, 'hall', 'Hall');
     draft.scene = {
       ...draft.scene,
       version: 7,
       mapLabels: [
         { id: 'torch', text: 'Torch note', location: { x: 0, z: 0 } },
-        { id: 'hall-label', text: 'Hall', location: { x: 1, z: 0 } },
+        { id: 'hall-note', text: 'Hall', location: { x: 1, z: 0 } },
       ],
-      authoringRegions: [
-        {
-          id: 'hall',
-          labelId: 'hall-label',
-          boundary: { kind: 'automatic' },
+      regionPresentation: {
+        hall: {
           wallFinish: {
             materialRef: 'mat:stone',
             patternStart: {} as RoomWallFinish['patternStart'],
           },
         },
-      ],
+      },
     };
     const props = inspector({
       ...session,
       document: { ...session.document, draft },
     });
     const room = within(region());
-    expect(room.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
+    expect(room.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    expect(room.queryByRole('region', { name: 'Size' })).toBeNull();
     fireEvent.click(
       room.getByRole('button', { name: 'Select note Torch note' })
     );
     expect(session.mapLabelSelection.select).toHaveBeenCalledWith('torch');
-    expect(room.queryByRole('button', { name: 'Select note Hall' })).toBeNull();
+    fireEvent.click(room.getByRole('button', { name: 'Select note Hall' }));
+    expect(session.mapLabelSelection.select).toHaveBeenLastCalledWith(
+      'hall-note'
+    );
     expect(room.getByText('Hex 1, 0')).toBeTruthy();
     fireEvent.click(room.getByRole('button', { name: 'Move party start' }));
     expect(props.onPlacePartyStart).toHaveBeenCalledTimes(1);
     expect(room.getByText('Hall: mat:stone')).toBeTruthy();
     fireEvent.click(room.getByRole('button', { name: 'Edit region Hall' }));
-    expect(props.onOpenRegion).toHaveBeenCalledWith('hall-label');
+    expect(props.onOpenRegion).toHaveBeenCalledWith('hall');
     expect(room.queryByText(/floor.default|default floor/i)).toBeNull();
     expect(room.queryByLabelText(/floor/i)).toBeNull();
   });
@@ -299,33 +308,101 @@ describe('StudioInspector', () => {
     ).toBeNull();
   });
 
+  // A region's cells are floor (rpg-project#725), so the named hex is walkable.
   it('hex view names the region and lighting and opens that region', () => {
     const session = createFakeStudioSession();
-    session.document.draft.scene.mapLabels = [
-      { id: 'hall-label', text: 'Hall', location: { x: 0, z: 0 } },
-    ];
-    session.document.draft.scene.authoringRegions = [
-      {
-        id: 'hall',
-        labelId: 'hall-label',
-        lighting: { background: 0.25 },
-        boundary: { kind: 'explicit', cells: [{ q: 0, r: 0 }] },
-      },
-    ];
+    let draft = createRegion(session.document.draft, 'hall', 'Hall');
+    draft = paintCells(draft, [{ q: 0, r: 0 }], 'hall');
+    draft = setRegionLighting(draft, 'hall', 0.25);
     const props = inspector(
-      selected(session, { kind: 'hex', cell: { q: 0, r: 0 } }, [
+      selected(
+        { ...session, document: { ...session.document, draft } },
         {
-          id: 'hall',
-          status: 'resolved',
-          area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
-        },
-      ])
+          kind: 'hex',
+          cell: { q: 0, r: 0 },
+        }
+      )
     );
     const view = within(region());
-    expect(view.getByText(/Hall · Lighting: background 25%/)).toBeTruthy();
-    expect(view.getByText(/Not walkable/)).toBeTruthy();
+    expect(view.getByText(/Hall · Lighting: 25%/)).toBeTruthy();
+    expect(view.getByText('Walkable floor.')).toBeTruthy();
     fireEvent.click(view.getByRole('button', { name: 'Edit region Hall' }));
-    expect(props.onOpenRegion).toHaveBeenCalledWith('hall-label');
+    expect(props.onOpenRegion).toHaveBeenCalledWith('hall');
+  });
+
+  // The hex view names the region a cell is in and offers to make it the
+  // region Paint brushes into (rpg-project#725 R5).
+  it('hex view makes the region at the cell the active one', () => {
+    const session = createFakeStudioSession();
+    let draft = createRegion(session.document.draft, 'hall', 'Hall');
+    draft = paintCells(draft, [{ q: 0, r: 0 }], 'hall');
+    const onMakeActive = vi.fn();
+    inspector(
+      selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'hex', cell: { q: 0, r: 0 } }
+      ),
+      { onMakeActive, activeRegionId: draft.room.implicitRegionId }
+    );
+    const view = within(region());
+    expect(view.getByText(/Region: Hall/)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Make Hall active' }));
+    expect(onMakeActive).toHaveBeenCalledExactlyOnceWith('hall');
+  });
+
+  // The region view (rpg-project#725): its name — the label on the map — and
+  // its lighting in one form, its paint status, Make active, and Remove
+  // except for the implicit region.
+  it('region view shows name, lighting, paint status, Make active and Remove', () => {
+    const session = createFakeStudioSession();
+    let draft = createRegion(session.document.draft, 'hall', 'Hall');
+    draft = paintCells(
+      draft,
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+      'hall'
+    );
+    draft = setRegionLighting(draft, 'hall', 0.4);
+    const onMakeActive = vi.fn();
+    const hall = selected(
+      { ...session, document: { ...session.document, draft } },
+      { kind: 'region', id: 'hall' }
+    );
+    inspector(hall, {
+      onMakeActive,
+      activeRegionId: draft.room.implicitRegionId,
+    });
+    const view = within(region());
+    expect(view.getByRole('heading', { level: 2, name: 'Hall' })).toBeTruthy();
+    expect((view.getByLabelText('Region name') as HTMLInputElement).value).toBe(
+      'Hall'
+    );
+    expect(
+      (view.getByLabelText('Lighting (%)') as HTMLInputElement).value
+    ).toBe('40');
+    expect(view.getByText('Painted · 2 hexes')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Remove region' })).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Make active' }));
+    expect(onMakeActive).toHaveBeenCalledExactlyOnceWith('hall');
+    cleanup();
+    inspector(hall, { onMakeActive, activeRegionId: 'hall' });
+    expect(
+      within(region())
+        .getByRole('button', { name: 'Active · Paint lands here' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    cleanup();
+    inspector(
+      selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'region', id: draft.room.implicitRegionId }
+      )
+    );
+    expect(
+      within(region()).queryByRole('button', { name: 'Remove region' })
+    ).toBeNull();
   });
 
   it('hex view with no region says none is drawn', () => {
@@ -387,11 +464,17 @@ describe('StudioInspector', () => {
   describe('the hex exit (rpg-project#578)', () => {
     function hexSession(cell: { q: number; r: number }) {
       const base = populated();
-      const document = structuredClone(base.document);
-      document.draft.room.walkableHexes = [
-        { q: 2, r: 0 },
-        { q: 3, r: 0 },
-      ];
+      const cleared = eraseCells(
+        base.document.draft,
+        floorCells(base.document.draft)
+      );
+      const document = {
+        ...base.document,
+        draft: paintCells(cleared, [
+          { q: 2, r: 0 },
+          { q: 3, r: 0 },
+        ]),
+      };
       return selected({ ...base, document }, { kind: 'hex', cell });
     }
 

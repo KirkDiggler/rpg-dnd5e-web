@@ -1,4 +1,4 @@
-import { validateAuthoringRegions } from './authoringRegions';
+import { validateRegionPresentation } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { validateActorNames, validateCreaturePalette } from './creaturePalette';
 import { rejectUnknownKeys } from './strictShape';
@@ -14,10 +14,6 @@ import type {
   WorldTransform,
 } from './types';
 import { validateWallFinishes } from './wallFinishTypes';
-import {
-  containsWorkspacePoint,
-  type RoomWorkspace,
-} from './workspaceGeometry';
 
 export const SCENE_STORAGE_KEY = 'rpg.concepts.world-building.scene.v1';
 export const LIBRARY_STORAGE_KEY = 'rpg.concepts.world-building.library.v1';
@@ -80,7 +76,6 @@ function finiteNumber(
 interface SceneValidationOptions {
   /** Room-editor X/Z capacity; standalone composer defaults remain WORLD_LIMIT. */
   horizontalLimit?: number;
-  workspace?: RoomWorkspace;
 }
 
 export const MAX_MAP_LABELS = 256;
@@ -105,18 +100,11 @@ export function validateMapLabels(
     if (!text) throw new Error(`${path}.text must be nonblank after trimming.`);
     const location = object(input.location);
     rejectUnknownKeys(location, ['x', 'z'], `${path}.location`);
-    const limit =
-      options.workspace?.horizontalLimit ??
-      options.horizontalLimit ??
-      WORLD_LIMIT;
+    const limit = options.horizontalLimit ?? WORLD_LIMIT;
     const point = {
       x: finiteNumber(location.x, `${path}.location.x`, -limit, limit),
       z: finiteNumber(location.z, `${path}.location.z`, -limit, limit),
     };
-    if (options.workspace && !containsWorkspacePoint(options.workspace, point))
-      throw new Error(
-        `${path} (${id}).location: outside the authoring workspace.`
-      );
     return { id, text, location: point };
   });
 }
@@ -328,15 +316,15 @@ export function validateScene(
   const creaturePalette = Object.hasOwn(input, 'creaturePalette')
     ? validateCreaturePalette(input.creaturePalette)
     : [];
-  if (
-    input.version !== 3 &&
-    input.version !== 4 &&
-    input.version !== 5 &&
-    input.version !== 6 &&
-    input.version !== 7 &&
-    Object.hasOwn(input, 'authoringRegions')
-  )
-    throw new Error('authoringRegions requires scene version 3 or later.');
+  // RETIRED BY NAME (rpg-project#725): a region is gameplay now, listed in
+  // `room.room.regions` with its own cells, and its look lives under
+  // `scene.regionPresentation`.
+  if (Object.hasOwn(input, 'authoringRegions'))
+    throw new Error(
+      'scene.authoringRegions is retired: regions are the floor (rpg-project#725), listed in room.room.regions'
+    );
+  if (input.version < 3 && Object.hasOwn(input, 'regionPresentation'))
+    throw new Error('regionPresentation requires scene version 3 or later.');
   if (input.version >= 3)
     rejectUnknownKeys(
       input,
@@ -347,7 +335,7 @@ export function validateScene(
         'items',
         'groups',
         'mapLabels',
-        'authoringRegions',
+        'regionPresentation',
         'creaturePalette',
         'actorNames',
         'wallFinishes',
@@ -361,34 +349,26 @@ export function validateScene(
   const mapLabels = Object.hasOwn(input, 'mapLabels')
     ? validateMapLabels(input.mapLabels, options)
     : [];
-  const horizontalLimit =
-    options.workspace?.horizontalLimit ??
-    options.horizontalLimit ??
-    WORLD_LIMIT;
+  const horizontalLimit = options.horizontalLimit ?? WORLD_LIMIT;
   if (!Number.isFinite(horizontalLimit) || horizontalLimit < WORLD_LIMIT) {
     throw new Error(`Scene horizontal limit must be at least ${WORLD_LIMIT}.`);
   }
   const entities = entityArrays(input, 'scene', horizontalLimit);
   const sceneId = string(input.id, 'scene.id', 120);
-  const authoringRegions = Object.hasOwn(input, 'authoringRegions')
-    ? validateAuthoringRegions(input.authoringRegions, mapLabels, {
-        allowLighting: input.version >= 4,
+  const regionPresentation = Object.hasOwn(input, 'regionPresentation')
+    ? validateRegionPresentation(input.regionPresentation, {
         allowWallFinish: input.version >= 6,
-        workspace: options.workspace,
-        reservedIds: new Set([
-          sceneId,
-          ...entities.items.map((item) => item.id),
-          ...entities.groups.map((group) => group.id),
-        ]),
       })
-    : [];
+    : {};
   return {
     version: input.version,
     id: sceneId,
     name: string(input.name, 'scene.name', 120),
     ...entities,
     ...(mapLabels.length > 0 ? { mapLabels } : {}),
-    ...(authoringRegions.length > 0 ? { authoringRegions } : {}),
+    ...(Object.keys(regionPresentation).length > 0
+      ? { regionPresentation }
+      : {}),
     ...(creaturePalette.length > 0 ? { creaturePalette } : {}),
     ...(Object.keys(actorNames).length ? { actorNames } : {}),
     ...(Object.keys(wallFinishes).length ? { wallFinishes } : {}),

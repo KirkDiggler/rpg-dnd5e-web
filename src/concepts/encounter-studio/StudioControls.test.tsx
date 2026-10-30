@@ -8,6 +8,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  contentWorkspace,
+  EMPTY_GRID_HEXES,
+} from '../world-building/contentGrid';
+import {
   createRoomDraft,
   parseRoomDocumentJson,
   ROOM_DRAFT_STORAGE_KEY,
@@ -15,9 +19,8 @@ import {
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import type { KeyValueStorage, WorldPoint } from '../world-building/types';
-import { workspaceBounds } from '../world-building/workspaceGeometry';
+import { rectangleOf } from '../world-building/workspaceGeometry';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
-import { createLayoutTransform, worldToClient } from './layoutGeometry';
 import { studioButton } from './studioTestNavigation';
 
 // Real Studio shell, owner, codecs and Layout gestures. Only WebGL and private
@@ -145,21 +148,29 @@ const submit = (name: string): void => {
 const surface = (): HTMLElement =>
   screen.getByRole('application', { name: 'Layout floor surface' });
 function point(
-  storage: MemoryStorage,
+  _storage: MemoryStorage,
   location: WorldPoint
 ): { clientX: number; clientY: number } {
-  const workspace = storage.document().draft.workspace;
-  const client = worldToClient(
-    location,
-    createLayoutTransform(
-      bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      workspace.kind === 'centered-odd-r'
-        ? workspaceBounds(workspace)
-        : workspace.horizontalLimit
-    )
-  )!;
-  return { clientX: client.x, clientY: client.y };
+  // THE LAYOUT'S OWN TRANSFORM, read from what it renders: zoom is relative
+  // to the derived grid's fit, and the view rescales it as the grid grows so
+  // the map holds still on screen (rpg-project#725 R3). A helper that assumed
+  // zoom 1 fits the current grid would drift after the first commit.
+  const g = surface().querySelector('.encounter-studio-layout-committed');
+  const match = /translate\(([^ ]+) ([^)]+)\) scale\(([^)]+)\)/.exec(
+    g?.getAttribute('transform') ?? ''
+  );
+  if (!match) throw new Error('Layout has no rendered transform.');
+  const [tx, tz, scale] = match.slice(1).map(Number);
+  return {
+    clientX: bounds.left + tx! + location.x * scale!,
+    clientY: bounds.top + tz! + location.z * scale!,
+  };
+}
+/** The derived grid's fit is irrational in world units, so a pointer
+ * round-trip lands within float noise of the requested point. */
+function expectNear(actual: WorldPoint, expected: WorldPoint): void {
+  expect(actual.x).toBeCloseTo(expected.x, 9);
+  expect(actual.z).toBeCloseTo(expected.z, 9);
 }
 function place(storage: MemoryStorage, location: WorldPoint): void {
   fireEvent.pointerDown(surface(), {
@@ -191,39 +202,36 @@ async function ready(): Promise<void> {
 }
 
 describe('Task 5 controls through the real owner', () => {
-  it('Apply produces exact centered dimensions without painting, one undo snapshot, and no cancel-before-intent self-fence', async () => {
+  // The Size form is retired: the grid is derived from the content plus a
+  // margin and never stored (rpg-project#725 R3).
+  it('draws the grid derived from content, follows each commit and its undo, and stores no workspace', async () => {
     const storage = new MemoryStorage();
     const original = storage.document();
     mount(storage);
     await ready();
-    click('Size');
-    change('Width (hexes)', '73');
-    change('Height (hexes)', '48');
-    expect(storage.document()).toEqual(original);
-    submit('Workspace dimensions');
-    await waitFor(() =>
-      expect(storage.document().draft.workspace.kind).toBe('centered-odd-r')
+    expect(
+      screen.queryByRole('form', { name: 'Workspace dimensions' })
+    ).toBeNull();
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(
+      EMPTY_GRID_HEXES * EMPTY_GRID_HEXES
     );
-    expect(storage.document().draft.workspace).toMatchObject({
-      widthHexes: 73,
-      heightHexes: 48,
-    });
-    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(3504);
-    expect(storage.document().draft.room).toEqual(original.draft.room);
-    expect(storage.document().draft.scene.items).toEqual(
-      original.draft.scene.items
+    click('Label');
+    change('Label name', 'Far');
+    submit('New map label');
+    place(storage, { x: 2, z: 1 });
+    const placed = storage.document();
+    expect(placed.draft.scene.mapLabels).toHaveLength(1);
+    expect(placed.draft).not.toHaveProperty('workspace');
+    const grid = rectangleOf(contentWorkspace(placed.draft))!;
+    expect(grid.widthHexes).not.toBe(EMPTY_GRID_HEXES);
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(
+      grid.widthHexes * grid.heightHexes
     );
     click('Undo');
     expect(storage.document()).toEqual(original);
-    expect(
-      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
-    click('Redo');
-    expect(storage.document().draft.workspace).toMatchObject({
-      widthHexes: 73,
-      heightHexes: 48,
-    });
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(
+      EMPTY_GRID_HEXES * EMPTY_GRID_HEXES
+    );
   });
   it('typed placement/drag/rename/coordinate move/delete each work on live intents with stable duplicate IDs, no floor edits and 3D persistence', async () => {
     const storage = new MemoryStorage();
@@ -238,7 +246,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(storage.writes()).toBe(before + 1);
     const first = storage.document().draft.scene.mapLabels![0];
     expect(first.text).toBe('Kitchen');
-    expect(first.location).toEqual({ x: 2, z: 1 });
+    expectNear(first.location, { x: 2, z: 1 });
     click('Undo');
     expect(storage.document()).toEqual(original);
     click('Redo');
@@ -284,9 +292,10 @@ describe('Task 5 controls through the real owner', () => {
       pointerId: 7,
       button: 0,
     });
-    expect(storage.document().draft.scene.mapLabels![0]).toMatchObject({
-      id: first.id,
-      location: { x: 3, z: 2 },
+    expect(storage.document().draft.scene.mapLabels![0].id).toBe(first.id);
+    expectNear(storage.document().draft.scene.mapLabels![0].location, {
+      x: 3,
+      z: 2,
     });
     click('Undo');
     expect(storage.document().draft.scene.mapLabels![0].location).toEqual(
@@ -309,9 +318,7 @@ describe('Task 5 controls through the real owner', () => {
     click('Undo');
     expect(storage.document().draft.scene.mapLabels).toHaveLength(2);
     expect(storage.document().draft.room).toEqual(original.draft.room);
-    expect(storage.document().draft.workspace).toEqual(
-      original.draft.workspace
-    );
+    expect(storage.document().draft).not.toHaveProperty('workspace');
     expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
       0
     );
@@ -355,13 +362,11 @@ describe('Task 5 controls through the real owner', () => {
     const labels = storage.document().draft.scene.mapLabels!;
     expect(labels).toHaveLength(2);
     expect(labels[0]).toEqual(first);
-    expect(labels[1]).toMatchObject({
-      text: 'Courtyard',
-      location: { x: -2, z: -1 },
-    });
+    expect(labels[1].text).toBe('Courtyard');
+    expectNear(labels[1].location, { x: -2, z: -1 });
     expect(labels[1].id).not.toBe(first.id);
     expect(storage.document().draft.room).toEqual(kitchen.draft.room);
-    expect(storage.document().draft.workspace).toEqual(kitchen.draft.workspace);
+    expect(storage.document().draft).not.toHaveProperty('workspace');
     expect(storage.writes()).toBe(before + 1);
     expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
       0
@@ -371,32 +376,18 @@ describe('Task 5 controls through the real owner', () => {
     click('Redo');
     expect(storage.document().draft.scene.mapLabels).toEqual(labels);
   });
-  it('failed shrink retains current dimensions/draft/error and navigation/document changes retire live label drags without history', async () => {
+  // The resize half is retired with the Size form (rpg-project#725); a live
+  // label drag still retires on navigation without history.
+  it('navigation retires a live label drag without history', async () => {
     const storage = new MemoryStorage();
     mount(storage);
     await ready();
-    click('Size');
-    change('Width (hexes)', '9');
-    change('Height (hexes)', '7');
-    submit('Workspace dimensions');
     click('Label');
     change('Label name', 'Edge');
     submit('New map label');
     place(storage, { x: 5, z: 0 });
     const accepted = storage.document();
     const before = storage.writes();
-    click('Size');
-    change('Width (hexes)', '2');
-    change('Height (hexes)', '2');
-    submit('Workspace dimensions');
-    expect(storage.document()).toEqual(accepted);
-    expect(storage.writes()).toBe(before);
-    expect(screen.getByText('Current: 9 × 7 hexes')).toBeTruthy();
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('2');
-    expect(screen.getByText(/Resize refused/)).toBeTruthy();
-    expect(screen.getByText(/mapLabels.*location/)).toBeTruthy();
     const label = accepted.draft.scene.mapLabels![0];
     fireEvent.pointerDown(
       surface().querySelector(`[data-label-id="${label.id}"]`)!,
@@ -418,8 +409,6 @@ describe('Task 5 controls through the real owner', () => {
     expect(captures.size).toBe(0);
     click('Undo');
     expect(storage.document().draft.scene.mapLabels).toBeUndefined();
-    click('Undo');
-    expect(storage.document().draft.workspace.kind).toBeUndefined();
   });
 });
 
@@ -449,7 +438,9 @@ function chooseCastle(): void {
 }
 
 describe('compact Studio wall UI through the actual owner and Layout', () => {
-  it('default has exactly two bands; Size Apply/Cancel/Escape/reopen do not resize hidden content', async () => {
+  // The Size form is retired (rpg-project#725); hiding the inspector still
+  // never writes or adds history.
+  it('default has exactly two bands; the room view has no Size form and hiding it never writes', async () => {
     const storage = new MemoryStorage();
     mount(storage);
     await ready();
@@ -464,35 +455,18 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    // Size lives in the room view, open whenever nothing is selected.
-    const width = (): HTMLInputElement =>
-      screen.getByRole('textbox', { name: 'Width (hexes)' });
-    expect(width().value).toBe('');
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(screen.queryByLabelText('Label name')).toBeNull();
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
-    change('Width (hexes)', '9');
-    change('Height (hexes)', '7');
-    click('Cancel dimensions');
-    expect(width().value).toBe('');
-    expect(storage.document()).toEqual(original);
-    change('Width (hexes)', '9');
-    change('Height (hexes)', '7');
-    fireEvent.keyDown(width(), { key: 'Escape' });
-    expect(width().value).toBe('');
-    expect(storage.document()).toEqual(original);
-    change('Width (hexes)', '9');
-    change('Height (hexes)', '7');
-    submit('Workspace dimensions');
-    expect(width().value).toBe('9');
-    const committed = storage.document();
     const writes = storage.writes();
-    fireEvent.keyDown(window, { key: 'n' }); // hiding alone never reframes/resizes/history
+    fireEvent.keyDown(window, { key: 'n' }); // hiding alone never reframes or adds history
     fireEvent.keyDown(window, { key: 'n' });
-    expect(width().value).toBe('9');
     expect(storage.writes()).toBe(writes);
-    expect(storage.document()).toEqual(committed);
-    click('Undo');
     expect(storage.document()).toEqual(original);
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
   });
   it('Wall is enabled unarmed, uses static previews, preserves armed appearance and snap, and draws consecutively', async () => {
     const storage = new MemoryStorage();
@@ -608,25 +582,32 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       pointerId: 7,
       button: 0,
     });
-    expect(storage.document().draft.room.walls![0].line).toEqual({
-      start: { x: -2, z: -1 },
-      end: { x: 0, z: -1 },
-    });
+    const moved = storage.document().draft.room.walls![0].line;
+    expectNear(moved.start, { x: -2, z: -1 });
+    expectNear(moved.end, { x: 0, z: -1 });
     change('Wall length', '3');
     fireEvent.keyDown(screen.getByLabelText('Wall length'), { key: 'Delete' });
     expect(storage.document().draft.room.walls).toHaveLength(1);
     submit('Arrange selected noun');
-    expect(storage.document().draft.room.walls![0].line.end.x).toBe(1);
+    expect(storage.document().draft.room.walls![0].line.end.x).toBeCloseTo(
+      1,
+      9
+    );
     change('Wall midpoint X', '0.5');
     submit('Arrange selected noun');
-    expect(storage.document().draft.room.walls![0].line.start.x).toBe(-1);
+    expect(storage.document().draft.room.walls![0].line.start.x).toBeCloseTo(
+      -1,
+      9
+    );
     const beforeRefusal = storage.document();
-    change('Wall midpoint X', '9999');
+    // Only the world sanity bound (±100000) refuses a wall point now
+    // (rpg-project#725).
+    change('Wall midpoint X', '200000');
     submit('Arrange selected noun');
     expect(storage.document()).toEqual(beforeRefusal);
     expect(
       (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
-    ).toBe('9999');
+    ).toBe('200000');
     expect(screen.getByText(/Edit refused/)).toBeTruthy();
     change('Wall midpoint X', '0.5');
     change('Y facing (degrees)', '-90');
@@ -784,7 +765,9 @@ describe('direct selected endpoint through Studio', () => {
 });
 
 describe('cosmetic presentation arrivals', () => {
-  it('real thumbnail completion preserves staged name/Size drafts without history; an actual owner commit resets Size staging', async () => {
+  // Narrowed: the Size staging is retired (rpg-project#725); the staged
+  // name still survives a thumbnail arrival without history.
+  it('real thumbnail completion preserves a staged name without history; the owner commit applies it', async () => {
     const storage = new MemoryStorage();
     mount(storage);
     await ready();
@@ -792,25 +775,15 @@ describe('cosmetic presentation arrivals', () => {
     click('Wall');
     fireEvent.click(screen.getByRole('button', { name: /^Rename encounter / }));
     change('Encounter name', 'Staged name');
-    click('Size');
-    change('Width (hexes)', '9');
-    change('Height (hexes)', '7');
     const writes = storage.writes();
     fireEvent.load(document.querySelector('[data-wall-appearance-ref] img')!);
     expect(
       (screen.getByLabelText('Encounter name') as HTMLInputElement).value
     ).toBe('Staged name');
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('9');
     expect(storage.document()).toEqual(original);
     expect(storage.writes()).toBe(writes);
     submit('Rename encounter');
     expect(storage.document().draft.name).toBe('Staged name');
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('');
-    click('Cancel dimensions');
     click('Undo');
     expect(storage.document()).toEqual(original);
   });

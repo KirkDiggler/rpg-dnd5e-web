@@ -6,6 +6,7 @@
  * concealment, a locked door it hides, and the postern exit.
  */
 import {
+  floorCells,
   validateRoomDocument,
   type RoomDraftDocument,
   type RoomHexCell,
@@ -60,7 +61,11 @@ export function createCastleWalkDocument(): RoomDraftDocument {
 /** The walk's additions, authored as the walk authors them. */
 export function createCastleS4Document(): RoomDraftDocument {
   const document = createCastleWalkDocument();
-  const floor = document.draft.room.walkableHexes;
+  // The floor in the order the walkable list kept (q, then r), so the cells
+  // this fixture names by index are the ones it always named.
+  const floor = floorCells(document.draft).sort(
+    (a, b) => a.q - b.q || a.r - b.r
+  );
   const at = (index: number): RoomHexCell => ({ ...floor[index]! });
   const door = 'gate-wall-door';
   document.draft.room.doorBindings = {

@@ -115,10 +115,37 @@ describe('refusalJumps', () => {
     const intel = document.scope.intel!.findIndex(
       (record) => record.id === 'cooks-ledger'
     );
+    // A row's refusal names the row, so the section opens on it
+    // (rpg-project#720); the engine writes a root table's row with or
+    // without `on`.
     expect(targetOf('tables.gate-patrol.time[0].when', document)).toEqual({
       kind: 'home',
       section: 'tables',
       id: 'gate-patrol',
+      row: 'tables.gate-patrol.time[0]',
+    });
+    expect(
+      targetOf('tables.gate-patrol.on.time[10].toward.path', document)
+    ).toEqual({
+      kind: 'home',
+      section: 'tables',
+      id: 'gate-patrol',
+      row: 'tables.gate-patrol.on.time[10]',
+    });
+    expect(targetOf('tables.gate-patrol', document)).toEqual({
+      kind: 'home',
+      section: 'tables',
+      id: 'gate-patrol',
+    });
+    const bundled = {
+      ...document,
+      scope: { ...document.scope, bundles: { patrol: { rows: [] } } },
+    };
+    expect(targetOf('bundles.patrol.rows[0].toward', bundled)).toEqual({
+      kind: 'home',
+      section: 'bundles',
+      id: 'patrol',
+      row: 'bundles.patrol.rows[0]',
     });
     expect(targetOf(`factions[${faction}].mind`, document)).toEqual({
       kind: 'home',
@@ -155,6 +182,26 @@ describe('refusalJumps', () => {
       kind: 'ending',
       id: 'king-slain',
     });
+  });
+
+  // F12 (rpg-project#725): a refusal about a region or any of its cells —
+  // the engine's `room.room.regions[i].cells[j].q[k]` — lands on that region.
+  it('a region path, its cells included, jumps to that region', () => {
+    const document = castle();
+    const third = document.draft.room.regions[2]!.id;
+    expect(targetOf('room.room.regions[2].cells[4].q[0]', document)).toEqual({
+      kind: 'region',
+      id: third,
+    });
+    expect(targetOf('room.room.regions[2]', document)).toEqual({
+      kind: 'region',
+      id: third,
+    });
+    expect(
+      targetOf('room.room.regions[2].lighting.intensity', document)
+    ).toEqual({ kind: 'region', id: third });
+    expect(targetOf('room.room.regions[99].cells', document)).toBeNull();
+    expect(targetOf('room.room.regions', document)).toBeNull();
   });
 
   it('an unknown id is a sentence', () => {

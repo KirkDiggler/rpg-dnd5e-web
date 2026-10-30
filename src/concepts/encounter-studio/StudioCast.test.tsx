@@ -500,3 +500,115 @@ describe('StudioCast', () => {
     );
   });
 });
+
+describe('Add action and Drop action (rpg-project#721)', () => {
+  const JAVELIN = 'dnd5e:weapons:javelin';
+  const addRef = (kind: 'added' | 'dropped', ref: string): void => {
+    fireEvent.change(screen.getByLabelText(`New ${kind} action reference`), {
+      target: { value: ref },
+    });
+    const title = kind === 'added' ? 'Add action' : 'Drop action';
+    fireEvent.click(
+      within(
+        screen.getByTestId(
+          `action-refs-${kind === 'added' ? 'addActions' : 'dropActions'}`
+        )
+      ).getByRole('button', { name: title })
+    );
+  };
+
+  it('stages both ordered lists and applies them with the other fields in one transaction', () => {
+    const { history, latest } = harness(createGuardCastDocument());
+    fireEvent.click(member('Guard'));
+    change('Armor', 'dnd5e:armor:chain-mail');
+    addRef('added', 'dnd5e:weapons:dagger');
+    addRef('added', JAVELIN);
+    addRef('dropped', 'dnd5e:weapons:spear');
+    fireEvent.click(button(`Move added action ${JAVELIN} earlier`));
+    expect(history).toHaveLength(1);
+    fireEvent.click(button('Apply'));
+    expect(history).toHaveLength(2);
+    expect(latest().scope.templates?.guard).toMatchObject({
+      armor: 'dnd5e:armor:chain-mail',
+      addActions: [JAVELIN, 'dnd5e:weapons:dagger'],
+      dropActions: ['dnd5e:weapons:spear'],
+    });
+  });
+
+  it('refuses a ref the engine grammar refuses, in its words, at the field', () => {
+    const { history } = harness(createGuardCastDocument());
+    fireEvent.click(member('Guard'));
+    fireEvent.change(screen.getByLabelText('New added action reference'), {
+      target: { value: 'dnd5e:spells:fire-bolt' },
+    });
+    expect(screen.getByRole('alert').textContent).toBe(
+      '"dnd5e:spells:fire-bolt" is not a weapon: an action names a weapon as dnd5e:weapons:<id>'
+    );
+    expect(
+      (
+        within(screen.getByTestId('action-refs-addActions')).getByRole(
+          'button',
+          { name: 'Add action' }
+        ) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(history).toHaveLength(1);
+  });
+
+  it('Apply refuses while a typed ref is not added, at that field; Cancel clears it', () => {
+    const { history } = harness(createGuardCastDocument());
+    fireEvent.click(member('Guard'));
+    change('Armor', 'dnd5e:armor:chain-mail');
+    const field = screen.getByLabelText(
+      'New dropped action reference'
+    ) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'dnd5e:weapons:spear' } });
+    fireEvent.click(button('Apply'));
+    expect(history).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Drop action holds “dnd5e:weapons:spear”, which is not added. Add it or clear the field before Apply.'
+    );
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(field);
+    fireEvent.click(button('Cancel'));
+    expect(
+      (
+        screen.getByLabelText(
+          'New dropped action reference'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it("authors the castle captain's javelin through the form and the file says it", async () => {
+    const { readFileSync } = await import('node:fs');
+    const { readDraftYaml, exportDraftYaml } = await import('./draftFile');
+    const { parse } = await import('yaml');
+    const read = readDraftYaml(
+      readFileSync(
+        'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
+        'utf8'
+      )
+    );
+    if (!read.ok) throw new Error(read.refusal);
+    const { latest } = harness({ draft: read.draft, scope: read.scope });
+    fireEvent.click(member('Guard Captain'));
+    addRef('added', JAVELIN);
+    fireEvent.click(button('Apply'));
+    const file = parse(exportDraftYaml(latest(), read.key)) as {
+      templates: Record<string, Record<string, unknown>>;
+    };
+    expect(file.templates['guard-captain']).toMatchObject({
+      actions: ['dnd5e:weapons:longsword', JAVELIN],
+      addActions: [JAVELIN],
+    });
+    // Removing it through the form writes the castle's own template back.
+    fireEvent.click(member('Guard Captain'));
+    fireEvent.click(button(`Remove added action ${JAVELIN}`));
+    fireEvent.click(button('Apply'));
+    expect(latest().scope.templates?.['guard-captain']).toEqual(
+      read.scope.templates?.['guard-captain']
+    );
+  });
+});

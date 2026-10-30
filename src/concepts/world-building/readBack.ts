@@ -17,6 +17,7 @@
  * creature it describes.
  */
 import { ANSWER_TRIGGER_KEYS } from '@/author/answerVocabulary';
+import { actionAugmentSentences } from './actionAugments';
 import type { AnswerEntryShape, OptionShape } from './answerTableShape';
 import {
   abilityPhrase,
@@ -29,11 +30,13 @@ import { castMemberOf } from './cast';
 import { ENGINE_LAWS, type EngineLawId } from './engineLaws';
 import { walkFacts } from './factWalk';
 import {
+  factionOf,
   layeredOrders,
   type OrdersLayer,
   type OrdersSource,
 } from './layeredOrders';
 import { documentPlacementNames } from './placementNames';
+import { requiresId, requiresRead, requiresSentence } from './predicateNot';
 import {
   dispositionSentence,
   possessive,
@@ -41,7 +44,7 @@ import {
   sideName,
 } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
-import type { SiteIntelRecord, SiteTemper } from './siteScope';
+import { untilSteps, type SiteIntelRecord, type SiteTemper } from './siteScope';
 
 /** What a ref in a sentence selects or opens. */
 export type ReadBackTarget =
@@ -279,13 +282,16 @@ function whoParagraph(
     );
     for (const d of dispositions) {
       const text = dispositionSentence(d, factionId, document);
+      // EVERY FACT STEP is a ref (rpg-project#717), and any one of them
+      // makes the sentence the mind law's.
+      const facts = untilSteps(d.until).flatMap((step) =>
+        'fact' in step ? [step.fact] : []
+      );
       sentences.push(
         sentence(
           text,
-          d.until !== undefined && 'fact' in d.until
-            ? [factRef(d.until.fact)]
-            : [],
-          d.until !== undefined && 'fact' in d.until ? 'untilOnMind' : undefined
+          facts.map(factRef),
+          facts.length > 0 ? 'untilOnMind' : undefined
         )
       );
     }
@@ -322,6 +328,22 @@ function whoParagraph(
     );
   }
   return { heading: 'who', lead: sentences[0].text, sentences };
+}
+
+/** The who paragraph with what it fights with appended, when a layer authors
+ * an add or a drop (rpg-project#721): "carries a javelin the kind does not",
+ * "does not carry a longsword", then the list in the session's order. */
+function withActionAugments(
+  who: ReadBackParagraph,
+  document: Readonly<RoomDraftDocument>,
+  placementId: string
+): ReadBackParagraph {
+  const extra = actionAugmentSentences(document, placementId).map((line) =>
+    line.law ? lawSentence(line.law) : sentence(line.text)
+  );
+  return extra.length
+    ? { ...who, sentences: [...who.sentences, ...extra] }
+    : who;
 }
 
 /** A full stop, unless the text already ends a quoted sentence. */
@@ -368,13 +390,11 @@ function optionSentence(
   const refs: ReadBackRef[] = [];
   const facts: string[] = [];
   if (option.requires !== undefined) {
-    if ('fact' in option.requires) {
-      parts.push(`Offered to a speaker who knows ${option.requires.fact}.`);
-      facts.push(option.requires.fact);
-    } else
-      parts.push(
-        `Offered to a speaker carrying the ${propName(document, option.requires.holds)}.`
-      );
+    parts.push(
+      requiresSentence(option.requires, (id) => propName(document, id))
+    );
+    const gate = requiresRead(option.requires);
+    if ('fact' in gate) facts.push(gate.fact);
   }
   parts.push(
     `${option.check
@@ -397,8 +417,26 @@ function optionSentence(
 
 function spokenToParagraph(
   document: Readonly<RoomDraftDocument>,
-  options: readonly OptionShape[] | undefined
+  options: readonly OptionShape[] | undefined,
+  /** The creature's faction, when it declares lines (rpg-project#718). */
+  side?: { id: string; options: readonly OptionShape[] }
 ): ReadBackParagraph {
+  // A MEMBER WITH NO LINES SPEAKS ITS FACTION'S: the key is layered the way
+  // `on:` is, nearest wins wholesale, so its own lines (any) hide these.
+  if ((options === undefined || options.length === 0) && side !== undefined) {
+    const text = `It has no lines of its own, so it speaks the ${side.id} faction’s.`;
+    return {
+      heading: 'spoken-to',
+      lead: 'It can be spoken to.',
+      sentences: [
+        sentence('It can be spoken to.'),
+        sentence(text, [
+          { text: side.id, target: { kind: 'faction', id: side.id } },
+        ]),
+      ],
+      items: side.options.map((option) => optionSentence(document, option)),
+    };
+  }
   if (options === undefined || options.length === 0)
     return {
       heading: 'spoken-to',
@@ -467,8 +505,8 @@ function optionFacts(
   reads: Set<string>
 ) {
   for (const option of options ?? []) {
-    if (option.requires && 'fact' in option.requires)
-      reads.add(option.requires.fact);
+    if (option.requires && 'fact' in requiresRead(option.requires))
+      reads.add(requiresId(option.requires));
     for (const row of [...(option.success ?? []), ...(option.failure ?? [])])
       if (row.fact !== undefined) writes.add(row.fact);
   }
@@ -489,13 +527,22 @@ export function readBackOf(
         walkFacts(row.when, (fact) => reads.add(fact));
         if (row.fact !== undefined) writes.add(row.fact);
       }
-    optionFacts(binding?.options, writes, reads);
+    const faction = factionOf(document, selection.id);
+    const side =
+      (binding?.options ?? []).length === 0 && faction?.options?.length
+        ? { id: faction.id, options: faction.options }
+        : undefined;
+    optionFacts(side?.options ?? binding?.options, writes, reads);
     if (binding?.arrives && 'fact' in binding.arrives)
       reads.add(binding.arrives.fact);
     return [
-      whoParagraph(document, selection.id),
+      withActionAugments(
+        whoParagraph(document, selection.id),
+        document,
+        selection.id
+      ),
       ordersParagraph(document, selection.id),
-      spokenToParagraph(document, binding?.options),
+      spokenToParagraph(document, binding?.options, side),
       knowsParagraph(document, binding?.holds, writes, reads),
     ];
   }

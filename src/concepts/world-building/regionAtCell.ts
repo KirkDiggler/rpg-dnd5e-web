@@ -1,31 +1,19 @@
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
-import type { AuthoringRegion, RegionResolution } from './authoringRegions';
-import { exactPoint, pointInRing } from './regionBoundaryPredicates';
-import type { RoomDraft, RoomHexCell } from './roomDraft';
+import type { RoomDraft, RoomHexCell, RoomRegion } from './roomDraft';
+import { isFloorCell } from './roomDraft';
 
-/** The drawn regions at one cell, in authored order. PRESENTATION ONLY: this
- * names the annotation drawn at the cell for the inspector. It is never
- * membership for a rule, and an unresolved region is never reported. */
+/** The region that owns one cell, or none (rpg-project#725: no cell belongs
+ * to two regions). PRESENTATION ONLY: this names the place drawn at the cell
+ * for the inspector, never membership for a rule. */
 export function regionsAtCell(input: {
-  draft: Readonly<RoomDraft>;
-  resolutions: readonly RegionResolution[];
+  draft: Readonly<Pick<RoomDraft, 'room'>>;
   cell: RoomHexCell;
-}): AuthoringRegion[] {
-  const { draft, resolutions, cell } = input;
-  const byId = new Map(resolutions.map((r) => [r.id, r]));
-  const centre = cubeToWorld(
-    { x: cell.q, y: -cell.q - cell.r, z: cell.r },
-    HEX_SIZE
+}): RoomRegion[] {
+  const { draft, cell } = input;
+  if (!isFloorCell(draft, cell)) return [];
+  return draft.room.regions.filter((region) =>
+    region.cells.some(
+      (row) =>
+        row.r === cell.r && row.q.some(([a, b]) => cell.q >= a && cell.q <= b)
+    )
   );
-  return (draft.scene.authoringRegions ?? []).filter((region) => {
-    const resolution = byId.get(region.id);
-    if (resolution?.status !== 'resolved') return false;
-    const area = resolution.area;
-    if (area.kind === 'hex-union')
-      return area.cells.some((c) => c.q === cell.q && c.r === cell.r);
-    return (
-      pointInRing(area.ring.map(exactPoint), { x: centre.x, z: centre.z }) ===
-      'inside'
-    );
-  });
 }

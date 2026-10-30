@@ -3,12 +3,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectStudioArrange } from '../world-building/studioArrange';
-import {
-  centeredRoomWorkspace,
-  growRoomWorkspace,
-  workspaceBounds,
-  type RoomWorkspace,
-} from '../world-building/workspaceGeometry';
 import type {
   WorldBuildingCanvasOptions,
   WorldBuildingViewportProps,
@@ -183,14 +177,18 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    // Nothing selected: the inspector answers for the room, size included.
+    // Nothing selected: the inspector answers for the room. The Size section
+    // is retired: the grid is derived from content (rpg-project#725).
     expect(
       within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
         'heading',
         { name: 'Room' }
       )
     ).toBeTruthy();
-    expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    expect(
+      screen.queryByRole('form', { name: 'Workspace dimensions' })
+    ).toBeNull();
     expect(screen.queryByLabelText('Label name')).toBeNull();
     expect(
       screen.queryByRole('searchbox', { name: 'Search wall appearances' })
@@ -492,172 +490,13 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
   });
 });
 
-describe('staged workspace dimensions and label controls', () => {
+describe('label controls', () => {
   const change = (name: string, value: string): void => {
     fireEvent.change(screen.getByLabelText(name), { target: { value } });
   };
   const submit = (name: string): void => {
     fireEvent.submit(screen.getByRole('form', { name }));
   };
-  /** The fake owner commits the resize: the next render carries the
-   * committed workspace, as the real owner's does. */
-  const committing = (workspace: RoomWorkspace): void => {
-    observed.session!.resizeWorkspace = vi.fn(() => {
-      const current = observed.session!;
-      observed.session = {
-        ...current,
-        document: {
-          ...current.document,
-          draft: { ...current.document.draft, workspace },
-        },
-      };
-      return true;
-    });
-  };
-  it('identifies legacy shape, stages hex counts and applies one exact intent without self-retiring', () => {
-    committing(centeredRoomWorkspace(73, 48));
-    const mounted = render(
-      <EncounterStudioWorkspace compositionSource={source} />
-    );
-    click('Size');
-    expect(screen.getByText(/legacy hex-radius.*not a rectangle/)).toBeTruthy();
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('');
-    change('Width (hexes)', '73');
-    change('Height (hexes)', '48');
-    expect(observed.session?.resizeWorkspace).not.toHaveBeenCalled();
-    const resize = observed.session!.resizeWorkspace;
-    submit('Workspace dimensions');
-    expect(resize).toHaveBeenCalledExactlyOnceWith(73, 48, {
-      columns: 'right',
-      rows: 'top',
-    });
-    expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
-    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
-    // The room view keeps the form open after Apply.
-    expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
-    const bounds = workspaceBounds(centeredRoomWorkspace(73, 48));
-    expect(observed.layoutProps?.frame).toEqual({
-      center: {
-        x: (bounds.minX + bounds.maxX) / 2,
-        z: (bounds.minZ + bounds.maxZ) / 2,
-      },
-      zoom: 1,
-    });
-  });
-  it('apply frames the new workspace centre', () => {
-    const session = observed.session!;
-    observed.session = {
-      ...session,
-      document: {
-        ...session.document,
-        draft: {
-          ...session.document.draft,
-          workspace: centeredRoomWorkspace(20, 20),
-        },
-      },
-    };
-    const committed = growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22);
-    committing(committed);
-    const mounted = render(
-      <EncounterStudioWorkspace compositionSource={source} />
-    );
-    const before = observed.layoutProps?.frame;
-    change('Width (hexes)', '24');
-    change('Height (hexes)', '22');
-    const resize = observed.session!.resizeWorkspace;
-    submit('Workspace dimensions');
-    expect(resize).toHaveBeenCalledExactlyOnceWith(24, 22, {
-      columns: 'right',
-      rows: 'top',
-    });
-    // Framing waits for the committed document; it is never re-derived.
-    expect(observed.layoutProps?.frame).toEqual(before);
-    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
-    const bounds = workspaceBounds(committed);
-    expect(observed.layoutProps?.frame).toEqual({
-      center: {
-        x: (bounds.minX + bounds.maxX) / 2,
-        z: (bounds.minZ + bounds.maxZ) / 2,
-      },
-      zoom: 1,
-    });
-    expect(observed.layoutProps?.frame.center).not.toEqual({ x: 0, z: 0 });
-  });
-  it('choosing Left passes columns left to resizeWorkspace and shows no warning', () => {
-    const session = observed.session!;
-    observed.session = {
-      ...session,
-      document: {
-        ...session.document,
-        draft: {
-          ...session.document.draft,
-          workspace: growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22),
-        },
-      },
-    };
-    render(<EncounterStudioWorkspace compositionSource={source} />);
-    expect(
-      (screen.getByLabelText('Columns change on') as HTMLSelectElement).value
-    ).toBe('right');
-    expect(
-      (screen.getByLabelText('Rows change on') as HTMLSelectElement).value
-    ).toBe('top');
-    fireEvent.change(screen.getByLabelText('Columns change on'), {
-      target: { value: 'left' },
-    });
-    change('Width (hexes)', '26');
-    submit('Workspace dimensions');
-    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
-      26,
-      22,
-      { columns: 'left', rows: 'top' }
-    );
-    expect(
-      screen.getByText('No cell moves, whichever side changes.')
-    ).toBeTruthy();
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByText(/shift/i)).toBeNull();
-  });
-  it.each(['0', '129', '1.5', 'no', ''])(
-    'retains invalid width %j without owner/history intent',
-    (width) => {
-      render(<EncounterStudioWorkspace compositionSource={source} />);
-      click('Size');
-      change('Width (hexes)', width);
-      change('Height (hexes)', '48');
-      submit('Workspace dimensions');
-      expect(screen.getByRole('alert').textContent).toContain('1 to 128 hexes');
-      expect(observed.session?.resizeWorkspace).not.toHaveBeenCalled();
-      expect(observed.session?.undo).not.toHaveBeenCalled();
-    }
-  );
-  it('keeps refused resize inputs and frame; Escape visibly cancels staged dimensions', () => {
-    observed.session!.resizeWorkspace = vi.fn(() => false);
-    render(<EncounterStudioWorkspace compositionSource={source} />);
-    click('Pan and zoom test surface');
-    const frame = observed.layoutProps?.frame;
-    click('Size');
-    change('Width (hexes)', '2');
-    change('Height (hexes)', '2');
-    submit('Workspace dimensions');
-    expect(screen.getByRole('alert').textContent).toContain(
-      'choose larger dimensions'
-    );
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('2');
-    expect(observed.layoutProps?.frame).toBe(frame);
-    fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
-      key: 'Escape',
-    });
-    // Escape discards the staged values; the room view's form stays.
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('');
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
   it('arms the typed label and gives keyboard coordinate placement, without floor or a default name', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Label');

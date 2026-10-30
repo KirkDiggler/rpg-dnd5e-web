@@ -1,14 +1,10 @@
-import type {
-  AuthoringRegion,
-  RegionLighting,
-  RegionResolution,
-} from './authoringRegions';
+import type { RegionPresentation, RegionResolution } from './authoringRegions';
 import { castMemberOf, type CastMember } from './cast';
 import { authoredActorName, setActorName } from './creaturePalette';
 import { regionsAtCell } from './regionAtCell';
-import { resolveAuthoringRegions } from './regionBoundaryGeometry';
+import { resolveRegions } from './regionBoundaryGeometry';
 import {
-  isCellWithinWorkspace,
+  isFloorCell,
   moveRoomMonster,
   setRoomMonsterAppearance,
   setRoomMonsterFacing,
@@ -16,6 +12,7 @@ import {
   type RoomDraft,
   type RoomHexCell,
   type RoomMonsterPlacement,
+  type RoomRegion,
 } from './roomDraft';
 import {
   entityById,
@@ -47,6 +44,8 @@ export type StudioArrangeTarget =
   | { readonly kind: 'scene'; readonly ids: readonly string[] }
   | { readonly kind: 'wall'; readonly id: string }
   | { readonly kind: 'label'; readonly id: string }
+  /** One authored region (rpg-project#725): its name is its map label. */
+  | { readonly kind: 'region'; readonly id: string }
   | { readonly kind: 'actor'; readonly id: string }
   | { readonly kind: 'start' }
   | { readonly kind: 'hex'; readonly cell: RoomHexCell }
@@ -117,8 +116,15 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'label';
         readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
         readonly label: Readonly<MapLabel>;
-        readonly region?: Readonly<AuthoringRegion>;
-        readonly resolution?: RegionResolution;
+      }
+    | {
+        readonly kind: 'region';
+        readonly target: Extract<StudioArrangeTarget, { kind: 'region' }>;
+        readonly region: Readonly<RoomRegion>;
+        readonly resolution: RegionResolution;
+        readonly presentation?: Readonly<RegionPresentation>;
+        /** The implicit region: where unassigned paint lands; not removable. */
+        readonly implicit: boolean;
       }
     | {
         readonly kind: 'actor';
@@ -143,11 +149,11 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'hex';
         readonly target: Extract<StudioArrangeTarget, { kind: 'hex' }>;
         readonly cell: Readonly<RoomHexCell>;
-        /** The cell is in room.walkableHexes. */
+        /** The cell is floor: some region owns it. */
         readonly walkable: boolean;
-        /** Drawn at this cell, authored order. An annotation, never
-         * membership for a rule. */
-        readonly regions: readonly Readonly<AuthoringRegion>[];
+        /** The region that owns this cell, if any (no cell is in two). An
+         * annotation, never membership for a rule. */
+        readonly regions: readonly Readonly<RoomRegion>[];
       }
   );
 
@@ -225,31 +231,26 @@ export type StudioArrangeIntent =
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
       readonly text?: string;
       readonly location?: Partial<WorldPoint>;
-      readonly regionWallFinish?: {
-        readonly regionId: string;
-        readonly value:
-          | import('./regionFinishTypes').RegionWallFinishPatch
-          | null;
-      };
-      readonly regionLighting?: {
-        readonly regionId: string;
-        readonly value: Readonly<RegionLighting> | null;
-      };
     }
   | {
       readonly kind: 'label-remove';
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
     }
+  /** One region form: name, lighting intensity and wall finish together,
+   * one owner transaction (rpg-project#725 R5). */
   | {
-      readonly kind: 'region-bind' | 'region-remove';
-      readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
-      readonly regionId: string;
+      readonly kind: 'region-edit';
+      readonly target: Extract<StudioArrangeTarget, { kind: 'region' }>;
+      readonly name?: string;
+      readonly intensity?: number;
+      readonly wallFinish?:
+        | import('./regionFinishTypes').RegionWallFinishPatch
+        | null;
     }
+  /** Its cells fall to the implicit region. */
   | {
-      readonly kind: 'region-area';
-      readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
-      readonly regionId: string;
-      readonly cells: readonly RoomHexCell[];
+      readonly kind: 'region-remove';
+      readonly target: Extract<StudioArrangeTarget, { kind: 'region' }>;
     }
   | StudioActorArrangeEdit
   | StudioStartArrangeEdit;
@@ -386,21 +387,15 @@ export function projectStudioArrange(
   }
   if (target.kind === 'hex') {
     const { q, r } = target.cell;
-    if (!isCellWithinWorkspace(target.cell, draft.workspace)) return null;
+    if (!Number.isSafeInteger(q) || !Number.isSafeInteger(r)) return null;
     return {
       kind: 'hex',
       target: { kind: 'hex', cell: { q, r } },
       selectionKey: JSON.stringify({ kind: 'hex', q, r }),
       selectionRevision,
       cell: { q, r },
-      walkable: draft.room.walkableHexes.some(
-        (cell) => cell.q === q && cell.r === r
-      ),
-      regions: regionsAtCell({
-        draft,
-        resolutions: input.regionResolutions ?? resolveAuthoringRegions(draft),
-        cell: { q, r },
-      }),
+      walkable: isFloorCell(draft, { q, r }),
+      regions: regionsAtCell({ draft, cell: { q, r } }),
     };
   }
   const identity = {
@@ -434,22 +429,24 @@ export function projectStudioArrange(
         (candidate) => candidate.id === target.id
       );
       if (!label) return null;
-      const region = draft.scene.authoringRegions?.find(
-        (r) => r.labelId === label.id
+      return { ...identity, kind: 'label', target, label };
+    }
+    case 'region': {
+      const region = draft.room.regions.find(
+        (candidate) => candidate.id === target.id
       );
+      if (!region) return null;
+      const presentation = draft.scene.regionPresentation?.[region.id];
       return {
         ...identity,
-        kind: 'label',
+        kind: 'region',
         target,
-        label,
-        ...(region
-          ? {
-              region,
-              resolution: (
-                input.regionResolutions ?? resolveAuthoringRegions(draft)
-              ).find((r) => r.id === region.id),
-            }
-          : {}),
+        region,
+        resolution: (input.regionResolutions ?? resolveRegions(draft)).find(
+          (r) => r.id === region.id
+        )!,
+        ...(presentation ? { presentation } : {}),
+        implicit: region.id === draft.room.implicitRegionId,
       };
     }
     case 'actor': {
@@ -603,17 +600,14 @@ export function applyStudioWallArrange(
   return next;
 }
 
-function requireCell(draft: Readonly<RoomDraft>, cell: RoomHexCell): void {
+function requireCell(cell: RoomHexCell): void {
   if (
     !Number.isFinite(cell.q) ||
     !Number.isFinite(cell.r) ||
     !Number.isInteger(cell.q) ||
-    !Number.isInteger(cell.r) ||
-    !isCellWithinWorkspace(cell, draft.workspace)
+    !Number.isInteger(cell.r)
   )
-    throw new Error(
-      'The location must be a whole hex within the authoring floor.'
-    );
+    throw new Error('The location must be a whole hex.');
 }
 
 export function applyStudioActorArrange(
@@ -623,7 +617,7 @@ export function applyStudioActorArrange(
   if (intent.kind === 'start-position') {
     if (!draft.room.partyStart)
       throw new Error('The party start no longer exists.');
-    requireCell(draft, intent.location);
+    requireCell(intent.location);
     return setRoomPartyStart(draft, intent.location);
   }
   const monster = draft.room.monsterDeclarations.find(
@@ -636,7 +630,7 @@ export function applyStudioActorArrange(
     if (scene !== next.scene) next = { ...next, scene };
   }
   if (intent.location) {
-    requireCell(draft, intent.location);
+    requireCell(intent.location);
     if (
       intent.location.q !== monster.startingCell.location.q ||
       intent.location.r !== monster.startingCell.location.r

@@ -17,8 +17,10 @@ import type { AnswerTableShape, OptionShape } from './answerTableShape';
 import { wordRowsOf } from './bundles';
 import { walkFacts } from './factWalk';
 import { documentPlacementNames } from './placementNames';
+import { requiresRead } from './predicateNot';
 import { sideName } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
+import { stepPredicate, untilSteps } from './siteScope';
 
 /** Where clicking a use goes: a placed thing, or a home section on an id. */
 export type FactUseTarget =
@@ -89,8 +91,10 @@ export function factIndexOf(
         label: `${owner}: ${option.id}`,
         target,
       };
-      if (option.requires && 'fact' in option.requires)
-        read(option.requires.fact, { ...use, kind: 'requires' });
+      if (option.requires) {
+        const gate = requiresRead(option.requires);
+        if ('fact' in gate) read(gate.fact, { ...use, kind: 'requires' });
+      }
       for (const entry of [
         ...(option.success ?? []),
         ...(option.failure ?? []),
@@ -98,8 +102,9 @@ export function factIndexOf(
         if (entry.fact !== undefined) write(entry.fact, use);
     }
   };
-  const predicate = (p: PredicateDoc | undefined, use: FactUse) => {
-    if (p !== undefined && 'fact' in p) read(p.fact, use);
+  const predicate = (p: PredicateDoc | undefined, use: FactUse): void => {
+    if (p !== undefined && 'not' in p) predicate(p.not, use);
+    else if (p !== undefined && 'fact' in p) read(p.fact, use);
   };
 
   const scope = document.scope;
@@ -109,19 +114,28 @@ export function factIndexOf(
       label: id,
       target: { home: 'tables', id },
     });
-  for (const faction of scope.factions ?? [])
+  for (const faction of scope.factions ?? []) {
     table(faction.on, {
       kind: 'table-row',
       label: faction.id,
       target: { home: 'factions', id: faction.id },
     });
-  (scope.dispositions ?? []).forEach((d, index) =>
-    predicate(d.until, {
-      kind: 'disposition',
-      label: `${sideName(d.between[0])} and ${sideName(d.between[1])}`,
-      target: { home: 'dispositions', id: String(index) },
-    })
-  );
+    // A SIDE'S LINES (rpg-project#718) write and read facts like a
+    // creature's own.
+    options(faction.id, faction.options, {
+      home: 'factions',
+      id: faction.id,
+    });
+  }
+  (scope.dispositions ?? []).forEach((d, index) => {
+    // EVERY STEP OF AN UNTIL reads its fact (rpg-project#717).
+    for (const step of untilSteps(d.until))
+      predicate(stepPredicate(step), {
+        kind: 'disposition',
+        label: `${sideName(d.between[0])} and ${sideName(d.between[1])}`,
+        target: { home: 'dispositions', id: String(index) },
+      });
+  });
   for (const record of scope.intel ?? [])
     if ('fact' in record.reveals)
       write(record.reveals.fact, {
@@ -129,12 +143,17 @@ export function factIndexOf(
         label: `intel ${record.id}`,
         target: { home: 'intel', id: record.id },
       });
-  for (const ending of scope.endings ?? [])
-    predicate(ending.when, {
+  for (const ending of scope.endings ?? []) {
+    const use: FactUse = {
       kind: 'ending',
       label: `ending ${ending.id}`,
       target: { home: 'endings', id: ending.id },
-    });
+    };
+    predicate(ending.when, use);
+    // A leave ending's `if` reads a fact as the party leaves
+    // (rpg-project#716).
+    predicate(ending.if, use);
+  }
 
   const names = documentPlacementNames(document);
   const room = document.draft.room;

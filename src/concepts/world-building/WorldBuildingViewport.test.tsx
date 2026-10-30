@@ -176,7 +176,7 @@ describe('concealment membership overlays', () => {
       roomAuthoring: {
         tool: 'select' as const,
         workspace: { hexRadius: 6, horizontalLimit: 12 },
-        walkableHexes: [{ q: 0, r: 0 }],
+        floorCells: [{ q: 0, r: 0 }],
         propDeclarations: {},
         onWalkableGesture,
         activeConcealmentId: 'vault',
@@ -284,7 +284,7 @@ describe('concealment membership overlays', () => {
       roomAuthoring: {
         tool: 'paint' as const,
         workspace: { hexRadius: 6, horizontalLimit: 12 },
-        walkableHexes: [{ q: 0, r: 0 }],
+        floorCells: [{ q: 0, r: 0 }],
         propDeclarations: {},
         onWalkableGesture: vi.fn(),
         activeConcealmentId: 'vault',
@@ -414,7 +414,7 @@ describe('room-only workspace floor', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 9, horizontalLimit: 20 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture,
         }}
@@ -455,7 +455,7 @@ describe('composition guides stay in the composer', () => {
     const roomAuthoring = {
       tool: 'select' as const,
       workspace: { hexRadius: 6, horizontalLimit: 12 },
-      walkableHexes: [],
+      floorCells: [],
       propDeclarations: {},
       onWalkableGesture: vi.fn(),
     };
@@ -514,11 +514,11 @@ describe('room boundary lifetime and floor layering', () => {
   };
   const authoring = (
     horizontalLimit: number,
-    walkableHexes: readonly { q: number; r: number }[] = []
+    floorCells: readonly { q: number; r: number }[] = []
   ) => ({
     tool: 'select' as const,
     workspace: { hexRadius: 6, horizontalLimit },
-    walkableHexes,
+    floorCells,
     propDeclarations: {},
     onWalkableGesture: vi.fn(),
   });
@@ -652,7 +652,7 @@ describe('controlled rectangular 3D authoring', () => {
       const authoring = {
         workspace,
         tool: 'paint' as const,
-        walkableHexes: [],
+        floorCells: [],
         propDeclarations: {},
         onWalkableGesture: vi.fn(),
       };
@@ -744,7 +744,7 @@ describe('controlled rectangular 3D authoring', () => {
         roomAuthoring={{
           workspace,
           tool: 'paint',
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture,
         }}
@@ -801,7 +801,7 @@ describe('controlled rectangular 3D authoring', () => {
           roomAuthoring={{
             workspace,
             tool,
-            walkableHexes: [],
+            floorCells: [],
             propDeclarations: {},
             onWalkableGesture,
           }}
@@ -856,7 +856,7 @@ describe('controlled rectangular 3D authoring', () => {
       const authoring = {
         workspace: centeredRoomWorkspace(73, 48),
         tool: 'paint' as const,
-        walkableHexes: [],
+        floorCells: [],
         propDeclarations: {},
         onWalkableGesture: vi.fn(),
       };
@@ -929,7 +929,7 @@ describe('room floor pointer ownership', () => {
         roomAuthoring={{
           tool: 'paint',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture,
         }}
@@ -1025,7 +1025,7 @@ describe('room repeat pointer ownership', () => {
       roomAuthoring: {
         tool: 'repeat' as const,
         workspace: { hexRadius: 6, horizontalLimit: 12 },
-        walkableHexes: [],
+        floorCells: [],
         propDeclarations: {},
         repeat: {
           assetRef: 'dnd5e:props:dark-fortress:barricade_02',
@@ -1330,7 +1330,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [ACTOR],
@@ -1409,7 +1409,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'monster',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [],
@@ -1452,7 +1452,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool,
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [] as RoomHexCell[],
+          floorCells: [] as RoomHexCell[],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters:
@@ -1535,7 +1535,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'move',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [ACTOR],
@@ -1591,7 +1591,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [ACTOR],
@@ -1736,7 +1736,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool,
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [{ ...ACTOR, id: 'start' }],
@@ -1824,7 +1824,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'start',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           partyStart: { q: 0, r: 0 },
@@ -1882,7 +1882,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [
@@ -1925,7 +1925,7 @@ describe('room actor markers and snapped setup gestures', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           monsters: [ACTOR],
@@ -1997,7 +1997,7 @@ describe('room wall pointer ownership', () => {
       roomAuthoring: {
         tool: 'wall' as const,
         workspace: { hexRadius: 6, horizontalLimit: 12 },
-        walkableHexes: [],
+        floorCells: [],
         propDeclarations: {},
         onWalkableGesture: vi.fn(),
         wallSnapEnabled: false,
@@ -2090,7 +2090,7 @@ describe('room wall pointer ownership', () => {
         roomAuthoring={{
           tool: 'wall',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           onWallGesture,
@@ -2135,7 +2135,7 @@ describe('room wall pointer ownership', () => {
         roomAuthoring={{
           tool: 'wall',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           onWallGesture,
@@ -2197,7 +2197,7 @@ describe('room wall pointer ownership', () => {
         roomAuthoring={{
           tool: 'wall',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           wallSnapEnabled: true,
@@ -2270,7 +2270,7 @@ describe('structural wall visual hit ownership', () => {
         roomAuthoring={{
           tool: 'paint',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           walls,
           selectedWallId: null,
@@ -2291,7 +2291,7 @@ describe('structural wall visual hit ownership', () => {
         roomAuthoring={{
           tool: 'select',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           walls,
           selectedWallId: 'wall-1',
@@ -2364,7 +2364,7 @@ it('applies the committed field to real surfaces while preserving guides, actor 
   const authoring = {
     tool: 'select' as const,
     workspace: centeredRoomWorkspace(12, 12),
-    walkableHexes: [{ q: 0, r: 0 }],
+    floorCells: [{ q: 0, r: 0 }],
     propDeclarations: {},
     onWalkableGesture: vi.fn(),
     partyStart: { q: 0, r: 0 },
@@ -2374,14 +2374,14 @@ it('applies the committed field to real surfaces while preserving guides, actor 
       {
         regionId: 'room',
         background: 0.15,
+        // Region areas are painted cells (rpg-project#725); polygons are retired.
         area: {
-          kind: 'polygon' as const,
-          ring: [
-            { x: -4, z: -4 },
-            { x: 4, z: -4 },
-            { x: 4, z: 4 },
-            { x: -4, z: 4 },
-          ],
+          kind: 'hex-union' as const,
+          cells: [-2, -1, 0, 1, 2].flatMap((q) =>
+            [-2, -1, 0, 1, 2]
+              .filter((r) => Math.abs(q + r) <= 2)
+              .map((r) => ({ q, r }))
+          ),
         },
       },
     ],
@@ -2472,7 +2472,7 @@ describe('Studio 3D hex selection', () => {
         roomAuthoring={{
           workspace: centeredRoomWorkspace(6, 6),
           tool: 'select',
-          walkableHexes: [],
+          floorCells: [],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
           onSelectHex,

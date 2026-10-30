@@ -8,7 +8,7 @@
  * declared table appears with the entries the DOCUMENT holds, and that the
  * reference controls offer the site's own tables and nothing invented.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
@@ -441,14 +441,15 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
   });
 
-  it('`toward` offers exactly enemy and attacker on a row that listens for nothing — never a cell or a route', () => {
+  it('`toward` offers exactly enemy, attacker and ally on a row that listens for nothing — never a cell or a route', () => {
     mount({ when: { enemy: 'none' }, toward: 'enemy' });
     // `actor` waits for a deed and `sound` for a top-level `heard`; a cell
-    // and a route are read from a file but not offered here.
-    expect(options('To for time entry')).toEqual(['enemy', 'attacker']);
+    // and a route are read from a file but not offered here. `ally` is
+    // offered wherever a word walks (rpg-project#717).
+    expect(options('To for time entry')).toEqual(['enemy', 'attacker', 'ally']);
   });
 
-  it('a route from the file is shown as a place, not as a word, and kept verbatim', () => {
+  it('a route from the file is shown as its waypoints, and kept verbatim', () => {
     const route = {
       path: [
         { q: -2, r: 0 },
@@ -456,11 +457,17 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
       ],
     };
     const last = mount({ when: { enemy: 'none' }, toward: route });
-    // No word select claims the row walks to "the enemy".
-    expect(screen.queryByLabelText('To for time entry')).toBeNull();
-    expect(screen.getByTestId('entry-place').textContent).toBe(
-      'To a route through 2 cells'
-    );
+    // The select says what the row holds — a route — never "the enemy".
+    expect(
+      (screen.getByLabelText('To for time entry') as HTMLSelectElement).value
+    ).toBe('path');
+    const chips = within(
+      screen.getByRole('list', { name: 'Route for time entry' })
+    ).getAllByRole('listitem');
+    expect(chips.map((chip) => chip.getAttribute('data-cell'))).toEqual([
+      '-2,0',
+      '0,-2',
+    ]);
     fireEvent.change(screen.getByLabelText('Say (optional) for time entry'), {
       target: { value: 'Round again.' },
     });
@@ -469,8 +476,11 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
 
   it('a cell from the file is shown in the room’s own spelling', () => {
     mount({ when: { enemy: 'none' }, toward: { at: { q: 1, r: 1 } } });
-    expect(screen.getByTestId('entry-place').textContent).toBe(
-      'To {q: 1, r: 1}'
+    expect(
+      (screen.getByLabelText('To for time entry') as HTMLSelectElement).value
+    ).toBe('at');
+    expect(screen.getByLabelText('Cell for time entry').textContent).toBe(
+      '{q: 1, r: 1}'
     );
   });
 
@@ -483,6 +493,7 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
       'enemy',
       'attacker',
       'sound',
+      'ally',
     ]);
     fireEvent.change(screen.getByLabelText('To for time entry'), {
       target: { value: 'sound' },

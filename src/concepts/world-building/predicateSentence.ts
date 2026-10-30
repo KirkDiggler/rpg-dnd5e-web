@@ -17,7 +17,15 @@ import { MONSTERS, PARTY, type PredicateDoc } from '@/author/factionVocabulary';
 import { turnsTo } from './engineLaws';
 import { documentPlacementNames } from './placementNames';
 import type { RoomDraftDocument, RoomGameplayData } from './roomDraft';
-import type { SiteDisposition, SiteScope } from './siteScope';
+import {
+  isLeaveEnding,
+  stepPredicate,
+  untilSteps,
+  type SiteDisposition,
+  type SiteEnding,
+  type SiteScope,
+  type SiteUntilStep,
+} from './siteScope';
 
 export interface PredicateContext {
   /** Who must know a fact, as a noun phrase: "captain, the garrison's mind".
@@ -44,6 +52,7 @@ export function predicateSentence(
   predicate: PredicateDoc,
   ctx: PredicateContext
 ): string {
+  if ('not' in predicate) return notSentence(predicate.not, ctx);
   if ('round' in predicate) return `round ${predicate.round} begins`;
   if ('down' in predicate)
     return `${ctx.names.get(predicate.down) ?? predicate.down} is down`;
@@ -51,8 +60,27 @@ export function predicateSentence(
     return ctx.mindName !== undefined
       ? `${ctx.mindName}${ctx.mindName.includes(',') ? ',' : ''} knows ${predicate.fact}`
       : `${predicate.fact} is known`;
+  if ('left' in predicate)
+    return `the last one standing leaves by ${predicate.left}`;
   const [a, b] = predicate.stance.between;
   return `${sideName(a)} and ${sideName(b)} are ${predicate.stance.is}`;
+}
+
+/** A `not` (rpg-project#719) as the clause that completes "until …" or
+ * "when …": the inner predicate, turned over. */
+function notSentence(inner: PredicateDoc, ctx: PredicateContext): string {
+  if ('not' in inner) return `it is not so that ${notSentence(inner.not, ctx)}`;
+  if ('round' in inner) return `round ${inner.round} has not begun`;
+  if ('down' in inner)
+    return `${ctx.names.get(inner.down) ?? inner.down} is not down`;
+  if ('fact' in inner)
+    return ctx.mindName !== undefined
+      ? `${ctx.mindName}${ctx.mindName.includes(',') ? ',' : ''} does not know ${inner.fact}`
+      : `${inner.fact} is not known`;
+  if ('left' in inner)
+    return `the last one standing leaves by any way out but ${inner.left}`;
+  const [a, b] = inner.stance.between;
+  return `${sideName(a)} and ${sideName(b)} are no longer ${inner.stance.is}`;
 }
 
 /** The minds of a pair, as the noun phrase a fact `until` waits on: each
@@ -115,7 +143,7 @@ export function dispositionSentence(
   const head = `${capitalized(disposition.stance)} to ${sideName(other)}`;
   if (disposition.until === undefined)
     return `${head}, with nothing that turns it.`;
-  return `${head} until ${untilClause(disposition, document)}; then ${turnsTo(disposition.stance)}.`;
+  return `${head}${untilText(disposition, document)}`;
 }
 
 /** The same disposition from neither side, for the authored list: "the
@@ -128,18 +156,56 @@ export function dispositionLine(
   const head = `${capitalized(sideName(a))} and ${sideName(b)} are ${disposition.stance}`;
   if (disposition.until === undefined)
     return `${head}, with nothing that turns them.`;
-  return `${head} until ${untilClause(disposition, document)}; then ${turnsTo(disposition.stance)}.`;
+  return `${head}${untilText(disposition, document)}`;
 }
 
-function untilClause(
+/** What turns a pair, after its head: one step reads "until …; then
+ * neutral." as it always did; a list of steps (rpg-project#717) reads each
+ * step and its turn, the first that holds winning. */
+function untilText(
   disposition: Readonly<SiteDisposition>,
   document: Readonly<RoomDraftDocument>
 ): string {
-  return predicateSentence(disposition.until!, {
-    names: documentPlacementNames(document),
-    mindName:
-      'fact' in disposition.until!
-        ? pairMindName(document, disposition.between)
-        : undefined,
-  });
+  return untilTextIn(disposition, documentPlacementNames(document), (pair) =>
+    pairMindName(document, pair)
+  );
+}
+
+/** [untilText] for a caller holding the shown names and a pair's minds. */
+export function untilTextIn(
+  disposition: Readonly<SiteDisposition>,
+  names: ReadonlyMap<string, string>,
+  mindOf: (pair: readonly [string, string]) => string | undefined
+): string {
+  const steps = untilSteps(disposition.until);
+  const clause = (step: SiteUntilStep): string => {
+    const predicate = stepPredicate(step);
+    return predicateSentence(predicate, {
+      names,
+      mindName: 'fact' in predicate ? mindOf(disposition.between) : undefined,
+    });
+  };
+  if (steps.length === 1)
+    return ` until ${clause(steps[0]!)}; then ${turnsTo(disposition.stance, steps[0]!.then)}.`;
+  const turns = steps.map(
+    (step) => `once ${clause(step)}, ${turnsTo(disposition.stance, step.then)}`
+  );
+  return `: ${turns.join('; ')} — the first of these that holds wins.`;
+}
+
+/** One ending as the clause after "The run ends when …" (rpg-project#716):
+ * a leave reads "the last one standing leaves by front-door, success if
+ * King is down"; any other ending its predicate, and its outcome when it
+ * names one. */
+export function endingClause(
+  ending: Readonly<SiteEnding>,
+  ctx: PredicateContext
+): string {
+  const head = predicateSentence(ending.when, ctx);
+  if (!isLeaveEnding(ending.when))
+    return ending.outcome !== undefined ? `${head}, ${ending.outcome}` : head;
+  const outcome = ending.outcome ?? 'with no outcome';
+  return ending.if !== undefined
+    ? `${head}, ${outcome} if ${predicateSentence(ending.if, ctx)}`
+    : `${head}, ${outcome}`;
 }

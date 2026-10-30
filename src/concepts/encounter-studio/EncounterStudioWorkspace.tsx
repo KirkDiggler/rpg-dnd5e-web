@@ -9,10 +9,20 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { AnswerWaypointShape } from '../world-building/answerTableShape';
 import { BundlesPanel } from '../world-building/BundlesPanel';
 import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
+import { regionLabelPoint } from '../world-building/regionLabel';
+import { appendWaypoint } from '../world-building/routeEdits';
+import {
+  RoutePickContext,
+  type RoutePicking,
+  type RoutePickRequest,
+} from '../world-building/routePicking';
+import { RowRefusalsContext } from '../world-building/rowRefusals';
+import type { SiteScope } from '../world-building/siteScope';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
@@ -59,9 +69,10 @@ import {
   studioInspectionOf,
   type EncounterStudioSession,
   type EncounterStudioView,
-  type LayoutFloorTool,
   type LayoutFrame,
   type LayoutTool,
+  type RoomDraft,
+  type RoomHexCell,
   type StudioDoorEditing,
   type StudioHome,
   type StudioSocialSection,
@@ -153,9 +164,39 @@ function StudioSurface({
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
-  const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
-    session.arrange?.kind === 'label' ? session.arrange.region : undefined;
+    session.arrange?.kind === 'region' ? session.arrange.region : undefined;
+  /** THE ACTIVE REGION (rpg-project#725 R5): where Paint and Rectangle put
+   * the cells they brush, reassigning any another region held. The implicit
+   * region by default, and again when the chosen one is removed. Workspace
+   * state, never written to the document. */
+  const room = session.document.draft.room;
+  const [activeChoice, setActiveChoice] = useState<string | null>(null);
+  const activeRegionId =
+    activeChoice !== null &&
+    room.regions.some((region) => region.id === activeChoice)
+      ? activeChoice
+      : room.implicitRegionId;
+  /** A region New region just created is made active once it is selected. */
+  const [activateCreated, setActivateCreated] = useState(false);
+  useEffect(() => {
+    if (!activateCreated || !selectedRegion) return;
+    setActiveChoice(selectedRegion.id);
+    setActivateCreated(false);
+  }, [activateCreated, selectedRegion]);
+  const createRegion = (name: string): boolean => {
+    if (!session.regionEditing.createRegion(name)) return false;
+    setActivateCreated(true);
+    setSidebarOpen(true);
+    return true;
+  };
+  const commitStroke = (
+    cells: readonly RoomHexCell[],
+    mode: 'paint' | 'erase'
+  ): boolean =>
+    mode === 'paint'
+      ? session.commitFloor(cells, mode, activeRegionId)
+      : session.commitFloor(cells, mode);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sections, setSections] = useState<
@@ -179,9 +220,6 @@ function StudioSurface({
     if (next !== layoutTool) session.cancelTransients();
     onLayoutToolChange(next);
   };
-  /** Which label the Build home's label tool places: New region arms a
-   * room, Note and Add a note arm a note. */
-  const [labelKind, setLabelKind] = useState<'note' | 'room'>('note');
   const labels = useStudioLabels(
     session,
     view,
@@ -190,8 +228,7 @@ function StudioSurface({
     () => {
       changeTool('select');
       showSection('inspector');
-    },
-    labelKind
+    }
   );
   const startLabel = (): void => {
     if (session.doorEditing.active) session.doorEditing.setActive(false);
@@ -203,7 +240,6 @@ function StudioSurface({
    * the inspector while armed. */
   const armTool = (next: 'wall' | 'door' | 'label'): void => {
     if (next === 'label') {
-      setLabelKind('note');
       startLabel();
       return;
     }
@@ -214,11 +250,6 @@ function StudioSurface({
     } else if (session.doorEditing.setActive(true)) onLayoutToolChange('door');
     setSidebarOpen(true);
   };
-  /** New region: the room-label tool, as the retired Regions home armed it. */
-  const armRoomLabel = (): void => {
-    setLabelKind('room');
-    startLabel();
-  };
   /** A request the Layout surface fits to its own size. */
   const [frameTarget, setFrameTarget] = useState<{
     bounds: WorkspaceBounds;
@@ -227,9 +258,10 @@ function StudioSurface({
   }>();
   /** Frame world bounds in the part of the map the open inspector leaves,
    * measured when Layout applies the request, after the inspector opens. */
-  const frameBounds = (bounds: WorkspaceBounds): void =>
+  const frameBounds = (bounds: WorkspaceBounds, standing = false): void =>
     setFrameTarget((current) => ({
       bounds,
+      standing,
       nonce: (current?.nonce ?? 0) + 1,
       occluders: () => {
         const sidebar = document.getElementById('studio-sidebar');
@@ -238,6 +270,30 @@ function StudioSurface({
         return rect && rect.width > 0 ? [rect] : [];
       },
     }));
+  /** A REPLACED DOCUMENT IS FRAMED WHOLE (rpg-project#725 R3). Zoom is
+   * relative to the derived grid's fit, and the view keeps its on-screen scale
+   * while paint grows the grid — but an import or an open replaces the whole
+   * document, so the view refits to the new content instead of keeping the
+   * old room's scale and centre. The request stands until the view is
+   * navigated: the Site panel that imported it closes after the replacement,
+   * and the surface refits at its working size. */
+  const [refitPending, setRefitPending] = useState(false);
+  useEffect(() => {
+    if (!refitPending) return;
+    setRefitPending(false);
+    frameBounds(contentBounds(session.document.draft), true);
+  }, [refitPending, session.document]);
+  const replaceDocument = (draft: RoomDraft, scope: SiteScope): boolean => {
+    if (!session.importDocument(draft, scope)) return false;
+    setRefitPending(true);
+    return true;
+  };
+  const replacingSession = useMemo(
+    () => ({ ...session, importDocument: replaceDocument }),
+    // replaceDocument closes over session only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session]
+  );
   const overview = useMemo(
     () =>
       regionOverview(session.document.draft, session.regionEditing.resolutions),
@@ -245,24 +301,16 @@ function StudioSurface({
   );
   /** One 3D label per resolved region, in its overview colour (S3-T7). */
   const regionLabels = useMemo(() => {
-    const scene = session.document.draft.scene;
-    return (scene.authoringRegions ?? []).flatMap((region) => {
+    return session.document.draft.room.regions.flatMap((region) => {
       const colour = overview.sizes.get(region.id)
         ? overview.colours.get(region.id)
         : undefined;
-      const label = scene.mapLabels?.find((l) => l.id === region.labelId);
-      return colour && label
-        ? [
-            {
-              id: region.id,
-              text: label.text,
-              location: label.location,
-              colour,
-            },
-          ]
+      const location = regionLabelPoint(region);
+      return colour && location && region.name
+        ? [{ id: region.id, text: region.name, location, colour }]
         : [];
     });
-  }, [session.document.draft.scene, overview]);
+  }, [session.document.draft.room.regions, overview]);
   const finishProjection = session.regionEditing.finishes?.projection;
   const unappliedFinishes = useMemo(
     () =>
@@ -282,17 +330,6 @@ function StudioSurface({
   };
   const exitWall = (): void => {
     changeTool('select');
-  };
-  const exitRegion = (): void => {
-    changeTool('select');
-  };
-  /** Define explicit area: the region tool in Layout, armed for the
-   * selected region label, with its group at the top of the inspector. */
-  const defineRegion = (): void => {
-    labels.editing.onCancel();
-    changeTool('region');
-    setRegionTool('paint');
-    setSidebarOpen(true);
   };
   const changeHome = (next: StudioHome): void => {
     if (next === home) return;
@@ -395,7 +432,7 @@ function StudioSurface({
     draft: session.document.draft,
     scope: session.document.scope,
     capability,
-    onImportDraft: session.importDocument,
+    onImportDraft: replaceDocument,
     onBusyChange: session.publishing.setBusy,
     previewEnabled: gate.state === 'live',
     rememberedSavedKey: rememberedKey,
@@ -483,7 +520,7 @@ function StudioSurface({
    * next Save and Play does not ask (R16); another member's file or a
    * reference is a copy: a fresh key and no remembered save. */
   const openFile = ({ read, key, source }: OpenedFile): void => {
-    if (!session.importDocument(read.draft, read.scope)) return;
+    if (!replaceDocument(read.draft, read.scope)) return;
     const roomId = read.draft.id;
     setSiteOperation('save');
     if (source === 'mine') {
@@ -524,6 +561,87 @@ function StudioSurface({
     currentRefusals(publishing, gate.state),
     session.document
   );
+  /** The row a refusal's jump asked for (rpg-project#720, R17). */
+  const [focusRow, setFocusRow] = useState<{
+    path: string;
+    nonce: number;
+  } | null>(null);
+  const rowRefusals = useMemo(
+    () => ({
+      refusals: jumps.map(({ path, message }) => ({ path, message })),
+      focus: focusRow,
+    }),
+    // `jumps` is rebuilt every render; its words are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(jumps.map((j) => [j.path, j.message])), focusRow]
+  );
+  /** PICK ON MAP (rpg-project#720). A row under Encounter asks for a cell or
+   * a route; Build opens on the Layout armed for it, each click is a
+   * waypoint, and Done writes the route back through the row as one edit and
+   * returns to the section the row is in. */
+  const [routePick, setRoutePick] = useState<{
+    request: RoutePickRequest;
+    waypoints: AnswerWaypointShape[];
+    section: keyof typeof ENCOUNTER_SECTIONS;
+    document: unknown;
+  } | null>(null);
+  const routePicking: RoutePicking = {
+    arm: (request) => {
+      const section = encounterSection;
+      changeHome('build');
+      if (view !== 'layout') switchView('layout');
+      setSidebarOpen(false);
+      setRoutePick({
+        request,
+        waypoints: [...request.route],
+        section,
+        document: session.document,
+      });
+    },
+  };
+  const finishPick = (
+    commit: boolean,
+    waypoints = routePick?.waypoints ?? []
+  ): void => {
+    const pick = routePick;
+    setRoutePick(null);
+    if (!pick) return;
+    if (commit) pick.request.onDone(waypoints);
+    changeHome('encounter');
+    setEncounterSection(pick.section);
+  };
+  const pickCell = (cell: { q: number; r: number }): void => {
+    if (!routePick) return;
+    if (routePick.request.mode === 'cell')
+      return finishPick(true, [{ q: cell.q, r: cell.r }]);
+    setRoutePick({
+      ...routePick,
+      waypoints: appendWaypoint(routePick.waypoints, cell),
+    });
+  };
+  const picking = routePick !== null && home === 'build' && view === 'layout';
+  // Leaving the Layout any other way cancels the pick, as every armed
+  // gesture is retired by a view switch.
+  // So does any change to the document under it — a keyboard Undo among
+  // them — since the row the pick answers may no longer be the row it was.
+  useEffect(() => {
+    if (
+      routePick &&
+      (!(home === 'build' && view === 'layout') ||
+        routePick.document !== session.document)
+    )
+      setRoutePick(null);
+  }, [routePick, home, view, session.document]);
+  const finishPickRef = useRef(finishPick);
+  finishPickRef.current = finishPick;
+  useEffect(() => {
+    if (!picking) return;
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') finishPickRef.current(false);
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [picking]);
   const copyKeyRefused =
     siteOperation === 'copy' && copyOrigin?.sourceKey === publishing.key.trim();
   const pressPlay = (): void => {
@@ -541,8 +659,7 @@ function StudioSurface({
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
     if (session.doorEditing.active) session.doorEditing.setActive(false);
-    if (layoutTool === 'door' || layoutTool === 'region')
-      onLayoutToolChange('select');
+    if (layoutTool === 'door') onLayoutToolChange('select');
     session.cancelTransients();
     setRenaming(false);
     onViewChange(next);
@@ -576,6 +693,12 @@ function StudioSurface({
         return `Door ${target.target.doorId}`;
       case 'hex':
         return `Hex ${target.cell.q}, ${target.cell.r}`;
+      case 'region':
+        return (
+          session.document.draft.room.regions.find(
+            (region) => region.id === target.id
+          )?.name || target.id
+        );
       case 'castMember':
         return castMemberOf(session.document, target.ref)?.name ?? target.ref;
       case 'home':
@@ -604,11 +727,18 @@ function StudioSurface({
         return inspect(session.doorEditing.select(target.target));
       case 'hex':
         return inspect(session.selectHex(target.cell));
+      case 'region':
+        return inspect(session.selectRegion(target.id));
       case 'castMember':
         return inspect(session.cast.select(target.ref));
       case 'home':
         changeHome('encounter');
         setEncounterSection(target.section);
+        if (target.row)
+          setFocusRow((was) => ({
+            path: target.row!,
+            nonce: (was?.nonce ?? 0) + 1,
+          }));
         return;
       case 'ending':
         setFocusEnding({ id: target.id });
@@ -676,42 +806,6 @@ function StudioSurface({
       <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
     ) : layoutTool === 'label' ? (
       labels.controls
-    ) : layoutTool === 'region' && selectedRegion ? (
-      <div
-        className="es-context-panel es-region-controls"
-        aria-label="Explicit region area controls"
-      >
-        <h2>
-          Explicit area ·{' '}
-          {session.arrange?.kind === 'label' ? session.arrange.label.text : ''}
-        </h2>
-        <p className="es-help">
-          Only region membership changes. Floor, walls and props stay untouched.
-          Drag, then release to apply once. Escape cancels.
-        </p>
-        <div className="es-buttons">
-          {(['paint', 'erase', 'rectangle'] as const).map((mode) => (
-            <button
-              type="button"
-              key={mode}
-              aria-pressed={regionTool === mode}
-              onClick={() => {
-                session.cancelTransients();
-                setRegionTool(mode);
-              }}
-            >
-              {mode === 'paint'
-                ? 'Paint region'
-                : mode === 'erase'
-                  ? 'Erase region'
-                  : 'Rectangle region'}
-            </button>
-          ))}
-          <button type="button" onClick={exitRegion}>
-            Done area editing
-          </button>
-        </div>
-      </div>
     ) : null;
 
   return (
@@ -878,7 +972,7 @@ function StudioSurface({
             <StudioDraftFile
               key={siteOperation}
               mode={siteOperation === 'import' ? 'import' : 'export'}
-              session={session}
+              session={replacingSession}
               draftKey={publishing.key}
               onKeyChange={publishing.setKey}
               onFileKey={adoptFileKey}
@@ -983,6 +1077,45 @@ function StudioSurface({
               </button>
             </div>
           )}
+          {picking && routePick && (
+            <div
+              className="es-buttons es-route-pick"
+              role="status"
+              aria-label="Pick on map"
+            >
+              <strong>
+                {routePick.request.mode === 'cell'
+                  ? `Picking a cell for ${routePick.request.label} · click the cell to walk to`
+                  : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
+              </strong>
+              {routePick.request.mode === 'route' && (
+                <>
+                  <button
+                    type="button"
+                    disabled={routePick.waypoints.length === 0}
+                    onClick={() =>
+                      setRoutePick({
+                        ...routePick,
+                        waypoints: routePick.waypoints.slice(0, -1),
+                      })
+                    }
+                  >
+                    Undo last waypoint
+                  </button>
+                  <button
+                    type="button"
+                    disabled={routePick.waypoints.length === 0}
+                    onClick={() => finishPick(true)}
+                  >
+                    Done picking route
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={() => finishPick(false)}>
+                Cancel picking
+              </button>
+            </div>
+          )}
           {session.creatures.placement && (
             <div className="es-buttons" role="status">
               <strong>
@@ -1073,14 +1206,16 @@ function StudioSurface({
           >
             <button
               type="button"
-              disabled={!session.canUndo}
+              // A pick holds its waypoints against the document as armed: no
+              // history move while one is armed (rpg-project#720 review).
+              disabled={!session.canUndo || routePick !== null}
               onClick={session.undo}
             >
               Undo
             </button>
             <button
               type="button"
-              disabled={!session.canRedo}
+              disabled={!session.canRedo || routePick !== null}
               onClick={session.redo}
             >
               Redo
@@ -1117,10 +1252,11 @@ function StudioSurface({
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
                 onOpenCastMember={(ref) => session.cast.select(ref)}
-                onOpenRegion={(labelId) => {
-                  session.mapLabelSelection.select(labelId);
+                onOpenRegion={(regionId) => {
+                  session.selectRegion(regionId);
                 }}
-                onDefineRegion={view === 'layout' ? defineRegion : undefined}
+                activeRegionId={activeRegionId}
+                onMakeActive={setActiveChoice}
               />
             )}
           </StudioSidebar>
@@ -1139,13 +1275,15 @@ function StudioSurface({
                 <LayoutRoomList
                   draft={session.document.draft}
                   overview={overview}
-                  selectedLabelId={session.mapLabelSelection.selectedId}
-                  onSelect={(labelId, bounds) => {
-                    if (!session.mapLabelSelection.select(labelId)) return;
+                  selectedRegionId={selectedRegion?.id ?? null}
+                  onSelect={(regionId, bounds) => {
+                    if (!session.selectRegion(regionId)) return;
                     setSidebarOpen(true);
                     if (bounds) frameBounds(bounds);
                   }}
-                  onCreate={armRoomLabel}
+                  activeRegionId={activeRegionId}
+                  onActivate={setActiveChoice}
+                  onCreate={createRegion}
                   unappliedFinishes={unappliedFinishes}
                   onShowEntire={() =>
                     frameBounds(contentBounds(session.document.draft))
@@ -1159,20 +1297,22 @@ function StudioSurface({
                     tool={layoutTool}
                     frame={frame}
                     onFrameChange={onFrameChange}
-                    onCommit={session.commitFloor}
+                    onCommit={commitStroke}
+                    onRefuse={session.refuseEdit}
                     labelEditing={labels.editing}
                     documentContext={session.document}
                     wallEditing={layoutWallEditing}
                     doorEditing={layoutDoorEditing}
                     regionEditing={session.regionEditing}
                     selectedRegion={selectedRegion}
+                    onSelectRegion={(id) => {
+                      if (session.selectRegion(id)) setSidebarOpen(true);
+                    }}
                     patternStart={
                       session.regionEditing.finishes?.projection.regions.find(
                         (r) => r.id === selectedRegion?.id
                       )?.marker
                     }
-                    regionTool={regionTool}
-                    onExitRegionTool={exitRegion}
                     onExitDoorTool={exitDoor}
                     intentEpoch={session.intentEpoch}
                     onExitWallTool={exitWall}
@@ -1186,6 +1326,15 @@ function StudioSurface({
                     exits={session.document.scope.exits}
                     concealedCells={concealedCells}
                     frameTarget={frameTarget}
+                    routePick={
+                      picking && routePick
+                        ? {
+                            mode: routePick.request.mode,
+                            waypoints: routePick.waypoints,
+                            onPick: pickCell,
+                          }
+                        : undefined
+                    }
                   />
                 </div>
                 <LayoutFooter draft={session.document.draft} />
@@ -1368,39 +1517,43 @@ function StudioSurface({
               onOpen={openFactUse}
             />
           )}
-          <div hidden={encounterSection !== 'bundles'}>
-            <h2>Bundles</h2>
-            <AboutPanel>
-              <p>
-                A behaviour written once and used as one line. A table row that
-                says <code>use: pursuer</code> rolls as one share, and the
-                bundle's own rows roll inside it.
-              </p>
-            </AboutPanel>
-            <BundlesPanel
-              key={session.document.draft.id}
-              scope={session.document.scope}
-              onChange={(bundles) => session.commitBundles(bundles)}
-            />
-          </div>
-          <div hidden={encounterSection !== 'tables'}>
-            <h2>Tables</h2>
-            <AboutPanel>
-              <p>
-                Shared monster behavior. Define a table once; creatures and
-                factions can reference it by name.
-              </p>
-            </AboutPanel>
-            <TablesPanel
-              key={session.document.draft.id}
-              scope={session.document.scope}
-              room={session.document.draft.room}
-              placementNames={placementNames}
-              collapsedEntries
-              explicitRename
-              onChange={(scope) => session.commitTables(scope.tables)}
-            />
-          </div>
+          <RoutePickContext.Provider value={routePicking}>
+            <RowRefusalsContext.Provider value={rowRefusals}>
+              <div hidden={encounterSection !== 'bundles'}>
+                <h2>Bundles</h2>
+                <AboutPanel>
+                  <p>
+                    A behaviour written once and used as one line. A table row
+                    that says <code>use: pursuer</code> rolls as one share, and
+                    the bundle's own rows roll inside it.
+                  </p>
+                </AboutPanel>
+                <BundlesPanel
+                  key={session.document.draft.id}
+                  scope={session.document.scope}
+                  onChange={(bundles) => session.commitBundles(bundles)}
+                />
+              </div>
+              <div hidden={encounterSection !== 'tables'}>
+                <h2>Tables</h2>
+                <AboutPanel>
+                  <p>
+                    Shared monster behavior. Define a table once; creatures and
+                    factions can reference it by name.
+                  </p>
+                </AboutPanel>
+                <TablesPanel
+                  key={session.document.draft.id}
+                  scope={session.document.scope}
+                  room={session.document.draft.room}
+                  placementNames={placementNames}
+                  collapsedEntries
+                  explicitRename
+                  onChange={(scope) => session.commitTables(scope.tables)}
+                />
+              </div>
+            </RowRefusalsContext.Provider>
+          </RoutePickContext.Provider>
         </section>
       </div>
     </section>
@@ -1478,7 +1631,6 @@ export function EncounterStudioWorkspace({
       studioPresentation={{
         home,
         view,
-        escapeKeepsSelection: layoutTool === 'region',
         render: renderPresentation,
       }}
     />

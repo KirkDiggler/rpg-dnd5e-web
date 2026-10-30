@@ -1,15 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import {
-  createRoomLabel,
-  setExplicitRegionArea,
-  setRegionLighting,
-} from './regionEdits';
+import { createRegion, setRegionLighting } from './regionEdits';
 import {
   createRoomDraft,
+  paintCells,
   placeRoomMonster,
   setRoomPartyStart,
-  updateWalkableHexes,
   type RoomDraft,
 } from './roomDraft';
 import {
@@ -34,32 +30,35 @@ import {
   type StudioArrangeSelection,
   type StudioArrangeTarget,
 } from './studioArrange';
-import { centeredRoomWorkspace } from './workspaceGeometry';
 
-describe('linked label Arrange projection', () => {
-  it('projects real definitions/resolution without a separate region target or render write', () => {
-    const value = createRoomLabel(
+// Labels are notes only and a region is its own target (rpg-project#725): a
+// label projection carries no region, and the region projection carries its
+// resolution from its own cells.
+describe('label and region Arrange projection', () => {
+  it('projects a region with its listed resolution, without a render write', () => {
+    const value = createRegion(
       createRoomDraft(createEmptyScene('scene'), 'room'),
-      'region',
-      'label',
-      'Forest',
-      { x: 0, z: 0 }
+      'forest',
+      'Forest'
     );
     const before = JSON.stringify(value);
-    const target = { kind: 'label' as const, id: 'label' };
-    const unbound = projectStudioArrange({
+    const target = { kind: 'region' as const, id: 'forest' };
+    const unpainted = projectStudioArrange({
       draft: value,
       target,
       selectionRevision: 7,
     });
-    expect(unbound).toMatchObject({
-      kind: 'label',
+    expect(unpainted).toMatchObject({
+      kind: 'region',
       target,
       selectionRevision: 7,
-      region: { id: 'region' },
-      resolution: { reason: 'unbound' },
+      selectionKey: JSON.stringify({ kind: 'region', id: 'forest' }),
+      region: { id: 'forest', name: 'Forest' },
+      resolution: { status: 'unresolved', reason: 'empty' },
+      implicit: false,
     });
-    const painted = setExplicitRegionArea(value, 'region', [{ q: 0, r: 0 }]);
+    expect(unpainted).not.toHaveProperty('presentation');
+    const painted = paintCells(value, [{ q: 0, r: 0 }], 'forest');
     expect(
       projectStudioArrange({ draft: painted, target, selectionRevision: 7 })
     ).toMatchObject({
@@ -69,13 +68,49 @@ describe('linked label Arrange projection', () => {
       },
     });
     expect(JSON.stringify(value)).toBe(before);
-    const note = draft();
+    expect(
+      projectStudioArrange({
+        draft: value,
+        target: { kind: 'region', id: 'room-region' },
+        selectionRevision: 1,
+      })
+    ).toMatchObject({ kind: 'region', implicit: true });
+    expect(
+      projectStudioArrange({
+        draft: value,
+        target: { kind: 'region', id: 'gone' },
+        selectionRevision: 1,
+      })
+    ).toBeNull();
+  });
+
+  it('carries a region presentation when one is saved', () => {
+    const value = createRegion(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      'forest',
+      'Forest'
+    );
+    const presentation = { construction: { rectangles: [] } };
+    value.scene.regionPresentation = { forest: presentation };
+    expect(
+      projectStudioArrange({
+        draft: value,
+        target: { kind: 'region', id: 'forest' },
+        selectionRevision: 1,
+      })
+    ).toMatchObject({ presentation });
+  });
+
+  it('projects a label as a note: no region, no resolution', () => {
     const projection = projectStudioArrange({
-      draft: note,
-      target,
+      draft: draft(),
+      target: { kind: 'label', id: 'label' },
       selectionRevision: 1,
     });
-    expect(projection?.kind).toBe('label');
+    expect(projection).toMatchObject({
+      kind: 'label',
+      label: { id: 'label', text: 'Entry' },
+    });
     expect(projection).not.toHaveProperty('region');
     expect(projection).not.toHaveProperty('resolution');
   });
@@ -759,7 +794,6 @@ describe('Arrange atomic actor/start candidates', () => {
       { q: 1.5, r: 0 },
       { q: Infinity, r: 0 },
       { q: 0, r: NaN },
-      { q: 999, r: 999 },
     ]) {
       expect(() =>
         applyStudioActorArrange(value, {
@@ -783,6 +817,14 @@ describe('Arrange atomic actor/start candidates', () => {
       })
     ).toThrow(/no longer exists/);
     expect(value).toEqual(before);
+    // The canvas is unbounded (rpg-project#725): a far whole hex is a place.
+    expect(
+      applyStudioActorArrange(value, {
+        kind: 'actor-start',
+        target,
+        location: { q: 999, r: 999 },
+      }).room.monsterDeclarations[0].startingCell.location
+    ).toEqual({ q: 999, r: 999 });
     delete value.room.partyStart;
     expect(() =>
       applyStudioActorArrange(value, {
@@ -794,86 +836,69 @@ describe('Arrange atomic actor/start candidates', () => {
   });
 });
 
-it('linked label Arrange carries canonical authored lighting even when unresolved, not a default', () => {
+it('region Arrange carries canonical authored lighting even when unpainted, not a default', () => {
   const value = setRegionLighting(
-    createRoomLabel(draft(), 'region-light', 'lighting-label', 'Room', {
-      x: 0,
-      z: 0,
-    }),
+    createRegion(draft(), 'region-light', 'Room'),
     'region-light',
-    { background: 1 }
+    0.25
   );
   const result = projectStudioArrange({
     draft: value,
-    target: { kind: 'label', id: 'lighting-label' },
+    target: { kind: 'region', id: 'region-light' },
     selectionRevision: 3,
   });
   expect(result).toMatchObject({
-    kind: 'label',
-    region: { id: 'region-light', lighting: { background: 1 } },
-    resolution: { status: 'unresolved', reason: 'unbound' },
+    kind: 'region',
+    region: { id: 'region-light', lighting: { intensity: 0.25 } },
+    resolution: { status: 'unresolved', reason: 'empty' },
   });
-  expect(value.scene.authoringRegions![0].boundary).not.toHaveProperty(
-    'witness'
-  );
 });
 
 describe('hex Arrange projection', () => {
-  const hall = (): RoomDraft => {
-    const base = updateWalkableHexes(
-      {
-        ...createRoomDraft(createEmptyScene('scene'), 'room'),
-        workspace: centeredRoomWorkspace(6, 6),
-      },
+  const hall = (): RoomDraft =>
+    paintCells(
+      createRegion(
+        createRoomDraft(createEmptyScene('scene'), 'room'),
+        'hall',
+        'Hall'
+      ),
       [{ q: 1, r: 1 }],
-      'paint'
+      'hall'
     );
-    return {
-      ...base,
-      scene: {
-        ...base.scene,
-        authoringRegions: [
-          {
-            id: 'hall',
-            labelId: 'hall-label',
-            boundary: { kind: 'explicit', cells: [{ q: 1, r: 1 }] },
-          },
-        ],
-      },
-    };
-  };
   const target = (q: number, r: number) =>
     ({ kind: 'hex', cell: { q, r } }) as const;
 
-  it('projects a hex inside the workspace with walkable and regions', () => {
+  it('projects a floor hex with the region that owns it', () => {
     const value = hall();
     const projection = projectStudioArrange({
       draft: value,
       target: target(1, 1),
       selectionRevision: 3,
-      regionResolutions: [
-        {
-          id: 'hall',
-          status: 'resolved',
-          area: { kind: 'hex-union', cells: [{ q: 1, r: 1 }] },
-        },
-      ],
     });
     expect(projection?.kind).toBe('hex');
     if (projection?.kind !== 'hex') return;
     expect(projection.walkable).toBe(true);
-    expect(projection.regions[0]?.id).toBe('hall');
+    expect(projection.regions.map((region) => region.id)).toEqual(['hall']);
     expect(projection.cell).toEqual({ q: 1, r: 1 });
     expect(projection.selectionKey).toBe(
       JSON.stringify({ kind: 'hex', q: 1, r: 1 })
     );
   });
 
-  it('masks a hex outside the workspace', () => {
+  // The canvas is unbounded (rpg-project#725): no hex is masked for lying
+  // outside a stored workspace; only a non-integral cell is no hex at all.
+  it('projects a far hex as unpainted and refuses a non-integral cell', () => {
     expect(
       projectStudioArrange({
         draft: hall(),
         target: target(40, 0),
+        selectionRevision: 1,
+      })
+    ).toMatchObject({ kind: 'hex', walkable: false, regions: [] });
+    expect(
+      projectStudioArrange({
+        draft: hall(),
+        target: target(0.5, 0),
         selectionRevision: 1,
       })
     ).toBeNull();

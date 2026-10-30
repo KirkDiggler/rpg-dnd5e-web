@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+  createRoomDraft,
+  floorCellCount,
+  paintCells,
+  parseRoomDraftJson,
+  stringifyRoomDraft,
+} from './roomDraft';
+import {
   addProp,
   createEmptyScene,
   groupSelection,
@@ -9,13 +16,14 @@ import {
 } from './sceneState';
 import {
   LIBRARY_STORAGE_KEY,
-  SCENE_STORAGE_KEY,
   loadLibrary,
   loadScene,
+  MAX_JSON_LENGTH,
   parseLibraryJson,
   parseSceneJson,
   saveLibraryToStorage,
   saveSceneToStorage,
+  SCENE_STORAGE_KEY,
   stringifyLibrary,
   stringifyScene,
   validateLibrary,
@@ -26,6 +34,7 @@ import type {
   KeyValueStorage,
   WorldPointLight,
 } from './types';
+import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 function validScene() {
   let scene = createEmptyScene('scene-1');
@@ -354,59 +363,63 @@ describe('scene version 2 annotation preservation', () => {
   });
 });
 
-describe('opt-in scene3 authoring definitions', () => {
+// `scene.authoringRegions` retired (rpg-project#725 G4): a region is
+// gameplay, listed in `room.room.regions`, and its look rides under
+// `scene.regionPresentation` keyed by region id. These pin the scene codec's
+// half: the presentation is carried verbatim from scene 3, a wall finish in
+// it from scene 6, absence stays absent, and unreadable stored bytes are
+// protected rather than pruned.
+describe('region presentation on the scene (rpg-project#725)', () => {
   const scene3 = () => ({
     ...validScene(),
     version: 3 as const,
-    mapLabels: [{ id: 'label', text: 'Kitchen', location: { x: 0, z: 0 } }],
-    authoringRegions: [
-      {
-        id: 'region',
-        labelId: 'label',
-        boundary: { kind: 'automatic' as const },
-      },
-    ],
+    mapLabels: [{ id: 'label', text: 'A note', location: { x: 0, z: 0 } }],
+    regionPresentation: {
+      hall: { construction: { rectangles: [[0, 0, 4, 2]], tool: 'drag' } },
+    },
   });
-  it('round trips unresolved intent while keeping the storage envelope and absent fields unchanged', () => {
+  it('round trips a carried construction while keeping the envelope and absent fields unchanged', () => {
     const scene = scene3();
     const bytes = stringifyScene(scene);
     expect(JSON.parse(bytes).version).toBe(1);
     expect(parseSceneJson(bytes)).toEqual(validateScene(scene));
+    expect(parseSceneJson(bytes).regionPresentation).toEqual(
+      scene.regionPresentation
+    );
     expect(stringifyScene(parseSceneJson(bytes))).toBe(bytes);
-    const noRegions = { ...validScene(), version: 3 as const };
-    expect(parseSceneJson(stringifyScene(noRegions))).not.toHaveProperty(
-      'authoringRegions'
+    const none = { ...validScene(), version: 3 as const };
+    expect(parseSceneJson(stringifyScene(none))).not.toHaveProperty(
+      'regionPresentation'
     );
     expect(
-      validateScene({ ...noRegions, authoringRegions: [] })
-    ).not.toHaveProperty('authoringRegions');
+      validateScene({ ...none, regionPresentation: {} })
+    ).not.toHaveProperty('regionPresentation');
     for (const version of [1, 2] as const) {
       const old = { ...validScene(), version };
       const oldBytes = stringifyScene(old);
       expect(stringifyScene(parseSceneJson(oldBytes))).toBe(oldBytes);
-      expect(parseSceneJson(oldBytes).version).toBe(version);
-      expect(parseSceneJson(oldBytes)).not.toHaveProperty('authoringRegions');
-      expect(() => validateScene({ ...old, authoringRegions: [] })).toThrow(
-        /version 3/
+      expect(() => validateScene({ ...old, regionPresentation: {} })).toThrow(
+        'regionPresentation requires scene version 3 or later.'
       );
     }
     expect(() => validateScene({ ...scene, version: 8 })).toThrow(/version/);
   });
-  it('protects stored unknown scene3 fields and invalid links instead of pruning them', () => {
+  it('refuses the retired authoringRegions by name', () => {
+    expect(() =>
+      validateScene({ ...validScene(), version: 3, authoringRegions: [] })
+    ).toThrow(
+      'scene.authoringRegions is retired: regions are the floor (rpg-project#725), listed in room.room.regions'
+    );
+  });
+  it('protects stored unknown fields and malformed presentation instead of pruning them', () => {
     const fallback = validScene();
     const storage = new MemoryStorage();
     for (const invalid of [
       { ...scene3(), futureIntent: { area: 1 } },
-      {
-        ...scene3(),
-        authoringRegions: [
-          { ...scene3().authoringRegions[0], labelId: 'missing' },
-        ],
-      },
-      {
-        ...scene3(),
-        authoringRegions: [{ ...scene3().authoringRegions[0], id: 'table' }],
-      },
+      { ...scene3(), authoringRegions: [] },
+      { ...scene3(), regionPresentation: { hall: {} } },
+      { ...scene3(), regionPresentation: { hall: { tint: 'red' } } },
+      { ...scene3(), regionPresentation: [] },
     ]) {
       const bytes = JSON.stringify({
         kind: 'rpg-world-building-scene',
@@ -422,66 +435,43 @@ describe('opt-in scene3 authoring definitions', () => {
   });
 });
 
-it('scene3 rejects lighting and scene4 preserves exact optional shape without load promotion', () => {
+it('a region wall finish needs scene 6, and its shape is judged without stripping', () => {
+  const finish = {
+    materialRef: 'dnd5e:material:test:large_gray',
+    patternStart: {
+      incoming: { wallId: 'a', direction: 'start-to-end' as const },
+      outgoing: { wallId: 'b', direction: 'start-to-end' as const },
+    },
+  };
   const scene = {
     ...validScene(),
-    version: 4 as const,
-    mapLabels: [{ id: 'label', text: 'Room', location: { x: 0, z: 0 } }],
-    authoringRegions: [
-      {
-        id: 'region',
-        labelId: 'label',
-        boundary: { kind: 'automatic' as const },
-        lighting: { background: 0.153728 },
-      },
-    ],
+    version: 6 as const,
+    regionPresentation: { hall: { wallFinish: finish } },
   };
   expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);
-  expect(() => validateScene({ ...scene, version: 3 })).toThrow();
-  for (const version of [1, 2])
-    expect(() => validateScene({ ...scene, version })).toThrow();
-  for (const version of [1, 2, 3, 4] as const) {
-    const absent = { ...validScene(), version };
-    expect(parseSceneJson(stringifyScene(absent))).toEqual(absent);
-    expect(parseSceneJson(stringifyScene(absent))).not.toHaveProperty(
-      'authoringRegions'
+  for (const version of [3, 4, 5])
+    expect(() => validateScene({ ...scene, version })).toThrow(
+      /unsupported field: wallFinish/
     );
-  }
+  expect(() =>
+    validateScene({
+      ...scene,
+      regionPresentation: { hall: { wallFinish: { materialRef: 'x' } } },
+    })
+  ).toThrow();
 });
 
-it('scene4 invalid optional intent protects unreadable stored bytes, without stripping or upgrading', () => {
-  const fallback = validScene();
-  const storage = new MemoryStorage();
-  for (const lighting of [
-    null,
-    {},
-    { background: '0.15' },
-    { background: -1 },
-    { background: 2 },
-    { background: 0.15, tint: 'red' },
-  ]) {
-    const scene = {
-      ...validScene(),
-      version: 4,
-      mapLabels: [{ id: 'label', text: 'Room', location: { x: 0, z: 0 } }],
-      authoringRegions: [
-        {
-          id: 'region',
-          labelId: 'label',
-          boundary: { kind: 'automatic' },
-          lighting,
-        },
-      ],
-    };
-    const bytes = JSON.stringify({
-      kind: 'rpg-world-building-scene',
-      version: 1,
-      scene,
-    });
-    storage.values.set(SCENE_STORAGE_KEY, bytes);
-    const result = loadScene(storage, fallback);
-    expect(result.value).toBe(fallback);
-    expect(result.error).not.toBeNull();
-    expect(storage.getItem(SCENE_STORAGE_KEY)).toBe(bytes);
-  }
+// rpg-dnd5e-web#1284: the 500,000-character cap refused a full 6,208-hex
+// floor while the floor was one JSON object per hex. As row runs the floor
+// is a few lines per row, and the same floor fits with room to spare.
+it('a 6,208-hex floor envelope fits under MAX_JSON_LENGTH (rpg-dnd5e-web#1284)', () => {
+  const cells = workspaceCells(centeredRoomWorkspace(97, 64));
+  expect(cells).toHaveLength(6208);
+  const draft = paintCells(
+    createRoomDraft(createEmptyScene('scene'), 'room'),
+    cells
+  );
+  const envelope = stringifyRoomDraft(draft);
+  expect(envelope.length).toBeLessThan(MAX_JSON_LENGTH);
+  expect(floorCellCount(parseRoomDraftJson(envelope))).toBe(6208);
 });

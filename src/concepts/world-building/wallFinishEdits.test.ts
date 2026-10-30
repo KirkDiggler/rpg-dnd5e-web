@@ -52,13 +52,23 @@ describe('wall-owned face intent', () => {
       'positive-z': GRAY_REF,
     });
     expect(parseRoomDraftJson(stringifyRoomDraft(draft))).toEqual(draft);
-    expect(
-      setRegionWallFinish(draft, 'left', { materialRef: GRAY_REF }).scene
-        .version
-    ).toBe(7);
-    expect(
-      setRegionLighting(draft, 'left', { background: 0.5 }).scene.version
-    ).toBe(7);
+    // No region is wall-bound now (rpg-project#725), so a region finish can
+    // only be carried and cleared; clearing one must not demote the scene.
+    draft.scene.regionPresentation = {
+      left: {
+        wallFinish: {
+          materialRef: GRAY_REF,
+          patternStart: {
+            incoming: { wallId: 'west', direction: 'end-to-start' },
+            outgoing: { wallId: 'north', direction: 'start-to-end' },
+          },
+        },
+      },
+    };
+    const cleared = setRegionWallFinish(draft, 'left', null);
+    expect(cleared.scene.regionPresentation).toBeUndefined();
+    expect(cleared.scene.version).toBe(7);
+    expect(setRegionLighting(draft, 'left', 0.5).scene.version).toBe(7);
     expect(setActorName(draft.scene, 'actor', 'Name').version).toBe(7);
   });
   it('prunes only removed walls in the existing reconciliation owner', () => {

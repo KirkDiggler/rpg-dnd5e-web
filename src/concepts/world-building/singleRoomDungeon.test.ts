@@ -1,20 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parse, stringify } from 'yaml';
+import { parse } from 'yaml';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import type { AnswerTableShape as RoomAnswerTable } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { createMapLabel, deleteMapLabel } from './mapLabelEdits';
-import {
-  createRoomLabel,
-  setExplicitRegionArea,
-  setRegionLighting,
-} from './regionEdits';
+import { createRegion, setRegionLighting } from './regionEdits';
 import {
   createRoomDraft,
+  floorCellCount,
+  paintCells,
   parseRoomDocumentJson,
   placeRoomMonster,
-  resizeRoomWorkspace,
   stringifyRoomDraft,
   type RoomDraft,
   type RoomOption,
@@ -25,7 +22,7 @@ import {
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
 import { scopeFrom } from './siteScope';
-import { workspaceCells } from './workspaceGeometry';
+import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 /** The canonical writer's output for a document with NO v4 key, captured from
  * the encoder as it stood before this slice (rpg-dnd5e-web#1136) and committed
@@ -93,9 +90,19 @@ const engineGoblinOptions = () =>
   ).options;
 
 /** The golden's own draft: a room with a prop, a start and one actor, and none
- * of the new keys. */
+ * of the new keys. The party start and every creature's start (the options
+ * golden's goblin included) are painted floor, so each golden is a document
+ * the engine decodes AND compiles: a site whose regions own no cell is refused
+ * ("no region owns a cell"), and a creature off the floor is "not standable". */
 function goldenDraft(): RoomDraft {
-  const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+  const draft = paintCells(
+    createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+    [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 2, r: -1 },
+    ]
+  );
   draft.scene.items.push({
     id: 'prop-1',
     kind: 'prop',
@@ -121,11 +128,10 @@ const ROOM_BLOCK = `room:
   id: room-1
   name: Crypt
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
-  workspace: {hexRadius: 6, horizontalLimit: 12}
   scene: {version: 1, id: scene-1, name: Crypt, items: [], groups: []}
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}]
+    regions: [{id: room-1-region, name: Crypt, lighting: {intensity: 1}, cells: [{r: 0, q: [[0, 0]]}]}]
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:
@@ -164,37 +170,35 @@ describe('single-room dungeon source', () => {
       /Unsupported single-room source envelope/
     );
     expect(() =>
-      decodeSingleRoomDungeon('version: 3\nkey: room\nplay: {}\nroom: {}')
+      decodeSingleRoomDungeon('version: 5\nkey: room\nplay: {}\nroom: {}')
     ).toThrow();
   });
 
-  it('accepts the v4 root ahead of its keys, without loosening strictness', () => {
-    // The version seam landed BEFORE either wave's keys: the authored door
-    // wants `doorBindings` at v4 (rpg-project#468) and this slice wants the
-    // site scope and `monsterBindings` (rpg-project#477). Landing the bump
-    // once is what stops them both bumping, so a v4 root carrying only v3
-    // keys is a valid document and must decode.
-    const draft = createRoomDraft(createEmptyScene('scene-v4'), 'room-v4');
-    const asV4 = encodeSingleRoomDungeon({ key: 'crypt-room', draft }).replace(
-      'version: 3',
-      'version: 4'
-    );
-    expect(decodeSingleRoomDungeon(asV4).key).toBe('crypt-room');
-
-    // The version does not buy leniency: an unknown root key is still refused,
-    // and so is a version nobody has agreed on. `factions` is no longer the
-    // probe — it is a key this slice lands — so the probe is a key the design
-    // explicitly does NOT have yet.
-    expect(() => decodeSingleRoomDungeon(`${asV4}\nkind: dungeon\n`)).toThrow(
-      /Unsupported single-room field: kind/
-    );
-    expect(() => decodeSingleRoomDungeon('version: 5\nkey: room')).toThrow(
+  // VERSIONS 3 AND 4 RETIRED (rpg-project#725 R6, G6): the content converts
+  // once by script and there is no dual-dialect period, so the old "v4 root
+  // ahead of its keys" seam is gone. A retired root is refused by name, in
+  // the engine's sentence, and version 5 buys no leniency.
+  it('writes version 5, refuses the retired 3 and 4 by name, and stays strict at 5', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-v5'), 'room-v5');
+    const emitted = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
+    expect(decodeSingleRoomDungeon(emitted).key).toBe('crypt-room');
+    for (const retired of ['version: 3', 'version: 4'])
+      expect(() =>
+        decodeSingleRoomDungeon(emitted.replace('version: 5', retired))
+      ).toThrow(
+        'version: versions 3 and 4 are retired; regions are the floor (rpg-project#725)'
+      );
+    expect(() =>
+      decodeSingleRoomDungeon(`${emitted}\nkind: dungeon\n`)
+    ).toThrow(/Unsupported single-room field: kind/);
+    expect(() => decodeSingleRoomDungeon('version: 6\nkey: room')).toThrow(
       /Unsupported single-room source envelope/
     );
   });
 
   it('decodes the fixed play contract in any YAML mapping order', () => {
-    const reordered = `version: 3
+    const reordered = `version: 5
 room:
   version: 3
   id: room-1
@@ -205,7 +209,6 @@ room:
     distanceUnit: world-scene-unit
     hexRadius: 1
     footprintFrame: owner-local-xz
-  workspace: {hexRadius: 6, horizontalLimit: 12}
   scene:
     version: 1
     id: scene-1
@@ -216,7 +219,7 @@ room:
     implicitRegionId: room-1-region
     monsterDeclarations:
       - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: {location: {q: 2, r: -1}}}
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
+    regions: [{id: room-1-region, name: Workshop, lighting: {intensity: 1}, cells: [{r: 0, q: [[0, 1]]}]}]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {r: 0, q: 0}
@@ -250,17 +253,17 @@ play:
   it('refuses unknown root and play fields instead of accepting them', () => {
     expect(() =>
       decodeSingleRoomDungeon(
-        'version: 3\nkey: room\nboss: null\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
+        'version: 5\nkey: room\nboss: null\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
       )
     ).toThrow(/Unsupported single-room field: boss/);
     expect(() =>
       decodeSingleRoomDungeon(
-        'version: 3\nkey: room\nplay: {void: transparent, lighting: bright, standing: centre-covered, seating: 4}\nroom: {version: 3}'
+        'version: 5\nkey: room\nplay: {void: transparent, lighting: bright, standing: centre-covered, seating: 4}\nroom: {version: 3}'
       )
     ).toThrow(/Unsupported single-room play field: seating/);
     expect(() =>
       decodeSingleRoomDungeon(
-        'version: 3\nkey: room\nplay: {void: opaque, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
+        'version: 5\nkey: room\nplay: {void: opaque, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
       )
     ).toThrow(
       /Unsupported single-room play contract: void must be transparent/
@@ -268,8 +271,10 @@ play:
   });
 
   it('retains structurally valid game-illegal rooms through the round trip', () => {
-    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const draft = paintCells(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      [{ q: 0, r: 0 }]
+    );
     draft.room.partyStart = { q: 3, r: -3 };
     draft.room.monsterDeclarations = [
       {
@@ -312,7 +317,7 @@ play:
       draft: goldenDraft(),
     });
     expect(emitted).toBe(readGolden());
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     // AND STILL NO EMPTY PLACEHOLDER: the version is a claim, not a licence to
     // write keys the author never authored.
     expect(emitted).not.toContain('factions');
@@ -409,7 +414,7 @@ play:
   });
 
   it('round trips hand-written monster orders and a creature faction at v4', () => {
-    const source = `version: 4
+    const source = `version: 5
 key: crypt-room
 ${PLAY_BLOCK}
 ${ROOM_BLOCK}
@@ -441,7 +446,7 @@ ${ROOM_BLOCK}
     });
     // A v4 key was present, so the document claims v4 — and it carries the
     // authored values, in the author's own order.
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('monsterBindings:');
     expect(emitted).toContain('dnd5e:weapons:shortbow');
     expect(emitted).toContain('faction: goblins');
@@ -457,7 +462,7 @@ ${ROOM_BLOCK}
   });
 
   it('round trips a hand-written site scope and claims v4 for it alone', () => {
-    const source = `version: 4
+    const source = `version: 5
 key: front-room
 ${PLAY_BLOCK}
 factions:
@@ -497,7 +502,7 @@ ${ROOM_BLOCK}
       factions: decoded.factions,
       dispositions: decoded.dispositions,
     });
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('dispositions:');
     expect(emitted).toContain('temper:');
     expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
@@ -507,7 +512,7 @@ ${ROOM_BLOCK}
     // The driving case: a failed persuasion teaches a fact, and a thug held in
     // reserve by that fact is called in. Every field here is CARRIED — the web
     // keeps the shape and the engine grades it at PutDungeon.
-    const source = `version: 4
+    const source = `version: 5
 key: front-room
 ${PLAY_BLOCK}
 factions:
@@ -561,7 +566,7 @@ ${ROOM_BLOCK}
       dispositions: decoded.dispositions,
       intel: decoded.intel,
     });
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('intel:');
     expect(emitted).toContain('reveals:');
     expect(emitted).toContain('options:');
@@ -574,7 +579,7 @@ ${ROOM_BLOCK}
   it('carries a reserve predicate on a creature, in all four forms', () => {
     const withArrives = (predicate: string) =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        arrives: ${predicate}\n`
+        `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        arrives: ${predicate}\n`
       );
     expect(
       withArrives('{fact: cellar-is-clear}').draft.room.monsterBindings?.[
@@ -601,7 +606,7 @@ ${ROOM_BLOCK}
     // engine DECODES it and REFUSES it at compile until rpg-toolkit#1854, so
     // the web carries it rather than refusing the key: the author must be able
     // to write the block to receive the engine's sentence about it.
-    const source = `version: 4
+    const source = `version: 5
 key: tomb-heirloom
 ${PLAY_BLOCK}
 ${ROOM_BLOCK}
@@ -652,14 +657,14 @@ ${ROOM_BLOCK}
       key: 'door-only',
       draft: withDoor,
     });
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('doorBindings:');
   });
 
   it('refuses a malformed intel record and a door reveal, without inventing a target', () => {
     const withIntel = (records: string) =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\nintel:\n${records}\n${ROOM_BLOCK}\n`
+        `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\nintel:\n${records}\n${ROOM_BLOCK}\n`
       );
     expect(() => withIntel('  - {id: vault-map}')).toThrow(/reveals/);
     expect(() => withIntel('  - {id: vault-map, reveals: {}}')).toThrow(
@@ -687,14 +692,14 @@ ${ROOM_BLOCK}
     // dropped — the discipline `propDeclarations` already keeps.
     expect(() =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      long-gone:\n        actions: ['dnd5e:weapons:scimitar']\n`
+        `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      long-gone:\n        actions: ['dnd5e:weapons:scimitar']\n`
       )
     ).toThrow(/Monster binding owner does not exist: long-gone/);
     // `temper` IS accepted, and it is ONE word: the placement's own word wins
     // over its faction's mix (`RoomMonsterBinding.Temper` is a plain string
     // where `FactionSpec.Temper` is a `TemperSpec`).
     const withTemper = decodeSingleRoomDungeon(
-      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
+      `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
     );
     expect(withTemper.draft.room.monsterBindings?.['goblin-1'].temper).toBe(
       'coward'
@@ -704,12 +709,12 @@ ${ROOM_BLOCK}
     // as unknown.
     expect(() =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
+        `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
       )
     ).toThrow(/`intimidate` is no longer a key: author an option/);
     expect(() =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
+        `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
       )
     ).toThrow(
       /Monster binding for goblin-1 has an unsupported field: intimidating/
@@ -718,7 +723,7 @@ ${ROOM_BLOCK}
 
   it('refuses an answer table this build cannot roll, in the engine’s own words', () => {
     const withOn = (on: string) =>
-      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n${on}\n`;
+      `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n${on}\n`;
     // An unknown trigger, a retired social key, a missing say on an entry with
     // no word, and an empty trigger: all are the engine's sentences.
     expect(() =>
@@ -740,7 +745,7 @@ ${ROOM_BLOCK}
     // at the root. None of them is a thing standing on the floor, so each lives
     // beside `intel`/`factions`, and all four round-trip byte-verbatim with the
     // engine grading them at PutDungeon.
-    const source = `version: 4
+    const source = `version: 5
 key: tomb-heirloom
 ${PLAY_BLOCK}
 exits:
@@ -802,7 +807,7 @@ ${ROOM_BLOCK}
       scenarios: decoded.scenarios,
       concealments: decoded.concealments,
     });
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('exits:');
     expect(emitted).toContain('endings:');
     expect(emitted).toContain('scenarios:');
@@ -814,10 +819,10 @@ ${ROOM_BLOCK}
     // The version is a statement about what a file MAY contain. A room whose
     // ONLY new fact is a single exit must claim v4, the same argument a
     // doorBindings-only room makes.
-    const onlyExit = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nexits:\n  - {id: way-out, cell: {q: 0, r: 0}}\n`;
-    const onlyEnding = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nendings:\n  - {id: done, when: {down: goblin-1}}\n`;
-    const onlyScenario = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nscenarios:\n  hold-out: {convince: goblins}\n`;
-    const onlyConcealment = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nconcealments:\n  vault:\n    checks: [{ability: perception, dc: 15}]\n    cells: [{q: 0, r: 0}]\n`;
+    const onlyExit = `version: 5\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nexits:\n  - {id: way-out, cell: {q: 0, r: 0}}\n`;
+    const onlyEnding = `version: 5\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nendings:\n  - {id: done, when: {down: goblin-1}}\n`;
+    const onlyScenario = `version: 5\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nscenarios:\n  hold-out: {convince: goblins}\n`;
+    const onlyConcealment = `version: 5\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nconcealments:\n  vault:\n    checks: [{ability: perception, dc: 15}]\n    cells: [{q: 0, r: 0}]\n`;
     for (const source of [
       onlyExit,
       onlyEnding,
@@ -833,7 +838,7 @@ ${ROOM_BLOCK}
         scenarios: decoded.scenarios,
         concealments: decoded.concealments,
       });
-      expect(emitted.startsWith('version: 4\n')).toBe(true);
+      expect(emitted.startsWith('version: 5\n')).toBe(true);
     }
   });
 });
@@ -859,7 +864,7 @@ describe('answer tables at the root', () => {
   // `ROOM_BLOCK` already places `goblin-1` (in faction `goblins`) and declares
   // the hall, so the only thing this adds is a bindings block underneath it.
   const source = (root: string, bindings: string) =>
-    `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${root}\n${ROOM_BLOCK}\n    monsterBindings:\n${bindings}\n`;
+    `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${root}\n${ROOM_BLOCK}\n    monsterBindings:\n${bindings}\n`;
 
   it('reads a root table, and a binding that names it answers with both rows', () => {
     const decoded = decodeSingleRoomDungeon(
@@ -890,7 +895,7 @@ describe('answer tables at the root', () => {
     });
     // A ROOT TABLE IS A v4 FACT: a room whose only authored orders are a named
     // table must still claim v4, not fall back to v3 bytes that cannot hold it.
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).toContain('tables:');
     expect(emitted).toContain('table: goblin-drill');
     const again = decodeSingleRoomDungeon(emitted);
@@ -1023,25 +1028,20 @@ describe('answer tables at the root', () => {
 });
 
 /**
- * A MONSTER'S START MAKES A DOCUMENT v4 (rpg-toolkit#1900).
- *
- * THIS IS THE REGRESSION TEST FOR A BUG KIRK FOUND BY EYE. A room whose only
- * authored fact was a monster emitted `version: 3` while carrying
- * `startingCell` — a key v3 has no place for, so the file stated something
- * false. `carriesV4Keys` enumerated tables, factions, doors, props and
- * bindings, and simply did not mention monsters.
- *
- * IT IS THE SAME DEFECT THE DOOR WAVE LEFT, which that function's own comment
- * describes: a version is a statement about what a file MAY contain. The test
- * is here so the next shape added to `monsterDeclarations:` cannot repeat it silently.
+ * ONE VERSION, WHATEVER THE ROOM CARRIES (rpg-project#725 G6). The v3/v4
+ * choice — and the monster-placement bug it once hid (rpg-toolkit#1900) — is
+ * gone with `carriesV4Keys`: every document this build writes is version 5,
+ * because every document carries regions, which no earlier version has.
  */
 describe('the version a document claims', () => {
-  it('claims v4 for a room whose ONLY v4 fact is a monster placement', () => {
-    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    draft.room.walkableHexes = [
-      { q: 0, r: 0 },
-      { q: 1, r: 1 },
-    ];
+  it('writes version 5 for a room whose only authored fact is a monster placement', () => {
+    const draft = paintCells(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 1 },
+      ]
+    );
     const placed = placeRoomMonster(draft, {
       id: 'goblin-1',
       ref: 'dnd5e:monsters:goblin',
@@ -1052,32 +1052,38 @@ describe('the version a document claims', () => {
       draft: placed,
     });
     expect(emitted).toContain('startingCell');
-    expect(
-      emitted.startsWith('version: 4\n'),
-      'a document carrying `startingCell` cannot honestly claim v3 — v3 has no place for it'
-    ).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
   });
 
-  it('still claims v3 for a room with no monster and no scope at all', () => {
-    // The other side of the claim: nothing authored means nothing to state, so
-    // the lowest true version is still 3 and no placeholder is written.
-    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+  it('writes version 5 for a room with no monster and no scope, and no placeholder', () => {
+    const draft = paintCells(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      [{ q: 0, r: 0 }]
+    );
     const emitted = encodeSingleRoomDungeon({ key: 'empty-room', draft });
-    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     expect(emitted).not.toContain('startingCell');
+    expect(emitted).not.toContain('walkableHexes');
+    expect(emitted).not.toContain('workspace');
+    expect(emitted).toContain(
+      '    regions:\n      - id: room-1-region\n        name: Untitled room\n        lighting: {intensity: 1}\n        cells:\n          - r: 0\n            q: [[0, 0]]\n'
+    );
   });
 });
 
 describe('promoted canonical room JSON/YAML seam', () => {
   it('preserves a populated 3504-cell castle, complete supported gameplay/scope and presentation through JSON → YAML → JSON', () => {
+    // The 73 × 48 rectangle's 3,504 cells, painted (rpg-project#725: the
+    // workspace that used to hold them is gone; the floor is what is painted).
     const source = decodeWorldBuilderV4Site();
-    const resized = resizeRoomWorkspace(
-      { draft: source.draft, scope: scopeFrom(source) },
-      73,
-      48
-    );
-    resized.draft.room.walkableHexes = workspaceCells(resized.draft.workspace);
+    const resized = {
+      draft: paintCells(
+        source.draft,
+        workspaceCells(centeredRoomWorkspace(73, 48))
+      ),
+      scope: scopeFrom(source),
+    };
+    expect(floorCellCount(resized.draft)).toBe(3504);
     resized.draft.scene.items.push({
       id: 'books',
       kind: 'prop',
@@ -1176,14 +1182,8 @@ describe('promoted canonical room JSON/YAML seam', () => {
       draft: parsed.draft,
       ...parsed.scope,
     });
-    expect(parse(yaml)).toMatchObject({
-      version: 4,
-      room: {
-        version: 3,
-        scene: { version: 2 },
-        workspace: { kind: 'centered-odd-r' },
-      },
-    });
+    expect(parse(yaml)).toMatchObject({ version: 5, room: { version: 3 } });
+    expect(parse(yaml).room).not.toHaveProperty('workspace');
     const decoded = decodeSingleRoomDungeon(yaml);
     expect(decoded.draft).toEqual(resized.draft);
     expect(scopeFrom(decoded)).toEqual(resized.scope);
@@ -1194,33 +1194,8 @@ describe('promoted canonical room JSON/YAML seam', () => {
       'courtyard'
     );
     expect(unlabeled.room).toEqual(decoded.draft.room);
-    expect(unlabeled.workspace).toEqual(decoded.draft.workspace);
   });
-  it('validates scope cells through actual YAML readers/writers, not only the draft block', () => {
-    const draft = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      1,
-      1
-    ).draft;
-    const yaml = encodeSingleRoomDungeon({ key: 'small', draft });
-    const root = parse(yaml);
-    root.version = 4;
-    root.exits = [{ id: 'exit', cell: { q: 1, r: 0 } }];
-    expect(() => decodeSingleRoomDungeon(stringify(root))).toThrow(
-      /scope.exits.*exit/
-    );
-    expect(() =>
-      encodeSingleRoomDungeon({ key: 'small', draft, exits: root.exits })
-    ).toThrow(/scope.exits.*exit/);
-    delete root.exits;
-    root.concealments = {
-      secret: { checks: [{ ability: 'wis', dc: 12 }], cells: [{ q: 1, r: 0 }] },
-    };
-    expect(() => decodeSingleRoomDungeon(stringify(root))).toThrow(
-      /scope.concealments.*secret/
-    );
-  });
-  it('keeps YAML root version selection unchanged for presentation-only metadata on legacy workspace', () => {
+  it('writes a presentation-only note at version 5 and reads it back', () => {
     const draft = createMapLabel(
       createRoomDraft(createEmptyScene('scene'), 'room'),
       'label',
@@ -1228,67 +1203,38 @@ describe('promoted canonical room JSON/YAML seam', () => {
       { x: 0, z: 0 }
     );
     const yaml = encodeSingleRoomDungeon({ key: 'labels', draft });
-    expect(parse(yaml).version).toBe(3);
+    expect(parse(yaml).version).toBe(5);
     expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
-    expect(decodeSingleRoomDungeon(yaml).draft.workspace).toEqual({
-      hexRadius: 6,
-      horizontalLimit: 12,
-    });
   });
 });
 
-describe('scene3 source forwarding only (not provider acceptance)', () => {
-  it('forwards bound, unbound and empty explicit definitions without changing root/play/gameplay/scope contracts', () => {
-    const draft = goldenDraft();
-    const legacy = parse(encodeSingleRoomDungeon({ key: 'crypt-room', draft }));
+// The scene3 authoring-intent forwarding and the off-centre workspace
+// retired with `scene.authoringRegions` and `room.workspace`
+// (rpg-project#725). What they guarded — that the codec forwards the region
+// presentation verbatim without touching root, play, gameplay or scope, and
+// that region lighting survives JSON → YAML → JSON — is pinned here.
+describe('region presentation forwarding (not provider acceptance)', () => {
+  it('forwards a region look and a carried construction without changing root/play/gameplay/scope', () => {
+    const draft = createRegion(goldenDraft(), 'hall', 'Hall');
+    const plain = parse(encodeSingleRoomDungeon({ key: 'crypt-room', draft }));
     draft.scene.version = 3;
-    draft.scene.mapLabels = ['bound', 'unbound', 'explicit'].map((id) => ({
-      id,
-      text: id,
-      location: { x: 0, z: 0 },
-    }));
-    draft.scene.authoringRegions = [
-      {
-        id: 'bound-region',
-        labelId: 'bound',
-        boundary: {
-          kind: 'automatic',
-          witness: {
-            walk: [
-              { wallId: 'A-missing', direction: 'start-to-end' },
-              { wallId: 'B-missing', direction: 'start-to-end' },
-              { wallId: 'C-missing', direction: 'start-to-end' },
-            ],
-          },
-        },
-      },
-      {
-        id: 'unbound-region',
-        labelId: 'unbound',
-        boundary: { kind: 'automatic' },
-      },
-      {
-        id: 'explicit-region',
-        labelId: 'explicit',
-        boundary: { kind: 'explicit', cells: [] },
-      },
-    ];
+    draft.scene.regionPresentation = {
+      hall: { construction: { rectangles: [{ q: 0, r: 0, w: 4, h: 2 }] } },
+    };
     const yaml = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
     const source = parse(yaml);
-    expect(source.version).toBe(legacy.version);
-    expect(source.play).toEqual(legacy.play);
-    expect(source.room.room).toEqual(legacy.room.room);
-    expect(source.room.workspace).toEqual(legacy.room.workspace);
-    expect(source.room.scene.version).toBe(3);
-    expect(source.room.scene.authoringRegions).toEqual(
-      draft.scene.authoringRegions
+    expect(source.version).toBe(plain.version);
+    expect(source.play).toEqual(plain.play);
+    expect(source.room.room).toEqual(plain.room.room);
+    expect(source.room.scene.regionPresentation).toEqual(
+      draft.scene.regionPresentation
     );
     expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
     expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(yaml))).toBe(yaml);
   });
 });
 
-it('scene4 JSON → YAML → JSON preserves full populated payload and scope (Web codecs, not provider proof)', () => {
+it('region lighting JSON → YAML → JSON preserves full populated payload and scope (Web codecs, not provider proof)', () => {
   const document = createPopulatedStudioDocument();
   const base = parse(
     encodeSingleRoomDungeon({
@@ -1298,20 +1244,13 @@ it('scene4 JSON → YAML → JSON preserves full populated payload and scope (We
     })
   );
   document.draft = setRegionLighting(
-    createRoomLabel(
-      document.draft,
-      'lighting-region',
-      'lighting-label',
-      'Room',
-      { x: 0, z: 0 }
-    ),
+    createRegion(document.draft, 'lighting-region', 'Room'),
     'lighting-region',
-    { background: 0.153728 }
+    0.153728
   );
   for (const draft of [
     document.draft,
-    setExplicitRegionArea(document.draft, 'lighting-region', []),
-    setExplicitRegionArea(document.draft, 'lighting-region', [{ q: 0, r: 0 }]),
+    paintCells(document.draft, [{ q: 9, r: 9 }], 'lighting-region'),
   ]) {
     const bytes = stringifyRoomDraft(draft, document.scope);
     const loaded = parseRoomDocumentJson(bytes);
@@ -1323,53 +1262,14 @@ it('scene4 JSON → YAML → JSON preserves full populated payload and scope (We
     const source = parse(yaml);
     expect(source.version).toBe(base.version);
     expect(source.room.version).toBe(3);
-    expect(source.room.scene.version).toBe(4);
-    source.room.scene = base.room.scene;
-    expect(source).toEqual(base);
+    const lit = source.room.room.regions.find(
+      (r: { id: string }) => r.id === 'lighting-region'
+    );
+    expect(lit.lighting).toEqual({ intensity: 0.153728 });
     const decoded = decodeSingleRoomDungeon(yaml);
     expect(decoded.draft).toEqual(draft);
     expect(scopeFrom(decoded)).toEqual(document.scope);
     expect(stringifyRoomDraft(decoded.draft, scopeFrom(decoded))).toBe(bytes);
     expect(encodeSingleRoomDungeon(decoded)).toBe(yaml);
   }
-});
-
-describe('the off-centre workspace through the single-room codec', () => {
-  it('an off-centre workspace encodes and round-trips through parse', () => {
-    const centred = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      20,
-      20
-    );
-    const grown = resizeRoomWorkspace(centred, 24, 22).draft;
-    expect(grown.workspace.kind).toBe('odd-r-rect');
-    const decoded = decodeSingleRoomDungeon(
-      encodeSingleRoomDungeon({ key: 'grown-room', draft: grown })
-    );
-    expect(decoded.draft).toEqual(grown);
-  });
-
-  it('an unresized centred document encodes byte-identical', () => {
-    const centred = resizeRoomWorkspace(
-      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
-      20,
-      20
-    );
-    const bytes = encodeSingleRoomDungeon({
-      key: 'room',
-      draft: centred.draft,
-    });
-    const same = resizeRoomWorkspace(centred, 20, 20);
-    expect(same).toBe(centred);
-    expect(encodeSingleRoomDungeon({ key: 'room', draft: same.draft })).toBe(
-      bytes
-    );
-    expect(
-      encodeSingleRoomDungeon({
-        key: 'room',
-        draft: decodeSingleRoomDungeon(bytes).draft,
-      })
-    ).toBe(bytes);
-    expect(bytes).toContain('centered-odd-r');
-  });
 });

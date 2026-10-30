@@ -82,13 +82,23 @@ import {
   unknownScopeRefusal,
   unknownSelectorKeyRefusal,
   unknownSelectorRefusal,
+  unknownThreatRefusal,
   unknownTriggerRefusal,
+  walksTo,
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
+  whoNamesNobodyRefusal,
+  whoOnlyOnFellRefusal,
   type SearchHeading,
 } from '@/author/answerVocabulary';
+import { PREDICATE_SHAPE } from '@/author/factionVocabulary';
 import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
+import {
+  NOT_OF_NOT_REFUSAL,
+  OPTION_REQUIRES_FORMS,
+  type OptionRequires,
+} from './predicateNot';
 
 /** One cell of the room, as its walkable hexes are written: axial. */
 export interface AnswerCellShape {
@@ -170,6 +180,9 @@ export type AnswerWhenDeed = {
   within: number;
   on?: 'ally';
   as?: 'actor';
+  /** `fell`'s `who: <monster placement id>` (rpg-project#716): the one
+   * member whose fall the row waits on. Legal on `fell` alone. */
+  who?: string;
 };
 
 /** `heard: { kind, within }` — a sound of a sealed kind, no older than the
@@ -187,8 +200,12 @@ export type AnswerWhenCondition =
   | { intimidated: AnswerWhenDeed }
   | { persuaded: AnswerWhenDeed }
   | { fled: AnswerWhenDeed }
+  | { fell: AnswerWhenDeed }
   | { heard: AnswerWhenHeard }
   | { fact: string }
+  /** `threat: none | walk | dash` (rpg-project#671 R18): who else could
+   * reach where this row lands, and swing. */
+  | { threat: string }
   | { not: AnswerWhenCondition };
 
 /** A `when:` AS WRITTEN — one condition as a single mapping, or a LIST of
@@ -257,6 +274,9 @@ export interface AnswerEntryShape {
   hold?: Record<string, unknown>;
   attack?: AnswerSelectorShape;
   toward?: AnswerSelectorShape;
+  /** `dash: <selector>` (rpg-project#671 R17): a run at the target, taking
+   * `toward`'s selectors. */
+  dash?: AnswerSelectorShape;
   away?: AnswerSelectorShape;
   /** `search: { distance }` (rpg-project#668 R4); distance absent is the
    * engine's six, carried absent so the file's bytes round-trip. */
@@ -501,6 +521,7 @@ function validateAnswerEntry(
       const selector = validateAnswerSelector(raw, `${path}.${word}`, word);
       if (word === 'attack') entry.attack = selector;
       else if (word === 'toward') entry.toward = selector;
+      else if (word === 'dash') entry.dash = selector;
       else if (word === 'away') entry.away = selector;
     } else if (shape === 'search') {
       entry.search = validateAnswerSearch(raw, `${path}.${word}`);
@@ -522,9 +543,11 @@ function validateAnswerEntry(
         ? entry.attack
         : word === 'toward'
           ? entry.toward
-          : word === 'away'
-            ? entry.away
-            : undefined;
+          : word === 'dash'
+            ? entry.dash
+            : word === 'away'
+              ? entry.away
+              : undefined;
     if (selector === undefined) continue;
     // A deed named POSITIVELY by any entry of the list: a negated deed has no
     // actor to have been.
@@ -548,6 +571,7 @@ const GROUP_CARRIED_KEYS: readonly string[] = Object.freeze([
   'hold',
   'attack',
   'toward',
+  'dash',
   'away',
   'flee',
   'search',
@@ -727,6 +751,17 @@ function validateWhenCondition(
     };
   }
 
+  if (key === ANSWER_WHEN.threatKey) {
+    // A SEALED WORD, refused in the dialect's voice (`WhenSpec`'s threat arm).
+    const word = scalarText(value.threat);
+    if (
+      typeof value.threat !== 'string' ||
+      !ANSWER_WHEN.threatWords.includes(word)
+    )
+      fail(path, unknownThreatRefusal(word));
+    return { threat: word };
+  }
+
   if (key === 'enemy') {
     const band = scalarText(value.enemy);
     if (!ANSWER_WHEN.enemyBands.includes(band))
@@ -757,7 +792,24 @@ function validateWhenCondition(
   if (within < ANSWER_WHEN.minimumWithin) fail(path, spanRefusal(within));
 
   const scope = validateWhenScope(body, `${path}.${key}`, key);
-  return { [key]: { within, ...scope } } as AnswerWhenCondition;
+  // `who` NAMES WHO FELL, and only a fall has one to name (rpg-project#716).
+  // Whether it names a monster placed in this file is the engine's to judge
+  // at Save & Play (`grammar.whenWho`), at the row.
+  let who: string | undefined;
+  if (body.who !== undefined && body.who !== null) {
+    if (!ANSWER_WHEN.whoDeeds.includes(key))
+      fail(path, whoOnlyOnFellRefusal(key));
+    who = scalarText(body.who);
+    if (who === '') fail(path, whoNamesNobodyRefusal(key));
+  }
+  // THE BODY'S KEYS IN THE FILE'S ORDER, so `{ who: king, within: 3, on:
+  // ally }` is written back as it was read.
+  const read: Record<string, unknown> = { within, ...scope };
+  if (who !== undefined) read.who = who;
+  const ordered: Record<string, unknown> = {};
+  for (const bodyKey of Object.keys(body))
+    if (read[bodyKey] !== undefined) ordered[bodyKey] = read[bodyKey];
+  return { [key]: ordered } as AnswerWhenCondition;
 }
 
 /** `heard: { kind, within }`. The DECODER refuses the shape, an unknown key
@@ -884,7 +936,12 @@ function validateAnswerSelector(
     if (!selectorWordLegalOn(value, word))
       // A SELECTOR-SHAPE FAULT IS THE ROW'S (rpg-toolkit#2044): the engine
       // asks mind/behavior of the compiled row and reports at `…time[i]`.
-      fail(rowPathOf(path, word), HEARING_SENTENCES.attackSound());
+      fail(
+        rowPathOf(path, word),
+        value === 'ally'
+          ? HEARING_SENTENCES.attackAlly()
+          : HEARING_SENTENCES.attackSound()
+      );
     return value;
   }
   if (isMapping(value)) {
@@ -923,14 +980,13 @@ function validateAnswerSelector(
       fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
     if (!routeWritten && hasAt) {
       if (at === null) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
-      if (word !== ANSWER_AT_SELECTOR.onlyWord)
-        fail(path, atSelectorRefusal(word));
+      if (!walksTo(word)) fail(path, atSelectorRefusal(word));
     }
     // mind/behavior's shape, at the ROW (`Selector.validate`).
     if (hasAt && route.length > 0)
       fail(rowPathOf(path, word), HEARING_SENTENCES.selectorNamesBoth(word));
     if (route.length > 0) {
-      if (word !== ANSWER_PATH_SELECTOR.onlyWord)
+      if (!walksTo(word))
         fail(rowPathOf(path, word), HEARING_SENTENCES.pathNotToward(word));
       return { path: route };
     }
@@ -1039,7 +1095,7 @@ export interface AnswerApproachShape {
  * speaker knows, or a placed prop the speaker carries. Exactly one form, and
  * only these two — `round`, `down` and `stance` answer "when", not "who may
  * say this". */
-export type OptionRequiresShape = { fact: string } | { holds: string };
+export type OptionRequiresShape = OptionRequires;
 
 /** One option as written (`dungeonspec.OptionSpec`): an id, the line, the
  * approaches through its check, what gates it, and what is answered on each
@@ -1097,9 +1153,10 @@ export function optionDuplicateRefusal(id: string, previous: number): string {
 export function optionEmptyVerdictRefusal(verdict: string): string {
   return `\`${verdict}\` lists nothing — omit it, or write what is answered`;
 }
-/** `grammar.optionRequires`: a predicate form that is not fact or holds. */
+/** `grammar.optionRequires`: a predicate form that is not fact or holds,
+ * or `not` of one (rpg-project#719). */
 export function optionRequiresFormRefusal(form: string): string {
-  return `an option requires { fact: <id> } or { holds: <prop id> }, and \`${form}\` is neither`;
+  return `${OPTION_REQUIRES_FORMS}, and \`${form}\` is none of them`;
 }
 /** `grammar.optionRequires`: a holding of a prop the room does not place. */
 export function optionHoldsNotAPropRefusal(id: string): string {
@@ -1243,16 +1300,32 @@ function validateApproaches(
   });
 }
 
-/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`. A real
- * predicate of another form is refused BY NAME with the engine's sentence,
- * since the author wrote something meaningful in the wrong place. */
+/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`, or `{ not:
+ * }` one of them (rpg-project#719). A real predicate of another form is
+ * refused BY NAME with the engine's sentence, since the author wrote
+ * something meaningful in the wrong place. */
 function validateOptionRequires(
   value: unknown,
   path: string
 ): OptionRequiresShape {
-  const shape = 'an option requires { fact: <id> } or { holds: <prop id> }';
+  const shape = OPTION_REQUIRES_FORMS;
   if (!isMapping(value) || Object.keys(value).length !== 1) fail(path, shape);
   const form = Object.keys(value)[0];
+  if (form === 'not') {
+    const inner = value.not;
+    // `{ not: {} }` or `{ not: }`: the engine's decode refuses it as a
+    // predicate that says nothing (`PredicateSpec.UnmarshalYAML`).
+    if (
+      inner === null ||
+      inner === undefined ||
+      (isMapping(inner) && Object.keys(inner).length === 0)
+    )
+      fail(`${path}.not`, `this predicate says nothing — ${PREDICATE_SHAPE}`);
+    if (isMapping(inner) && Object.keys(inner).length === 1 && 'not' in inner)
+      fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
+    const read = validateOptionRequires(inner, `${path}.not`);
+    return { not: read as Exclude<OptionRequiresShape, { not: unknown }> };
+  }
   if (OTHER_PREDICATE_FORMS.includes(form))
     fail(path, optionRequiresFormRefusal(form));
   if (form !== 'fact' && form !== 'holds') fail(path, shape);

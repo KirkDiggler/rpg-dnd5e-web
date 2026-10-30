@@ -13,14 +13,14 @@ viewport may unmount independently without replacing the document owner.
 
 Studio keeps two permanent chrome bands: document/name/save/view header and
 editing/history toolbar. Header rename commits the trimmed canonical scene and
-draft names together, preserving identity and site scope. Size opens staged
-workspace dimensions; accepted Apply commits before dismissing the fields.
+draft names together, preserving identity and site scope. There is no Size:
+the canvas is unbounded and the file stores no workspace (rpg-project#725 R3).
 Cancel/Escape dismiss without content changes. Wall and Label contexts dismiss
 without deleting committed content; their staged forms are not document state.
 
-Layout offers Paint, Erase and Rectangle on canonical walkable cells, Select,
-Wall, explicit Size and presentation-only map labels. A completed
-stroke/rectangle or wall gesture is one bounds/size-checked whole-document history
+Layout offers Paint and Rectangle into the **active region**, Erase of floor,
+Select, Wall and presentation-only notes (see "Regions are the floor" below). A
+completed stroke/rectangle or wall gesture is one size-checked whole-document history
 transaction. The 3D view reuses prop placement, selection, Move/Rotate, repeat,
 grouping, support, height and visual-light controls. Both views use the same draft **and complete
 site scope**, shared Undo/Redo and persistence. View changes and Layout pan/zoom
@@ -32,7 +32,8 @@ The 3D camera is not promised to survive renderer remounts.
 Studio resumes World Builder's local draft under
 `rpg.concepts.world-building.room-draft.v3` (`ROOM_DRAFT_STORAGE_KEY`), not a
 Studio namespace or copied document. Despite the suffix, the current serialized
-room envelope is **version 5** with draft version 3 and optional normalized scope.
+room envelope is **version 6** with draft version 3 and optional normalized scope;
+envelopes 1–5 are refused by name ("rebuild, no migration (rpg-project#725)").
 Missing current bytes permit the existing legacy-key lookup then blank fallback;
 present unreadable/unsupported current bytes are refused and preserved with
 visible feedback and autosave blocked. Explicit **Replace unreadable local
@@ -291,7 +292,48 @@ middleware, never a production build. Candidate geometry must match the pinned
 GLB. A working preview is not appearance/scale acceptance or publication. These
 settings are Studio-only; no permitted Play layout or proto delivery is implied.
 
+## Regions are the floor (rpg-project#725)
+
+The floor is the union of `room.room.regions`: each region is `{id, name,
+lighting: {intensity: 0..1}, cells}`, its cells written as canonical row runs
+`{r, q: [[qStart, qEnd], ...]}`. No cell is in two regions. There is no
+walkable list and no workspace; the single-room file is root `version: 5`, and
+3 and 4 are refused by name. A region's look and the author's construction ride
+under `scene.regionPresentation` keyed by region id (construction carried
+verbatim and unread); `scene.authoringRegions` is refused by name, and
+`scene.mapLabels` are notes only.
+
+**The active region.** Paint and Rectangle put every brushed cell in the active
+region and take it from whichever region held it, so brushing with a region
+active reassigns. The active region is the implicit region by default, and again
+when the chosen one is removed. It is chosen by the regions list's radio, a
+region view's **Make active** or a hex view's **Make <name> active**; it is
+workspace state and never written. Erase removes floor whatever region held it.
+A stroke paints into the region that was active when it began.
+
+**Regions list.** Layout's list shows each region by name with its swatch, its
+hex count and its light %, and a radio for the active one. Selecting a row
+selects the region and frames it. **New region** takes a name, creates a bright,
+unpainted region, selects it and makes it active. The region view edits **Region
+name** (the label on the map, drawn at the centroid of its cells) and **Lighting
+(%)** in one form, shows the paint status, and offers **Remove region** — its
+cells fall to the implicit region — except on the implicit region itself. The
+label tool places notes only.
+
+**Unbounded canvas.** Layout draws the content bounding box plus a 6-cell
+margin (a 24 × 24 square around the origin when the room is empty). Any cell is
+paintable and selectable, so painting past the drawn edge grows the grid. The
+view frame is not stored; zoom is relative to the drawn grid's fit, and when the
+grid grows the surface rescales the zoom so the map holds still on screen.
+**Show entire** frames the content. Notes are bounded only by the ±100,000 world
+coordinate defence. A region's wall finish is carried but never applied: a region
+of listed cells names no wall face.
+
 ## Centered workspaces and map annotations (#1239)
+
+> **Superseded by "Regions are the floor" above (rpg-project#725).** The
+> workspace, its dimensions, resize and every bound it imposed are retired; the
+> rest of this section is kept as the record of what #1239 shipped.
 
 **Width (hexes)** and **Height (hexes)** stage integer counts in `1..128`.
 **Apply dimensions** is one atomic resize; Cancel/Escape or navigation does not

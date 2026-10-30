@@ -42,6 +42,7 @@ import {
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
+  MONSTERS,
   PREDICATE_FORMS,
   STANCES,
   type PredicateDoc,
@@ -55,9 +56,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { ActionRefList } from '../encounter-studio/ActionRefList';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
+import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
   isUseEntry,
@@ -71,6 +74,7 @@ import {
   type AnswerEntryShape,
   type AnswerSelectorShape,
   type AnswerTableShape,
+  type AnswerWaypointShape,
   type AnswerWhenCondition,
   type AnswerWhenShape,
   type OptionShape,
@@ -82,7 +86,7 @@ import {
   enemyBandPhrase,
   factLabel,
   heardLabel,
-  selectorPhrase,
+  threatLabel,
   whenShorthand,
 } from './answerVocabulary';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
@@ -116,12 +120,22 @@ import {
   removeOptionRow,
 } from './optionEdits';
 import { ParamChip, ParamSlot } from './ParamSlot';
+import { PlacedMonstersContext } from './placedMonstersContext';
 import { placementDisplayNames } from './placementNames';
 import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
+import {
+  REQUIRES_CHOICES,
+  requiresChoice,
+  requiresGate,
+  requiresId,
+  requiresOf,
+  type RequiresChoice,
+} from './predicateNot';
 import {
   dispositionLine,
   pairMindNameIn,
   predicateSentence,
+  untilTextIn,
 } from './predicateSentence';
 import type {
   RoomDraftDocument,
@@ -130,25 +144,39 @@ import type {
   RoomMonsterPlacement,
 } from './roomDraft';
 import { WEAPON_REF_RE } from './roomDraft';
+import { RouteEditor, WaypointChips } from './RouteEditor';
+import { isRouteValue, waypointOf } from './routeEdits';
+import { RowRefusalLines } from './RowRefusalLines';
+import { rowPathLabel, useRowRefusalsAt } from './rowRefusals';
+import { SelectorTarget } from './SelectorTarget';
 import {
   addSiteAnswerEntry,
   addSiteDisposition,
   addSiteFaction,
+  addSiteFactionOption,
   entryWord,
   patchSiteAnswerEntry,
   patchSiteFaction,
   removeSiteAnswerEntry,
   removeSiteDisposition,
   removeSiteFaction,
+  removeSiteFactionOption,
   renameSiteFaction,
   setAnswerEntryWord,
+  setSiteFactionOption,
   updateSiteDisposition,
 } from './sitePolicyEdits';
-import type {
-  SiteDisposition,
-  SiteFaction,
-  SiteScope,
-  SiteTemper,
+import {
+  stepPredicate,
+  UNTIL_LIST_ON_FACTS,
+  UNTIL_SENTENCES,
+  untilSteps,
+  type SiteDisposition,
+  type SiteFaction,
+  type SiteScope,
+  type SiteTemper,
+  type SiteUntil,
+  type SiteUntilStep,
 } from './siteScope';
 import { useRowKeys } from './useRowKeys';
 
@@ -289,6 +317,8 @@ const isMapping = (value: unknown): value is Record<string, unknown> =>
  * express an illegal state. Two conditions are two entries of the list. */
 type WhenBaseForm =
   | { kind: 'enemy'; band: string }
+  /** `threat: none | walk | dash` (rpg-project#671 R18). */
+  | { kind: 'threat'; word: string }
   | {
       kind: 'deed';
       deed: string;
@@ -297,6 +327,9 @@ type WhenBaseForm =
        * itself. Absent is the third answer and has no spelling (see
        * `AnswerWhenShape`). */
       scope?: { key: string; value: string };
+      /** `fell`'s `who`: the monster placement whose fall the row waits on
+       * (rpg-project#716), or undefined for any fall. */
+      who?: string;
     }
   | { kind: 'heard'; sound: string; within: number }
   | { kind: 'fact'; fact: string }
@@ -313,6 +346,7 @@ interface WhenConditionForm {
 
 function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
   if ('enemy' in condition) return { kind: 'enemy', band: condition.enemy };
+  if ('threat' in condition) return { kind: 'threat', word: condition.threat };
   if ('heard' in condition)
     return {
       kind: 'heard',
@@ -323,7 +357,7 @@ function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
   if ('not' in condition) return { kind: 'nested', condition };
   const [deed, span] = Object.entries(condition)[0] as [
     string,
-    { within: number; on?: 'ally'; as?: 'actor' },
+    { within: number; on?: 'ally'; as?: 'actor'; who?: string },
   ];
   // THE SCOPE IS READ OFF THE BODY, not guessed: whichever of the two keys the
   // document carries is the one the form shows, and neither means the creature
@@ -334,7 +368,7 @@ function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
       : span.as !== undefined
         ? { key: 'as', value: span.as }
         : undefined;
-  return { kind: 'deed', deed, within: span.within, scope };
+  return { kind: 'deed', deed, within: span.within, scope, who: span.who };
 }
 
 function conditionFormOf(condition: AnswerWhenCondition): WhenConditionForm {
@@ -348,18 +382,24 @@ function conditionFormOf(condition: AnswerWhenCondition): WhenConditionForm {
  * that by writing no key at all rather than by writing a third word. */
 function deedBody(
   within: number,
-  scope: { key: string; value: string } | undefined
-): { within: number; on?: 'ally'; as?: 'actor' } {
-  if (scope === undefined) return { within };
+  scope: { key: string; value: string } | undefined,
+  who?: string
+): { within: number; on?: 'ally'; as?: 'actor'; who?: string } {
+  // `who` FIRST when there is one: the castle's own spelling, `{ who: king,
+  // within: 3, on: ally }`.
+  const named = who !== undefined ? { who } : {};
+  if (scope === undefined) return { ...named, within };
   return scope.key === 'on'
-    ? { within, on: scope.value as 'ally' }
-    : { within, as: scope.value as 'actor' };
+    ? { ...named, within, on: scope.value as 'ally' }
+    : { ...named, within, as: scope.value as 'actor' };
 }
 
 function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
   switch (base.kind) {
     case 'enemy':
       return { enemy: base.band };
+    case 'threat':
+      return { threat: base.word };
     case 'heard':
       return { heard: { kind: base.sound, within: base.within } };
     case 'fact':
@@ -368,7 +408,11 @@ function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
       return base.condition;
     case 'deed':
       return {
-        [base.deed]: deedBody(base.within, base.scope),
+        [base.deed]: deedBody(
+          base.within,
+          base.scope,
+          ANSWER_WHEN.whoDeeds.includes(base.deed) ? base.who : undefined
+        ),
       } as AnswerWhenCondition;
   }
 }
@@ -397,6 +441,7 @@ const SELF_SCOPE = '__self__';
 function pickerValue(base: WhenBaseForm | undefined): string {
   if (base === undefined) return 'any';
   if (base.kind === 'enemy') return `enemy:${base.band}`;
+  if (base.kind === 'threat') return `threat:${base.word}`;
   if (base.kind === 'deed') return `deed:${base.deed}`;
   return base.kind;
 }
@@ -414,6 +459,8 @@ function baseForPicker(
       : ANSWER_WHEN.minimumWithin;
   if (next.startsWith('enemy:'))
     return { kind: 'enemy', band: next.slice('enemy:'.length) };
+  if (next.startsWith('threat:'))
+    return { kind: 'threat', word: next.slice('threat:'.length) };
   if (next === 'heard')
     return {
       kind: 'heard',
@@ -433,6 +480,9 @@ function baseForPicker(
     deed: next.slice('deed:'.length),
     within: span,
     scope: previous?.kind === 'deed' ? previous.scope : undefined,
+    // `who` is a fall's alone: kept between falls, never carried to another
+    // deed, which the engine would refuse.
+    who: previous?.kind === 'deed' ? previous.who : undefined,
   };
 }
 
@@ -519,6 +569,11 @@ function WhenConditionRow({
           ))}
           <option value="heard">{heardLabel()}</option>
           <option value="fact">{factLabel()}</option>
+          {ANSWER_WHEN.threatWords.map((word) => (
+            <option key={`threat:${word}`} value={`threat:${word}`}>
+              {threatLabel(word)}
+            </option>
+          ))}
         </select>
       )}
       {base?.kind === 'deed' && (
@@ -571,6 +626,13 @@ function WhenConditionRow({
               </option>
             ))}
           </select>
+          {ANSWER_WHEN.whoDeeds.includes(base.deed) && (
+            <WhoFellSelect
+              label={`Who fell${n} for ${trigger} entry`}
+              value={base.who}
+              onChange={(who) => commitBase({ ...base, who })}
+            />
+          )}
         </>
       )}
       {base?.kind === 'heard' && (
@@ -659,6 +721,43 @@ function WhenConditionRow({
         </button>
       )}
     </li>
+  );
+}
+
+/** `fell`'s `who` (rpg-project#716): one of the monsters placed in the
+ * document, or anyone. A hand-written id the document does not place is kept
+ * as its own choice, so selecting is never a way to lose it; the engine
+ * refuses it by name at Save & Play (`grammar.whenWho`). */
+function WhoFellSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (who: string | undefined) => void;
+}) {
+  const monsters = useContext(PlacedMonstersContext);
+  const dangling = value !== undefined && !monsters.has(value);
+  return (
+    <>
+      <span className="wb-entry-perspective-label">Who</span>
+      <select
+        aria-label={label}
+        value={value ?? ''}
+        onChange={(event) =>
+          onChange(event.target.value === '' ? undefined : event.target.value)
+        }
+      >
+        <option value="">(anyone)</option>
+        {[...monsters].map(([id, name]) => (
+          <option key={id} value={id} title={id}>
+            {name}
+          </option>
+        ))}
+        {dangling && <option value={value}>{value} (not placed here)</option>}
+      </select>
+    </>
   );
 }
 
@@ -795,9 +894,11 @@ export function AnswerEntryRow(props: AnswerEntryRowProps) {
       <UseEntryRow
         trigger={props.trigger}
         entry={props.entry}
+        onCommit={props.onCommit}
         onRemove={props.onRemove}
         label={props.label ?? props.trigger}
         controls={props.controls}
+        at={props.at}
       />
     );
   return <WordEntryRow {...props} />;
@@ -808,19 +909,34 @@ export function AnswerEntryRow(props: AnswerEntryRowProps) {
 function UseEntryRow({
   trigger,
   entry,
+  onCommit,
   onRemove,
   label,
   controls,
+  at,
 }: {
   trigger: string;
   entry: AnswerEntryShape & { use: string };
+  onCommit?: (entry: AnswerEntryShape) => void;
   onRemove: () => void;
   label: string;
   controls?: ReactNode;
+  at?: readonly string[];
 }) {
   const bundles = useContext(SiteBundlesContext);
   const inBundle = useContext(BundleParamsContext);
   const [open, setOpen] = useState(false);
+  const { refusals, focused, rowRef } = useRowRefusalsAt(at);
+  // A ROUTE GIVEN TO A BUNDLE (rpg-project#720): `with: { path: [...] }` is
+  // edited here the way a row's own route is, its waypoints as chips.
+  const routes = Object.entries(entry.with ?? {}).filter(([, v]) =>
+    isRouteValue(v)
+  ) as [string, AnswerWaypointShape[]][];
+  const [editingRoute, setEditingRoute] = useState(false);
+  useEffect(() => {
+    if (focused && routes.length > 0) setEditingRoute(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused]);
   // INSIDE A BUNDLE a `with` value may itself be a parameter, `$path`, which
   // is only a route once the outer bundle is used; the line shows it as a
   // chip, and the rows it makes are shown where the outer bundle is used.
@@ -832,11 +948,22 @@ function UseEntryRow({
     : resolveUse(bundles, entry, trigger);
   return (
     <li
+      ref={rowRef}
       className="wb-policy-entry wb-entry-collapsed wb-entry-use"
       data-entry-word="use"
     >
       <UseLine entry={entry} />
       {controls}
+      {routes.length > 0 && onCommit && (
+        <button
+          type="button"
+          aria-label={`Edit the route of ${label} entry ${entry.use}`}
+          aria-expanded={editingRoute}
+          onClick={() => setEditingRoute((was) => !was)}
+        >
+          {editingRoute ? 'Done with route' : 'Edit route'}
+        </button>
+      )}
       <button
         type="button"
         aria-label={`Show the rows of ${label} entry ${entry.use}`}
@@ -858,6 +985,32 @@ function UseEntryRow({
           {resolved.refusal.message}
         </p>
       )}
+      <RowRefusalLines refusals={refusals} />
+      {editingRoute &&
+        onCommit &&
+        routes.map(([param, route]) => (
+          <div key={param} className="wb-use-route">
+            <span>
+              with <code>{param}</code>
+            </span>
+            <RouteEditor
+              mode="route"
+              route={route}
+              label={`${label} entry ${entry.use} ${param}`}
+              pickLabel={`${rowPathLabel(at) ?? `${label} entry`} (${entry.use} ${param})`}
+              onChange={(next) => {
+                if (next.length === 0) return;
+                onCommit({
+                  ...entry,
+                  with: {
+                    ...entry.with,
+                    [param]: next.map((w) => waypointOf(w, w)),
+                  },
+                });
+              }}
+            />
+          </div>
+        ))}
       {open && (
         <ul className="wb-use-rows" aria-label={`${entry.use} rows`}>
           {deferred ? (
@@ -891,6 +1044,8 @@ function UseLine({ entry }: { entry: AnswerEntryShape & { use: string } }) {
                 {name}{' '}
                 {paramRefOf(value) !== undefined ? (
                   <ParamChip name={paramRefOf(value)!} />
+                ) : isRouteValue(value) ? (
+                  <WaypointChips route={value} label={`${entry.use} ${name}`} />
                 ) : (
                   paramText(value)
                 )}
@@ -916,7 +1071,12 @@ function WordEntryRow({
   allowNoWord = false,
   collapsed = false,
   controls,
+  at,
 }: {
+  /** The row's engine paths (`tables.<id>.on.time[3]`): the validate-only
+   * refusals under them are said at the row, and a jump to one opens it
+   * (rpg-project#720, R17). */
+  at?: readonly string[];
   /** Extra controls drawn on the row beside Edit and Remove — a bundle's
    * rows pass Move up / Move down (rpg-project#670). */
   controls?: ReactNode;
@@ -940,6 +1100,10 @@ function WordEntryRow({
   allowNoWord?: boolean;
 }) {
   const [open, setOpen] = useState(!collapsed);
+  const { refusals, focused, rowRef } = useRowRefusalsAt(at);
+  useEffect(() => {
+    if (focused) setOpen(true);
+  }, [focused]);
   const words = answerWordsForTrigger(trigger).filter(
     (candidate) => !excludeWords.includes(candidate.key)
   );
@@ -963,8 +1127,6 @@ function WordEntryRow({
       (selector.key !== 'sound' || soundLegal) &&
       selectorWordLegalOn(selector.key, word)
   );
-  const selectorChoice =
-    typeof value === 'string' ? value : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
 
   const withWordValue = (next: unknown): AnswerEntryShape => {
     const draft = { ...(entry as Record<string, unknown>) } as AnswerEntryShape;
@@ -998,7 +1160,11 @@ function WordEntryRow({
 
   if (!open)
     return (
-      <li className="wb-policy-entry wb-entry-collapsed" data-entry-word={word}>
+      <li
+        ref={rowRef}
+        className="wb-policy-entry wb-entry-collapsed"
+        data-entry-word={word}
+      >
         <span className="wb-entry-summary">{entryText(entry, trigger)}</span>
         {controls}
         <button
@@ -1017,10 +1183,12 @@ function WordEntryRow({
         >
           Remove
         </button>
+        <RowRefusalLines refusals={refusals} />
       </li>
     );
   return (
     <li
+      ref={rowRef}
       className="wb-policy-entry wb-entry-sentence-card"
       data-entry-word={word}
     >
@@ -1173,58 +1341,47 @@ function WordEntryRow({
             </label>
           </>
         )}
-        {spec?.value === 'selector' && isMapping(value) && (
-          // A CELL OR A ROUTE IS SHOWN, NOT OFFERED (rpg-toolkit#2063): the
-          // room's `{ q, r }` spelling is read and carried verbatim, and no
-          // picker for it exists yet. A word select here would claim the row
-          // walks to "the enemy" while the file says a route.
-          <span className="wb-entry-target" data-testid="entry-place">
-            <span>To</span>{' '}
-            {selectorRouteParam(value as AnswerSelectorShape) !== undefined ? (
-              <>
-                the route{' '}
-                <ParamChip
-                  name={selectorRouteParam(value as AnswerSelectorShape)!}
-                  clearLabel={`Clear the route parameter from ${label} entry`}
-                  onClear={() =>
-                    onCommit(
-                      withWordValue(ANSWER_SELECTOR_WORDS[0]?.key ?? 'enemy')
-                    )
-                  }
-                />
-              </>
-            ) : (
-              selectorPhrase(value as AnswerSelectorShape, 'it')
-            )}
-          </span>
-        )}
-        {spec?.value === 'selector' && !isMapping(value) && (
-          <>
-            <label className="wb-entry-target">
-              <span>{word === 'away' ? 'From' : 'To'}</span>
-              <ParamSlot
-                value={undefined}
-                label={`Route for ${label} entry`}
-                onPick={(ref) => onCommit(withWordValue({ path: ref }))}
-                onClear={() => undefined}
-              >
-                <select
-                  aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
-                  value={selectorChoice}
-                  onChange={(event) =>
-                    onCommit(withWordValue(event.target.value))
-                  }
+        {spec?.value === 'selector' &&
+          selectorRouteParam(value as AnswerSelectorShape) !== undefined && (
+            // A ROUTE PARAMETER, `path: $path` inside a bundle
+            // (rpg-project#670): the route is given where the bundle is used.
+            <span className="wb-entry-target" data-testid="entry-place">
+              <span>To</span> the route{' '}
+              <ParamChip
+                name={selectorRouteParam(value as AnswerSelectorShape)!}
+                clearLabel={`Clear the route parameter from ${label} entry`}
+                onClear={() =>
+                  onCommit(
+                    withWordValue(ANSWER_SELECTOR_WORDS[0]?.key ?? 'enemy')
+                  )
+                }
+              />
+            </span>
+          )}
+        {spec?.value === 'selector' &&
+          selectorRouteParam(value as AnswerSelectorShape) === undefined && (
+            // A FIGURE, A CELL OR A ROUTE (rpg-project#720): the sealed words,
+            // and on `toward` an authored cell or route picked on the Layout,
+            // shown as chips with each waypoint's wait and facing.
+            <SelectorTarget
+              word={word}
+              label={`${label} entry`}
+              pickLabel={rowPathLabel(at) ?? `${label} entry`}
+              value={value}
+              selectorWords={selectorWords}
+              onCommit={(next) => onCommit(withWordValue(next))}
+              wrap={(select) => (
+                <ParamSlot
+                  value={undefined}
+                  label={`Route for ${label} entry`}
+                  onPick={(ref) => onCommit(withWordValue({ path: ref }))}
+                  onClear={() => undefined}
                 >
-                  {selectorWords.map((selector) => (
-                    <option key={selector.key} value={selector.key}>
-                      {selector.label} ({selector.key})
-                    </option>
-                  ))}
-                </select>
-              </ParamSlot>
-            </label>
-          </>
-        )}
+                  {select}
+                </ParamSlot>
+              )}
+            />
+          )}
       </div>
       <div className="wb-entry-secondary">
         <label className="wb-entry-dialogue">
@@ -1291,6 +1448,7 @@ function WordEntryRow({
         order.
       </p>
       <p className="wb-help">{entryText(entry, trigger)}</p>
+      <RowRefusalLines refusals={refusals} />
       {collapsed && (
         <button
           type="button"
@@ -1698,6 +1856,48 @@ function FactionRow({
             onChange={onChange}
           />
 
+          {/* THE SIDE'S LINES (rpg-project#718): what a character can say to
+              ANY member, written once. Layered the way `on:` is — a member
+              with its own lines speaks those and none of these. */}
+          <div
+            className="wb-policy-block"
+            data-testid={`faction-options-${faction.id}`}
+          >
+            <h6>Lines — what a character can say to any member</h6>
+            <p className="wb-help">
+              A member with no lines of its own speaks these; a member that
+              writes its own speaks only those.
+            </p>
+            {room ? (
+              <OptionsEditor
+                titled={false}
+                owner={faction.id}
+                options={faction.options ?? []}
+                room={room}
+                isProp={false}
+                onAdd={() => onChange(addSiteFactionOption(scope, faction.id))}
+                onChange={(index, option) =>
+                  onChange(
+                    setSiteFactionOption(scope, faction.id, index, option)
+                  )
+                }
+                onRemove={(index) =>
+                  onChange(removeSiteFactionOption(scope, faction.id, index))
+                }
+              />
+            ) : (faction.options ?? []).length === 0 ? (
+              <p className="wb-help">This faction has no lines.</p>
+            ) : (
+              <ul className="wb-policy-table">
+                {(faction.options ?? []).map((option) => (
+                  <li key={option.id} className="wb-help">
+                    {optionText(option)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <button
             type="button"
             className="wb-danger"
@@ -1716,8 +1916,15 @@ function FactionRow({
 // Dispositions
 // ---------------------------------------------------------------------------
 
-/** The `until:` predicate editor. Four forms, exactly one key; the value is
- * written as typed and the server judges whether the pair may carry it. */
+/** The `until:` editor (rpg-project#717): no step, one step, or a list of
+ * steps, each one predicate and the stance it turns the pair to (`then`).
+ * The first step that holds wins.
+ *
+ * ONE STEP KEEPS TODAY'S SPELLING, a mapping; a second step makes the list.
+ * A list of more than one step turns on facts only (the engine's limit), so
+ * a list's steps offer the fact form alone, and a hand-written step of
+ * another form shows the engine's sentence. Whether a fact has a mind to
+ * learn it, or a stance can be reached, is the engine's at Save & Play. */
 function UntilEditor({
   scope,
   room,
@@ -1729,40 +1936,163 @@ function UntilEditor({
   room: RoomGameplayData;
   placementNames?: PlacementNames;
   disposition: SiteDisposition;
-  onCommit: (until: PredicateDoc | undefined) => void;
+  onCommit: (until: SiteUntil | undefined) => void;
 }) {
   const until = disposition.until;
+  const steps = untilSteps(until);
+  const names = namesFor(room, placementNames);
+  const list = steps.length > 1;
+  /** Write the steps back: none is no until; one is the mapping, unless the
+   * file wrote a list of one and the count did not change. */
+  const write = (next: SiteUntilStep[]) => {
+    if (next.length === 0) return onCommit(undefined);
+    if (
+      next.length === 1 &&
+      !(Array.isArray(until) && until.length === next.length)
+    )
+      return onCommit(next[0]);
+    onCommit(next);
+  };
+  const setStep = (j: number, step: SiteUntilStep) =>
+    write(steps.map((s, i) => (i === j ? step : s)));
+  const removeStep = (j: number) => write(steps.filter((_, i) => i !== j));
+  const thenChoices = STANCES.filter((word) => word !== disposition.stance);
   return (
     <div className="wb-policy-until">
-      <PredicateEditor
-        value={until}
-        onChange={onCommit}
-        forms={PREDICATE_FORMS}
-        name="Until"
-        label="Until"
-        none="No authored condition"
-        scope={scope}
-        room={room}
-        names={namesFor(room, placementNames)}
-      />
+      {steps.length === 0 ? (
+        <PredicateEditor
+          value={undefined}
+          onChange={(predicate) =>
+            predicate === undefined ? write([]) : write([predicate])
+          }
+          forms={PREDICATE_FORMS}
+          name="Until"
+          label="Until"
+          none="No authored condition"
+          scope={scope}
+          room={room}
+          names={names}
+        />
+      ) : (
+        <ol className="wb-policy-until-steps" aria-label="Until steps">
+          {steps.map((step, j) => {
+            const n = j === 0 ? '' : ` step ${j + 1}`;
+            const name = `Until${n}`;
+            const refusal =
+              list && !('fact' in step)
+                ? UNTIL_LIST_ON_FACTS
+                : step.then === undefined && disposition.stance === 'allied'
+                  ? UNTIL_SENTENCES.alliedNoThen()
+                  : step.then === disposition.stance
+                    ? UNTIL_SENTENCES.thenIsStance(
+                        disposition.stance,
+                        step.then
+                      )
+                    : undefined;
+            return (
+              <li key={j} data-until-step={j}>
+                <PredicateEditor
+                  value={stepPredicate(step)}
+                  onChange={(predicate) =>
+                    predicate === undefined
+                      ? removeStep(j)
+                      : setStep(
+                          j,
+                          step.then !== undefined
+                            ? { ...predicate, then: step.then }
+                            : predicate
+                        )
+                  }
+                  forms={list ? (['fact'] as const) : PREDICATE_FORMS}
+                  name={name}
+                  label={j === 0 ? 'Until' : `Or, step ${j + 1}`}
+                  none={list ? 'Remove this step' : 'No authored condition'}
+                  scope={scope}
+                  room={room}
+                  names={names}
+                />
+                <label>
+                  <span>Then</span>
+                  <select
+                    aria-label={`Then${n}`}
+                    value={step.then ?? ''}
+                    onChange={(event) => {
+                      const predicate = stepPredicate(step);
+                      setStep(
+                        j,
+                        event.target.value === ''
+                          ? predicate
+                          : {
+                              ...predicate,
+                              then: event.target.value as Stance,
+                            }
+                      );
+                    }}
+                  >
+                    <option value="">
+                      {disposition.stance === 'allied'
+                        ? '(choose where it goes)'
+                        : `(the other: ${turnsTo(disposition.stance)})`}
+                    </option>
+                    {thenChoices.map((word) => (
+                      <option key={word} value={word}>
+                        {word}
+                      </option>
+                    ))}
+                    {step.then === disposition.stance && (
+                      <option value={step.then}>{step.then}</option>
+                    )}
+                  </select>
+                </label>
+                {list && (
+                  <button
+                    type="button"
+                    className="wb-danger"
+                    aria-label={`Remove until${n}`}
+                    onClick={() => removeStep(j)}
+                  >
+                    Remove step
+                  </button>
+                )}
+                {refusal !== undefined && (
+                  <p className="wb-entry-refusal" role="alert">
+                    {refusal}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {steps.length > 0 && (
+        <button
+          type="button"
+          aria-label="Add until step"
+          onClick={() => write([...steps, { fact: '' }])}
+        >
+          Add step
+        </button>
+      )}
       <p className="wb-help">
         {until === undefined
           ? 'The hostility never ends.'
-          : `Until ${predicateSentence(until, {
-              names: namesFor(room, placementNames),
-              mindName:
-                'fact' in until
-                  ? pairMindNameIn(
-                      scope,
-                      room,
-                      namesFor(room, placementNames),
-                      disposition.between
-                    )
-                  : undefined,
-            })}; then ${turnsTo(disposition.stance)}.`}
+          : untilHelp(
+              disposition.stance,
+              untilTextIn(disposition, names, (pair) =>
+                pairMindNameIn(scope, room, names, pair)
+              )
+            )}
       </p>
     </div>
   );
+}
+
+/** The until's help line: one step reads "Until …; then neutral." as it
+ * always did, a list "Neutral: once …, allied; once …, hostile — …". */
+function untilHelp(stance: string, text: string): string {
+  if (text.startsWith(' until '))
+    return `Until ${text.slice(' until '.length)}`;
+  return `${stance.charAt(0).toUpperCase()}${stance.slice(1)}${text}`;
 }
 
 function DispositionRow({
@@ -2408,6 +2738,18 @@ export function CreatureOrders({
                 onOrdersChange(moveMonsterAction(binding, from, to))
               }
             />
+            {/* ADD AND DROP, THIS PLACEMENT ONLY (rpg-project#721): applied by
+                the session after its kind's stat block and its own weapons. */}
+            {(['addActions', 'dropActions'] as const).map((key) => (
+              <ActionRefList
+                key={key}
+                kind={key}
+                refs={binding?.[key] ?? []}
+                onChange={(next) =>
+                  onOrdersChange(setMonsterActionAugment(binding, key, next))
+                }
+              />
+            ))}
             <CreatureTemperEditor
               temper={binding?.temper}
               onCommit={(temper) =>
@@ -2457,6 +2799,16 @@ export function CreatureOrders({
             {binding.actions !== undefined && (
               <p className="wb-help">actions {binding.actions.join(', ')}</p>
             )}
+            {binding.addActions !== undefined && (
+              <p className="wb-help">
+                addActions {binding.addActions.join(', ')}
+              </p>
+            )}
+            {binding.dropActions !== undefined && (
+              <p className="wb-help">
+                dropActions {binding.dropActions.join(', ')}
+              </p>
+            )}
             {binding.holds !== undefined && (
               <p className="wb-help">holds {binding.holds.join(', ')}</p>
             )}
@@ -2483,6 +2835,23 @@ export function CreatureOrders({
         className="wb-policy-block"
         about={<p>The lines a character can say to this creature.</p>}
       >
+        {(binding?.options ?? []).length === 0 &&
+          (() => {
+            // A MEMBER WITH NO LINES SPEAKS ITS FACTION'S (rpg-project#718).
+            const side = (scope.factions ?? []).find(
+              (f) => f.id === (binding?.faction ?? MONSTERS)
+            );
+            if (!side?.options?.length) return null;
+            return (
+              <p
+                className="wb-help"
+                data-testid="creature-options-from-faction"
+              >
+                It has no lines of its own, so it speaks the {side.id}{' '}
+                faction’s: {side.options.map((o) => o.id).join(', ')}.
+              </p>
+            );
+          })()}
         {onOrdersChange !== undefined ? (
           <OptionsEditor
             titled={false}
@@ -2610,11 +2979,7 @@ export function CreatureOrders({
 // ---------------------------------------------------------------------------
 
 /** What gates a line, as the picker names it. */
-const REQUIRES_FORMS = [
-  { value: '', label: 'Always offered' },
-  { value: 'fact', label: 'The speaker knows a fact' },
-  { value: 'holds', label: 'The speaker carries a prop' },
-] as const;
+const REQUIRES_FORMS = REQUIRES_CHOICES;
 
 const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
   success: 'When the check is beaten',
@@ -2669,16 +3034,16 @@ export function OptionsEditor({
       {options.map((option, index) => {
         const n = index + 1;
         const of = `line ${n} of ${owner}`;
-        const requiresForm =
-          option.requires === undefined
-            ? ''
-            : 'fact' in option.requires
-              ? 'fact'
-              : 'holds';
+        // `not:` around either read (rpg-project#719): the choice carries
+        // whether it is negated, and the fact or prop controls read through.
+        const requiresChoiceNow = requiresChoice(option.requires);
+        const negated = requiresChoiceNow.startsWith('not-');
+        const requiresForm = requiresChoiceNow.replace('not-', '') as
+          | ''
+          | 'fact'
+          | 'holds';
         const heldId =
-          option.requires !== undefined && 'holds' in option.requires
-            ? option.requires.holds
-            : undefined;
+          requiresForm === 'holds' ? requiresId(option.requires) : undefined;
         const commit = (next: OptionShape) => onChange(index, next);
         return (
           <div
@@ -2726,17 +3091,15 @@ export function OptionsEditor({
               <span>Requires</span>
               <select
                 aria-label={`Line ${n} requires for ${owner}`}
-                value={requiresForm}
+                value={requiresChoiceNow}
                 onChange={(event) => {
-                  const form = event.target.value;
+                  const choice = event.target.value as RequiresChoice;
                   commit(
                     patchOption(option, {
-                      requires:
-                        form === 'fact'
-                          ? { fact: '' }
-                          : form === 'holds'
-                            ? { holds: holdable[0] ?? '' }
-                            : undefined,
+                      requires: requiresOf(
+                        choice,
+                        choice.endsWith('holds') ? (holdable[0] ?? '') : ''
+                      ),
                     })
                   );
                 }}
@@ -2746,7 +3109,7 @@ export function OptionsEditor({
                     key={form.value}
                     value={form.value}
                     disabled={
-                      form.value === 'holds' &&
+                      form.value.endsWith('holds') &&
                       holdable.length === 0 &&
                       requiresForm !== 'holds'
                     }
@@ -2761,15 +3124,14 @@ export function OptionsEditor({
                 <span>Fact</span>
                 <input
                   aria-label={`Line ${n} requires fact for ${owner}`}
-                  value={
-                    option.requires && 'fact' in option.requires
-                      ? option.requires.fact
-                      : ''
-                  }
+                  value={requiresId(option.requires)}
                   onChange={(event) =>
                     commit(
                       patchOption(option, {
-                        requires: { fact: event.target.value },
+                        requires: requiresOf(
+                          negated ? 'not-fact' : 'fact',
+                          event.target.value
+                        ),
                       })
                     )
                   }
@@ -2785,7 +3147,10 @@ export function OptionsEditor({
                   onChange={(event) =>
                     commit(
                       patchOption(option, {
-                        requires: { holds: event.target.value },
+                        requires: requiresOf(
+                          negated ? 'not-holds' : 'holds',
+                          event.target.value
+                        ),
                       })
                     )
                   }
@@ -2874,11 +3239,6 @@ function optionText(option: OptionShape): string {
   const check = option.check
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');
-  const gate =
-    option.requires === undefined
-      ? ''
-      : 'fact' in option.requires
-        ? ` · requires fact ${option.requires.fact}`
-        : ` · requires holding ${option.requires.holds}`;
+  const gate = requiresGate(option.requires);
   return `${option.id}: “${option.say}” · ${check}${gate}`;
 }

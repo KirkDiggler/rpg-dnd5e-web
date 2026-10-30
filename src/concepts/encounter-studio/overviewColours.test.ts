@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AuthoringRegion } from '../world-building/authoringRegions';
-import { resolveAuthoringRegions } from '../world-building/regionBoundaryGeometry';
+import { resolveRegions } from '../world-building/regionBoundaryGeometry';
 import type { RoomHexCell } from '../world-building/roomDraft';
 import { createCastleKeepDocument } from './fixtures/castleKeep';
 import {
@@ -11,11 +10,8 @@ import {
   regionOverview,
 } from './overviewColours';
 
-const region = (id: string): AuthoringRegion => ({
-  id,
-  labelId: `${id}-label`,
-  boundary: { kind: 'explicit', cells: [] },
-});
+// The colouring reads only ids; cells come from `cellsOf`.
+const region = (id: string) => ({ id });
 const row = (q0: number, q1: number, r = 0): RoomHexCell[] =>
   Array.from({ length: q1 - q0 + 1 }, (_, i) => ({ q: q0 + i, r }));
 const alone = (id: string): number =>
@@ -43,9 +39,12 @@ describe('overview colours', () => {
     const document = createCastleKeepDocument();
     const overview = regionOverview(
       document.draft,
-      resolveAuthoringRegions(document.draft)
+      resolveRegions(document.draft)
     );
-    const regions = document.draft.scene.authoringRegions!;
+    // Regions are the floor (rpg-project#725): the castle's painted regions.
+    const regions = document.draft.room.regions.filter(
+      (r) => overview.sizes.get(r.id) !== null
+    );
     expect(regions.length).toBeGreaterThan(1);
     const keys = new Map(
       regions.map((r) => [

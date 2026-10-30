@@ -1,9 +1,10 @@
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import {
   createRoomDraft,
+  floorCells,
   loadRoomDraft,
+  paintCells,
   parseRoomDraftJson,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
@@ -18,7 +19,7 @@ import {
   validateStructuralWalls,
   type StructuralWall,
 } from './structuralWalls';
-import { centeredRoomWorkspace } from './workspaceGeometry';
+import { MAX_WORLD_COORD } from './worldBounds';
 
 function wall(): StructuralWall {
   return {
@@ -41,8 +42,10 @@ function wall(): StructuralWall {
 }
 
 function draft() {
-  const result = createRoomDraft(createEmptyScene('scene'), 'room');
-  result.room.walkableHexes = [{ q: 0, r: 0 }];
+  const result = paintCells(
+    createRoomDraft(createEmptyScene('scene'), 'room'),
+    [{ q: 0, r: 0 }]
+  );
   result.room.walls = [wall()];
   return result;
 }
@@ -80,63 +83,63 @@ function validate(value: unknown) {
 }
 
 describe('structural walls in the shared room document', () => {
-  it('accepts expanded rectangle endpoints with attached doors intact and rejects enclosing-envelope-only endpoints', () => {
-    const workspace = centeredRoomWorkspace(73, 48);
+  // No workspace bounds a wall any more (rpg-project#725 R3): far endpoints
+  // keep their attached doors, and only the world coordinate bound refuses,
+  // in words that name it.
+  it('accepts far endpoints with attached doors intact and refuses past the world bound', () => {
     const source = wallWithDoor();
-    source.line = { start: { x: -50, z: 0 }, end: { x: -30, z: 0 } };
+    source.line = { start: { x: -50, z: 0 }, end: { x: 900, z: 0 } };
     const input = {
       value: [source],
-      horizontalLimit: workspace.horizontalLimit,
-      workspace,
+      horizontalLimit: MAX_WORLD_COORD,
       itemIds: new Set<string>(),
     };
     expect(validateStructuralWalls(input)[0]!.openings).toEqual(
       source.openings
     );
-    source.line.end = cubeToWorld({ x: 37, y: -37, z: 0 }, HEX_SIZE);
-    expect(Math.abs(source.line.end.x)).toBeLessThan(workspace.horizontalLimit);
+    source.line.end = { x: MAX_WORLD_COORD + 1, z: 0 };
     expect(() => validateStructuralWalls(input)).toThrow(
-      /line.end.*outside the authoring workspace/
+      `room.room.walls[0].line.end.x: beyond the world coordinate bound (±${MAX_WORLD_COORD})`
     );
-    // Untagged legacy parser retains its scalar endpoint allowance.
-    expect(
-      validateStructuralWalls({ ...input, workspace: undefined })[0]!.line.end
-    ).toEqual(source.line.end);
   });
   it('round trips exact appearance, independent blockers and gaps through JSON and YAML', () => {
     const source = draft();
     expect(parseRoomDraftJson(stringifyRoomDraft(source))).toEqual(source);
     const yaml = encodeSingleRoomDungeon({ key: 'walls', draft: source });
-    expect(parse(yaml).version).toBe(4);
+    expect(parse(yaml).version).toBe(5);
     expect(parse(yaml).room.version).toBe(3);
     const result = decodeSingleRoomDungeon(yaml).draft;
     expect(result).toEqual(source);
     expect(result.room.walls?.[0].blocker.footprint.width).toBe(22);
-    expect(result.room.walkableHexes).toEqual(source.room.walkableHexes);
+    expect(floorCells(result)).toEqual(floorCells(source));
     expect(result.scene).toEqual(source.scene);
   });
 
-  it('retains legacy bytes and root version when walls are absent or empty', () => {
+  // The root is version 5 always (rpg-project#725); walls no longer bump it.
+  it('retains bytes and root version when walls are absent or empty', () => {
     const source = createRoomDraft(createEmptyScene('scene'), 'room');
     const before = encodeSingleRoomDungeon({ key: 'walls', draft: source });
     source.room.walls = [];
     expect(encodeSingleRoomDungeon({ key: 'walls', draft: source })).toBe(
       before
     );
-    expect(parse(before).version).toBe(3);
+    expect(parse(before).version).toBe(5);
     expect(
       parseRoomDraftJson(stringifyRoomDraft(source)).room
     ).not.toHaveProperty('walls');
   });
 
-  it('refuses walls under a falsely claimed v3 root', () => {
+  // Roots 3 and 4 are retired outright (rpg-project#725), walls or not.
+  it('refuses walls under a retired v3 or v4 root', () => {
     const document = parse(
       encodeSingleRoomDungeon({ key: 'walls', draft: draft() })
     );
-    document.version = 3;
-    expect(() => decodeSingleRoomDungeon(stringify(document))).toThrow(
-      /version|v4|walls/i
-    );
+    for (const version of [3, 4]) {
+      document.version = version;
+      expect(() => decodeSingleRoomDungeon(stringify(document))).toThrow(
+        'version: versions 3 and 4 are retired; regions are the floor (rpg-project#725)'
+      );
+    }
   });
 
   it('does not alias caller-owned data', () => {

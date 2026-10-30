@@ -490,7 +490,15 @@ describe('buildScene3D authored room scene', () => {
       hexRadius: 1,
       footprintFrame: 'owner-local-xz',
     },
-    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    // No stored workspace (rpg-project#725 R3): an unpainted room; the grid
+    // is derived from the content.
+    room: {
+      implicitRegionId: 'room-1-region',
+      regions: [],
+      propDeclarations: {},
+      arrangementDeclarations: {},
+      monsterDeclarations: [],
+    },
     scene: {
       version: 1,
       id: 'scene-1',

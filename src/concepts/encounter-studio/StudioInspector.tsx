@@ -28,7 +28,6 @@ import {
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
 import { StudioCheckRows } from './StudioCheckRows';
-import { StudioDimensions } from './StudioDimensions';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
 import type {
@@ -58,10 +57,11 @@ export interface StudioInspectorProps {
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
   /** Select the region's label: its label view holds the region. */
-  onOpenRegion(labelId: string): void;
-  /** Arm the region tool in Layout for the selected region label. Absent
-   * outside Layout. */
-  onDefineRegion?(): void;
+  onOpenRegion(regionId: string): void;
+  /** The region Paint and Rectangle put cells in (rpg-project#725 R5). */
+  activeRegionId?: string;
+  /** Make a region the active one. */
+  onMakeActive?(regionId: string): void;
   /** Arm the party-start gesture; the next 3D floor click places it. */
   onPlacePartyStart(): void;
   /** Open one cast member, by its monster ref (rpg-project#575). */
@@ -124,7 +124,9 @@ function InspectorBody(props: StudioInspectorProps): React.JSX.Element {
     case 'hex':
       return <HexView {...props} arrange={arrange} />;
     case 'label':
-      return <LabelView {...props} arrange={arrange} />;
+      return <LabelView {...props} />;
+    case 'region':
+      return <RegionView {...props} arrange={arrange} />;
     case 'partyStart':
       return <PartyStartView {...props} />;
     case 'castMember':
@@ -160,13 +162,14 @@ function Form({
   session,
   onConfigure,
   onMoveCreature,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   ...composition
 }: Pick<StudioInspectorProps, 'session'> &
   Partial<
     Pick<
       StudioInspectorProps,
-      'onConfigure' | 'onMoveCreature' | 'onDefineRegion'
+      'onConfigure' | 'onMoveCreature' | 'activeRegionId' | 'onMakeActive'
     >
   > &
   ArrangeComposition): React.JSX.Element | null {
@@ -177,7 +180,8 @@ function Form({
       heading={false}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       {...composition}
     />
   );
@@ -186,31 +190,22 @@ function Form({
 function RoomView({
   session,
   view,
-  onFrameChange,
   onArmTool,
   onOpenRegion,
   onPlacePartyStart,
 }: StudioInspectorProps): React.JSX.Element {
   const draft = session.document.draft;
-  const regions = draft.scene.authoringRegions ?? [];
-  const regionLabels = new Set(regions.map((region) => region.labelId));
-  const labelText = (id: string): string =>
-    draft.scene.mapLabels?.find((label) => label.id === id)?.text ?? id;
-  const notes = (draft.scene.mapLabels ?? []).filter(
-    (label) => !regionLabels.has(label.id)
-  );
+  // Every map label is a note: a region's label is its name
+  // (rpg-project#725).
+  const notes = draft.scene.mapLabels ?? [];
   const materials = session.regionEditing.finishes?.catalog.catalog?.materials;
-  const finishes = regions.filter((region) => region.wallFinish);
+  const finishes = draft.room.regions.flatMap((region) => {
+    const finish = draft.scene.regionPresentation?.[region.id]?.wallFinish;
+    return finish ? [{ region, finish }] : [];
+  });
   const start = draft.room.partyStart;
   return (
     <div className="es-context-panel es-room-view">
-      <StudioSection title="Size" level="section">
-        <StudioDimensions
-          session={session}
-          view={view}
-          onFrameChange={onFrameChange}
-        />
-      </StudioSection>
       <StudioSection title="Notes" level="section">
         {notes.length ? (
           <ul className="es-inspector-list">
@@ -246,21 +241,18 @@ function RoomView({
       <StudioSection title="Room-default wall finishes" level="section">
         {finishes.length ? (
           <ul className="es-inspector-list">
-            {finishes.map((region) => {
-              const ref = region.wallFinish!.materialRef;
+            {finishes.map(({ region, finish }) => {
+              const ref = finish.materialRef;
               const name =
                 materials?.find((material) => material.ref === ref)
                   ?.displayName ?? ref;
-              const text = labelText(region.labelId);
+              const text = region.name || region.id;
               return (
                 <li key={region.id}>
                   <span>
                     {text}: {name}
                   </span>{' '}
-                  <button
-                    type="button"
-                    onClick={() => onOpenRegion(region.labelId)}
-                  >
+                  <button type="button" onClick={() => onOpenRegion(region.id)}>
                     Edit region {text}
                   </button>
                 </li>
@@ -666,13 +658,12 @@ function HexView({
   session,
   arrange,
   onOpenRegion,
+  activeRegionId,
+  onMakeActive,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element | null {
   if (arrange.kind !== 'hex') return null;
-  const labels = session.document.draft.scene.mapLabels ?? [];
-  const labelText = (id: string): string =>
-    labels.find((label) => label.id === id)?.text ?? id;
   return (
     <div className="es-context-panel es-hex-view">
       <StudioSection
@@ -703,21 +694,30 @@ function HexView({
           {arrange.regions.length ? (
             <ul className="es-inspector-list">
               {arrange.regions.map((region) => {
-                const text = labelText(region.labelId);
+                const text = region.name || region.id;
                 return (
                   <li key={region.id}>
                     <span>
-                      {text} · Lighting:{' '}
-                      {region.lighting
-                        ? `background ${Math.round(region.lighting.background * 100)}%`
-                        : 'baseline'}
+                      Region: {text} · Lighting:{' '}
+                      {Math.round(region.lighting.intensity * 100)}%
                     </span>{' '}
                     <button
                       type="button"
-                      onClick={() => onOpenRegion(region.labelId)}
+                      onClick={() => onOpenRegion(region.id)}
                     >
                       Edit region {text}
                     </button>
+                    {onMakeActive && (
+                      <button
+                        type="button"
+                        aria-pressed={activeRegionId === region.id}
+                        onClick={() => onMakeActive(region.id)}
+                      >
+                        {activeRegionId === region.id
+                          ? `Painting into ${text}`
+                          : `Make ${text} active`}
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -835,39 +835,30 @@ function HexExit({
   );
 }
 
-/** A map label. A region's label also holds the region: boundary mode
- * with Use enclosing walls, Define explicit area, Clear explicit area,
- * background light, the room wall finish and Remove region. */
-function LabelView({
+/** A note: a map label linked to no region. */
+function LabelView({ session }: StudioInspectorProps): React.JSX.Element {
+  return <Form session={session} regionControls={false} />;
+}
+
+/** An authored region (rpg-project#725): its name (the label on the map),
+ * its lighting, its paint status, the region tool and its wall finish. */
+function RegionView({
   session,
   arrange,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
-}): React.JSX.Element {
-  const region = arrange.kind === 'label' ? arrange.region : undefined;
-  if (!region) return <Form session={session} regionControls={false} />;
+}): React.JSX.Element | null {
+  if (arrange.kind !== 'region') return null;
   return (
     <Form
       session={session}
       sectionTitle="Region"
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       extras={
-        <>
-          {region.boundary.kind === 'explicit' && (
-            <div className="es-buttons">
-              <button
-                type="button"
-                onClick={() =>
-                  session.regionEditing.setExplicitRegionArea(region.id, [])
-                }
-              >
-                Clear explicit area
-              </button>
-            </div>
-          )}
-          <StudioRegionFinishes region={region} session={session} />
-        </>
+        <StudioRegionFinishes region={arrange.region} session={session} />
       }
     />
   );
