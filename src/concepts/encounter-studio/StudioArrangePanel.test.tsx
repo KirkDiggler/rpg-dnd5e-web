@@ -682,6 +682,53 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     ).not.toHaveProperty('appearanceRef');
   });
 
+  it('saves the provider default choice with undo/redo and preserves it across an unsupported look change', () => {
+    const joined = owner();
+    joined.selectActor();
+    change('NPC appearance', 'dnd5e:npcs:goblin:prisoner-02');
+    const before = joined.session.document;
+    const writes = joined.writes();
+    const activity = 'dnd5e:activities:thoughtful';
+    change('Default activity', activity);
+    expect(joined.writes()).toBe(writes + 1);
+    expect(joined.calls.at(-1)).toEqual({
+      kind: 'actor-start',
+      target: { kind: 'actor', id: 'goblin-1' },
+      defaultActivityRef: activity,
+    });
+    const original = before.draft.room.monsterDeclarations.find(
+      (a) => a.id === 'goblin-1'
+    )!;
+    const chosen = joined.session.document.draft.room.monsterDeclarations.find(
+      (a) => a.id === 'goblin-1'
+    )!;
+    expect(chosen).toEqual({ ...original, defaultActivityRef: activity });
+    expect(joined.session.document.draft.room.monsterBindings).toEqual(
+      before.draft.room.monsterBindings
+    );
+    const persisted = parseRoomDocumentJson(
+      joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)!
+    );
+    expect(
+      persisted.draft.room.monsterDeclarations.find((a) => a.id === 'goblin-1')
+    ).toEqual(chosen);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    expect(token('Default activity')).toBe(activity);
+    change('NPC appearance', 'dnd5e:npcs:kingdom:merchant-01');
+    expect(token('Default activity')).toBe(activity);
+    expect(
+      screen.getByRole('option', { name: `Unavailable: ${activity}` })
+    ).toBeDefined();
+    change('Default activity', '');
+    expect(
+      joined.session.document.draft.room.monsterDeclarations.find(
+        (a) => a.id === 'goblin-1'
+      )
+    ).not.toHaveProperty('defaultActivityRef');
+  });
+
   it('each apply-on-change picker edit is its own history entry', () => {
     const joined = owner();
     joined.selectActor();
