@@ -17,6 +17,7 @@
  * creature it describes.
  */
 import { ANSWER_TRIGGER_KEYS } from '@/author/answerVocabulary';
+import { actionAugmentSentences } from './actionAugments';
 import type { AnswerEntryShape, OptionShape } from './answerTableShape';
 import {
   abilityPhrase,
@@ -325,6 +326,22 @@ function whoParagraph(
   return { heading: 'who', lead: sentences[0].text, sentences };
 }
 
+/** The who paragraph with what it fights with appended, when a layer authors
+ * an add or a drop (rpg-project#721): "carries a javelin the kind does not",
+ * "does not carry a longsword", then the list in the session's order. */
+function withActionAugments(
+  who: ReadBackParagraph,
+  document: Readonly<RoomDraftDocument>,
+  placementId: string
+): ReadBackParagraph {
+  const extra = actionAugmentSentences(document, placementId).map((line) =>
+    line.law ? lawSentence(line.law) : sentence(line.text)
+  );
+  return extra.length
+    ? { ...who, sentences: [...who.sentences, ...extra] }
+    : who;
+}
+
 /** A full stop, unless the text already ends a quoted sentence. */
 function endSentence(text: string): string {
   return /[.!?…]”$/.test(text) ? text : `${text}.`;
@@ -492,7 +509,11 @@ export function readBackOf(
     if (binding?.arrives && 'fact' in binding.arrives)
       reads.add(binding.arrives.fact);
     return [
-      whoParagraph(document, selection.id),
+      withActionAugments(
+        whoParagraph(document, selection.id),
+        document,
+        selection.id
+      ),
       ordersParagraph(document, selection.id),
       spokenToParagraph(document, binding?.options),
       knowsParagraph(document, binding?.holds, writes, reads),
