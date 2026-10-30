@@ -93,8 +93,9 @@ export function moveWaypoint(
   return next;
 }
 
-/** Set or clear a waypoint's wait, in whole rounds. Clearing it, or setting
- * it to 0, also clears its facing: a facing with no stand is a shape the
+/** Set or clear a waypoint's wait, in whole rounds. A wait of 0 is no stand
+ * and is not written (the engine's default). Clearing it, or setting it to 0,
+ * also clears its facing: a facing with no stand is a shape the
  * reader refuses, and leaving it behind would write a known-bad file. */
 export function setWaypointWait(
   route: readonly AnswerWaypointShape[],
@@ -103,7 +104,7 @@ export function setWaypointWait(
 ): AnswerWaypointShape[] {
   return route.map((w, i) => {
     if (i !== index) return w;
-    if (wait === undefined) return waypointOf(w);
+    if (!wait) return waypointOf(w);
     return waypointOf(w, { wait, facing: w.facing });
   });
 }

@@ -20,6 +20,7 @@ import {
   ANSWER_SELECTOR_WORDS,
   type AnswerSelectorSpec,
 } from '@/author/answerVocabulary';
+import { useRef } from 'react';
 import {
   selectorCell,
   selectorRoute,
@@ -61,6 +62,11 @@ export function SelectorTarget({
 }) {
   const picking = useRoutePicking();
   const commitLatest = useLatest(onCommit);
+  /** The row's word as it last rendered: an Undo during a pick may have
+   * changed it, and a cell or a route is written only where the word walks
+   * to a place (rpg-project#720 review). */
+  const wordNow = useRef(word);
+  wordNow.current = word;
   const selector = value as AnswerSelectorShape;
   const cell = selectorCell(selector);
   const route = selectorRoute(selector);
@@ -89,7 +95,8 @@ export function SelectorTarget({
         route: [],
         onDone: (picked) => {
           const at = firstCell(picked);
-          if (at) commitLatest(cellSelector(at));
+          if (at && wordTakesCell(wordNow.current))
+            commitLatest(cellSelector(at));
         },
       });
       return;
@@ -102,7 +109,8 @@ export function SelectorTarget({
         label: pickLabel,
         route: [],
         onDone: (picked) => {
-          if (picked.length > 0) commitLatest(routeSelector(picked));
+          if (picked.length > 0 && wordTakesRoute(wordNow.current))
+            commitLatest(routeSelector(picked));
         },
       });
       return;

@@ -15,9 +15,9 @@
 # cast, bindings, stat blocks, tables, factions and endings authored. The
 # patrol and march rows (`toward: { path }`, `toward: { at }`) were hand
 # edits until the table form offered a cell and a route picked on the Layout
-# (rpg-project#720); the form now writes them, byte for byte, so the only
-# hand edits left are these comments. After the first walk the export
-# also gives the captain a soldier's look (the fixture dressed him as the
+# (rpg-project#720); the form now writes them, byte for byte. The remaining
+# hand edits are these comments and the rows marked "Hand edit". After the
+# first walk the export also gives the captain a soldier's look (the fixture dressed him as the
 # king), drops the workspace's two stray map labels that sat in no room, and
 # draws the castle's outer walls: twelve wall lines along the eight rooms'
 # outer edges, no openings, so the gate door is the gatehouse's only view as

@@ -554,6 +554,7 @@ function StudioSurface({
     request: RoutePickRequest;
     waypoints: AnswerWaypointShape[];
     section: keyof typeof ENCOUNTER_SECTIONS;
+    document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
     arm: (request) => {
@@ -561,7 +562,12 @@ function StudioSurface({
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
-      setRoutePick({ request, waypoints: [...request.route], section });
+      setRoutePick({
+        request,
+        waypoints: [...request.route],
+        section,
+        document: session.document,
+      });
     },
   };
   const finishPick = (
@@ -587,10 +593,16 @@ function StudioSurface({
   const picking = routePick !== null && home === 'build' && view === 'layout';
   // Leaving the Layout any other way cancels the pick, as every armed
   // gesture is retired by a view switch.
+  // So does any change to the document under it — a keyboard Undo among
+  // them — since the row the pick answers may no longer be the row it was.
   useEffect(() => {
-    if (routePick && !(home === 'build' && view === 'layout'))
+    if (
+      routePick &&
+      (!(home === 'build' && view === 'layout') ||
+        routePick.document !== session.document)
+    )
       setRoutePick(null);
-  }, [routePick, home, view]);
+  }, [routePick, home, view, session.document]);
   const finishPickRef = useRef(finishPick);
   finishPickRef.current = finishPick;
   useEffect(() => {
@@ -1194,14 +1206,16 @@ function StudioSurface({
           >
             <button
               type="button"
-              disabled={!session.canUndo}
+              // A pick holds its waypoints against the document as armed: no
+              // history move while one is armed (rpg-project#720 review).
+              disabled={!session.canUndo || routePick !== null}
               onClick={session.undo}
             >
               Undo
             </button>
             <button
               type="button"
-              disabled={!session.canRedo}
+              disabled={!session.canRedo || routePick !== null}
               onClick={session.redo}
             >
               Redo

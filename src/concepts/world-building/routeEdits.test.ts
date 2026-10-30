@@ -29,6 +29,7 @@ import {
   setWaypointWait,
   waypointOf,
 } from './routeEdits';
+import { isUnder } from './rowRefusals';
 import type { SiteScope } from './siteScope';
 
 /** A route as an author makes it on the form: one click per cell, then each
@@ -37,6 +38,9 @@ function repick(route: readonly AnswerWaypointShape[]): AnswerWaypointShape[] {
   let picked: AnswerWaypointShape[] = [];
   for (const w of route) picked = appendWaypoint(picked, { q: w.q, r: w.r });
   route.forEach((w, i) => {
+    // A waypoint the author walks through gets a 0 typed into its wait
+    // first: a 0 is no stand, so the download must not change.
+    if (w.wait === undefined) picked = setWaypointWait(picked, i, 0);
     if (w.wait !== undefined) picked = setWaypointWait(picked, i, w.wait);
     if (w.facing !== undefined) picked = setWaypointFacing(picked, i, w.facing);
   });
@@ -86,6 +90,19 @@ function rebuildCastle(scope: SiteScope): {
 }
 
 describe('the form writes the shapes the reader reads (rpg-project#720)', () => {
+  it('a row path is under its row and never under a shorter index', () => {
+    expect(isUnder('tables.t.on.time[1].toward', 'tables.t.on.time[1]')).toBe(
+      true
+    );
+    expect(isUnder('tables.t.on.time[1]', 'tables.t.on.time[1]')).toBe(true);
+    expect(isUnder('tables.t.on.time[12].toward', 'tables.t.on.time[1]')).toBe(
+      false
+    );
+    expect(isUnder('tables.t.on.time[10]', 'tables.t.on.time[1]')).toBe(false);
+    // A prefix that is not a path boundary is not under it.
+    expect(isUnder('tables.t2.on.time[1]', 'tables.t')).toBe(false);
+  });
+
   it("the castle's routes, picked and paused on the form, download byte for byte", () => {
     const yaml = readFileSync(
       'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
@@ -130,7 +147,8 @@ describe('the form writes the shapes the reader reads (rpg-project#720)', () => 
   it('clearing a wait, or setting it to 0, drops the facing with it', () => {
     const stood = [{ q: 0, r: 0, wait: 2, facing: 'se' }];
     expect(setWaypointWait(stood, 0, undefined)).toEqual([{ q: 0, r: 0 }]);
-    expect(setWaypointWait(stood, 0, 0)).toEqual([{ q: 0, r: 0, wait: 0 }]);
+    // A wait of 0 is no stand: it is not written.
+    expect(setWaypointWait(stood, 0, 0)).toEqual([{ q: 0, r: 0 }]);
   });
 
   it('the same cell clicked twice is appended twice: the engine judges it', () => {

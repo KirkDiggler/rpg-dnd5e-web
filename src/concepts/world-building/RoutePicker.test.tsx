@@ -254,6 +254,41 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     expect(fresh).toHaveBeenCalledTimes(1);
   });
 
+  it('a pick whose row was undone off `toward` writes nothing', () => {
+    // The reviewer's probe: arm a route on `toward`, the row comes back as
+    // `away` (an Undo of the word change), then Done.
+    const { picking, requests } = arming();
+    const onChange = vi.fn();
+    const scopeOf = (entry: AnswerEntryShape): SiteScope => ({
+      tables: { patrol: { time: [entry] } },
+    });
+    const view = render(
+      <RoutePickContext.Provider value={picking}>
+        <TablesPanel
+          scope={scopeOf({ when: { enemy: 'none' }, toward: 'enemy' })}
+          onChange={onChange}
+        />
+      </RoutePickContext.Provider>
+    );
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    fireEvent.change(screen.getByLabelText('To for time entry'), {
+      target: { value: 'path' },
+    });
+    view.rerender(
+      <RoutePickContext.Provider value={picking}>
+        <TablesPanel
+          scope={scopeOf({ when: { enemy: 'none' }, away: 'enemy' })}
+          onChange={onChange}
+        />
+      </RoutePickContext.Provider>
+    );
+    requests[0]!.onDone([
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('Add waypoints on map hands the pick the route it already holds', () => {
     const { picking, requests } = arming();
     mount(
