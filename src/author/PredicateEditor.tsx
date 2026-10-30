@@ -223,6 +223,7 @@ const FORM_HELP: Record<PredicateKind, string> = {
   down: 'Holds once that monster is Down.',
   fact: 'On an `until`: holds once the faction’s mind knows it. Carry a record that reveals it into the mind’s region.',
   stance: 'Holds once the pair’s stance folds to this value.',
+  left: 'An ending’s alone: holds once the last standing party member has left by that exit (rpg-project#716).',
 };
 
 /** The NAMED monsters, by id — a `{ down }` names a placement and only a

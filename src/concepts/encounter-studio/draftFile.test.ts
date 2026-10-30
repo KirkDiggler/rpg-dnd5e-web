@@ -278,13 +278,18 @@ describe('the draft as a file (rpg-project#578)', () => {
     const read = readDraftYaml(yaml);
     if (!read.ok) throw new Error(read.refusal);
     expect(read.key).toBe('the-mad-king');
-    // THE GATE GUARDS ARE THREE `use:` LINES (rpg-project#670): their
-    // pursuit, their alarm and their loop are bundles, resolved here into the
-    // rows the engine rolls — which are the rows the castle wrote flat before.
+    // THE GATE GUARDS ARE ONE `use:` LINE (rpg-project#670), `guard-base`,
+    // a bundle of bundles: their dash, their pursuit, their alarm and their
+    // loop, resolved here into the rows the engine rolls.
     const gate = read.scope.tables?.['gate-patrol']?.time ?? [];
     expect(
       gate.filter((row) => row.use !== undefined).map((row) => row.use)
-    ).toEqual(['pursuer', 'alarm-reactor', 'patrol']);
+    ).toEqual(['guard-base']);
+    expect(
+      (read.scope.bundles?.['guard-base']?.rows ?? []).map(
+        (row) => (row as { use?: string }).use
+      )
+    ).toEqual(['dasher', 'pursuer', 'alarm-reactor', 'patrol']);
     const rows = Object.values(read.scope.tables ?? {}).flatMap((t) =>
       wordRowsOf(read.scope.bundles, t.time ?? [], 'time')
     );
@@ -306,8 +311,9 @@ describe('the draft as a file (rpg-project#578)', () => {
       ],
     });
     // Pursuit (rpg-project#668), through the pursuer bundle: both gate
-    // tables walk to the remembered cell and search six on the way the hero
-    // went (rpg-project#679), the bundle's defaults filled.
+    // tables (by way of guard-base) and the answer-the-gate table walk to the
+    // remembered cell and search six on the way the hero went
+    // (rpg-project#679), the bundle's defaults filled.
     expect(
       rows.filter(
         (row) =>
@@ -315,7 +321,7 @@ describe('the draft as a file (rpg-project#578)', () => {
           row.search?.heading === 'went' &&
           JSON.stringify(row.when) === '{"enemy":"lost"}'
       )
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     const importDocument = vi.fn().mockReturnValue(true);
     expect(importDraftYaml(yaml, { importDocument })).toEqual({
       ok: true,
@@ -369,12 +375,15 @@ describe('the draft as a file (rpg-project#578)', () => {
     );
     // The pause survives the save in the file's own spelling.
     expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
-    // The three `use:` lines survive the save, on both gate guards, and the
-    // bundles they name keep their `$name` placeholders (rpg-project#670).
+    // The `use:` lines survive the save — `guard-base` on both gate guards,
+    // and the bundles inside it — and the bundles keep their `$name`
+    // placeholders (rpg-project#670).
+    expect(saved.match(/use: guard-base/g)).toHaveLength(2);
+    expect(saved.match(/use: dasher/g)).toHaveLength(2);
     expect(saved.match(/use: pursuer/g)).toHaveLength(2);
-    expect(saved.match(/use: alarm-reactor/g)).toHaveLength(2);
-    expect(saved.match(/use: patrol/g)).toHaveLength(2);
-    expect(saved).toContain('heading: $heading');
+    expect(saved.match(/use: alarm-reactor/g)).toHaveLength(1);
+    expect(saved.match(/use: patrol/g)).toHaveLength(1);
+    expect(saved).toContain('path: $path');
     expect(saved).toMatch(/params:\n\s+path: null/);
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
