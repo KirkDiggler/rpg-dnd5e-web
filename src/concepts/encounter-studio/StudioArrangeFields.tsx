@@ -480,7 +480,7 @@ export function arrangeIntent(
  * place declared and not yet painted. */
 export function regionStatus(resolution?: RegionResolution): string {
   if (resolution?.status !== 'resolved')
-    return 'Not painted yet. Arm the region tool and paint its cells.';
+    return 'Not painted yet. Make it active and paint its cells.';
   const n = resolution.area.cells.length;
   return `Painted · ${n} ${n === 1 ? 'hex' : 'hexes'}`;
 }

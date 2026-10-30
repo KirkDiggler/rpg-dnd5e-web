@@ -1160,6 +1160,7 @@ function StudioSurface({
                     frame={frame}
                     onFrameChange={onFrameChange}
                     onCommit={commitStroke}
+                    onRefuse={session.refuseEdit}
                     labelEditing={labels.editing}
                     documentContext={session.document}
                     wallEditing={layoutWallEditing}

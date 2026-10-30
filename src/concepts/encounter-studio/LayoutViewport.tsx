@@ -129,6 +129,8 @@ type Gesture = {
   };
   anchor: WorldPoint;
   cells: Map<string, RoomHexCell>;
+  /** A rectangle past the paint cap: refused on release, never silent. */
+  refusal?: string;
   label?: {
     id: string | null;
     origin: WorldPoint;
@@ -201,6 +203,7 @@ export function LayoutViewport({
   frame,
   onFrameChange,
   onCommit,
+  onRefuse,
   labelEditing,
   documentContext,
   wallEditing,
@@ -336,12 +339,19 @@ export function LayoutViewport({
   // Content wider than the grid cap is drawn as a window around the view.
   const presentationWorkspace = useContentWorkspace(draft, frame.center);
   // A rectangle selects every cell whose centre it holds, anywhere: the
-  // canvas is unbounded (R3). Past the paint cap it selects nothing.
-  const rectangleCells = (start: WorldPoint, end: WorldPoint) => {
+  // canvas is unbounded (R3). Past the paint cap it selects nothing and
+  // carries the cap's sentence, which the release reports as a notice.
+  const rectangleCells = (
+    start: WorldPoint,
+    end: WorldPoint
+  ): { cells: RoomHexCell[]; refusal?: string } => {
     try {
-      return cellsInWorldRectangle(start, end);
-    } catch {
-      return [];
+      return { cells: cellsInWorldRectangle(start, end) };
+    } catch (error) {
+      return {
+        cells: [],
+        refusal: error instanceof Error ? error.message : String(error),
+      };
     }
   };
   const fitExtent = useMemo(
@@ -668,8 +678,9 @@ export function LayoutViewport({
     if (gesture.tool === 'rectangle') {
       const world = clientToWorld(point, currentTransform);
       if (!world) return;
-      const cells = rectangleCells(gesture.anchor, world);
+      const { cells, refusal } = rectangleCells(gesture.anchor, world);
       gesture.cells = new Map(cells.map((cell) => [cellKey(cell), cell]));
+      gesture.refusal = refusal;
     } else {
       const cell = pickLayoutCell(point, currentTransform);
       if (cell) gesture.cells.set(cellKey(cell), cell);
@@ -963,6 +974,8 @@ export function LayoutViewport({
       ) {
         gesture.label.commit(location);
       }
+    } else if (gesture.refusal !== undefined) {
+      onRefuse?.(gesture.refusal);
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
       gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }

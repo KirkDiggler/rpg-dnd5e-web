@@ -5373,6 +5373,45 @@ describe('S4 the draft as a file through the real owner', () => {
     }
   });
 
+  // A rectangle past the paint cap is refused with the cap in words, on the
+  // owner's notice, not a silent empty selection.
+  it('an oversized Rectangle shows the paint cap as a notice and changes nothing', async () => {
+    const seeded = createPopulatedStudioDocument();
+    const wide = {
+      ...seeded,
+      draft: paintCells(seeded.draft, [
+        { q: -200, r: 0 },
+        { q: 200, r: 0 },
+      ]),
+    };
+    const storage = new MemoryStorage(wide);
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Build'));
+    fireEvent.click(button('Rectangle'));
+    const zoomOut = surface();
+    fireEvent.wheel(zoomOut, {
+      deltaY: 4000,
+      clientX: bounds.left + bounds.width / 2,
+      clientY: bounds.top + bounds.height / 2,
+    });
+    const from = { clientX: bounds.left + 1, clientY: bounds.top + 1 };
+    const to = {
+      clientX: bounds.left + bounds.width - 1,
+      clientY: bounds.top + bounds.height - 1,
+    };
+    fireEvent.pointerDown(surface(), { ...from, pointerId: 9, button: 0 });
+    fireEvent.pointerMove(surface(), { ...to, pointerId: 9 });
+    fireEvent.pointerUp(surface(), { ...to, pointerId: 9, button: 0 });
+    expect(screen.getByRole('alert').textContent).toContain(
+      `A rectangle selects at most ${MAX_FLOOR_HEXES} cells.`
+    );
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+  });
+
   it('the next export defaults to the imported key', async () => {
     const storage = new MemoryStorage(createPopulatedStudioDocument());
     mount(storage);
@@ -6514,6 +6553,44 @@ describe('S3 the overview through the real owner', () => {
     expect(
       cellOwners(storage.document().draft).get(`${cell.q},${cell.r}`)
     ).toBe(chapel.id);
+  });
+
+  // Erase is never region-scoped (rpg-project#725 R5): with a region active,
+  // an Erase stroke removes the floor wherever it lands, active or not.
+  it('Erase with a region active removes the cells from the floor and that region', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document().draft;
+    const chapel = before.room.regions.find((r) => r.name === 'Chapel')!;
+    const owners = cellOwners(before);
+    const inChapel = [...owners].filter(([, id]) => id === chapel.id).length;
+    const courtyard = KEEP_ROOMS.find((room) => room.id === 'courtyard')!;
+    const chapelRoom = KEEP_ROOMS.find((room) => room.id === 'chapel')!;
+    const chapelCell = keepRoomCells(chapelRoom)[40]!;
+    const courtyardCell = keepRoomCells(courtyard)[40]!;
+    fireEvent.click(row('Chapel'));
+    fireEvent.click(inspector().getByRole('button', { name: 'Make active' }));
+    fireEvent.click(button('Show entire'));
+    fireEvent.click(button('Erase'));
+    gesture(chapelCell);
+    gesture(courtyardCell);
+    const after = storage.document().draft;
+    const floor = new Set(floorCells(after).map((c) => `${c.q},${c.r}`));
+    expect(floor.has(`${chapelCell.q},${chapelCell.r}`)).toBe(false);
+    expect(floor.has(`${courtyardCell.q},${courtyardCell.r}`)).toBe(false);
+    expect(floor.size).toBe(floorCells(before).length - 2);
+    expect(
+      [...cellOwners(after)].filter(([, id]) => id === chapel.id).length
+    ).toBe(inChapel - 1);
+    // Erase leaves the active region as it was.
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Paint into Chapel',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
   });
 
   it("the hex view's Edit region selects the label without changing home", async () => {

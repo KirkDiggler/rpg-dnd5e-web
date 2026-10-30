@@ -856,9 +856,7 @@ describe('region Arrange affordances', () => {
     expect(region).toMatchObject({ lighting: { intensity: 1 }, cells: [] });
     expect(token('Region name')).toBe('Forest');
     expect(
-      screen.getByText(
-        'Not painted yet. Arm the region tool and paint its cells.'
-      )
+      screen.getByText('Not painted yet. Make it active and paint its cells.')
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Delete label' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Remove region' }));
@@ -1075,9 +1073,7 @@ describe('region staged lighting joined to owner', () => {
     act(() => joined.session.selectRegion('lighting-unbound'));
     expect(token('Lighting (%)')).toBe('30');
     expect(
-      screen.getByText(
-        'Not painted yet. Arm the region tool and paint its cells.'
-      )
+      screen.getByText('Not painted yet. Make it active and paint its cells.')
     ).toBeTruthy();
     act(() => joined.session.selectRegion(LIGHTING_REGIONS.left));
     expect(token('Lighting (%)')).toBe('15');

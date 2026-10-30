@@ -211,6 +211,9 @@ export interface LayoutViewportProps {
     mode: 'paint' | 'erase',
     regionId?: string
   ): boolean;
+  /** A floor gesture refused on release (a rectangle past the paint cap)
+   * reports its sentence here instead of committing nothing silently. */
+  onRefuse?(sentence: string): void;
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
   doorEditing?: StudioDoorEditing;
@@ -417,6 +420,10 @@ export interface EncounterStudioSession {
     mode: 'paint' | 'erase',
     regionId?: string
   ): boolean;
+  /** A gesture the presentation refuses before any edit exists (a
+   * rectangle past the paint cap) shows its sentence as the owner's
+   * notice, the same path a refused edit takes. Adds no history. */
+  refuseEdit(sentence: string): false;
   createMapLabel(text: string, location: WorldPoint): boolean;
   moveMapLabel(id: string, location: WorldPoint): boolean;
   renameMapLabel(id: string, text: string): boolean;
