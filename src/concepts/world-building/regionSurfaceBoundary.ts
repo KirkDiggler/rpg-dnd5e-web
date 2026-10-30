@@ -1,5 +1,11 @@
-import type { BoundaryRun, RegionResolution } from './authoringRegions';
+import type { RegionResolution } from './authoringRegions';
 import type { WorldPoint } from './types';
+
+/** One oriented source wall: which wall, walked which way. */
+export type BoundaryRun = {
+  wallId: string;
+  direction: 'start-to-end' | 'end-to-start';
+};
 
 /** Transient geometric provenance, not a material binding or persisted schema.
  * start/end are distances along the SOURCE wall in scene units, low to high;

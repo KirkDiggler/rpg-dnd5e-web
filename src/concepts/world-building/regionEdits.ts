@@ -1,168 +1,115 @@
 import {
-  enclosureWitnessesEqual,
-  validateAuthoringRegions,
-  validateRegionLighting,
-  type AuthoringRegion,
-  type RegionLighting,
-} from './authoringRegions';
-import { createMapLabel } from './mapLabelEdits';
-import { findEnclosureAtPoint } from './regionBoundaryGeometry';
-import type { RoomDraft, RoomHexCell } from './roomDraft';
-import type { WorldPoint } from './types';
+  implicitRegionOf,
+  paintCells,
+  regionCells,
+  type RoomDraft,
+  type RoomRegion,
+} from './roomDraft';
 
-function requireRegion(draft: RoomDraft, id: string): AuthoringRegion {
-  const region = draft.scene.authoringRegions?.find((r) => r.id === id);
-  if (!region) throw new Error('Region target no longer exists.');
-  return region;
+/**
+ * REGION EDITS (rpg-project#725 R5). A region is an id, a name — its label on
+ * the map — a lighting intensity and the cells it owns. Cells move between
+ * regions by painting (`paintCells`); these edits create, name, light and
+ * remove the regions themselves. Each returns the same draft when nothing
+ * changes, so a no-op makes no history entry.
+ */
+
+function regionIndex(draft: RoomDraft, id: string): number {
+  const index = draft.room.regions.findIndex((region) => region.id === id);
+  if (index < 0) throw new Error('Region target no longer exists.');
+  return index;
 }
-function withRegions(draft: RoomDraft, regions: AuthoringRegion[]): RoomDraft {
-  const scene = {
-    ...draft.scene,
-    version: draft.scene.version >= 3 ? draft.scene.version : (3 as const),
+
+function withRegion(
+  draft: RoomDraft,
+  index: number,
+  region: RoomRegion
+): RoomDraft {
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      regions: draft.room.regions.map((row, i) => (i === index ? region : row)),
+    },
   };
-  // Whole-document cross-noun identities remain the owner validator's gate.
-  const valid = validateAuthoringRegions(regions, scene.mapLabels ?? [], {
-    workspace: draft.workspace,
-    allowLighting: scene.version >= 4,
-    allowWallFinish: scene.version >= 6,
-    reservedIds: new Set([
-      draft.id,
-      scene.id,
-      draft.room.implicitRegionId,
-      ...scene.items.map((i) => i.id),
-      ...scene.groups.map((g) => g.id),
-      ...(draft.room.walls ?? []).flatMap((w) => [
-        w.id,
-        ...w.openings.flatMap((o) => [o.id, ...(o.door ? [o.door.id] : [])]),
-      ]),
-      ...draft.room.monsterDeclarations.map((m) => m.id),
-    ]),
-  });
-  if (valid.length) scene.authoringRegions = valid;
-  else delete scene.authoringRegions;
-  return { ...draft, scene };
 }
-export function createRoomLabel(
+
+function nameOf(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('A region needs a name.');
+  return trimmed;
+}
+
+/** A new, bright, unpainted region at the end of the list. */
+export function createRegion(
   draft: RoomDraft,
   id: string,
-  labelId: string,
-  text: string,
-  location: WorldPoint
+  name: string
 ): RoomDraft {
-  const next = createMapLabel(draft, labelId, text, location);
-  const candidate = findEnclosureAtPoint(next, location);
-  return withRegions(next, [
-    ...(next.scene.authoringRegions ?? []),
-    {
-      id,
-      labelId,
-      boundary: {
-        kind: 'automatic',
-        ...(candidate.status === 'resolved'
-          ? { witness: candidate.witness }
-          : {}),
-      },
+  if (!id) throw new Error('A region needs a stable id.');
+  if (draft.room.regions.some((region) => region.id === id))
+    throw new Error(`Region id is already used: ${id}.`);
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      regions: [
+        ...draft.room.regions,
+        { id, name: nameOf(name), lighting: { intensity: 1 }, cells: [] },
+      ],
     },
-  ]);
-}
-export function useEnclosingWalls(
-  draft: RoomDraft,
-  regionId: string
-): RoomDraft {
-  const region = requireRegion(draft, regionId);
-  const label = draft.scene.mapLabels?.find((l) => l.id === region.labelId);
-  if (!label) throw new Error('Linked room label no longer exists.');
-  const candidate = findEnclosureAtPoint(draft, label.location);
-  if (candidate.status !== 'resolved')
-    throw new Error(`Cannot bind enclosure: ${candidate.reason}.`);
-  if (
-    region.boundary.kind === 'automatic' &&
-    region.boundary.witness &&
-    enclosureWitnessesEqual(region.boundary.witness, candidate.witness)
-  )
-    return draft;
-  return withRegions(
-    draft,
-    draft.scene.authoringRegions!.map((r) =>
-      r.id === regionId
-        ? { ...r, boundary: { kind: 'automatic', witness: candidate.witness } }
-        : r
-    )
-  );
-}
-export function setExplicitRegionArea(
-  draft: RoomDraft,
-  regionId: string,
-  cells: readonly RoomHexCell[]
-): RoomDraft {
-  const region = requireRegion(draft, regionId);
-  const keys = new Map<string, RoomHexCell>();
-  for (const cell of cells) keys.set(`${cell.q},${cell.r}`, { ...cell });
-  const ordered = [...keys.values()].sort((a, b) => a.q - b.q || a.r - b.r);
-  // Validate before no-op comparison, including nonintegral/out-of-bounds input.
-  const next = withRegions(
-    draft,
-    draft.scene.authoringRegions!.map((r) =>
-      r.id === regionId
-        ? { ...r, boundary: { kind: 'explicit', cells: ordered } }
-        : r
-    )
-  );
-  if (
-    region.boundary.kind === 'explicit' &&
-    JSON.stringify(
-      [...region.boundary.cells].sort((a, b) => a.q - b.q || a.r - b.r)
-    ) === JSON.stringify(ordered)
-  )
-    return draft;
-  return next;
-}
-export function removeRegionAndLabel(
-  draft: RoomDraft,
-  regionId: string
-): RoomDraft {
-  const region = requireRegion(draft, regionId);
-  const scene = { ...draft.scene };
-  const labels = scene.mapLabels?.filter((l) => l.id !== region.labelId) ?? [];
-  if (labels.length) scene.mapLabels = labels;
-  else delete scene.mapLabels;
-  return withRegions(
-    { ...draft, scene },
-    draft.scene.authoringRegions!.filter((r) => r.id !== regionId)
-  );
+  };
 }
 
-/** Null resets to absence. A real setting opts in to scene4; no helper demotes it. */
+/** The name is the label on the map, so renaming renames the label. */
+export function renameRegion(
+  draft: RoomDraft,
+  id: string,
+  name: string
+): RoomDraft {
+  const index = regionIndex(draft, id);
+  const region = draft.room.regions[index];
+  const next = nameOf(name);
+  if (region.name === next) return draft;
+  return withRegion(draft, index, { ...region, name: next });
+}
+
+/** Lighting intensity in [0, 1], the encounter's word. */
 export function setRegionLighting(
   draft: RoomDraft,
-  regionId: string,
-  lighting: Readonly<RegionLighting> | null
+  id: string,
+  intensity: number
 ): RoomDraft {
-  const region = requireRegion(draft, regionId);
-  const value = lighting === null ? null : validateRegionLighting(lighting);
-  if (
-    value === null
-      ? !Object.hasOwn(region, 'lighting')
-      : region.lighting?.background === value.background
-  )
-    return draft;
-  const regions = draft.scene.authoringRegions!.map((r) => {
-    if (r.id !== regionId) return r;
-    const next = { ...r };
-    if (value === null) delete next.lighting;
-    else next.lighting = value;
-    return next;
-  });
-  return withRegions(
-    value === null
-      ? draft
-      : {
-          ...draft,
-          scene: {
-            ...draft.scene,
-            version: draft.scene.version >= 4 ? draft.scene.version : 4,
-          },
-        },
-    regions
-  );
+  if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1)
+    throw new Error('Lighting intensity must be between 0 and 1.');
+  const index = regionIndex(draft, id);
+  const region = draft.room.regions[index];
+  if (region.lighting.intensity === intensity) return draft;
+  return withRegion(draft, index, { ...region, lighting: { intensity } });
+}
+
+/** Remove a region. Its cells stay floor and fall to the implicit region;
+ * its look (`scene.regionPresentation`) goes with it. The implicit region is
+ * where unassigned paint lands, so it cannot be removed. */
+export function removeRegion(draft: RoomDraft, id: string): RoomDraft {
+  if (id === draft.room.implicitRegionId)
+    throw new Error('The implicit region cannot be removed.');
+  const index = regionIndex(draft, id);
+  const cells = regionCells(draft.room.regions[index]);
+  // Hand the cells to the implicit region first (listing it if needed), then
+  // drop the emptied region.
+  const handed = cells.length ? paintCells(draft, cells) : draft;
+  const regions = handed.room.regions.filter((region) => region.id !== id);
+  const regionPresentation = { ...handed.scene.regionPresentation };
+  delete regionPresentation[id];
+  const scene: typeof handed.scene = { ...handed.scene, regionPresentation };
+  if (Object.keys(regionPresentation).length === 0)
+    delete scene.regionPresentation;
+  const next = { ...handed, scene, room: { ...handed.room, regions } };
+  // The list must not go empty: the implicit region is listed again.
+  if (regions.length === 0)
+    next.room.regions = [
+      implicitRegionOf(draft.room.implicitRegionId, draft.name),
+    ];
+  return next;
 }

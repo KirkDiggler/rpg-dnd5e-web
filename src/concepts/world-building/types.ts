@@ -3,7 +3,7 @@
  * continuous transforms and stable author identities that today's dungeon
  * wire does not. See CONTRACT.md before treating this as a server contract.
  */
-import type { AuthoringRegion } from './authoringRegions';
+import type { RegionPresentations } from './authoringRegions';
 import type { CreaturePaletteEntry } from './creaturePalette';
 
 export interface WorldTransform {
@@ -67,10 +67,12 @@ export interface WorldScene {
   creaturePalette?: CreaturePaletteEntry[];
   /** Per-placement labels for the authoring map, independent of rules names. */
   actorNames?: Record<string, string>;
-  /** Presentation-only annotations; version 1 refuses this metadata. */
+  /** Notes: presentation-only annotations linked to no region (a region's
+   * label is its name, rpg-project#725); version 1 refuses this metadata. */
   mapLabels?: MapLabel[];
-  /** Scene3/4 author intent only, never gameplay regions or a saved derived polygon. */
-  authoringRegions?: AuthoringRegion[];
+  /** Region id -> the region's look and the author's construction
+   * (rpg-project#725 G4). Never gameplay. */
+  regionPresentation?: RegionPresentations;
   id: string;
   name: string;
   items: WorldProp[];

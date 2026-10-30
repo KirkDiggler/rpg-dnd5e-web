@@ -8,11 +8,6 @@ import {
   type WallOpeningGeometry,
 } from './structuralWallGeometry';
 import type { WorldPoint } from './types';
-import {
-  containsWorkspacePoint,
-  rectangleOf,
-  type RoomWorkspace,
-} from './workspaceGeometry';
 
 /** One opening's optional attached door: a stable identity and a catalog
  * appearance. THERE IS NO STORED POSE — the owning opening resolves the
@@ -83,8 +78,7 @@ function booleanAt(value: unknown, path: string): boolean {
 function pointAt(
   value: unknown,
   path: string,
-  horizontalLimit: number,
-  workspace?: RoomWorkspace
+  horizontalLimit: number
 ): WorldPoint {
   const point = objectShape(value, path);
   rejectUnknownKeys(point, ['x', 'z'], path);
@@ -95,14 +89,10 @@ function pointAt(
     ['z', z],
   ] as const) {
     if (Math.abs(coordinate) > horizontalLimit)
-      throw new Error(`${path}.${axis}: outside the authoring workspace`);
+      throw new Error(
+        `${path}.${axis}: beyond the world coordinate bound (±${horizontalLimit})`
+      );
   }
-  if (
-    workspace &&
-    rectangleOf(workspace) &&
-    !containsWorkspacePoint(workspace, { x, z })
-  )
-    throw new Error(`${path}: outside the authoring workspace`);
   return { x, z };
 }
 
@@ -113,11 +103,10 @@ function pointAt(
 export function validateStructuralWalls(input: {
   value: unknown;
   horizontalLimit: number;
-  workspace?: RoomWorkspace;
   itemIds: ReadonlySet<string>;
 }): StructuralWall[] {
   const path = 'room.room.walls';
-  numberAt(input.horizontalLimit, `${path}: workspace limit`, true);
+  numberAt(input.horizontalLimit, `${path}: world coordinate bound`, true);
   if (!Array.isArray(input.value)) throw new Error(`${path}: must be an array`);
   const identities = new Set(input.itemIds);
   const claim = (value: unknown, location: string): string => {
@@ -214,15 +203,9 @@ export function validateStructuralWalls(input: {
         start: pointAt(
           line.start,
           `${location}.line.start`,
-          input.horizontalLimit,
-          input.workspace
+          input.horizontalLimit
         ),
-        end: pointAt(
-          line.end,
-          `${location}.line.end`,
-          input.horizontalLimit,
-          input.workspace
-        ),
+        end: pointAt(line.end, `${location}.line.end`, input.horizontalLimit),
       },
       appearance: {
         assetRef,

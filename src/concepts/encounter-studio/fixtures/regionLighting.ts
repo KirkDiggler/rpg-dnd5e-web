@@ -1,11 +1,11 @@
 import { createMapLabel } from '../../world-building/mapLabelEdits';
 import {
-  createRoomLabel,
-  setExplicitRegionArea,
+  createRegion,
   setRegionLighting,
 } from '../../world-building/regionEdits';
 import {
-  resizeRoomWorkspace,
+  cellsInWorldRectangle,
+  paintCells,
   setRoomPartyStart,
   validateRoomDocument,
   type RoomDraftDocument,
@@ -14,19 +14,21 @@ import type { StructuralWall } from '../../world-building/structuralWalls';
 import type { WorldProp } from '../../world-building/types';
 import { createPopulatedStudioDocument } from './studioDocument';
 
-export const LIGHTING_LABELS = {
-  left: 'lighting-left-label',
-  right: 'lighting-right-label',
-  forest: 'lighting-forest-label',
-  meadow: 'lighting-meadow-label',
+/** The four lit regions, by name. */
+export const LIGHTING_REGIONS = {
+  left: 'lighting-left',
+  right: 'lighting-right',
+  forest: 'lighting-forest',
+  meadow: 'lighting-meadow',
 } as const;
 
 /** Synthetic complete authoring fixture, not operator data or gameplay lighting.
- * The actual helpers certify automatic witnesses and normalize optional intent. */
+ * Four painted regions (rpg-project#725): left and right fill the two halves
+ * the divider wall splits, forest and meadow are a few cells north. */
 export function createRegionLightingDocument(
   configured = false
 ): RoomDraftDocument {
-  const document = resizeRoomWorkspace(createPopulatedStudioDocument(), 24, 24);
+  const document = createPopulatedStudioDocument();
   // Keep all scope keys, with a provider-registered, explicitly filled scenario.
   document.scope.scenarios = {
     'recover-the-artifact': { artifact: 'table', exit: 'studio-exit' },
@@ -119,80 +121,56 @@ export function createRegionLightingDocument(
     x: 6,
     z: 0,
   });
-  for (const [name, location] of [
-    ['left', { x: -2, z: 0 }],
-    ['right', { x: 2, z: 0 }],
-    ['forest', { x: -2, z: -7 }],
-    ['meadow', { x: 2, z: -7 }],
-  ] as const) {
-    draft = createRoomLabel(
-      draft,
-      `lighting-${name}`,
-      LIGHTING_LABELS[name],
-      name,
-      location
-    );
+  const areas = {
+    left: cellsInWorldRectangle({ x: -3.6, z: -2.6 }, { x: -0.4, z: 2.6 }),
+    right: cellsInWorldRectangle({ x: 0.4, z: -2.6 }, { x: 3.6, z: 2.6 }),
+    forest: [
+      { q: 1, r: -5 },
+      { q: 2, r: -5 },
+      { q: -1, r: -5 },
+    ],
+    meadow: [
+      { q: 3, r: -5 },
+      { q: 4, r: -5 },
+    ],
+  } as const;
+  for (const name of ['left', 'right', 'forest', 'meadow'] as const) {
+    draft = createRegion(draft, LIGHTING_REGIONS[name], name);
+    draft = paintCells(draft, areas[name], LIGHTING_REGIONS[name]);
   }
-  draft = setExplicitRegionArea(draft, 'lighting-forest', [
-    { q: 1, r: -5 },
-    { q: 2, r: -5 },
-    { q: -1, r: -5 },
-  ]);
-  draft = setExplicitRegionArea(draft, 'lighting-meadow', [
-    { q: 3, r: -5 },
-    { q: 4, r: -5 },
-  ]);
   if (configured) {
     for (const name of ['left', 'right', 'forest', 'meadow'] as const)
-      draft = setRegionLighting(draft, `lighting-${name}`, {
-        background: name === 'left' || name === 'forest' ? 0.15 : 0.8,
-      });
+      draft = setRegionLighting(
+        draft,
+        LIGHTING_REGIONS[name],
+        name === 'left' || name === 'forest' ? 0.15 : 0.8
+      );
   }
   return validateRoomDocument({ draft, scope: document.scope });
 }
 
-/** Saved settings with no applied automatic extent, plus unbound/empty intent. */
+/** Saved settings on two declared, unpainted regions: their lighting is kept
+ * and draws nothing until they own a cell. */
 export function createUnresolvedRegionLightingDocument(): RoomDraftDocument {
   const document = createRegionLightingDocument(true);
-  document.draft.room.walls!.find(
-    (w) => w.id === 'lighting-divider'
-  )!.line.end.z = 2.75;
-  let draft = createRoomLabel(
-    document.draft,
-    'lighting-unbound',
-    'lighting-unbound-label',
-    'Unbound',
-    { x: 8, z: 0 }
-  );
-  draft = setRegionLighting(draft, 'lighting-unbound', { background: 0.3 });
-  draft = createRoomLabel(
-    draft,
-    'lighting-empty',
-    'lighting-empty-label',
-    'Empty',
-    { x: 8, z: 3 }
-  );
-  draft = setExplicitRegionArea(draft, 'lighting-empty', []);
-  draft = setRegionLighting(draft, 'lighting-empty', { background: 1 });
+  let draft = createRegion(document.draft, 'lighting-unbound', 'Unbound');
+  draft = setRegionLighting(draft, 'lighting-unbound', 0.3);
+  draft = createRegion(draft, 'lighting-empty', 'Empty');
+  draft = setRegionLighting(draft, 'lighting-empty', 1);
   return validateRoomDocument({ draft, scope: document.scope });
 }
 
-/** Many small separated areas at maximum workspace bounds, within current caps. */
+/** Many small separated regions, within current caps. */
 export function createSparseRegionLightingDocument(): RoomDraftDocument {
-  const document = resizeRoomWorkspace(
-    createPopulatedStudioDocument(),
-    128,
-    128
-  );
+  const document = createPopulatedStudioDocument();
   let draft = document.draft;
   for (let i = 0; i < 240; i++) {
     const q = (i % 16) * 4 - 30;
     const r = Math.floor(i / 16) * 4 - 28;
     const id = `lighting-sparse-${i}`;
-    // The anchor is deliberately independent of membership.
-    draft = createRoomLabel(draft, id, `${id}-label`, id, { x: 0, z: 0 });
-    draft = setExplicitRegionArea(draft, id, [{ q, r }]);
-    draft = setRegionLighting(draft, id, { background: 0.2 });
+    draft = createRegion(draft, id, id);
+    draft = paintCells(draft, [{ q, r }], id);
+    draft = setRegionLighting(draft, id, 0.2);
   }
   return validateRoomDocument({ draft, scope: document.scope });
 }

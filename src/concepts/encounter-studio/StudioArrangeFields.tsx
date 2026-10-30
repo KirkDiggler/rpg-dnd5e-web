@@ -7,7 +7,6 @@ import {
 import { documentPlacementNames } from '../world-building/placementNames';
 import { LIGHTING_STUDIO_ONLY_HELP } from './FieldHelp';
 import type {
-  AuthoringRegion,
   EncounterStudioSession,
   RegionResolution,
   StructuralWall,
@@ -179,20 +178,20 @@ export function arrangeFields(
         { key: 'text', label: 'Rename label', value: selection.label.text },
         numeric('x', 'Label world X', selection.label.location.x),
         numeric('z', 'Label world Z', selection.label.location.z),
-        ...(selection.region
-          ? [
-              {
-                key: 'background' as const,
-                label: 'Background light (%)',
-                numeric: true,
-                help: LIGHTING_STUDIO_ONLY_HELP,
-                value: selection.region.lighting
-                  ? display(selection.region.lighting.background * 100)
-                  : '',
-                placeholder: '100',
-              },
-            ]
-          : []),
+      ];
+    case 'region':
+      // The name is the region's label on the map; the intensity is the
+      // encounter's lighting word, 0..1, shown as a percentage.
+      return [
+        { key: 'text', label: 'Region name', value: selection.region.name },
+        {
+          key: 'background',
+          label: 'Lighting (%)',
+          numeric: true,
+          help: LIGHTING_STUDIO_ONLY_HELP,
+          value: display(selection.region.lighting.intensity * 100),
+          placeholder: '100',
+        },
       ];
     case 'actor': {
       const ref = draft.appearanceRef ?? selection.monster.appearanceRef ?? '';
@@ -405,28 +404,7 @@ export function arrangeIntent(
           : {}),
       };
     }
-    case 'label': {
-      let regionLighting: Extract<
-        StudioArrangeIntent,
-        { kind: 'label-edit' }
-      >['regionLighting'];
-      if (draft.background !== undefined || draft.baseline !== undefined) {
-        if (!selection.region)
-          throw new Error('Select a linked region label to edit lighting.');
-        if (draft.baseline === 'reset') {
-          regionLighting = { regionId: selection.region.id, value: null };
-        } else {
-          const background = number('background');
-          if (background < 0 || background > 100)
-            throw new Error(
-              'Background light must be between 0 and 100 percent.'
-            );
-          regionLighting = {
-            regionId: selection.region.id,
-            value: { background: background / 100 },
-          };
-        }
-      }
+    case 'label':
       if (
         draft.text !== undefined &&
         (!draft.text.trim() || draft.text.length > 120)
@@ -441,7 +419,27 @@ export function arrangeIntent(
         ...(draft.x !== undefined || draft.z !== undefined
           ? { location: axes(['x', 'z']) }
           : {}),
-        ...(regionLighting ? { regionLighting } : {}),
+      };
+    case 'region': {
+      if (
+        draft.text !== undefined &&
+        (!draft.text.trim() || draft.text.length > 120)
+      )
+        throw new Error(
+          'Enter a nonblank region name of at most 120 characters.'
+        );
+      let intensity: number | undefined;
+      if (draft.background !== undefined) {
+        const percent = number('background');
+        if (percent < 0 || percent > 100)
+          throw new Error('Lighting must be between 0 and 100 percent.');
+        intensity = percent / 100;
+      }
+      return {
+        kind: 'region-edit',
+        target: selection.target,
+        ...(draft.text !== undefined ? { name: draft.text.trim() } : {}),
+        ...(intensity !== undefined ? { intensity } : {}),
       };
     }
     case 'actor':
@@ -478,37 +476,13 @@ export function arrangeIntent(
   }
 }
 
-const reasons: Record<
-  Extract<RegionResolution, { status: 'unresolved' }>['reason'],
-  string
-> = {
-  unbound:
-    'No enclosure accepted. Use enclosing walls or define an explicit area.',
-  open: 'The enclosure is open. Repair the walls or define an explicit area.',
-  'seed-on-boundary':
-    'The label is on a boundary. Move it inside the intended area.',
-  'outside-bound-enclosure':
-    'The label is outside its accepted enclosure. Move it back or explicitly rebind.',
-  'boundary-changed':
-    'The accepted boundary changed. Repair it or explicitly rebind.',
-  'unsupported-geometry':
-    'This wall geometry is unsupported. Define an explicit area.',
-  'uncertain-geometry':
-    'The geometry cannot be certified. Define an explicit area.',
-  'duplicate-room-label':
-    'Multiple room labels claim this enclosure. Move or delete a linked pair.',
-  overlap: 'Regions overlap. Edit their definitions; no region takes priority.',
-  'empty-explicit': 'The explicit area is empty. Paint or select cells.',
-};
-
-export function regionStatus(
-  region: Readonly<AuthoringRegion>,
-  resolution?: RegionResolution
-): string {
-  const mode = region.boundary.kind === 'automatic' ? 'Automatic' : 'Explicit';
-  return resolution?.status === 'resolved'
-    ? `${mode} · Resolved`
-    : `${mode} · Unresolved · ${resolution?.status === 'unresolved' ? reasons[resolution.reason] : 'Boundary unavailable.'}`;
+/** A region's paint status (rpg-project#725): it owns cells, or it is a
+ * place declared and not yet painted. */
+export function regionStatus(resolution?: RegionResolution): string {
+  if (resolution?.status !== 'resolved')
+    return 'Not painted yet. Arm the region tool and paint its cells.';
+  const n = resolution.area.cells.length;
+  return `Painted · ${n} ${n === 1 ? 'hex' : 'hexes'}`;
 }
 
 /** The name an inspector heading gives one selected thing. */
@@ -534,6 +508,8 @@ export function selectionName(
       return `Door · ${resolveWorldAsset(selection.door.assetRef)?.displayName ?? 'unknown model'}`;
     case 'label':
       return selection.label.text;
+    case 'region':
+      return selection.region.name || selection.region.id;
     case 'actor':
       return (
         documentPlacementNames(session.document).get(selection.monster.id) ??

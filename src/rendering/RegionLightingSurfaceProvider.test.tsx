@@ -25,13 +25,17 @@ const projection = (level: number): RegionLightingProjection => ({
     {
       regionId: 'room',
       background: level,
+      // Region areas are painted cells (rpg-project#725); polygons are retired.
       area: {
-        kind: 'polygon',
-        ring: [
-          { x: -2, z: -2 },
-          { x: 2, z: -2 },
-          { x: 2, z: 2 },
-          { x: -2, z: 2 },
+        kind: 'hex-union',
+        cells: [
+          { q: 0, r: 0 },
+          { q: 1, r: 0 },
+          { q: -1, r: 0 },
+          { q: 0, r: 1 },
+          { q: 0, r: -1 },
+          { q: 1, r: -1 },
+          { q: -1, r: 1 },
         ],
       },
     },

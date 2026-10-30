@@ -1,98 +1,61 @@
 // @vitest-environment node
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
-import type { AuthoringRegion, RegionResolution } from './authoringRegions';
 import { regionsAtCell } from './regionAtCell';
-import { createRoomDraft, type RoomDraft } from './roomDraft';
+import { createRegion } from './regionEdits';
+import { createRoomDraft, eraseCells, paintCells } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 
-function draftWith(regions: AuthoringRegion[]): RoomDraft {
-  const draft = createRoomDraft(createEmptyScene('scene'), 'room');
-  return {
-    ...draft,
-    scene: { ...draft.scene, authoringRegions: regions },
-  };
+function hallAndNook() {
+  let draft = createRoomDraft(createEmptyScene('scene'), 'room');
+  draft = paintCells(draft, [
+    { q: 0, r: 0 },
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ]);
+  draft = createRegion(draft, 'nook', 'Nook');
+  return paintCells(draft, [{ q: 1, r: 1 }], 'nook');
 }
-const region = (id: string): AuthoringRegion => ({
-  id,
-  labelId: `${id}-label`,
-  boundary: { kind: 'automatic' },
-});
-const square = (
-  half: number
-): Extract<RegionResolution, { status: 'resolved' }>['area'] => ({
-  kind: 'polygon',
-  ring: [
-    { x: -half, z: -half },
-    { x: half, z: -half },
-    { x: half, z: half },
-    { x: -half, z: half },
-  ],
-});
-const centre = (q: number, r: number) =>
-  cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
 
 describe('regionsAtCell', () => {
-  it('polygon region contains its interior hex', () => {
-    const draft = draftWith([region('hall')]);
-    const resolutions: RegionResolution[] = [
-      { id: 'hall', status: 'resolved', area: square(3) },
-    ];
+  it('names the region that owns a painted cell', () => {
+    const draft = hallAndNook();
     expect(
-      regionsAtCell({ draft, resolutions, cell: { q: 0, r: 0 } }).map(
-        (r) => r.id
-      )
-    ).toEqual(['hall']);
-    const far = centre(6, 0);
-    expect(Math.abs(far.x)).toBeGreaterThan(3);
-    expect(regionsAtCell({ draft, resolutions, cell: { q: 6, r: 0 } })).toEqual(
-      []
-    );
-  });
-
-  it('hex-union region contains listed cells only', () => {
-    const draft = draftWith([region('nook')]);
-    const resolutions: RegionResolution[] = [
-      {
-        id: 'nook',
-        status: 'resolved',
-        area: { kind: 'hex-union', cells: [{ q: 1, r: 1 }] },
-      },
-    ];
-    expect(
-      regionsAtCell({ draft, resolutions, cell: { q: 1, r: 1 } }).map(
-        (r) => r.id
-      )
+      regionsAtCell({ draft, cell: { q: 1, r: 1 } }).map((r) => r.id)
     ).toEqual(['nook']);
-    expect(regionsAtCell({ draft, resolutions, cell: { q: 0, r: 1 } })).toEqual(
-      []
-    );
-  });
-
-  it('unresolved region is never reported', () => {
-    const draft = draftWith([region('hall')]);
-    const resolutions = [
-      { id: 'hall', status: 'unresolved', reason: 'unbound' },
-    ] as unknown as RegionResolution[];
-    expect(regionsAtCell({ draft, resolutions, cell: { q: 0, r: 0 } })).toEqual(
-      []
-    );
-  });
-
-  it('overlapping regions are both reported in authored order', () => {
-    const draft = draftWith([region('outer'), region('inner')]);
-    const resolutions: RegionResolution[] = [
-      {
-        id: 'inner',
-        status: 'resolved',
-        area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
-      },
-      { id: 'outer', status: 'resolved', area: square(4) },
-    ];
     expect(
-      regionsAtCell({ draft, resolutions, cell: { q: 0, r: 0 } }).map(
-        (r) => r.id
-      )
-    ).toEqual(['outer', 'inner']);
+      regionsAtCell({ draft, cell: { q: 2, r: 0 } }).map((r) => r.id)
+    ).toEqual(['room-region']);
+  });
+
+  it('a cell that is not floor belongs to no region', () => {
+    const draft = hallAndNook();
+    expect(regionsAtCell({ draft, cell: { q: 0, r: 1 } })).toEqual([]);
+    expect(
+      regionsAtCell({
+        draft: eraseCells(draft, [{ q: 1, r: 1 }]),
+        cell: { q: 1, r: 1 },
+      })
+    ).toEqual([]);
+  });
+
+  // No cell belongs to two regions (rpg-project#725): painting a cell into a
+  // region moves it out of the one that held it, so a cell never reports two.
+  it('repainting a cell moves it, so one region at most is reported', () => {
+    const draft = paintCells(hallAndNook(), [{ q: 0, r: 0 }], 'nook');
+    expect(
+      regionsAtCell({ draft, cell: { q: 0, r: 0 } }).map((r) => r.id)
+    ).toEqual(['nook']);
+  });
+
+  it('a declared, unpainted region is never reported', () => {
+    const draft = createRegion(hallAndNook(), 'cellar', 'Cellar');
+    for (const cell of [
+      { q: 0, r: 0 },
+      { q: 1, r: 1 },
+      { q: 5, r: 5 },
+    ])
+      expect(
+        regionsAtCell({ draft, cell }).some((r) => r.id === 'cellar')
+      ).toBe(false);
   });
 });

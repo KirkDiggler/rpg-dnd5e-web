@@ -6,8 +6,7 @@ import type {
   WorldPoint,
 } from './studioSession';
 
-/** The fill's fixed opacity: overlapping regions both show, in authored
- * order (S3-Q5). */
+/** The fill's fixed opacity. Regions never overlap (rpg-project#725). */
 export const REGION_FILL_OPACITY = 0.28;
 const UNCOLOURED = '#91a8fa';
 
@@ -53,12 +52,7 @@ const RegionShapes = memo(function RegionShapes({
     () =>
       resolutions.flatMap((resolution) => {
         if (resolution.status !== 'resolved') return [];
-        const area = resolution.area;
-        const paths =
-          area.kind === 'polygon'
-            ? { fill: ringPath(area.ring), outline: ringPath(area.ring) }
-            : unionPaths(area.cells);
-        return [{ id: resolution.id, ...paths }];
+        return [{ id: resolution.id, ...unionPaths(resolution.area.cells) }];
       }),
     [resolutions]
   );

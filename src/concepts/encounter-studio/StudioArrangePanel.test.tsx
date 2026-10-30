@@ -9,15 +9,19 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import {
-  ROOM_DRAFT_STORAGE_KEY,
   parseRoomDocumentJson,
+  ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import { moveSelection } from '../world-building/sceneState';
 import type { KeyValueStorage } from '../world-building/types';
 import { StudioArrangePanel } from './StudioArrangePanel';
-import { createRegionLightingDocument } from './fixtures/regionLighting';
+import {
+  createRegionLightingDocument,
+  createUnresolvedRegionLightingDocument,
+  LIGHTING_REGIONS,
+} from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import type {
   EncounterStudioSession,
@@ -532,11 +536,13 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const writes = joined.writes();
     expect(screen.queryByLabelText('Y facing (degrees)')).toBeNull();
     change('Rename label', 'Renamed');
-    change('Label world X', '9999');
+    // The canvas is unbounded (rpg-project#725); only the world sanity bound
+    // (±100000) refuses a label point.
+    change('Label world X', '200000');
     apply();
     expect(joined.session.document).toBe(before);
     expect(token('Rename label')).toBe('Renamed');
-    expect(token('Label world X')).toBe('9999');
+    expect(token('Label world X')).toBe('200000');
     expect(screen.getByRole('alert').textContent).toMatch(/refused/);
     change('Label world X', '1');
     change('Label world Z', '-1');
@@ -836,41 +842,49 @@ describe('Arrange staged fields joined to the actual document owner', () => {
   });
 });
 
-describe('linked room label Arrange affordances', () => {
-  it('projects mode/reason on the existing label selection and removes only the linked pair, atomically', () => {
+// A region is its own selection (rpg-project#725): no label is linked to a
+// region, so its name and lighting are edited in the region view.
+describe('region Arrange affordances', () => {
+  it('a new unpainted region shows its paint status and Remove region removes only it, atomically', () => {
     const joined = owner();
+    const initial = joined.session.document;
     act(() =>
-      expect(
-        joined.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
-      ).toBe(true)
+      expect(joined.session.regionEditing.createRegion('Forest')).toBe(true)
     );
     const before = joined.session.document;
-    const region = before.draft.scene.authoringRegions![0];
-    act(() => joined.session.mapLabelSelection.select(region.labelId));
+    const region = before.draft.room.regions.find((r) => r.name === 'Forest')!;
+    expect(region).toMatchObject({ lighting: { intensity: 1 }, cells: [] });
+    expect(token('Region name')).toBe('Forest');
     expect(
-      screen.getByText(/Automatic · Unresolved.*No enclosure accepted/)
+      screen.getByText(
+        'Not painted yet. Arm the region tool and paint its cells.'
+      )
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Delete label' })).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Delete region and label' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove region' }));
     expect(joined.calls.at(-1)).toEqual({
       kind: 'region-remove',
-      target: { kind: 'label', id: region.labelId },
-      regionId: region.id,
+      target: { kind: 'region', id: region.id },
     });
-    expect(
-      joined.session.document.draft.scene.authoringRegions
-    ).toBeUndefined();
-    expect(joined.session.document.draft.room).toEqual(before.draft.room);
+    expect(joined.session.document.draft).toEqual(initial.draft);
     expect(joined.session.document.scope).toEqual(before.scope);
     act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
   });
+  it('the implicit region offers no Remove region', () => {
+    const joined = owner();
+    act(() =>
+      joined.session.selectRegion(
+        joined.session.document.draft.room.implicitRegionId
+      )
+    );
+    expect(token('Region name')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Remove region' })).toBeNull();
+  });
 });
 
-describe('linked label staged background joined to owner', () => {
-  it('dirty equal label tokens keep strict policy refusal; lighting alone retains unfinished policy without invented facts', () => {
+describe('region staged lighting joined to owner', () => {
+  it('note tokens keep strict policy refusal; a region edit retains unfinished policy without invented facts', () => {
     const document = createRegionLightingDocument();
     const bytes = new Map([
       [
@@ -900,24 +914,29 @@ describe('linked label staged background joined to owner', () => {
         }}
       />
     );
-    act(() => session.mapLabelSelection.select('lighting-left-label'));
+    act(() => session.mapLabelSelection.select('lighting-note'));
     const unfinished = session!.document;
     const savedBytes = bytes.get(ROOM_DRAFT_STORAGE_KEY);
     expect(unfinished.scope.intel!.at(-1)).toMatchObject({
       reveals: { fact: '' },
     });
+    // Explicit note tokens, even equal ones, keep the complete policy gate.
     change('Rename label', 'other');
-    change('Rename label', 'left');
-    change('Background light (%)', '15');
+    change('Rename label', 'Plain note');
     apply();
     expect(session!.document).toBe(unfinished);
     expect(screen.getByRole('alert').textContent).toMatch(/refused/);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    change('Background light (%)', '15');
+    act(() => session.selectRegion(LIGHTING_REGIONS.left));
+    change('Region name', 'other');
+    change('Region name', 'left');
+    change('Lighting (%)', '15');
     apply();
-    expect(session!.document.draft.scene.authoringRegions![0].lighting).toEqual(
-      { background: 0.15 }
-    );
+    expect(
+      session!.document.draft.room.regions.find(
+        (r) => r.id === LIGHTING_REGIONS.left
+      )
+    ).toMatchObject({ name: 'left', lighting: { intensity: 0.15 } });
     expect(session!.document.scope).toEqual(unfinished.scope);
     expect(bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(savedBytes);
     expect(() =>
@@ -926,160 +945,142 @@ describe('linked label staged background joined to owner', () => {
     act(() => session!.undo());
     expect(session!.document).toEqual(unfinished);
   });
-  function linked(configured = false) {
+  function selectedRegion(configured = false) {
     const joined = owner(createRegionLightingDocument(configured));
-    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
+    act(() => joined.session.selectRegion(LIGHTING_REGIONS.left));
     return joined;
   }
-  it('distinguishes absent baseline from deliberate 100 and equal authored noops', () => {
-    const joined = linked();
+  const left = (document: RoomDraftDocument) =>
+    document.draft.room.regions.find((r) => r.id === LIGHTING_REGIONS.left)!;
+  // Every region carries an intensity (rpg-project#725): full intensity is
+  // the bright baseline, so there is no absent-versus-100 distinction.
+  it('shows full intensity as 100, treats equal values as noops and commits a change once', () => {
+    const joined = selectedRegion();
     const before = joined.session.document;
     const writes = joined.writes();
-    expect(token('Background light (%)')).toBe('');
-    expect(
-      screen.getByText('Baseline · no region light authored')
-    ).toBeTruthy();
+    expect(token('Lighting (%)')).toBe('100');
     apply();
-    change('Rename label', 'Left renamed');
+    expect(joined.calls).toHaveLength(0);
+    change('Lighting (%)', '100');
     apply();
-    expect(joined.session.document.draft.scene.version).toBe(3);
-    expect(
-      joined.session.document.draft.scene.authoringRegions![0]
-    ).not.toHaveProperty('lighting');
-    act(() => joined.session.undo());
-    expect(joined.session.document).toEqual(before);
-    change('Background light (%)', '100');
+    expect(joined.session.document).toBe(before);
+    expect(joined.writes()).toBe(writes);
+    change('Lighting (%)', '40');
     apply();
     expect(joined.calls.at(-1)).toEqual({
-      kind: 'label-edit',
-      target: { kind: 'label', id: 'lighting-left-label' },
-      regionLighting: { regionId: 'lighting-left', value: { background: 1 } },
+      kind: 'region-edit',
+      target: { kind: 'region', id: LIGHTING_REGIONS.left },
+      intensity: 0.4,
     });
-    expect(joined.session.document.draft.scene.version).toBe(4);
-    const authored = joined.session.document;
-    const bytes = joined.bytes.get(ROOM_DRAFT_STORAGE_KEY);
-    const equalWrites = joined.writes();
-    change('Background light (%)', '100');
-    apply();
-    expect(joined.session.document).toBe(authored);
-    expect(joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    expect(joined.writes()).toBe(equalWrites);
-    expect(equalWrites).toBeGreaterThan(writes);
+    expect(left(joined.session.document).lighting).toEqual({
+      intensity: 0.4,
+    });
+    expect(joined.session.document.draft.scene.version).toBe(
+      before.draft.scene.version
+    );
+    expect(joined.writes()).toBe(writes + 1);
     act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
   });
-  it('composes dirty rename/move/background as one history step preserving the full payload', () => {
-    const joined = linked();
+  it('composes dirty rename and lighting as one history step preserving the full payload', () => {
+    const joined = selectedRegion();
     const before = joined.session.document;
     const writes = joined.writes();
-    change('Rename label', 'Kitchen');
-    change('Label world X', '-2.25');
-    change('Background light (%)', '15');
+    change('Region name', 'Kitchen');
+    change('Lighting (%)', '15');
     expect(joined.session.document).toBe(before);
-    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+    fireEvent.keyDown(screen.getByLabelText('Lighting (%)'), {
       key: 'Enter',
     });
-    expect(joined.calls).toHaveLength(1);
-    expect(joined.calls[0]).toMatchObject({
-      text: 'Kitchen',
-      location: { x: -2.25 },
-      regionLighting: {
-        regionId: 'lighting-left',
-        value: { background: 0.15 },
+    expect(joined.calls).toEqual([
+      {
+        kind: 'region-edit',
+        target: { kind: 'region', id: LIGHTING_REGIONS.left },
+        name: 'Kitchen',
+        intensity: 0.15,
       },
-    });
+    ]);
     expect(joined.writes()).toBe(writes + 1);
     const expected = structuredClone(before);
-    expected.draft.scene.version = 4;
-    expected.draft.scene.mapLabels!.find(
-      (l) => l.id === 'lighting-left-label'
-    )!.text = 'Kitchen';
-    expected.draft.scene.mapLabels!.find(
-      (l) => l.id === 'lighting-left-label'
-    )!.location.x = -2.25;
-    expected.draft.scene.authoringRegions![0].lighting = { background: 0.15 };
+    Object.assign(left(expected), {
+      name: 'Kitchen',
+      lighting: { intensity: 0.15 },
+    });
     expect(joined.session.document).toEqual(expected);
     act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
     expect(joined.session.canUndo).toBe(false);
   });
   it.each(['101', '-1', '', 'text', 'Infinity'])(
-    'invalid background %j refuses the entire form',
+    'invalid lighting %j refuses the entire form',
     (value) => {
-      const joined = linked();
+      const joined = selectedRegion();
       const before = joined.session.document;
       const writes = joined.writes();
-      change('Rename label', 'Never');
-      change('Background light (%)', '15');
-      change('Background light (%)', value);
+      change('Region name', 'Never');
+      change('Lighting (%)', '15');
+      change('Lighting (%)', value);
       apply();
       expect(screen.getByRole('alert')).toBeTruthy();
-      expect(token('Background light (%)')).toBe(value);
+      expect(token('Lighting (%)')).toBe(value);
       expect(joined.calls).toHaveLength(0);
       expect(joined.session.document).toBe(before);
       expect(joined.writes()).toBe(writes);
     }
   );
   it('collapse retains the form; cancel/escape/target/epoch/document retire staged lighting', () => {
-    const joined = linked(true);
+    const joined = selectedRegion(true);
     const before = joined.session.document;
     const writes = joined.writes();
-    const reset = () =>
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Use baseline appearance' })
-      );
-    reset();
+    const stage = () => change('Lighting (%)', '40');
+    stage();
     expect(joined.session.document).toBe(before);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(token('Background light (%)')).toBe('15');
-    reset();
-    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+    expect(token('Lighting (%)')).toBe('15');
+    stage();
+    fireEvent.keyDown(screen.getByLabelText('Lighting (%)'), {
       key: 'Escape',
     });
-    expect(token('Background light (%)')).toBe('15');
-    reset();
-    change('Rename label', 'Never');
+    expect(token('Lighting (%)')).toBe('15');
+    stage();
+    change('Region name', 'Never');
     joined.collapse(true);
     joined.collapse(false);
-    expect(token('Background light (%)')).toBe('');
-    expect(token('Rename label')).toBe('Never');
-    reset();
+    expect(token('Lighting (%)')).toBe('40');
+    expect(token('Region name')).toBe('Never');
     act(() => joined.session.cancelTransients());
-    expect(token('Background light (%)')).toBe('15');
-    reset();
-    act(() => joined.session.mapLabelSelection.select('lighting-right-label'));
-    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
-    expect(token('Background light (%)')).toBe('15');
-    reset();
+    expect(token('Lighting (%)')).toBe('15');
+    stage();
+    act(() => joined.session.selectRegion(LIGHTING_REGIONS.right));
+    act(() => joined.session.selectRegion(LIGHTING_REGIONS.left));
+    expect(token('Lighting (%)')).toBe('15');
+    stage();
     act(() => joined.session.renameDocument('Replaced'));
-    expect(token('Background light (%)')).toBe('15');
+    expect(token('Lighting (%)')).toBe('15');
     expect(joined.calls).toHaveLength(0);
     expect(joined.writes()).toBe(writes + 1);
-    reset();
+    change('Lighting (%)', '100');
     apply();
-    expect(joined.calls.at(-1)).toMatchObject({
-      regionLighting: { regionId: 'lighting-left', value: null },
+    expect(joined.calls.at(-1)).toEqual({
+      kind: 'region-edit',
+      target: { kind: 'region', id: LIGHTING_REGIONS.left },
+      intensity: 1,
     });
-    expect(joined.session.document.draft.scene.version).toBe(4);
-    expect(
-      joined.session.document.draft.scene.authoringRegions![0]
-    ).not.toHaveProperty('lighting');
+    expect(left(joined.session.document).lighting).toEqual({ intensity: 1 });
   });
-  it('notes exclude lighting, unresolved saved intent explains not applied', () => {
-    const doc = createRegionLightingDocument(true);
-    doc.draft.room.walls!.find((w) => w.id === 'lighting-divider')!.line.end.z =
-      2.75;
-    const joined = owner(doc);
+  it('notes carry no lighting; an unpainted region keeps its saved lighting and says it is not painted', () => {
+    const joined = owner(createUnresolvedRegionLightingDocument());
     act(() => joined.session.mapLabelSelection.select('lighting-note'));
-    expect(screen.queryByLabelText('Background light (%)')).toBeNull();
+    expect(screen.queryByLabelText('Lighting (%)')).toBeNull();
+    act(() => joined.session.selectRegion('lighting-unbound'));
+    expect(token('Lighting (%)')).toBe('30');
     expect(
-      screen.queryByRole('button', { name: 'Use baseline appearance' })
-    ).toBeNull();
-    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
-    expect(token('Background light (%)')).toBe('15');
-    expect(
-      screen.getByText('Lighting saved · not applied until boundary resolves')
+      screen.getByText(
+        'Not painted yet. Arm the region tool and paint its cells.'
+      )
     ).toBeTruthy();
-    expect(screen.getByText(/Automatic · Unresolved/)).toBeTruthy();
+    act(() => joined.session.selectRegion(LIGHTING_REGIONS.left));
+    expect(token('Lighting (%)')).toBe('15');
+    expect(screen.getByText(/^Painted · \d+ hexes$/)).toBeTruthy();
   });
 });
