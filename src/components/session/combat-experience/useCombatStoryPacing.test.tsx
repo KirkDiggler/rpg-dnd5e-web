@@ -13,6 +13,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { actStoryId } from './actStory';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 import type { CombatExperienceStoryExchange } from './types';
 import {
@@ -71,7 +72,12 @@ describe('useCombatStoryPacing scope', () => {
     const nextStory = [...oldStory, storyEntry(25n)];
     const { result, rerender, unmount } = renderHook(
       ({ member, story }) =>
-        useCombatStoryPacing({ member, participants, story }),
+        useCombatStoryPacing({
+          session: 'crypt-run',
+          member,
+          participants,
+          story,
+        }),
       { initialProps: { member: 'aldric', story: oldStory } }
     );
 
@@ -147,6 +153,7 @@ describe('useCombatStoryPacing over whole driven turns', () => {
   it('announces each driven turn, the same monster again after its turn ends', () => {
     const { result } = renderHook(() =>
       useCombatStoryPacing({
+        session: 'crypt-run',
         member: 'aldric',
         participants: roster,
         story: [],
@@ -218,6 +225,7 @@ describe('useCombatStoryPacing tells the turn order what it plays (rpg-project#6
     const onTurnBeat = vi.fn();
     const { result } = renderHook(() =>
       useCombatStoryPacing({
+        session: 'castle',
         member: 'aldric',
         participants,
         story: [],
@@ -239,6 +247,7 @@ describe('useCombatStoryPacing tells the turn order what it plays (rpg-project#6
     const beats: string[] = [];
     const { result } = renderHook(() =>
       useCombatStoryPacing({
+        session: 'castle',
         member: 'aldric',
         participants,
         story: [],
@@ -265,5 +274,213 @@ describe('useCombatStoryPacing tells the turn order what it plays (rpg-project#6
       act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
     }
     expect(beats).toEqual(['playing skeleton-guard', 'passed aldric', 'idle']);
+  });
+});
+
+describe('completion-driven walk presentation', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  type Complete = (outcome: 'painted' | 'unavailable' | 'cancelled') => void;
+  const presentableMembers = new Set(['skeleton-guard', 'commoner', 'pedlar']);
+  const walk = (id: string, mover = 'skeleton-guard') =>
+    create(ActSchema, {
+      session: 'crypt-run',
+      id,
+      family: Family.ACT,
+      body: {
+        case: 'walk',
+        value: {
+          mover: { kind: PartyKind.MEMBER, id: mover },
+          path: [{ cell: { x: 1, y: 0 } }, { cell: { x: 2, y: 0 } }],
+        },
+      },
+    });
+
+  it('holds the next attack and turn marker until the exact walk completes, not a timer', () => {
+    const walking = walk('walk-1');
+    const attack = createAttackAuthorityFixture({
+      seq: 2n,
+      attacker: 'skeleton-guard',
+    }).act;
+    const passed = create(ActSchema, {
+      session: 'crypt-run',
+      id: 'turn-3',
+      family: Family.CLOCK,
+      body: {
+        case: 'clock',
+        value: {
+          mark: ClockMark.TURN_ENDED,
+          turn: {
+            member: { kind: PartyKind.MEMBER, id: 'skeleton-guard' },
+            next: { kind: PartyKind.MEMBER, id: 'aldric' },
+          },
+        },
+      },
+    });
+    const run = [walking, attack, passed];
+    const story = run.map((item, index) => ({
+      ...storyEntry(BigInt(index)),
+      id: actStoryId(item, index),
+    }));
+    let complete: Complete | undefined;
+    const unsubscribe = vi.fn();
+    const onPresentWalk = vi.fn((input: { complete: Complete }) => {
+      complete = input.complete;
+      return unsubscribe;
+    });
+    const onTurnBeat = vi.fn();
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants,
+        story,
+        onTurnBeat,
+        onPresentWalk,
+        presentableMembers,
+      })
+    );
+    act(() => result.current.acceptActs(run, { source: 'live' }));
+    expect(result.current.heldMovementMembers).toEqual(
+      new Set(['skeleton-guard'])
+    );
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(onPresentWalk).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current.story).toEqual([story[0]]);
+    expect(onTurnBeat.mock.calls.map(([beat]) => beat.type)).toEqual([
+      'playing',
+    ]);
+    expect(complete).toBeTypeOf('function');
+    act(() => complete!('painted'));
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS * 3));
+    expect(result.current.story).toEqual(story);
+    expect(result.current.heldMovementMembers).toEqual(new Set());
+    expect(onTurnBeat.mock.calls.map(([beat]) => beat.type)).toEqual([
+      'playing',
+      'passed',
+      'idle',
+    ]);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('orders world walks by completion without announcing a combat turn', () => {
+    const completions: Complete[] = [];
+    const onPresentWalk = vi.fn((input: { complete: Complete }) => {
+      completions.push(input.complete);
+      return () => {};
+    });
+    const onTurnBeat = vi.fn();
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants,
+        story: [],
+        onPresentWalk,
+        onTurnBeat,
+        presentableMembers,
+      })
+    );
+    act(() =>
+      result.current.acceptActs(
+        [walk('world-1', 'commoner'), walk('world-2', 'pedlar')],
+        { source: 'live' }
+      )
+    );
+    expect(onPresentWalk).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onPresentWalk).toHaveBeenCalledOnce();
+    expect(result.current.notice).toBeNull();
+    expect(onTurnBeat).not.toHaveBeenCalled();
+    act(() => completions[0]!('painted'));
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(onPresentWalk).toHaveBeenCalledTimes(2);
+    act(() => completions[1]!('painted'));
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(onTurnBeat).not.toHaveBeenCalled();
+    expect(result.current.heldMovementMembers).toEqual(new Set());
+  });
+
+  it('fences a previous session completion even when the viewing member id stays the same', () => {
+    let stale: Complete | undefined;
+    const unsubscribe = vi.fn();
+    const onPresentWalk = vi.fn((input: { complete: Complete }) => {
+      stale = input.complete;
+      return unsubscribe;
+    });
+    const { result, rerender } = renderHook(
+      ({ session }) =>
+        useCombatStoryPacing({
+          session,
+          member: 'aldric',
+          participants,
+          story: [],
+          onPresentWalk,
+          presentableMembers,
+        }),
+      { initialProps: { session: 'first-run' } }
+    );
+    act(() =>
+      result.current.acceptActs([walk('world-1', 'commoner')], {
+        source: 'live',
+      })
+    );
+    expect(stale).toBeTypeOf('function');
+    rerender({ session: 'second-run' });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    act(() => stale!('painted'));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onPresentWalk).toHaveBeenCalledOnce();
+    expect(result.current.heldMovementMembers).toEqual(new Set());
+    expect(result.current.notice).toBeNull();
+  });
+
+  it('accepts synchronous unavailable completion without leaving a stuck hold', () => {
+    const unsubscribe = vi.fn();
+    const onPresentWalk = vi.fn((input: { complete: Complete }) => {
+      input.complete('unavailable');
+      return unsubscribe;
+    });
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants,
+        story: [],
+        onPresentWalk,
+        presentableMembers,
+      })
+    );
+    act(() =>
+      result.current.acceptActs([walk('world-1', 'commoner')], {
+        source: 'live',
+      })
+    );
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(onPresentWalk).toHaveBeenCalledOnce();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(result.current.heldMovementMembers).toEqual(new Set());
+  });
+
+  it('does not animate catch-up history', () => {
+    const onPresentWalk = vi.fn();
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants,
+        story: [],
+        onPresentWalk,
+        presentableMembers,
+      })
+    );
+    act(() =>
+      result.current.acceptActs([walk('old-walk')], { source: 'catchup' })
+    );
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onPresentWalk).not.toHaveBeenCalled();
+    expect(result.current.heldMovementMembers).toEqual(new Set());
   });
 });

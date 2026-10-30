@@ -41,7 +41,12 @@ const turnEnded = (member: string, next: string) =>
   });
 const downed = () =>
   act(Family.STATE, { case: 'state', value: { party: m(MEMBER) } });
-const beat = (a: ReturnType<typeof act>): QueuedBeat => ({ act: a, index: 0 });
+const beat = (a: ReturnType<typeof act>): QueuedBeat => ({
+  act: a,
+  index: 0,
+  scope: 'turn',
+  walkPresentation: a.body.case === 'walk' ? 'eligible' : 'none',
+});
 
 describe('beatActor / needsPacing', () => {
   const FIGHT = new Set([MEMBER, 'goblin']);
@@ -72,6 +77,20 @@ describe('beatActor / needsPacing', () => {
 });
 
 describe('nextBeatStep', () => {
+  it('processes a world walk without a turn announcement', () => {
+    const world: QueuedBeat = {
+      act: walk('commoner'),
+      index: 0,
+      scope: 'world',
+      walkPresentation: 'eligible',
+    };
+    expect(nextBeatStep([world], null)).toEqual({
+      type: 'process',
+      beat: world,
+      actor: 'commoner',
+    });
+  });
+
   it('idles on an empty queue', () => {
     expect(nextBeatStep([], null)).toEqual({ type: 'idle' });
   });

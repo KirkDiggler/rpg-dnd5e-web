@@ -188,6 +188,7 @@ export interface HexEntityProps {
   moveSeq?: number;
   /** Presentation-only completion for this entity's exact move sequence. */
   onMovementPresentationComplete?: (entityId: string, moveSeq: number) => void;
+  deferPositionReconciliation?: boolean;
   /** `Seen.facing_degrees`, verbatim: the compass bearing this viewer
    * observed the subject facing (0 = north, clockwise). When present it
    * seeds and steers the heading and the move path's heading is ignored;
@@ -402,6 +403,7 @@ export function HexEntity({
   movePath,
   moveSeq,
   onMovementPresentationComplete,
+  deferPositionReconciliation = false,
   seenFacingDegrees,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -448,7 +450,8 @@ export function HexEntity({
     movingGroupRef,
     movePathHeadingSink(seenFacingDegrees, requestHeading),
     (completedMoveSeq) =>
-      onMovementPresentationComplete?.(entityId, completedMoveSeq)
+      onMovementPresentationComplete?.(entityId, completedMoveSeq),
+    !remembered && deferPositionReconciliation
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
