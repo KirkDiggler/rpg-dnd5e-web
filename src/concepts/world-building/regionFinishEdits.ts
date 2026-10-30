@@ -16,11 +16,13 @@ export function setRegionWallFinish(
   regionId: string,
   patch: RegionWallFinishPatch | null
 ): RoomDraft {
-  const region = draft.scene.authoringRegions?.find(
-    (row) => row.id === regionId
-  );
-  if (!region) throw new Error('Region target no longer exists.');
-  let next = { ...region };
+  if (!draft.room.regions.some((row) => row.id === regionId))
+    throw new Error('Region target no longer exists.');
+  const region = {
+    id: regionId,
+    ...draft.scene.regionPresentation?.[regionId],
+  };
+  let next: typeof region = { ...region };
   if (patch === null) {
     if (!region.wallFinish) return draft;
     delete next.wallFinish;
@@ -44,14 +46,18 @@ export function setRegionWallFinish(
       return draft;
     next = { ...region, wallFinish };
   }
-  return {
-    ...draft,
-    scene: {
-      ...draft.scene,
-      version: draft.scene.version >= 6 ? draft.scene.version : 6,
-      authoringRegions: draft.scene.authoringRegions!.map((row) =>
-        row.id === regionId ? next : row
-      ),
-    },
+  const { id: _id, ...presentation } = next;
+  void _id;
+  const regionPresentation = { ...draft.scene.regionPresentation };
+  if (Object.keys(presentation).length > 0)
+    regionPresentation[regionId] = presentation;
+  else delete regionPresentation[regionId];
+  const scene: RoomDraft['scene'] = {
+    ...draft.scene,
+    version: draft.scene.version >= 6 ? draft.scene.version : (6 as const),
+    regionPresentation,
   };
+  if (Object.keys(regionPresentation).length === 0)
+    delete scene.regionPresentation;
+  return { ...draft, scene };
 }

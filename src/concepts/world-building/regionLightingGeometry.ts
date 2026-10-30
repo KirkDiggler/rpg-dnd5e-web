@@ -11,8 +11,6 @@ export function toSpatialBackgroundAreas(
   projection: RegionLightingProjection
 ): readonly SpatialBackgroundArea[] {
   return projection.areas.flatMap(({ regionId, background, area }) => {
-    if (area.kind === 'polygon')
-      return [{ id: regionId, background, ring: area.ring }];
     return area.cells.flatMap((cell) => {
       const center = cubeToWorld(
         { x: cell.q, y: -cell.q - cell.r, z: cell.r },

@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
-import type {
-  AuthoringRegion,
-  RegionResolution,
-} from '../world-building/authoringRegions';
+import type { RegionResolution } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type {
   RoomDoorBinding,
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
+  RoomRegion,
 } from '../world-building/roomDraft';
 import type { SiteScope } from '../world-building/siteScope';
 import type { WallLine } from '../world-building/structuralWallGeometry';
@@ -23,14 +21,10 @@ import type {
 } from '../world-building/studioDoorEditing';
 import type { WorldPoint, WorldScene } from '../world-building/types';
 import type { WallCornerJoin } from '../world-building/wallCornerJoins';
-import type { ResizeEdges } from '../world-building/workspaceGeometry';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 export type {
-  AuthoringRegion,
-  BoundaryRun,
-  EnclosureWitness,
-  RegionLighting,
+  RegionPresentation,
   RegionResolution,
 } from '../world-building/authoringRegions';
 export type {
@@ -46,6 +40,7 @@ export type {
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
+  RoomRegion,
 } from '../world-building/roomDraft';
 export type { WallLine } from '../world-building/structuralWallGeometry';
 export type { StructuralWall } from '../world-building/structuralWalls';
@@ -63,12 +58,11 @@ export type {
   StudioWallArrangeValues,
 } from '../world-building/studioArrange';
 export type { WorldPoint } from '../world-building/types';
-export type { ResizeEdges } from '../world-building/workspaceGeometry';
 
 export type EncounterStudioView = 'layout' | '3d';
 
 /** The inspector's key: one thing, derived from the owner's arbiter on every
- * render and never stored. Ten kinds; `nothing` is the room. */
+ * render and never stored. Eleven kinds; `nothing` is the room. */
 export type StudioSelection =
   | { readonly kind: 'nothing' }
   | { readonly kind: 'wall'; readonly id: string }
@@ -80,8 +74,10 @@ export type StudioSelection =
   /** One scene root that is a group. */
   | { readonly kind: 'group'; readonly id: string }
   | { readonly kind: 'hex'; readonly cell: RoomHexCell }
-  /** A map label, with or without a region. */
+  /** A note: a map label linked to no region. */
   | { readonly kind: 'label'; readonly id: string }
+  /** An authored region (rpg-project#725); its name is its map label. */
+  | { readonly kind: 'region'; readonly id: string }
   | { readonly kind: 'partyStart' }
   /** One cast member, by its monster ref (rpg-project#575). */
   | { readonly kind: 'castMember'; readonly ref: string };
@@ -130,6 +126,8 @@ export function studioInspectionOf(
       return one({ kind: 'partyStart' });
     case 'label':
       return one({ kind: 'label', id: arrange.label.id });
+    case 'region':
+      return one({ kind: 'region', id: arrange.region.id });
     case 'hex':
       return one({ kind: 'hex', cell: { ...arrange.cell } });
     case 'cast':
@@ -214,13 +212,20 @@ export interface LayoutViewportProps {
   tool: LayoutTool;
   frame: LayoutFrame;
   onFrameChange(next: LayoutFrame): void;
-  onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
+  /** Paint goes into `regionId` (the implicit region when absent). */
+  onCommit(
+    cells: readonly RoomHexCell[],
+    mode: 'paint' | 'erase',
+    regionId?: string
+  ): boolean;
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
   doorEditing?: StudioDoorEditing;
   regionEditing?: StudioRegionEditing;
-  /** Derived from the existing linked-label selection, never a second store. */
-  selectedRegion?: Readonly<AuthoringRegion>;
+  /** Derived from the region selection, never a second store. */
+  selectedRegion?: Readonly<RoomRegion>;
+  /** A click on a region's name selects that region. */
+  onSelectRegion?(id: string): void;
   patternStart?: WorldPoint;
   regionTool?: LayoutFloorTool;
   onExitRegionTool?(): void;
@@ -255,9 +260,11 @@ export interface LayoutViewportProps {
   };
 }
 
-/** Definitions belong to the one document owner. Area commits replace region
- * cells, never floor; bound intents require the current linked-label selection.
- * Captured callbacks retire on document/epoch/selection changes. */
+/** Regions belong to the one document owner (rpg-project#725 R5). Cells move
+ * between regions by painting (`commitFloor` with a region id); these edit the
+ * regions themselves, ADDRESSED BY ID whatever is selected. Each is one
+ * history entry; an equal edit adds none; a refusal shows the owner's notice.
+ * Captured callbacks retire on document/epoch changes. */
 export interface StudioRegionEditing {
   readonly resolutions: readonly RegionResolution[];
   readonly finishes?: {
@@ -270,17 +277,14 @@ export interface StudioRegionEditing {
         | null
     ): boolean;
   };
-  /** Atomic pair creation uses the existing strict label codec gate. Unbound
-   * geometry alone is valid metadata, not a publication/creation refusal. */
-  createRoomLabel(text: string, location: WorldPoint): boolean;
-  /** Definition operations use ordinary shape/bounds/size gates and retain
-   * editable unfinished policies. Equal accepted intents add no history. */
-  useEnclosingWalls(regionId: string): boolean;
-  setExplicitRegionArea(
-    regionId: string,
-    cells: readonly RoomHexCell[]
-  ): boolean;
-  removeRegionAndLabel(regionId: string): boolean;
+  /** A new, bright, unpainted region, selected. */
+  createRegion(name: string): boolean;
+  /** The name is the label on the map. */
+  renameRegion(regionId: string, name: string): boolean;
+  /** Lighting intensity in [0, 1]. */
+  setRegionLighting(regionId: string, intensity: number): boolean;
+  /** Its cells fall to the implicit region; the implicit one is refused. */
+  removeRegion(regionId: string): boolean;
 }
 
 /** Render-time projection of the existing owner, never a second store.
@@ -302,6 +306,9 @@ export interface EncounterStudioSession {
   selectScene(ids: readonly string[]): boolean;
   /** Select the party start from any view. Refused when none is placed. */
   selectPartyStart(): boolean;
+  /** Select one authored region (rpg-project#725), or nothing. Refused for
+   * an unknown id, while publishing, or from a retired snapshot. */
+  selectRegion(id: string | null): boolean;
   /** Arm the party-start gesture: the next 3D floor click places or moves
    * it. Refused while publishing or from a retired snapshot. */
   armPartyStart(): boolean;
@@ -411,14 +418,14 @@ export interface EncounterStudioSession {
   canRedo: boolean;
   undo(): void;
   redo(): void;
-  /** Shape/bounds/size-checked transaction preserving editable policies;
-   * a successful no-op adds no history. */
-  commitFloor(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
-  /** Explicit resize that moves only the chosen edges; absent edges means
-   * right and top, so no cell moves. Labels never resize implicitly.
-   * Refusals and retired-context callbacks return false without
-   * history/storage changes. */
-  resizeWorkspace(width: number, height: number, edges?: ResizeEdges): boolean;
+  /** Shape/size-checked transaction preserving editable policies; a
+   * successful no-op adds no history. Paint goes into `regionId` (the
+   * implicit region when absent) and reassigns; erase removes floor. */
+  commitFloor(
+    cells: readonly RoomHexCell[],
+    mode: 'paint' | 'erase',
+    regionId?: string
+  ): boolean;
   createMapLabel(text: string, location: WorldPoint): boolean;
   moveMapLabel(id: string, location: WorldPoint): boolean;
   renameMapLabel(id: string, text: string): boolean;
@@ -471,7 +478,7 @@ export interface EncounterStudioPresentation {
   home?: StudioHome;
   view: EncounterStudioView;
   /** Escape retires an armed tool that edits the selection (the region
-   * tool, on a region's label) instead of selecting nothing. */
+   * tool, on a selected region) instead of selecting nothing. */
   escapeKeepsSelection?: boolean;
   render(session: EncounterStudioSession): ReactNode;
 }

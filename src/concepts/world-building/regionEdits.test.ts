@@ -1,384 +1,121 @@
-import { projectRegionLighting } from './regionLighting';
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import {
-  createMapLabel,
-  deleteMapLabel,
-  moveMapLabel,
-  renameMapLabel,
-} from './mapLabelEdits';
-import { resolveAuthoringRegions } from './regionBoundaryGeometry';
-import {
-  createRoomLabel,
-  removeRegionAndLabel,
-  setExplicitRegionArea,
+  createRegion,
+  removeRegion,
+  renameRegion,
   setRegionLighting,
-  useEnclosingWalls,
 } from './regionEdits';
 import {
-  createRoomDraft,
-  parseRoomDocumentJson,
+  cellOwners,
+  floorCells,
+  paintCells,
   stringifyRoomDraft,
+  type RoomDraft,
 } from './roomDraft';
-import { createEmptyScene } from './sceneState';
-import type { StructuralWall } from './structuralWalls';
-function base() {
-  return createRoomDraft(createEmptyScene('scene'), 'room');
+
+/**
+ * REGION EDITS (rpg-project#725 R5). The label-linked region transactions —
+ * room labels, enclosure binding, explicit areas, overlap and polygon
+ * certification — retired with `scene.authoringRegions`: a region is now what
+ * it lists, and cells move between regions by painting. What those tests
+ * guarded and still holds is pinned here: an edit touches only its region,
+ * an equal edit returns the same draft (no history entry), an invalid edit
+ * refuses without mutation, and identities never collide.
+ */
+function room(): RoomDraft {
+  let draft = createPopulatedStudioDocument().draft;
+  draft = paintCells(draft, [
+    { q: 0, r: 0 },
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ]);
+  draft = createRegion(draft, 'hall', 'Hall');
+  return paintCells(draft, [{ q: 2, r: 0 }], 'hall');
 }
-function enclosed() {
-  const draft = base();
-  const points = [
-    { x: -4, z: -4 },
-    { x: 4, z: -4 },
-    { x: 4, z: 4 },
-    { x: -4, z: 4 },
-  ];
-  draft.room.walls = points.map(
-    (start, i): StructuralWall => ({
-      id: `wall-${i}`,
-      label: 'Wall',
-      line: { start, end: points[(i + 1) % 4] },
-      openings: [],
-      appearance: {
-        assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-        height: 3,
-        thickness: 0.2,
-        elevation: 0,
-      },
-      blocker: {
-        footprint: { width: 1, depth: 0.2, offsetX: 0, offsetZ: 0 },
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-    })
-  );
-  return draft;
-}
-describe('explicit region definition transactions', () => {
-  it('creates the pair, acquires only certified geometry, keeps all unrelated author data unchanged', () => {
-    const draft = enclosed();
-    const before = JSON.stringify(draft);
-    const next = createRoomLabel(draft, 'region', 'label', ' Room ', {
-      x: 0,
-      z: 0,
+
+describe('creating, naming and lighting a region', () => {
+  it('creates a bright, unpainted region at the end, leaving everything else as it was', () => {
+    const before = room();
+    const next = createRegion(before, 'cellar', '  Cellar  ');
+    expect(next.room.regions.at(-1)).toEqual({
+      id: 'cellar',
+      name: 'Cellar',
+      lighting: { intensity: 1 },
+      cells: [],
     });
-    expect(next.scene.version).toBe(3);
-    expect(next.scene.mapLabels![0]).toMatchObject({
-      id: 'label',
-      text: 'Room',
-    });
-    expect(next.scene.authoringRegions![0]).toMatchObject({
-      id: 'region',
-      labelId: 'label',
-      boundary: {
-        kind: 'automatic',
-        witness: {
-          walk: [
-            { wallId: 'wall-0', direction: 'start-to-end' },
-            { wallId: 'wall-1', direction: 'start-to-end' },
-            { wallId: 'wall-2', direction: 'start-to-end' },
-            { wallId: 'wall-3', direction: 'start-to-end' },
-          ],
-        },
-      },
-    });
-    expect(next.room).toBe(draft.room);
-    expect(next.workspace).toBe(draft.workspace);
-    expect(JSON.stringify(draft)).toBe(before);
-    expect(resolveAuthoringRegions(next)[0].status).toBe('resolved');
-  });
-  it('open/empty definitions are persisted intent, bind refusal/noop leaves the exact draft', () => {
-    const open = createRoomLabel(base(), 'region', 'label', 'Forest', {
-      x: 0,
-      z: 0,
-    });
-    expect(resolveAuthoringRegions(open)[0]).toMatchObject({
-      reason: 'unbound',
-    });
-    const before = JSON.stringify(open);
-    expect(() => useEnclosingWalls(open, 'region')).toThrow('open');
-    expect(JSON.stringify(open)).toBe(before);
-    const empty = setExplicitRegionArea(open, 'region', []);
-    expect(resolveAuthoringRegions(empty)[0]).toMatchObject({
-      reason: 'empty-explicit',
-    });
-    expect(setExplicitRegionArea(empty, 'region', [])).toBe(empty);
-    expect(
-      parseRoomDocumentJson(stringifyRoomDraft(empty, {})).draft.scene
-        .authoringRegions
-    ).toEqual(empty.scene.authoringRegions);
-    const bound = createRoomLabel(enclosed(), 'region', 'label', 'Room', {
-      x: 0,
-      z: 0,
-    });
-    expect(useEnclosingWalls(bound, 'region')).toBe(bound);
-  });
-  it('canonicalizes explicit cells, preserves set-equal noops including unsorted saved cells, and refuses invalid input atomically', () => {
-    const draft = createRoomLabel(base(), 'region', 'label', 'Forest', {
-      x: 0,
-      z: 0,
-    });
-    const next = setExplicitRegionArea(draft, 'region', [
-      { q: 1, r: 0 },
-      { q: 0, r: 0 },
-      { q: 1, r: 0 },
-    ]);
-    expect(next.scene.authoringRegions![0].boundary).toEqual({
-      kind: 'explicit',
-      cells: [
-        { q: 0, r: 0 },
-        { q: 1, r: 0 },
-      ],
-    });
-    expect(
-      setExplicitRegionArea(next, 'region', [
-        { q: 1, r: 0 },
-        { q: 0, r: 0 },
-      ])
-    ).toBe(next);
-    const unsorted = {
+    expect({
       ...next,
-      scene: {
-        ...next.scene,
-        authoringRegions: [
-          {
-            id: 'region',
-            labelId: 'label',
-            boundary: {
-              kind: 'explicit' as const,
-              cells: [
-                { q: 1, r: 0 },
-                { q: 0, r: 0 },
-              ],
-            },
-          },
-        ],
-      },
-    };
-    expect(
-      setExplicitRegionArea(unsorted, 'region', [
-        { q: 0, r: 0 },
-        { q: 1, r: 0 },
-      ])
-    ).toBe(unsorted);
-    const before = JSON.stringify(next);
-    for (const cell of [
-      { q: 0.5, r: 0 },
-      { q: 100, r: 0 },
-      { q: NaN, r: 0 },
-    ])
-      expect(() => setExplicitRegionArea(next, 'region', [cell])).toThrow();
-    expect(JSON.stringify(next)).toBe(before);
-    expect(next.room).toBe(draft.room);
+      room: { ...next.room, regions: next.room.regions.slice(0, -1) },
+    }).toEqual(before);
+    expect(() => stringifyRoomDraft(next)).not.toThrow();
   });
-  it('explicit auto replacement requires bind; label edits retain the witness; only pair removal can delete its label', () => {
-    let draft = createRoomLabel(enclosed(), 'region', 'label', 'Room', {
-      x: 0,
-      z: 0,
+
+  it('refuses a duplicate id, a blank id and a blank name without mutation', () => {
+    const before = room();
+    const copy = structuredClone(before);
+    expect(() => createRegion(before, 'hall', 'Again')).toThrow(
+      'Region id is already used: hall.'
+    );
+    expect(() => createRegion(before, '', 'Nameless')).toThrow(
+      'A region needs a stable id.'
+    );
+    expect(() => createRegion(before, 'cellar', '   ')).toThrow(
+      'A region needs a name.'
+    );
+    expect(before).toEqual(copy);
+  });
+
+  it('renames: the name is the label on the map; an equal name is no edit', () => {
+    const before = room();
+    const renamed = renameRegion(before, 'hall', 'Great hall');
+    expect(renamed.room.regions.find((r) => r.id === 'hall')!.name).toBe(
+      'Great hall'
+    );
+    expect(renameRegion(renamed, 'hall', ' Great hall ')).toBe(renamed);
+    expect(() => renameRegion(before, 'gone', 'X')).toThrow(
+      'Region target no longer exists.'
+    );
+  });
+
+  it('sets lighting in [0, 1]; equal lighting is no edit; out of range refuses without mutation', () => {
+    const before = room();
+    const dim = setRegionLighting(before, 'hall', 0.3);
+    expect(dim.room.regions.find((r) => r.id === 'hall')!.lighting).toEqual({
+      intensity: 0.3,
     });
-    const witness = draft.scene.authoringRegions![0].boundary;
-    draft = createMapLabel(draft, 'note', 'Note', { x: 1, z: 1 });
-    const edited = moveMapLabel(
-      renameMapLabel(draft, 'label', 'Name'),
-      'label',
-      { x: 1, z: 0 }
+    expect(setRegionLighting(dim, 'hall', 0.3)).toBe(dim);
+    for (const bad of [-0.1, 1.5, Number.NaN])
+      expect(() => setRegionLighting(before, 'hall', bad)).toThrow(
+        'Lighting intensity must be between 0 and 1.'
+      );
+    expect(() => setRegionLighting(before, 'gone', 0.5)).toThrow(
+      'Region target no longer exists.'
     );
-    expect(edited.scene.authoringRegions![0].boundary).toEqual(witness);
-    expect(() => deleteMapLabel(edited, 'label')).toThrow('region-and-label');
-    const explicit = setExplicitRegionArea(edited, 'region', [{ q: 0, r: 0 }]);
-    const rebound = useEnclosingWalls(explicit, 'region');
-    expect(rebound.scene.authoringRegions![0].boundary).toEqual(witness);
-    const removed = removeRegionAndLabel(explicit, 'region');
-    expect(removed.scene.version).toBe(3);
-    expect(removed.scene).not.toHaveProperty('authoringRegions');
-    expect(removed.scene.mapLabels).toEqual([
-      { id: 'note', text: 'Note', location: { x: 1, z: 1 } },
-    ]);
-    expect(removed.room).toBe(explicit.room);
-    expect(removed.workspace).toBe(explicit.workspace);
-    expect(() => removeRegionAndLabel(removed, 'region')).toThrow(
-      'no longer exists'
-    );
-  });
-  it('never resolves explicit adjacency as overlap; overlap marks both, without transferring cells', () => {
-    let draft = createRoomLabel(base(), 'a', 'la', 'A', { x: 0, z: 0 });
-    draft = createRoomLabel(draft, 'b', 'lb', 'B', { x: 2, z: 0 });
-    draft = setExplicitRegionArea(
-      setExplicitRegionArea(draft, 'a', [{ q: 0, r: 0 }]),
-      'b',
-      [{ q: 1, r: 0 }]
-    );
-    expect(resolveAuthoringRegions(draft).map((r) => r.status)).toEqual([
-      'resolved',
-      'resolved',
-    ]);
-    const conflict = setExplicitRegionArea(draft, 'b', [
-      { q: 0, r: 0 },
-      { q: 1, r: 0 },
-    ]);
-    const before = JSON.stringify(conflict);
-    expect(
-      resolveAuthoringRegions(conflict).map((r) =>
-        r.status === 'unresolved' ? r.reason : ''
-      )
-    ).toEqual(['overlap', 'overlap']);
-    expect(JSON.stringify(conflict)).toBe(before);
-  });
-  it('detects polygon/explicit containment and positive-area crossings conservatively', () => {
-    let draft = createRoomLabel(enclosed(), 'a', 'la', 'Room', { x: 0, z: 0 });
-    draft = createRoomLabel(draft, 'b', 'lb', 'Forest', { x: 6, z: 0 });
-    const contained = setExplicitRegionArea(draft, 'b', [{ q: 0, r: 0 }]);
-    expect(
-      resolveAuthoringRegions(contained).map((r) =>
-        r.status === 'unresolved' ? r.reason : ''
-      )
-    ).toEqual(['overlap', 'overlap']);
-    const crossed = setExplicitRegionArea(draft, 'b', [{ q: 2, r: 0 }]);
-    expect(
-      resolveAuthoringRegions(crossed).map((r) =>
-        r.status === 'unresolved' ? r.reason : ''
-      )
-    ).toEqual(['overlap', 'overlap']);
-    const separated = setExplicitRegionArea(draft, 'b', [{ q: 4, r: 0 }]);
-    expect(resolveAuthoringRegions(separated).map((r) => r.status)).toEqual([
-      'resolved',
-      'resolved',
-    ]);
-  });
-  it('rejects duplicate/missing/colliding identities without mutating the original', () => {
-    const draft = createRoomLabel(base(), 'region', 'label', 'Room', {
-      x: 0,
-      z: 0,
-    });
-    const before = JSON.stringify(draft);
-    expect(() =>
-      createRoomLabel(draft, 'region', 'other-label', 'Other', { x: 0, z: 0 })
-    ).toThrow();
-    expect(() =>
-      createRoomLabel(draft, 'other-region', 'label', 'Other', { x: 0, z: 0 })
-    ).toThrow();
-    expect(() =>
-      createRoomLabel(draft, 'room', 'other-label', 'Other', { x: 0, z: 0 })
-    ).toThrow();
-    expect(() => setExplicitRegionArea(draft, 'missing', [])).toThrow(
-      'no longer exists'
-    );
-    expect(JSON.stringify(draft)).toBe(before);
   });
 });
 
-describe('immutable optional lighting transactions', () => {
-  it('set/reset/equal lighting returns expected version/ref; legacy read/noop never promotes', () => {
-    const draft = createRoomLabel(enclosed(), 'region', 'label', 'Room', {
-      x: 0,
-      z: 0,
-    });
-    const bytes = JSON.stringify(draft);
-    expect(setRegionLighting(draft, 'region', null)).toBe(draft);
-    expect(draft.scene.version).toBe(3);
-    const lit = setRegionLighting(draft, 'region', { background: 1 });
-    expect(lit.scene.version).toBe(4);
-    expect(lit.scene.authoringRegions![0].lighting).toEqual({ background: 1 });
-    expect(lit.room).toBe(draft.room);
-    expect(lit.workspace).toBe(draft.workspace);
-    expect(lit.scene.mapLabels).toBe(draft.scene.mapLabels);
-    expect(JSON.stringify(draft)).toBe(bytes);
-    expect(setRegionLighting(lit, 'region', { background: 1 })).toBe(lit);
-    expect(() =>
-      setRegionLighting(lit, 'region', { background: 1, tint: 'red' } as never)
-    ).toThrow();
-    const reset = setRegionLighting(lit, 'region', null);
-    expect(reset.scene.version).toBe(4);
-    expect(reset.scene.authoringRegions![0]).not.toHaveProperty('lighting');
-    expect(setRegionLighting(reset, 'region', null)).toBe(reset);
-    expect(parseRoomDocumentJson(stringifyRoomDraft(reset)).draft).toEqual(
-      reset
-    );
+describe('removing a region', () => {
+  it('its cells fall to the implicit region; the floor is unchanged; its look goes with it', () => {
+    const before = room();
+    before.scene.version = 3;
+    before.scene.regionPresentation = { hall: { construction: [1] } };
+    const floor = floorCells(before);
+    const removed = removeRegion(before, 'hall');
+    expect(removed.room.regions.some((r) => r.id === 'hall')).toBe(false);
+    expect(floorCells(removed)).toEqual(floor);
+    expect(cellOwners(removed).get('2,0')).toBe(removed.room.implicitRegionId);
+    expect(removed.scene).not.toHaveProperty('regionPresentation');
+    expect(() => stringifyRoomDraft(removed)).not.toThrow();
   });
-  it('rejects invalid values and missing regions before equality without mutation', () => {
-    const draft = createRoomLabel(base(), 'region', 'label', 'Room', {
-      x: 0,
-      z: 0,
-    });
-    const before = JSON.stringify(draft);
-    for (const value of [
-      undefined,
-      {},
-      { background: NaN },
-      { background: Infinity },
-      { background: -1 },
-      { background: 2 },
-      { background: 0.15, tint: 'red' },
-    ]) {
-      expect(() =>
-        setRegionLighting(draft, 'region', value as never)
-      ).toThrow();
-    }
-    expect(() => setRegionLighting(draft, 'missing', null)).toThrow();
-    expect(JSON.stringify(draft)).toBe(before);
-  });
-  it('bind/paint/rename/new pair/pair-delete preserve scene4 and unrelated settings', () => {
-    const draft = setRegionLighting(
-      createRoomLabel(enclosed(), 'region', 'label', 'Room', { x: 0, z: 0 }),
-      'region',
-      { background: 0.15 }
-    );
-    const painted = setExplicitRegionArea(draft, 'region', [{ q: 0, r: 0 }]);
-    const bound = useEnclosingWalls(painted, 'region');
-    expect(bound.scene.authoringRegions).toEqual(draft.scene.authoringRegions);
-    const renamed = renameMapLabel(bound, 'label', 'Kitchen');
-    const paired = createRoomLabel(renamed, 'other', 'other-label', 'Other', {
-      x: 1,
-      z: 1,
-    });
-    const otherLit = setRegionLighting(paired, 'other', { background: 0.8 });
-    const removed = removeRegionAndLabel(otherLit, 'region');
-    expect(removed.scene.authoringRegions![0]).toEqual(
-      otherLit.scene.authoringRegions![1]
-    );
-    expect(removed.scene.authoringRegions![0].lighting).toEqual({
-      background: 0.8,
-    });
-    for (const value of [
-      painted,
-      bound,
-      renamed,
-      paired,
-      otherLit,
-      removed,
-      removeRegionAndLabel(removed, 'other'),
-    ])
-      expect(value.scene.version).toBe(4);
-  });
-});
 
-it('current automatic geometry and conflicts change only projected extents, never lighting or accepted witness', () => {
-  const lit = setRegionLighting(
-    createRoomLabel(enclosed(), 'region', 'label', 'Room', { x: 0, z: 0 }),
-    'region',
-    { background: 0.15 }
-  );
-  const projection = (draft: typeof lit) =>
-    projectRegionLighting(
-      draft.scene.authoringRegions ?? [],
-      resolveAuthoringRegions(draft)
+  it('refuses the implicit region, where unassigned paint lands', () => {
+    const before = room();
+    expect(() => removeRegion(before, before.room.implicitRegionId)).toThrow(
+      'The implicit region cannot be removed.'
     );
-  expect(projection(lit).areas[0]).toMatchObject({
-    regionId: 'region',
-    background: 0.15,
-    area: { kind: 'polygon' },
+    expect(() => removeRegion(before, 'gone')).toThrow(
+      'Region target no longer exists.'
+    );
   });
-  const gap = structuredClone(lit);
-  gap.room.walls!.pop();
-  expect(projection(gap)).toEqual({ areas: [] });
-  expect(gap.scene.authoringRegions).toEqual(lit.scene.authoringRegions);
-  const conflict = createRoomLabel(lit, 'other', 'other-label', 'Other', {
-    x: 1,
-    z: 0,
-  });
-  expect(projection(conflict)).toEqual({ areas: [] });
-  expect(conflict.scene.authoringRegions![0]).toEqual(
-    lit.scene.authoringRegions![0]
-  );
-  expect(projection(lit).areas).toHaveLength(1);
 });

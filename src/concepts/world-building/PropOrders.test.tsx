@@ -8,6 +8,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PropOrders } from './PropOrders';
+import type { RoomGameplayData } from './roomDraft';
 import type { SiteScope } from './siteScope';
 import type { WorldScene } from './types';
 
@@ -34,9 +35,16 @@ const scope: SiteScope = {
   intel: [{ id: 'wisemans-letter', reveals: { fact: 'saved-wiseman' } }],
 };
 
-const room = {
+const room: RoomGameplayData = {
   implicitRegionId: 'room-1-region',
-  walkableHexes: [{ q: 0, r: 0 }],
+  regions: [
+    {
+      id: 'room-1-region',
+      name: 'Untitled room',
+      lighting: { intensity: 1 },
+      cells: [{ r: 0, q: [[0, 0]] }],
+    },
+  ],
   propDeclarations: {},
   arrangementDeclarations: {},
   monsterDeclarations: [],

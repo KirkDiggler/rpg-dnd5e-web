@@ -103,8 +103,9 @@ describe('the engine’s own v4 single-room example', () => {
       factions: once.factions,
       dispositions: once.dispositions,
     });
-    // The document carries v4 keys, so the encoder claims v4.
-    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    // The encoder writes root version 5 always (rpg-project#725): regions are
+    // the floor, whatever other keys the document carries.
+    expect(emitted.startsWith('version: 5\n')).toBe(true);
     const twice = decodeSingleRoomDungeon(emitted);
     const emittedAgain = encodeSingleRoomDungeon({
       key: twice.key,

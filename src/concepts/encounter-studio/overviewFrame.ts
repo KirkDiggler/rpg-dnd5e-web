@@ -1,4 +1,9 @@
-import type { RoomDraft, RoomHexCell } from '../world-building/roomDraft';
+import { contentWorkspace } from '../world-building/contentGrid';
+import {
+  floorCells,
+  type RoomDraft,
+  type RoomHexCell,
+} from '../world-building/roomDraft';
 import {
   workspaceBounds,
   type WorkspaceBounds,
@@ -34,11 +39,10 @@ export function cellsBounds(
   return boundsOf(cells.flatMap(layoutCellCorners));
 }
 
-/** What "Show entire" frames: the walkable floor, walls and placed nouns, or
- * the workspace when there is no content. */
+/** What "Show entire" frames: the floor (every region's cells), walls and
+ * placed nouns, or the empty grid when there is no content. */
 export function contentBounds(draft: Readonly<RoomDraft>): WorkspaceBounds {
-  const points: WorldPoint[] =
-    draft.room.walkableHexes.flatMap(layoutCellCorners);
+  const points: WorldPoint[] = floorCells(draft).flatMap(layoutCellCorners);
   for (const wall of draft.room.walls ?? [])
     points.push(wall.line.start, wall.line.end);
   for (const monster of draft.room.monsterDeclarations)
@@ -46,7 +50,7 @@ export function contentBounds(draft: Readonly<RoomDraft>): WorkspaceBounds {
   for (const item of draft.scene.items) points.push(item.transform);
   if (draft.room.partyStart)
     points.push(...layoutCellCorners(draft.room.partyStart));
-  return boundsOf(points) ?? workspaceBounds(draft.workspace);
+  return boundsOf(points) ?? workspaceBounds(contentWorkspace(draft));
 }
 
 /** Surface pixels covered by an overlay on each side, such as the open

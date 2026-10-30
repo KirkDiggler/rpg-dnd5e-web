@@ -19,16 +19,18 @@
  */
 import {
   createRoomDraft,
+  paintCells,
   parseRoomDocumentJson,
   placeRoomMonster,
-  resizeRoomWorkspace,
   stringifyRoomDraft,
-  updateWalkableHexes,
   type RoomDraftDocument,
 } from '../../world-building/roomDraft';
 import { createEmptyScene } from '../../world-building/sceneState';
 import type { SiteScope } from '../../world-building/siteScope';
-import { workspaceCells } from '../../world-building/workspaceGeometry';
+import {
+  centeredRoomWorkspace,
+  workspaceCells,
+} from '../../world-building/workspaceGeometry';
 
 export const CASTLE_GUARD = 'dnd5e:monsters:guard';
 export const CASTLE_CAPTAIN = 'dnd5e:monsters:captain';
@@ -118,9 +120,9 @@ export function createCastleReadBackDocument(): RoomDraftDocument {
   scene.version = 7;
   let draft = createRoomDraft(scene, 'castle');
   draft.name = 'The mad king’s castle';
-  draft = resizeRoomWorkspace({ draft, scope: {} }, 12, 8).draft;
-  const cells = workspaceCells(draft.workspace);
-  draft = updateWalkableHexes(draft, cells, 'paint');
+  // A 12 × 8 floor centred on the origin, painted into the implicit region.
+  const cells = workspaceCells(centeredRoomWorkspace(12, 8));
+  draft = paintCells(draft, cells);
   const cell = (index: number) => cells[Math.floor(cells.length / 2) + index]!;
   draft.room.partyStart = { ...cell(0) };
   PLACEMENTS.forEach((placement, index) => {

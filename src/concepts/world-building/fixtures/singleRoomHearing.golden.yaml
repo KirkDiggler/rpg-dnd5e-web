@@ -1,4 +1,4 @@
-version: 4
+version: 5
 key: crypt-room
 play:
   void: transparent
@@ -14,9 +14,6 @@ room:
     distanceUnit: world-scene-unit
     hexRadius: 1
     footprintFrame: owner-local-xz
-  workspace:
-    hexRadius: 6
-    horizontalLimit: 12
   scene:
     version: 1
     id: scene-1
@@ -35,7 +32,13 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: []
+    regions:
+      - id: room-1-region
+        name: Untitled room
+        lighting: {intensity: 1}
+        cells:
+          - r: 0
+            q: [[0, 0]]
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:

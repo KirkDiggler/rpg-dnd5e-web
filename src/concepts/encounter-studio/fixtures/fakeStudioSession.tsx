@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
-import { createRoomDraft } from '../../world-building/roomDraft';
+import { contentWorkspace } from '../../world-building/contentGrid';
+import { createRoomDraft, floorCells } from '../../world-building/roomDraft';
 import type { EncounterStudioSession } from '../studioSession';
 
 /** A fake session for presentation tests: real shapes, inert intents. */
@@ -15,10 +16,10 @@ export function createFakeStudioSession(
     intentEpoch: 0,
     regionEditing: {
       resolutions: [],
-      createRoomLabel: vi.fn(() => true),
-      useEnclosingWalls: vi.fn(() => true),
-      setExplicitRegionArea: vi.fn(() => true),
-      removeRegionAndLabel: vi.fn(() => true),
+      createRegion: vi.fn(() => true),
+      renameRegion: vi.fn(() => true),
+      setRegionLighting: vi.fn(() => true),
+      removeRegion: vi.fn(() => true),
     },
     doorEditing: {
       assetRef: null,
@@ -55,6 +56,7 @@ export function createFakeStudioSession(
     clearSelection: vi.fn(() => true),
     selectScene: vi.fn(() => true),
     selectPartyStart: vi.fn(() => true),
+    selectRegion: vi.fn(() => true),
     armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitBundles: vi.fn(() => true),
@@ -100,8 +102,8 @@ export function createFakeStudioSession(
       activeDrag: null,
       roomAuthoring: {
         tool: 'select',
-        workspace: draft.workspace,
-        walkableHexes: draft.room.walkableHexes,
+        workspace: contentWorkspace(draft),
+        floorCells: floorCells(draft),
         propDeclarations: draft.room.propDeclarations,
         onWalkableGesture: vi.fn(),
       },
@@ -118,7 +120,6 @@ export function createFakeStudioSession(
     undo: vi.fn(),
     redo: vi.fn(),
     commitFloor: vi.fn(() => true),
-    resizeWorkspace: vi.fn(() => true),
     createMapLabel: vi.fn(() => true),
     moveMapLabel: vi.fn(() => true),
     renameMapLabel: vi.fn(() => true),

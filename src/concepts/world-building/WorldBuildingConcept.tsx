@@ -50,6 +50,7 @@ import {
   type ConcealmentMember,
 } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
+import { contentWorkspace } from './contentGrid';
 import { setActorName } from './creaturePalette';
 import {
   declarationMapForSelection,
@@ -84,12 +85,11 @@ import {
   selectionOptionSections,
 } from './propOptionSections';
 import { PropOrders } from './PropOrders';
-import { resolveAuthoringRegions } from './regionBoundaryGeometry';
+import { resolveRegions } from './regionBoundaryGeometry';
 import {
-  useEnclosingWalls as bindEnclosingWalls,
-  createRoomLabel,
-  removeRegionAndLabel,
-  setExplicitRegionArea,
+  createRegion,
+  removeRegion,
+  renameRegion,
   setRegionLighting,
 } from './regionEdits';
 import { setRegionWallFinish } from './regionFinishEdits';
@@ -100,26 +100,26 @@ import {
   assertRoomDocumentSize,
   clearRoomPartyStart,
   createRoomDraft,
-  expandRoomWorkspace,
+  eraseCells,
+  floorCellCount,
+  floorCells,
   FOOTPRINT_MAXIMUM_EXTENT,
   FOOTPRINT_MAXIMUM_OFFSET,
   FOOTPRINT_MINIMUM_EXTENT,
-  isCellWithinWorkspace,
+  isFloorCell,
   lifetimeNotice,
   loadRoomDraft,
   moveRoomMonster,
+  paintCells,
   parseRoomDocumentJson,
   placeRoomMonster,
   reconcileRoomDraft,
   remapRoomDeclarations,
   removeRoomMonster,
-  resizeRoomWorkspace,
-  ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
   setRoomMonsterDefinition,
   setRoomPartyStart,
   stringifyRoomDraft,
-  updateWalkableHexes,
   validateRoomDocument,
   type RoomDoorBinding,
   type RoomDraft,
@@ -129,7 +129,6 @@ import {
   type RoomMonsterBinding,
   type RoomPropBinding,
   type RoomPropDeclaration,
-  type RoomWorkspace,
 } from './roomDraft';
 import { RoomPublishingPanel } from './RoomPublishingPanel';
 import {
@@ -239,8 +238,7 @@ import {
   resolveWallFaceFinish,
 } from './wallFinishProjection';
 import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
-import { validateWorkspaceContent } from './workspaceContentBounds';
-import type { ResizeEdges } from './workspaceGeometry';
+import { MAX_WORLD_COORD } from './worldBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
 import {
@@ -873,8 +871,7 @@ export function WorldBuildingConcept({
       if (refuseWhilePublishing()) return false;
       try {
         const scene = validateScene(candidate.draft.scene, {
-          horizontalLimit: candidate.draft.workspace.horizontalLimit,
-          workspace: candidate.draft.workspace,
+          horizontalLimit: MAX_WORLD_COORD,
         });
         const draft = {
           ...candidate.draft,
@@ -885,14 +882,13 @@ export function WorldBuildingConcept({
               ? {
                   walls: validateStructuralWalls({
                     value: candidate.draft.room.walls,
-                    horizontalLimit: candidate.draft.workspace.horizontalLimit,
+                    horizontalLimit: MAX_WORLD_COORD,
                     itemIds: new Set(scene.items.map((item) => item.id)),
                   }),
                 }
               : {}),
           },
         };
-        validateWorkspaceContent(draft, candidate.scope);
         const valid = complete
           ? validateRoomDocument({ draft, scope: candidate.scope })
           : { draft, scope: candidate.scope };
@@ -944,8 +940,6 @@ export function WorldBuildingConcept({
       next: WorldScene,
       selection = selectedIds,
       nextRoom: RoomGameplayData = roomHistoryRef.current.present.draft.room,
-      nextWorkspace: RoomWorkspace = roomHistoryRef.current.present.draft
-        .workspace,
       nextName?: string,
       nextId = roomHistoryRef.current.present.draft.id,
       nextScope?: SiteScope
@@ -967,7 +961,6 @@ export function WorldBuildingConcept({
               id: nextId,
               ...(nextName === undefined ? {} : { name: nextName }),
               room: nextRoom,
-              workspace: nextWorkspace,
             },
             next
           );
@@ -1316,20 +1309,12 @@ export function WorldBuildingConcept({
         scene,
         selectedIds,
         nextRoom ?? roomDraft.room,
-        roomDraft.workspace,
         undefined,
         undefined,
         nextScope
       );
     },
-    [
-      commit,
-      refuseWhilePublishing,
-      roomDraft.room,
-      roomDraft.workspace,
-      scene,
-      selectedIds,
-    ]
+    [commit, refuseWhilePublishing, roomDraft.room, scene, selectedIds]
   );
 
   /** A placed prop's orders — holdable, what it carries, whether it arrives
@@ -1349,9 +1334,9 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.propBindings;
       else room.propBindings = bindings;
-      return commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room);
     },
-    [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
+    [commit, roomDraft.room, scene, selectedIds]
   );
 
   /** Membership is a binding, keyed by the declared creature id. Editing it
@@ -1383,9 +1368,9 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.monsterBindings;
       else room.monsterBindings = bindings;
-      return commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room);
     },
-    [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
+    [commit, roomDraft.room, scene, selectedIds]
   );
 
   /** One placed item's door state (rpg-project#485). The MAP is normalized
@@ -1422,16 +1407,9 @@ export function WorldBuildingConcept({
           ),
         };
       }
-      commit(scene, selectedIds, room, roomDraft.workspace);
+      commit(scene, selectedIds, room);
     },
-    [
-      commit,
-      measuredBounds,
-      roomDraft.room,
-      roomDraft.workspace,
-      scene,
-      selectedIds,
-    ]
+    [commit, measuredBounds, roomDraft.room, scene, selectedIds]
   );
 
   const armMonsterPlacement = (ref: string) => {
@@ -1755,7 +1733,7 @@ export function WorldBuildingConcept({
         setNotice('Select a repeatable wall asset before drawing.');
         return false;
       }
-      const limit = roomDraft.workspace.horizontalLimit;
+      const limit = MAX_WORLD_COORD;
       if (
         [line.start, line.end].some(
           (point) =>
@@ -1766,7 +1744,7 @@ export function WorldBuildingConcept({
         )
       ) {
         setNotice(
-          `Wall rejected; endpoints must stay inside the authoring workspace (±${limit}).`
+          `Wall rejected; endpoints must stay within ±${limit} scene units.`
         );
         return false;
       }
@@ -1807,7 +1785,6 @@ export function WorldBuildingConcept({
       activateStudioTarget,
       refuseWhilePublishing,
       roomDraft.room,
-      roomDraft.workspace,
       scene,
       walls,
       wallAssetRef,
@@ -2007,7 +1984,7 @@ export function WorldBuildingConcept({
         };
         if (nextBindings === undefined) delete room.doorBindings;
         else room.doorBindings = nextBindings;
-        return commit(scene, selectedIds, room, roomDraft.workspace);
+        return commit(scene, selectedIds, room);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
         return false;
@@ -2018,7 +1995,6 @@ export function WorldBuildingConcept({
       idFactory,
       refuseWhilePublishing,
       roomDraft.room,
-      roomDraft.workspace,
       scene,
       selectedIds,
       walls,
@@ -2098,7 +2074,6 @@ export function WorldBuildingConcept({
       blank,
       [],
       roomMode ? freshRoom.room : roomDraft.room,
-      roomMode ? freshRoom.workspace : roomDraft.workspace,
       roomMode ? freshRoom.name : undefined,
       roomMode ? freshRoom.id : undefined,
       // A fresh document authors no policies: New room empties the scope
@@ -2113,13 +2088,6 @@ export function WorldBuildingConcept({
       setNotice(resetError);
       setSaveStatus('New room kept in memory — prior stored bytes preserved');
     }
-  };
-
-  /** The workspace-size control lives with the canvas it resizes. */
-  const expandWorkspace = () => {
-    const expanded = expandRoomWorkspace(roomDraft);
-    if (expanded === roomDraft) return;
-    commit(scene, selectedIds, roomDraft.room, expanded.workspace);
   };
 
   const saveSelectedArrangement = () => {
@@ -2635,7 +2603,6 @@ export function WorldBuildingConcept({
           { ...scene, name },
           selectedIds,
           roomDraft.room,
-          roomDraft.workspace,
           roomMode ? name : undefined
         )
       )
@@ -3575,8 +3542,8 @@ export function WorldBuildingConcept({
                   <dd>{roomDraft.id}</dd>
                 </div>
                 <div>
-                  <dt>Walkable cells</dt>
-                  <dd>{roomDraft.room.walkableHexes.length}</dd>
+                  <dt>Floor cells</dt>
+                  <dd>{floorCellCount(roomDraft)}</dd>
                 </div>
                 <div>
                   <dt>Creatures</dt>
@@ -3660,15 +3627,22 @@ export function WorldBuildingConcept({
     }
   }, [roomMode, roomDraft, siteScope]);
 
+  /** One stroke is one history entry. Paint goes into `regionId` — the
+   * implicit region by default — and reassigns a cell another region held;
+   * erase stops the cells being floor (rpg-project#725 R5). */
   const commitFloor = (
     cells: readonly RoomHexCell[],
-    mode: 'paint' | 'erase'
+    mode: 'paint' | 'erase',
+    regionId?: string
   ): boolean => {
     if (refuseWhilePublishing()) return false;
     try {
       const current = roomHistoryRef.current.present;
       return commitRoomDocument({
-        draft: updateWalkableHexes(current.draft, cells, mode),
+        draft:
+          mode === 'paint'
+            ? paintCells(current.draft, cells, regionId)
+            : eraseCells(current.draft, cells),
         scope: current.scope,
       });
     } catch (error) {
@@ -3689,9 +3663,13 @@ export function WorldBuildingConcept({
       return rejectEdit(error);
     }
   };
-  // Pure derived metadata: floor/policy/UI changes cannot acquire a witness.
+  // The floor and the grid drawn around it are derived, never stored
+  // (rpg-project#725 R3).
+  const roomFloor = useMemo(() => floorCells(roomDraft), [roomDraft]);
+  const contentGrid = useMemo(() => contentWorkspace(roomDraft), [roomDraft]);
+  // Pure derived metadata: each region resolves to the cells it lists.
   const regionResolutions = useMemo(
-    () => resolveAuthoringRegions(roomDraft),
+    () => resolveRegions(roomDraft),
     [roomDraft]
   );
   const materialCatalog = useWorldMaterialCatalog();
@@ -3714,13 +3692,31 @@ export function WorldBuildingConcept({
     [roomDraft, previewWall, materialCatalog.catalog]
   );
   const regionLighting = useMemo(
-    () =>
-      projectRegionLighting(
-        roomDraft.scene.authoringRegions ?? [],
-        regionResolutions
-      ),
+    () => projectRegionLighting(roomDraft.room.regions, regionResolutions),
     [roomDraft, regionResolutions]
   );
+  /** One region edit, addressed by id, as one ordinary history step. */
+  const editRegionById = (edit: (draft: RoomDraft) => RoomDraft): boolean => {
+    if (refuseWhilePublishing()) return false;
+    try {
+      const current = roomHistoryRef.current.present;
+      return commitRoomDocument({ ...current, draft: edit(current.draft) });
+    } catch (error) {
+      return rejectEdit(error);
+    }
+  };
+  const selectStudioRegion = (id: string | null): boolean => {
+    if (refuseWhilePublishing()) return false;
+    if (id !== null && !roomDraft.room.regions.some((r) => r.id === id))
+      return rejectEdit(new Error('Region target no longer exists.'));
+    if (id) {
+      setPreviewScene(null);
+      setPreviewWall(null);
+    }
+    if (id || activeStudioTargetRef.current?.kind === 'region')
+      activateStudioTarget(id ? { kind: 'region', id } : null);
+    return true;
+  };
   const selectStudioLabel = (id: string | null): boolean => {
     if (refuseWhilePublishing()) return false;
     if (
@@ -3776,7 +3772,6 @@ export function WorldBuildingConcept({
       clearStudioSelection();
       return true;
     }
-    if (!isCellWithinWorkspace(cell, roomDraft.workspace)) return false;
     clearStudioSelection();
     activateStudioTarget({ kind: 'hex', cell: { q: cell.q, r: cell.r } });
     return true;
@@ -3909,30 +3904,47 @@ export function WorldBuildingConcept({
             draft: applyStudioActorArrange(roomDraft, intent),
             scope: siteScope,
           });
-        case 'region-bind':
-        case 'region-area':
         case 'region-remove': {
           if (
-            arrange.kind !== 'label' ||
-            arrange.region?.id !== intent.regionId ||
-            arrange.region.labelId !== intent.target.id
+            arrange.kind !== 'region' ||
+            arrange.region.id !== intent.target.id
           )
             return false;
           const current = roomHistoryRef.current.present;
-          const linked = current.draft.scene.authoringRegions?.find(
-            (r) => r.id === intent.regionId
-          );
-          if (!linked || linked.labelId !== intent.target.id) return false;
-          const draft =
-            intent.kind === 'region-bind'
-              ? bindEnclosingWalls(current.draft, intent.regionId)
-              : intent.kind === 'region-area'
-                ? setExplicitRegionArea(
-                    current.draft,
-                    intent.regionId,
-                    intent.cells
-                  )
-                : removeRegionAndLabel(current.draft, intent.regionId);
+          return commitRoomDocument({
+            ...current,
+            draft: removeRegion(current.draft, intent.target.id),
+          });
+        }
+        case 'region-edit': {
+          if (
+            arrange.kind !== 'region' ||
+            arrange.region.id !== intent.target.id
+          )
+            return false;
+          const current = roomHistoryRef.current.present;
+          let draft = current.draft;
+          if (intent.name !== undefined)
+            draft = renameRegion(draft, intent.target.id, intent.name);
+          if (intent.intensity !== undefined)
+            draft = setRegionLighting(
+              draft,
+              intent.target.id,
+              intent.intensity
+            );
+          if (Object.hasOwn(intent, 'wallFinish')) {
+            const patch = intent.wallFinish!;
+            if (
+              patch?.materialRef &&
+              !materialCatalog.catalog?.materials.some(
+                (m) => m.ref === patch.materialRef
+              )
+            )
+              throw new Error(
+                'Selected wall finish resources are unavailable.'
+              );
+            draft = setRegionWallFinish(draft, intent.target.id, patch);
+          }
           return commitRoomDocument({ ...current, draft });
         }
         case 'label-remove':
@@ -3953,43 +3965,6 @@ export function WorldBuildingConcept({
           );
           if (!label) throw new Error('Label target no longer exists.');
           let draft = current.draft;
-          if (Object.hasOwn(intent, 'regionWallFinish')) {
-            const patch = intent.regionWallFinish!;
-            const linked = current.draft.scene.authoringRegions?.find(
-              (r) => r.id === patch.regionId
-            );
-            if (
-              arrange.kind !== 'label' ||
-              arrange.region?.id !== patch.regionId ||
-              linked?.labelId !== label.id
-            )
-              return false;
-            if (
-              patch.value?.materialRef &&
-              !materialCatalog.catalog?.materials.some(
-                (m) => m.ref === patch.value!.materialRef
-              )
-            )
-              throw new Error(
-                'Selected wall finish resources are unavailable.'
-              );
-            draft = setRegionWallFinish(draft, patch.regionId, patch.value);
-          }
-          if (Object.hasOwn(intent, 'regionLighting')) {
-            const patch = intent.regionLighting!;
-            const linked = current.draft.scene.authoringRegions?.find(
-              (region) => region.id === patch.regionId
-            );
-            if (
-              arrange.kind !== 'label' ||
-              arrange.region?.id !== patch.regionId ||
-              arrange.region.labelId !== label.id ||
-              !linked ||
-              linked.labelId !== label.id
-            )
-              return false;
-            draft = setRegionLighting(draft, patch.regionId, patch.value);
-          }
           if (intent.text !== undefined)
             draft = renameMapLabel(draft, label.id, intent.text);
           if (intent.location)
@@ -3997,18 +3972,9 @@ export function WorldBuildingConcept({
               ...label.location,
               ...intent.location,
             });
-          // Explicit label tokens, even equal values, and empty old intent
-          // retain the complete policy gate. Only lighting alone is ordinary.
-          const lightingOnly =
-            (Object.hasOwn(intent, 'regionLighting') ||
-              Object.hasOwn(intent, 'regionWallFinish')) &&
-            !Object.hasOwn(intent, 'text') &&
-            !Object.hasOwn(intent, 'location');
-          return commitRoomDocument(
-            { ...current, draft },
-            selectedIds,
-            !lightingOnly
-          );
+          // Explicit label tokens, even equal values, retain the complete
+          // policy gate.
+          return commitRoomDocument({ ...current, draft }, selectedIds, true);
         }
       }
     } catch (error) {
@@ -4058,7 +4024,7 @@ export function WorldBuildingConcept({
         ...roomDraft.scene.items.map((item) => item.id),
         ...roomDraft.scene.groups.map((group) => group.id),
         ...(roomDraft.scene.mapLabels ?? []).map((label) => label.id),
-        ...(roomDraft.scene.authoringRegions ?? []).map((region) => region.id),
+        ...roomDraft.room.regions.map((region) => region.id),
         ...roomDraft.room.monsterDeclarations.map((monster) => monster.id),
         ...(roomDraft.room.walls ?? []).flatMap((candidate) => [
           candidate.id,
@@ -4268,13 +4234,14 @@ export function WorldBuildingConcept({
                 intentEpoch: viewportGenerationRef.current,
                 regionLighting,
                 roomFinishes,
-                patternRegionId: roomDraft.scene.authoringRegions?.find(
-                  (r) => r.labelId === selectedLabelId
-                )?.id,
+                patternRegionId:
+                  activeStudioTarget?.kind === 'region'
+                    ? activeStudioTarget.id
+                    : undefined,
               }
             : {}),
-          workspace: roomDraft.workspace,
-          walkableHexes: roomDraft.room.walkableHexes,
+          workspace: contentGrid,
+          floorCells: roomFloor,
           concealments: siteScope.concealments,
           activeConcealmentId,
           onConcealmentCellPick: (cell) => {
@@ -4694,6 +4661,7 @@ export function WorldBuildingConcept({
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
           selectHex: guardSnapshotIntent(selectStudioHex),
+          selectRegion: guardSnapshotIntent(selectStudioRegion),
           selectScene: guardSnapshotIntent(
             (ids: readonly string[]): boolean => {
               const present = roomHistoryRef.current.present.draft.scene;
@@ -4886,9 +4854,7 @@ export function WorldBuildingConcept({
               (cell: RoomHexCell, id: string | null): boolean => {
                 if (refuseWhilePublishing()) return false;
                 const current = roomHistoryRef.current.present;
-                const walkable = current.draft.room.walkableHexes.some(
-                  (hex) => hex.q === cell.q && hex.r === cell.r
-                );
+                const walkable = isFloorCell(current.draft, cell);
                 if (
                   id !== null &&
                   !walkable &&
@@ -5083,74 +5049,57 @@ export function WorldBuildingConcept({
                   regionId: string,
                   value: RegionWallFinishPatch | null
                 ): boolean =>
-                  arrange?.kind === 'label'
+                  arrange?.kind === 'region' && arrange.region.id === regionId
                     ? commitArrange({
-                        kind: 'label-edit',
+                        kind: 'region-edit',
                         target: arrange.target,
-                        regionWallFinish: { regionId, value },
+                        wallFinish: value,
                       })
                     : false
               ),
             },
-            createRoomLabel: guardSnapshotIntent(
-              (text: string, location: WorldPoint): boolean => {
+            createRegion: guardSnapshotIntent((name: string): boolean => {
+              if (refuseWhilePublishing()) return false;
+              try {
+                const current = roomHistoryRef.current.present;
+                const id = idFactory();
                 if (
-                  selectionRevisionRef.current !== selectionRevision ||
-                  refuseWhilePublishing()
+                  !commitRoomDocument({
+                    ...current,
+                    draft: createRegion(current.draft, id, name),
+                  })
                 )
                   return false;
-                try {
-                  const current = roomHistoryRef.current.present;
-                  return commitRoomDocument(
-                    {
-                      ...current,
-                      draft: createRoomLabel(
-                        current.draft,
-                        idFactory(),
-                        idFactory(),
-                        text,
-                        location
-                      ),
-                    },
-                    selectedIds,
-                    true
-                  );
-                } catch (error) {
-                  return rejectEdit(error);
-                }
+                activateStudioTarget({ kind: 'region', id });
+                return true;
+              } catch (error) {
+                return rejectEdit(error);
               }
+            }),
+            // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
+            // argument, so these act on it whatever is selected. A refusal
+            // (unknown region, blank name, the implicit region's removal)
+            // surfaces through the owner's notice, never a silent false.
+            renameRegion: guardSnapshotIntent(
+              (regionId: string, name: string): boolean =>
+                editRegionById((draft) => renameRegion(draft, regionId, name))
             ),
-            useEnclosingWalls: guardSnapshotIntent(
-              (regionId: string): boolean =>
-                arrange?.kind === 'label'
-                  ? commitArrange({
-                      kind: 'region-bind',
-                      target: arrange.target,
-                      regionId,
-                    })
-                  : false
+            setRegionLighting: guardSnapshotIntent(
+              (regionId: string, intensity: number): boolean =>
+                editRegionById((draft) =>
+                  setRegionLighting(draft, regionId, intensity)
+                )
             ),
-            setExplicitRegionArea: guardSnapshotIntent(
-              (regionId: string, cells: readonly RoomHexCell[]): boolean =>
-                arrange?.kind === 'label'
-                  ? commitArrange({
-                      kind: 'region-area',
-                      target: arrange.target,
-                      regionId,
-                      cells,
-                    })
-                  : false
-            ),
-            removeRegionAndLabel: guardSnapshotIntent(
-              (regionId: string): boolean =>
-                arrange?.kind === 'label'
-                  ? commitArrange({
-                      kind: 'region-remove',
-                      target: arrange.target,
-                      regionId,
-                    })
-                  : false
-            ),
+            removeRegion: guardSnapshotIntent((regionId: string): boolean => {
+              if (!editRegionById((draft) => removeRegion(draft, regionId)))
+                return false;
+              if (
+                activeStudioTargetRef.current?.kind === 'region' &&
+                activeStudioTargetRef.current.id === regionId
+              )
+                activateStudioTarget(null);
+              return true;
+            }),
           },
           renameDocument: guardSnapshotIntent(renameDocument),
           importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
@@ -5247,14 +5196,9 @@ export function WorldBuildingConcept({
               redo();
           },
           commitFloor: guardIntent(
-            (cells, mode) =>
-              studioHomeRef.current === 'build' && commitFloor(cells, mode)
-          ),
-          resizeWorkspace: guardIntent(
-            (width: number, height: number, edges?: ResizeEdges) =>
-              applyRoomIntent((current) =>
-                resizeRoomWorkspace(current, width, height, edges)
-              )
+            (cells, mode, regionId) =>
+              studioHomeRef.current === 'build' &&
+              commitFloor(cells, mode, regionId)
           ),
           createMapLabel: guardIntent((text: string, location: WorldPoint) =>
             applyRoomIntent((current) => ({
@@ -5678,23 +5622,6 @@ export function WorldBuildingConcept({
                                       ? 'Drag arrows or planes · Esc/right-click: cancel'
                                       : 'Drag the Y ring · Esc/right-click: cancel'}
               </span>
-              {/* Canvas extent is a canvas control, so it lives with the
-                  canvas rather than in the room chrome. */}
-              {roomMode && (
-                <button
-                  type="button"
-                  className="wb-workspace-size"
-                  disabled={
-                    roomDraft.workspace.hexRadius ===
-                    ROOM_WORKSPACE_STEPS[ROOM_WORKSPACE_STEPS.length - 1]
-                      .hexRadius
-                  }
-                  onClick={expandWorkspace}
-                >
-                  Expand workspace · radius {roomDraft.workspace.hexRadius} →{' '}
-                  {expandRoomWorkspace(roomDraft).workspace.hexRadius}
-                </button>
-              )}
             </div>
             <div className="wb-stage-bar">
               <span>

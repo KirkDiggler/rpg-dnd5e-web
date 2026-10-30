@@ -8,21 +8,10 @@ import {
   sampleSpatialBackgroundField,
 } from '@/rendering/spatialBackgroundField';
 import { describe, expect, it } from 'vitest';
-import type { RegionLightingProjection } from './regionLighting';
 import { toSpatialBackgroundAreas } from './regionLightingGeometry';
 describe('region lighting geometry adapter', () => {
-  it('passes polygon coordinates through and fans each hex into six exact workspace triangles', () => {
-    const ring = [
-      { x: 0, z: 0 },
-      { x: 4, z: 0 },
-      { x: 0, z: 4 },
-    ];
-    const polygon: RegionLightingProjection = {
-      areas: [
-        { regionId: 'room', background: 0.15, area: { kind: 'polygon', ring } },
-      ],
-    };
-    expect(toSpatialBackgroundAreas(polygon)[0]!.ring).toBe(ring);
+  // Polygon areas are retired (rpg-project#725): a region is its cells.
+  it('fans each hex into six exact workspace triangles', () => {
     const cells = [
       { q: 0, r: 0 },
       { q: 4, r: 0 },

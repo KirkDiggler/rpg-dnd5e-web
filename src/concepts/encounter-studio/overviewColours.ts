@@ -1,7 +1,4 @@
-import type {
-  AuthoringRegion,
-  RegionResolution,
-} from '../world-building/authoringRegions';
+import type { RegionResolution } from '../world-building/authoringRegions';
 import { regionSize, type RegionSize } from '../world-building/regionSize';
 import type { RoomDraft, RoomHexCell } from '../world-building/roomDraft';
 
@@ -65,7 +62,7 @@ const AROUND = [
  * overlap. A delete changes no other colour unless it removes a collision
  * another region had stepped around. */
 export function regionColours(input: {
-  regions: readonly AuthoringRegion[];
+  regions: readonly { readonly id: string }[];
   cellsOf(regionId: string): readonly RoomHexCell[];
 }): ReadonlyMap<string, string> {
   const owners = new Map<string, number[]>();
@@ -119,12 +116,12 @@ export function regionOverview(
   draft: Readonly<RoomDraft>,
   resolutions: readonly RegionResolution[]
 ): RegionOverview {
-  const regions = draft.scene.authoringRegions ?? [];
+  const regions = draft.room.regions;
   const byId = new Map(resolutions.map((r) => [r.id, r]));
   const sizes = new Map<string, RegionSize | null>();
   for (const region of regions) {
     const resolution = byId.get(region.id);
-    sizes.set(region.id, resolution ? regionSize(draft, resolution) : null);
+    sizes.set(region.id, resolution ? regionSize(resolution) : null);
   }
   return {
     sizes,
