@@ -50,14 +50,14 @@
 #      outcome failure.
 version: 5
 key: gate-walk
-play: { void: transparent, lighting: bright, standing: centre-covered }
+play: {void: transparent, lighting: bright, standing: centre-covered}
 templates:
   guard:
     base: dnd5e:monsters:human
     name: Guard
     hitDice: 2d8
     armor: dnd5e:armor:chain-shirt
-    abilities: { str: 13, con: 12, wis: 11 }
+    abilities: {str: 13, con: 12, wis: 11}
     skills: [perception]
     actions: ['dnd5e:weapons:spear']
   sentry:
@@ -65,7 +65,7 @@ templates:
     name: Sentry
     hitDice: 2d8
     armor: dnd5e:armor:chain-shirt
-    abilities: { str: 13, con: 12, wis: 16 }
+    abilities: {str: 13, con: 12, wis: 16}
     skills: [perception]
     actions: ['dnd5e:weapons:spear']
   weak-captain:
@@ -75,132 +75,126 @@ templates:
     actions: ['dnd5e:weapons:club']
 bundles:
   pursuer:
-    params: { distance: 6, heading: went }
+    params: {distance: 6, heading: went}
     rows:
-      - when: { enemy: remembered }
-        toward: enemy
-      - when: { enemy: lost }
-        search: { distance: $distance, heading: $heading }
+    - when: {enemy: remembered}
+      toward: enemy
+    - when: {enemy: lost}
+      search: {distance: $distance, heading: $heading}
   alarm-reactor:
     rows:
-      - when:
-          heard: { kind: clang, within: 2 }
-        toward: sound
+    - when:
+        heard: {kind: clang, within: 2}
+      toward: sound
   dasher:
     rows:
-      - when: { enemy: reach }
-        attack: enemy
-      - when: { enemy: walk }
-        toward: enemy
-      - when: { enemy: dash }
-        toward: enemy
-      - when: { enemy: far }
-        dash: enemy
+    - when: {enemy: reach}
+      attack: enemy
+    - when: {enemy: walk}
+      toward: enemy
+    - when: {enemy: dash}
+      toward: enemy
+    - when: {enemy: far}
+      dash: enemy
   patrol:
-    params: { path: null }
+    params: {path: null}
     rows:
-      - when: { enemy: none }
-        toward: { path: $path }
+    - when: {enemy: none}
+      toward: {path: $path}
   guard-base:
-    params: { path: null }
+    params: {path: null}
     rows:
-      - { use: dasher }
-      - use: pursuer
-        when: { enemy: lost }
-      - { use: alarm-reactor }
-      - use: patrol
-        with: { path: $path }
+    - {use: dasher}
+    - use: pursuer
+      when: {enemy: lost}
+    - {use: alarm-reactor}
+    - use: patrol
+      with: {path: $path}
 tables:
   gate-patrol:
     time:
-      - when:
-          - { fact: guards-turned }
-          - { enemy: none }
-        toward:
-          at: { q: -2, r: 5 }
-      - say: To arms! Intruders at the gate!
-        when:
-          - { enemy: seen }
-          - not: { fact: alarm-raised }
-        fact: alarm-raised
-      - use: guard-base
-        with:
-          path:
-            - { q: -5, r: 8, wait: 1, facing: ne }
-            - { q: -5, r: 10, wait: 1, facing: se }
-            - { q: -7, r: 10 }
+    - when:
+      - {fact: guards-turned}
+      - {enemy: none}
+      toward:
+        at: {q: -2, r: 5}
+    - say: To arms! Intruders at the gate!
+      when:
+      - {enemy: seen}
+      - not: {fact: alarm-raised}
+      fact: alarm-raised
+    - use: guard-base
+      with:
+        path:
+        - {q: -5, r: 8, wait: 1, facing: ne}
+        - {q: -5, r: 10, wait: 1, facing: se}
+        - {q: -7, r: 10}
   gate-patrol-east:
     time:
-      - when:
-          - { fact: guards-turned }
-          - { enemy: none }
-        toward:
-          at: { q: -2, r: 5 }
-      - say: To arms! Intruders at the gate!
-        when:
-          - { enemy: seen }
-          - not: { fact: alarm-raised }
-        fact: alarm-raised
-      - use: guard-base
-        with:
-          path:
-            - { q: -2, r: 8, wait: 1, facing: nw }
-            - { q: -4, r: 10, wait: 1, facing: sw }
-            - { q: -2, r: 10 }
+    - when:
+      - {fact: guards-turned}
+      - {enemy: none}
+      toward:
+        at: {q: -2, r: 5}
+    - say: To arms! Intruders at the gate!
+      when:
+      - {enemy: seen}
+      - not: {fact: alarm-raised}
+      fact: alarm-raised
+    - use: guard-base
+      with:
+        path:
+        - {q: -2, r: 8, wait: 1, facing: nw}
+        - {q: -4, r: 10, wait: 1, facing: sw}
+        - {q: -2, r: 10}
   captain:
     time:
-      - when: { enemy: reach }
-        attack: enemy
-      - when: { enemy: seen }
-        toward: enemy
+    - when: {enemy: reach}
+      attack: enemy
+    - when: {enemy: seen}
+      toward: enemy
   watcher:
     time:
-      - when:
-          fell: { who: captain, within: 3, 'on': ally }
-        away: enemy
-        weight: 5
-      - when: { enemy: none }
-        hold: {}
+    - when:
+        fell: {who: captain, within: 3, 'on': ally}
+      away: enemy
+      weight: 5
+    - when: {enemy: none}
+      hold: {}
   watcher-gate:
     time:
-      - { use: alarm-reactor }
-      - when:
-          fell: { who: captain, within: 3, 'on': ally }
-        away: enemy
-        weight: 5
-      - when: { enemy: none }
-        hold: {}
+    - {use: alarm-reactor}
+    - when:
+        fell: {who: captain, within: 3, 'on': ally}
+      away: enemy
+      weight: 5
+    - when: {enemy: none}
+      hold: {}
 factions:
-  - { id: garrison }
-  - { id: watch }
+- {id: garrison}
+- {id: watch}
 dispositions:
-  - between: [garrison, party]
-    stance: neutral
-  - between: [watch, party]
-    stance: hostile
+- between: [garrison, party]
+  stance: neutral
+- between: [watch, party]
+  stance: hostile
 exits:
-  - id: front-door
-    cell: { q: -2, r: 16 }
+- id: front-door
+  cell: {q: -2, r: 16}
 endings:
-  - id: captain-slain
-    when: { left: front-door }
-    if: { down: captain }
-    outcome: success
-  - id: captain-lives
-    when: { left: front-door }
-    outcome: failure
+- id: captain-slain
+  when: {left: front-door}
+  if: {down: captain}
+  outcome: success
+- id: captain-lives
+  when: {left: front-door}
+  outcome: failure
 room:
   version: 3
   id: gate-walk-room
   name: Gate Walk (S1 doors + S2 fall)
-  coordinateFrame:
-    {
-      horizontalPlane: world-xz,
-      verticalAxis: world-y-up,
-      distanceUnit: world-scene-unit,
-      hexRadius: 1,
-      footprintFrame: owner-local-xz,
-    }
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
   scene:
     version: 3
     id: gate-walk-scene
@@ -210,108 +204,69 @@ room:
   room:
     implicitRegionId: gate-walk-region
     walls:
-      - id: gate-wall
-        label: gate-wall
-        line:
-          start: { x: -9.5, z: 9.75 }
-          end: { x: 9.5, z: 9.75 }
-        appearance:
-          {
-            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-            height: 3,
-            thickness: 0.3,
-            elevation: 0,
-          }
-        blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
-          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
-        openings:
-          - id: gate-wall-opening
-            position: 9.5
-            width: 2
-            door:
-              {
-                id: gate-wall-door,
-                assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
-              }
-      - id: gate-corner-wall
-        label: gate-corner-wall
-        line:
-          start: { x: -3.897114317029974, z: 9.75 }
-          end: { x: -3.897114317029974, z: 11.75 }
-        appearance:
-          {
-            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-            height: 3,
-            thickness: 0.3,
-            elevation: 0,
-          }
-        blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
-          footprint: { width: 2.0, depth: 0.5, offsetX: 0, offsetZ: 0 }
-        openings: []
-      - id: gatehouse-west-wall
-        label: gatehouse-west-wall
-        line:
-          start: { x: -7.794228634059947, z: 9.75 }
-          end: { x: -7.794228634059947, z: 18.75 }
-        appearance:
-          {
-            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-            height: 3,
-            thickness: 0.3,
-            elevation: 0,
-          }
-        blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
-          footprint: { width: 9, depth: 0.5, offsetX: 0, offsetZ: 0 }
-        openings: []
-      - id: gatehouse-east-wall
-        label: gatehouse-east-wall
-        line:
-          start: { x: 8.660254037844386, z: 9.75 }
-          end: { x: 8.660254037844386, z: 18.75 }
-        appearance:
-          {
-            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-            height: 3,
-            thickness: 0.3,
-            elevation: 0,
-          }
-        blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
-          footprint: { width: 9, depth: 0.5, offsetX: 0, offsetZ: 0 }
-        openings: []
-      - id: gatehouse-south-wall
-        label: gatehouse-south-wall
-        line:
-          start: { x: -7.794228634059947, z: 18.75 }
-          end: { x: 8.660254037844386, z: 18.75 }
-        appearance:
-          {
-            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
-            height: 3,
-            thickness: 0.3,
-            elevation: 0,
-          }
-        blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
-          footprint:
-            { width: 16.454482671904334, depth: 0.5, offsetX: 0, offsetZ: 0 }
-        openings:
-          - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
-            position: 7.901156922328045
-            width: 1.8749944567680359
-            door:
-              {
-                id: 26369b41-e58f-475d-963a-95086d4cd868,
-                assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
-              }
+    - id: gate-wall
+      label: gate-wall
+      line:
+        start: {x: -9.5, z: 9.75}
+        end: {x: 9.5, z: 9.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 19, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings:
+      - id: gate-wall-opening
+        position: 9.5
+        width: 2
+        door: {id: gate-wall-door, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
+    - id: gate-corner-wall
+      label: gate-corner-wall
+      line:
+        start: {x: -3.897114317029974, z: 9.75}
+        end: {x: -3.897114317029974, z: 11.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 2.0, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-west-wall
+      label: gatehouse-west-wall
+      line:
+        start: {x: -7.794228634059947, z: 9.75}
+        end: {x: -7.794228634059947, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-east-wall
+      label: gatehouse-east-wall
+      line:
+        start: {x: 8.660254037844386, z: 9.75}
+        end: {x: 8.660254037844386, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-south-wall
+      label: gatehouse-south-wall
+      line:
+        start: {x: -7.794228634059947, z: 18.75}
+        end: {x: 8.660254037844386, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 16.454482671904334, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings:
+      - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
+        position: 7.901156922328045
+        width: 1.8749944567680359
+        door: {id: 26369b41-e58f-475d-963a-95086d4cd868, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
     regions:
       - id: gate-walk-region
         name: Gate Walk (S1 doors + S2 fall)
@@ -346,43 +301,43 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:
-      - id: gate-1
-        ref: dnd5e:monsters:guard
-        startingCell:
-          location: { q: -7, r: 10 }
-        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
-      - id: gate-2
-        ref: dnd5e:monsters:guard
-        startingCell:
-          location: { q: -3, r: 10 }
-        appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
-      - id: captain
-        ref: dnd5e:monsters:weak-captain
-        startingCell:
-          location: { q: -3, r: 11 }
-          facing: s
-        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
-      - id: watcher-1
-        ref: dnd5e:monsters:guard
-        startingCell:
-          location: { q: -8, r: 9 }
-          facing: e
-        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
-      - id: watcher-2
-        ref: dnd5e:monsters:sentry
-        startingCell:
-          location: { q: -5, r: 6 }
-          facing: s
-        appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
-    partyStart: { q: -2, r: 16 }
+    - id: gate-1
+      ref: dnd5e:monsters:guard
+      startingCell:
+        location: {q: -7, r: 10}
+      appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
+    - id: gate-2
+      ref: dnd5e:monsters:guard
+      startingCell:
+        location: {q: -3, r: 10}
+      appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
+    - id: captain
+      ref: dnd5e:monsters:weak-captain
+      startingCell:
+        location: {q: -3, r: 11}
+        facing: s
+      appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
+    - id: watcher-1
+      ref: dnd5e:monsters:guard
+      startingCell:
+        location: {q: -8, r: 9}
+        facing: e
+      appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
+    - id: watcher-2
+      ref: dnd5e:monsters:sentry
+      startingCell:
+        location: {q: -5, r: 6}
+        facing: s
+      appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
+    partyStart: {q: -2, r: 16}
     monsterBindings:
-      gate-1: { faction: garrison, table: gate-patrol }
-      gate-2: { faction: garrison, table: gate-patrol-east }
-      captain: { faction: watch, table: captain }
-      watcher-1: { faction: watch, table: watcher }
-      watcher-2: { faction: watch, table: watcher-gate }
+      gate-1: {faction: garrison, table: gate-patrol}
+      gate-2: {faction: garrison, table: gate-patrol-east}
+      captain: {faction: watch, table: captain}
+      watcher-1: {faction: watch, table: watcher}
+      watcher-2: {faction: watch, table: watcher-gate}
     doorBindings:
       gate-wall-door:
         closed: true
-        opened: { fact: gate-opened }
+        opened: {fact: gate-opened}
       26369b41-e58f-475d-963a-95086d4cd868: {}

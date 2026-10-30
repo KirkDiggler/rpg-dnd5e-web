@@ -46,3 +46,9 @@ src/concepts/world-building/fixtures/*.yaml
 # the castle the studio's import must open. Reformatting it would make it a
 # different file from the one the server ships.
 src/concepts/encounter-studio/fixtures/*.yaml
+
+# The stack's five walk sites (rpg-project#732), copied byte-for-byte from
+# rpg-deployment `content/`: the studio must import each and write it back,
+# so a reformatted copy would be a different file from the one the stack
+# serves.
+src/concepts/encounter-studio/fixtures/stack-sites/*.yaml
