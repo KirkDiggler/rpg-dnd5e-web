@@ -250,9 +250,10 @@ function StudioSurface({
   }>();
   /** Frame world bounds in the part of the map the open inspector leaves,
    * measured when Layout applies the request, after the inspector opens. */
-  const frameBounds = (bounds: WorkspaceBounds): void =>
+  const frameBounds = (bounds: WorkspaceBounds, standing = false): void =>
     setFrameTarget((current) => ({
       bounds,
+      standing,
       nonce: (current?.nonce ?? 0) + 1,
       occluders: () => {
         const sidebar = document.getElementById('studio-sidebar');
@@ -265,12 +266,14 @@ function StudioSurface({
    * relative to the derived grid's fit, and the view keeps its on-screen scale
    * while paint grows the grid — but an import or an open replaces the whole
    * document, so the view refits to the new content instead of keeping the
-   * old room's scale and centre. */
+   * old room's scale and centre. The request stands until the view is
+   * navigated: the Site panel that imported it closes after the replacement,
+   * and the surface refits at its working size. */
   const [refitPending, setRefitPending] = useState(false);
   useEffect(() => {
     if (!refitPending) return;
     setRefitPending(false);
-    frameBounds(contentBounds(session.document.draft));
+    frameBounds(contentBounds(session.document.draft), true);
   }, [refitPending, session.document]);
   const replaceDocument = (draft: RoomDraft, scope: SiteScope): boolean => {
     if (!session.importDocument(draft, scope)) return false;

@@ -413,13 +413,28 @@ export function LayoutViewport({
   // Frame a requested region or the whole content, at this surface's size.
   const frameRequestRef = useRef({ onFrameChange, fitExtent });
   frameRequestRef.current = { onFrameChange, fitExtent };
-  useLayoutEffect(() => {
+  /** A standing request, the frame it last produced and the frame shown when
+   * it did (the commit that applies it still renders that one). Any other
+   * frame (pan, zoom, growth rescale) means the view was navigated, and the
+   * request stops standing. */
+  const standingRef = useRef<{
+    target: NonNullable<typeof frameTarget>;
+    applied: LayoutFrame;
+    before: LayoutFrame;
+  } | null>(null);
+  const shownFrameRef = useRef(frame);
+  shownFrameRef.current = frame;
+  const sameFrame = (a: LayoutFrame, b: LayoutFrame): boolean =>
+    a.zoom === b.zoom && a.center.x === b.center.x && a.center.z === b.center.z;
+  const applyFrameTarget = (
+    target: NonNullable<typeof frameTarget>
+  ): LayoutFrame | null => {
     const surface = surfaceRef.current;
-    if (!frameTarget || !surface) return;
+    if (!surface) return null;
     const rect = surface.getBoundingClientRect();
     // An overlay over one side of the surface narrows the part a frame fits.
     const inset = { left: 0, right: 0 };
-    for (const o of frameTarget.occluders?.() ?? []) {
+    for (const o of target.occluders?.() ?? []) {
       if (Math.min(o.right, rect.right) - Math.max(o.left, rect.left) <= 0)
         continue;
       if (o.left + o.right > rect.left + rect.right)
@@ -427,14 +442,46 @@ export function LayoutViewport({
       else inset.left = Math.max(inset.left, o.right - rect.left);
     }
     const next = frameOf(
-      frameTarget.bounds,
+      target.bounds,
       rect,
       frameRequestRef.current.fitExtent,
       undefined,
       inset
     );
     if (next) frameRequestRef.current.onFrameChange(next);
+    return next ?? null;
+  };
+  const applyFrameTargetRef = useRef(applyFrameTarget);
+  applyFrameTargetRef.current = applyFrameTarget;
+  useLayoutEffect(() => {
+    if (!frameTarget) return;
+    const next = applyFrameTargetRef.current(frameTarget);
+    standingRef.current =
+      frameTarget.standing && next
+        ? { target: frameTarget, applied: next, before: shownFrameRef.current }
+        : null;
   }, [frameTarget]);
+  useLayoutEffect(() => {
+    const standing = standingRef.current;
+    if (
+      standing &&
+      !sameFrame(frame, standing.applied) &&
+      !sameFrame(frame, standing.before)
+    )
+      standingRef.current = null;
+  }, [frame]);
+  // The surface took a new size: a standing request frames again at it.
+  const surfaceSize = bounds ? `${bounds.width}x${bounds.height}` : null;
+  useLayoutEffect(() => {
+    const standing = standingRef.current;
+    if (!standing || surfaceSize === null) return;
+    const before = shownFrameRef.current;
+    const next = applyFrameTargetRef.current(standing.target);
+    if (next) {
+      standing.applied = next;
+      standing.before = before;
+    }
+  }, [surfaceSize]);
 
   const transform = bounds
     ? createLayoutTransform(bounds, viewFrame, fitExtent)

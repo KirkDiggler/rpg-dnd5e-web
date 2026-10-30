@@ -251,6 +251,11 @@ export interface LayoutViewportProps {
     /** Client-pixel spans of overlays over the surface, such as the open
      * inspector, read when the surface applies the request. */
     occluders?(): readonly { left: number; right: number }[];
+    /** A standing request: the surface re-applies it whenever its size
+     * changes, until the view is navigated. A replaced document asks for
+     * this, because the surface may still be taking its working size (the
+     * Site panel that imported it is closing). */
+    standing?: boolean;
   };
 }
 

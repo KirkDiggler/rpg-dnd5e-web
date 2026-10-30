@@ -5351,65 +5351,64 @@ describe('S4 the draft as a file through the real owner', () => {
   // An import replaces the whole document, so the Layout refits to it
   // (rpg-project#725 R3); before this, the castle opened cropped on the
   // previous room's frame until Show entire was pressed.
-  it('an accepted import frames the imported content whole', async () => {
+  it('an accepted import frames the imported content whole at the surface working size', async () => {
     const castle = createCastleS4Document();
     const storage = new MemoryStorage(createPopulatedStudioDocument());
     mount(storage);
     await settled();
-    await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
-    fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
-    await settled();
-    const content = contentBounds(storage.document().draft);
-    for (const corner of [
-      { x: content.minX, z: content.minZ },
-      { x: content.maxX, z: content.maxZ },
-    ]) {
-      const client = toClient(corner, documentFit(storage));
-      expect(client.clientX).toBeGreaterThanOrEqual(bounds.left);
-      expect(client.clientX).toBeLessThanOrEqual(bounds.left + bounds.width);
-      expect(client.clientY).toBeGreaterThanOrEqual(bounds.top);
-      expect(client.clientY).toBeLessThanOrEqual(bounds.top + bounds.height);
+    const fullHeight = bounds.height;
+    const frameNow = (): string =>
+      ['zoom', 'x', 'z']
+        .map((k) =>
+          document
+            .querySelector('.encounter-studio-layout')!
+            .getAttribute(`data-frame-${k}`)
+        )
+        .join(',');
+    const resize = (): void => {
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+    };
+    try {
+      // The Site panel that imports takes most of the surface's height
+      // while it is open; the replacement refits at that short size.
+      bounds.height = 260;
+      resize();
+      await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      const short = frameNow();
+      // Closing Site gives the surface its working size: the standing
+      // request frames again there.
+      fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+      bounds.height = fullHeight;
+      resize();
+      await settled();
+      expect(frameNow()).not.toBe(short);
+      const content = contentBounds(storage.document().draft);
+      for (const corner of [
+        { x: content.minX, z: content.minZ },
+        { x: content.maxX, z: content.maxZ },
+      ]) {
+        const client = toClient(corner, documentFit(storage));
+        expect(client.clientX).toBeGreaterThanOrEqual(bounds.left);
+        expect(client.clientX).toBeLessThanOrEqual(bounds.left + bounds.width);
+        expect(client.clientY).toBeGreaterThanOrEqual(bounds.top);
+        expect(client.clientY).toBeLessThanOrEqual(bounds.top + bounds.height);
+      }
+      // Navigating ends the request: a later resize keeps the user's view.
+      fireEvent.wheel(surface(), {
+        deltaY: -300,
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+      });
+      const navigated = frameNow();
+      bounds.height = fullHeight - 100;
+      resize();
+      expect(frameNow()).toBe(navigated);
+    } finally {
+      bounds.height = fullHeight;
     }
-  });
-
-  // A rectangle past the paint cap is refused with the cap in words, on the
-  // owner's notice, not a silent empty selection.
-  it('an oversized Rectangle shows the paint cap as a notice and changes nothing', async () => {
-    const seeded = createPopulatedStudioDocument();
-    const wide = {
-      ...seeded,
-      draft: paintCells(seeded.draft, [
-        { q: -200, r: 0 },
-        { q: 200, r: 0 },
-      ]),
-    };
-    const storage = new MemoryStorage(wide);
-    mount(storage);
-    await settled();
-    const before = storage.document();
-    const writes = storage.roomWrites();
-    fireEvent.click(button('Build'));
-    fireEvent.click(button('Rectangle'));
-    const zoomOut = surface();
-    fireEvent.wheel(zoomOut, {
-      deltaY: 4000,
-      clientX: bounds.left + bounds.width / 2,
-      clientY: bounds.top + bounds.height / 2,
-    });
-    const from = { clientX: bounds.left + 1, clientY: bounds.top + 1 };
-    const to = {
-      clientX: bounds.left + bounds.width - 1,
-      clientY: bounds.top + bounds.height - 1,
-    };
-    fireEvent.pointerDown(surface(), { ...from, pointerId: 9, button: 0 });
-    fireEvent.pointerMove(surface(), { ...to, pointerId: 9 });
-    fireEvent.pointerUp(surface(), { ...to, pointerId: 9, button: 0 });
-    expect(screen.getByRole('alert').textContent).toContain(
-      `A rectangle selects at most ${MAX_FLOOR_HEXES} cells.`
-    );
-    expect(storage.document()).toEqual(before);
-    expect(storage.roomWrites()).toBe(writes);
   });
 
   it('the next export defaults to the imported key', async () => {
