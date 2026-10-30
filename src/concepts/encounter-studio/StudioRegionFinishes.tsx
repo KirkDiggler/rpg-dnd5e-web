@@ -1,16 +1,18 @@
 import { FieldHelp, STUDIO_ONLY_HELP } from './FieldHelp';
-import type { AuthoringRegion, EncounterStudioSession } from './studioSession';
+import type { EncounterStudioSession, RoomRegion } from './studioSession';
 export function StudioRegionFinishes({
   region,
   session,
 }: {
-  region: AuthoringRegion;
+  region: RoomRegion;
   session: EncounterStudioSession;
 }): React.JSX.Element | null {
   const owner = session.regionEditing.finishes;
   if (!owner) return null;
+  const wallFinish =
+    session.document.draft.scene.regionPresentation?.[region.id]?.wallFinish;
   const status = owner.projection.regions.find((r) => r.id === region.id);
-  const materialRef = region.wallFinish?.materialRef ?? '';
+  const materialRef = wallFinish?.materialRef ?? '';
   const materials =
     owner.catalog.catalog?.materials.filter((m) => m.family === 'masonry') ??
     [];
@@ -18,7 +20,7 @@ export function StudioRegionFinishes({
     status?.corners.findIndex(
       (corner) =>
         JSON.stringify(corner.reference) ===
-        JSON.stringify(region.wallFinish?.patternStart)
+        JSON.stringify(wallFinish?.patternStart)
     ) ?? -1;
   return (
     <fieldset className="es-region-finish">
@@ -51,7 +53,7 @@ export function StudioRegionFinishes({
           ))}
         </select>
       </label>
-      {region.wallFinish && (
+      {wallFinish && (
         <>
           <label>
             Pattern start

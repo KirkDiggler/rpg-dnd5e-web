@@ -1,4 +1,8 @@
-import type { RoomDraftDocument, RoomHexCell } from './roomDraft';
+import {
+  isFloorCell,
+  type RoomDraftDocument,
+  type RoomHexCell,
+} from './roomDraft';
 import type { SiteConcealmentSpec, SiteScope } from './siteScope';
 
 export function nextConcealmentId(scope: SiteScope): string {
@@ -185,9 +189,7 @@ export function toggleConcealmentMember(
   if (member.kind === 'cell') {
     const key = cellKey(member.cell);
     const where = `Hex q ${member.cell.q}, r ${member.cell.r}`;
-    if (
-      !document.draft.room.walkableHexes.some((cell) => cellKey(cell) === key)
-    )
+    if (!isFloorCell(document.draft, member.cell))
       throw new Error(
         `${where} is not walkable floor, so it cannot be hidden.`
       );

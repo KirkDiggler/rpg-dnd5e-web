@@ -5,22 +5,22 @@ import {
   moveMapLabel,
   renameMapLabel,
 } from './mapLabelEdits';
-import { createRoomLabel, setRegionLighting } from './regionEdits';
+import { createRegion, setRegionLighting } from './regionEdits';
 import {
   createRoomDraft,
-  resizeRoomWorkspace,
+  paintCells,
   stringifyRoomDraft,
   validateRoomDocument,
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import { validateMapLabels } from './serialization';
+import { MAX_WORLD_COORD } from './worldBounds';
 
 const empty = () => createRoomDraft(createEmptyScene('scene'), 'room');
 describe('immutable presentation-only map label intents', () => {
-  it('preserves all non-label authored content and legacy workspace, using explicit stable IDs', () => {
-    const draft = empty(),
+  it('preserves all non-label authored content, using explicit stable IDs', () => {
+    const draft = paintCells(empty(), [{ q: 0, r: 0 }]),
       before = structuredClone(draft);
-    draft.room.walkableHexes = [{ q: 0, r: 0 }];
     const created = createMapLabel(draft, 'kitchen', ' Kitchen ', {
       x: 0.125,
       z: 0.25,
@@ -29,7 +29,7 @@ describe('immutable presentation-only map label intents', () => {
       { id: 'kitchen', text: 'Kitchen', location: { x: 0.125, z: 0.25 } },
     ]);
     expect(created.scene.version).toBe(2);
-    expect(created.workspace).toBe(draft.workspace);
+    expect(created.coordinateFrame).toBe(draft.coordinateFrame);
     expect(created.room).toBe(draft.room);
     const moved = moveMapLabel(created, 'kitchen', { x: 1.1, z: -0.4 });
     const renamed = renameMapLabel(moved, 'kitchen', 'Courtyard');
@@ -37,7 +37,7 @@ describe('immutable presentation-only map label intents', () => {
       { id: 'kitchen', text: 'Courtyard', location: { x: 1.1, z: -0.4 } },
     ]);
     expect(renamed.room).toBe(draft.room);
-    expect(renamed.workspace).toEqual(before.workspace);
+    expect(renamed.room).toEqual(before.room);
     const deleted = deleteMapLabel(renamed, 'kitchen');
     expect(Object.hasOwn(deleted.scene, 'mapLabels')).toBe(false);
     expect(deleted.scene.version).toBe(2);
@@ -104,85 +104,62 @@ describe('immutable presentation-only map label intents', () => {
     );
     expect(draft).toEqual(before);
   });
-  it('refuses label points outside the closed workspace union, not just the enclosing square', () => {
-    const draft = resizeRoomWorkspace(
-      { draft: empty(), scope: {} },
-      1,
-      1
-    ).draft;
-    expect(() =>
-      createMapLabel(draft, 'label', 'Kitchen', { x: 0.8, z: 0.8 })
-    ).toThrow(/workspace/);
-    const atEdge = createMapLabel(draft, 'label', 'Kitchen', { x: 0, z: 1 });
-    expect(() =>
-      validateRoomDocument({ draft: atEdge, scope: {} })
-    ).not.toThrow();
+  // The canvas is unbounded (rpg-project#725): a label is refused only past
+  // the world bound, never for leaving a stored workspace.
+  it('accepts label points anywhere within the world bound and refuses past it', () => {
+    const far = createMapLabel(empty(), 'label', 'Kitchen', {
+      x: 500,
+      z: -900,
+    });
+    expect(far.scene.mapLabels![0].location).toEqual({ x: 500, z: -900 });
+    expect(() => validateRoomDocument({ draft: far, scope: {} })).not.toThrow();
+    const atEdge = moveMapLabel(far, 'label', {
+      x: MAX_WORLD_COORD,
+      z: -MAX_WORLD_COORD,
+    });
+    expect(atEdge.scene.mapLabels![0].location.x).toBe(MAX_WORLD_COORD);
     const before = stringifyRoomDraft(atEdge);
-    expect(() => moveMapLabel(atEdge, 'label', { x: 12, z: 12 })).toThrow(
-      /workspace/
-    );
+    expect(() =>
+      moveMapLabel(atEdge, 'label', { x: MAX_WORLD_COORD + 1, z: 0 })
+    ).toThrow(/location\.x/);
     expect(stringifyRoomDraft(atEdge)).toBe(before);
     expect(() =>
-      createMapLabel(empty(), 'label', 'Kitchen', { x: 12, z: 12 })
-    ).toThrow(/workspace/);
+      createMapLabel(empty(), 'label', 'Kitchen', {
+        x: 0,
+        z: -MAX_WORLD_COORD - 1,
+      })
+    ).toThrow(/location\.z/);
   });
 });
 
-describe('scene3 linked-label preservation', () => {
-  it('preserves accepted witness/version under rename, move, new note and note deletion; raw linked deletion refuses', () => {
-    const draft = createMapLabel(empty(), 'label', 'Kitchen', { x: 0, z: 0 });
-    draft.scene.version = 3;
-    draft.scene.authoringRegions = [
-      {
-        id: 'region',
-        labelId: 'label',
-        boundary: {
-          kind: 'automatic',
-          witness: {
-            walk: [
-              { wallId: 'C', direction: 'start-to-end' },
-              { wallId: 'A', direction: 'start-to-end' },
-              { wallId: 'B', direction: 'start-to-end' },
-            ],
-          },
-        },
-      },
-    ];
+// Map labels are notes only (rpg-project#725): no label is linked to a region
+// (a region's label is its name), so no label edit touches a region and
+// deleting any label never refuses.
+describe('labels are notes beside the regions', () => {
+  it('rename, move, create and delete keep the regions, room and scene version', () => {
+    let draft = createRegion(empty(), 'hall', 'Hall');
+    draft = setRegionLighting(
+      paintCells(draft, [{ q: 0, r: 0 }], 'hall'),
+      'hall',
+      0.153728
+    );
+    draft = createMapLabel(draft, 'label', 'Kitchen', { x: 0, z: 0 });
+    draft.scene.version = 6;
     const bytes = stringifyRoomDraft(draft);
     expect(renameMapLabel(draft, 'label', ' Kitchen ')).toBe(draft);
     expect(moveMapLabel(draft, 'label', { x: 0, z: 0 })).toBe(draft);
     const renamed = renameMapLabel(draft, 'label', 'Hall');
     const moved = moveMapLabel(renamed, 'label', { x: 1, z: 0 });
     const note = createMapLabel(moved, 'note', 'Annotation', { x: 0, z: 0 });
-    const deleted = deleteMapLabel(note, 'note');
-    for (const next of [renamed, moved, note, deleted]) {
-      expect(next.scene.version).toBe(3);
-      expect(next.scene.authoringRegions).toBe(draft.scene.authoringRegions);
+    const deletedNote = deleteMapLabel(note, 'note');
+    const deletedLabel = deleteMapLabel(note, 'label');
+    for (const next of [renamed, moved, note, deletedNote, deletedLabel]) {
+      expect(next.scene.version).toBe(6);
       expect(next.room).toBe(draft.room);
     }
-    expect(() => deleteMapLabel(draft, 'label')).toThrow(/region-and-label/);
+    expect(deletedLabel.scene.mapLabels!.map((label) => label.id)).toEqual([
+      'note',
+    ]);
     expect(stringifyRoomDraft(draft)).toBe(bytes);
   });
-});
-
-it('all label helpers retain scene4 settings; equal rename/move preserve exact bytes and refs', () => {
-  const draft = setRegionLighting(
-    createRoomLabel(empty(), 'region', 'label', 'Room', { x: 0, z: 0 }),
-    'region',
-    { background: 0.153728 }
-  );
-  const bytes = stringifyRoomDraft(draft);
-  expect(renameMapLabel(draft, 'label', 'Room')).toBe(draft);
-  expect(moveMapLabel(draft, 'label', { x: 0, z: 0 })).toBe(draft);
-  expect(stringifyRoomDraft(draft)).toBe(bytes);
-  const created = createMapLabel(draft, 'note', 'Note', { x: 1, z: 0 });
-  for (const result of [
-    created,
-    renameMapLabel(created, 'note', 'Changed'),
-    moveMapLabel(created, 'note', { x: 2, z: 0 }),
-    deleteMapLabel(created, 'note'),
-  ]) {
-    expect(result.scene.version).toBe(4);
-    expect(result.scene.authoringRegions).toEqual(draft.scene.authoringRegions);
-  }
 });

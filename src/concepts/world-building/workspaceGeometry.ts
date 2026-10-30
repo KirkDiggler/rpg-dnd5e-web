@@ -66,18 +66,22 @@ export interface WorkspaceBounds {
   maxZ: number;
 }
 
+/** The largest grid the studio derives and draws (rpg-project#725 R3): the
+ * paint cap's floor plus its margin. A drawing budget, never stored. */
+export const MAX_GRID_SIDE = 1024;
+export const MAX_GRID_HEXES = 1 << 17;
 function dimensions(width: number, height: number): void {
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
     width < 1 ||
     height < 1 ||
-    width > 128 ||
-    height > 128 ||
-    width * height > MAX_ROOM_WORKSPACE_HEXES
+    width > MAX_GRID_SIDE ||
+    height > MAX_GRID_SIDE ||
+    width * height > MAX_GRID_HEXES
   )
     throw new Error(
-      'Room workspace widthHexes/heightHexes must be integers in 1..128 (at most 16384 cells).'
+      `Grid widthHexes/heightHexes must be integers in 1..${MAX_GRID_SIDE} (at most ${MAX_GRID_HEXES} cells).`
     );
 }
 function origin(value: number, field: string): void {
@@ -112,6 +116,24 @@ function rectangleCells(rect: WorkspaceRectangle): RoomHexCell[] {
       cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
   return cells;
 }
+/** The cells on a rectangle's edge, each once. */
+function perimeterCells(rect: WorkspaceRectangle): RoomHexCell[] {
+  dimensions(rect.widthHexes, rect.heightHexes);
+  const cells: RoomHexCell[] = [];
+  const lastRow = rect.minRow + rect.heightHexes - 1;
+  const lastCol = rect.minCol + rect.widthHexes - 1;
+  const at = (col: number, r: number) =>
+    cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
+  for (let r = rect.minRow; r <= lastRow; r++) {
+    if (r === rect.minRow || r === lastRow)
+      for (let col = rect.minCol; col <= lastCol; col++) at(col, r);
+    else {
+      at(rect.minCol, r);
+      if (lastCol !== rect.minCol) at(lastCol, r);
+    }
+  }
+  return cells;
+}
 /** hexRadius and horizontalLimit, derived from the cells. */
 function envelopes(rect: WorkspaceRectangle): {
   hexRadius: number;
@@ -119,7 +141,10 @@ function envelopes(rect: WorkspaceRectangle): {
 } {
   let hexRadius = 1;
   let horizontalLimit = 12;
-  for (const cell of rectangleCells(rect)) {
+  // Every measure here is extreme on the rectangle's edge (|q|, |r|, |q+r|
+  // and the corner coordinates are monotone along a row or a column), so the
+  // perimeter answers for the whole rectangle at a fraction of the cost.
+  for (const cell of perimeterCells(rect)) {
     hexRadius = Math.max(
       hexRadius,
       Math.abs(cell.q),

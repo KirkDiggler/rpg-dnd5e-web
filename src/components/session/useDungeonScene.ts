@@ -116,12 +116,13 @@ export function useDungeonScene(
       if (!live) return;
       try {
         const read = readSingleRoomDungeon(yaml);
-        // Narrowed to the three presentation fields on purpose, PLUS the
+        // Narrowed to the presentation fields on purpose, PLUS the
         // placement-id set surfaced at the render gate (rpg-dnd5e-web#1182).
-        // The decoded draft also carries the room's AUTHORING gameplay data —
-        // walkable cells, prop declarations, monster markers — and none of
-        // that may ride into a scene: where a creature stands and what a prop
-        // blocks are session and engine answers. The placement IDS alone are
+        // The room rides along for ONE reason: the floor surface is sized from
+        // the content's bounds, since no workspace is stored (rpg-project#725
+        // R3). Its authoring gameplay data — regions, prop declarations,
+        // monster markers — must not drive the scene: where a creature stands
+        // and what a prop blocks are session and engine answers. The placement IDS alone are
         // different: they are names, not state, and the render gate needs them
         // to decide which scene items are placements (absent from the atlas
         // means reserve/held/concealed, never "not a placement").
@@ -134,8 +135,8 @@ export function useDungeonScene(
             read.dialect === 'single-room'
               ? {
                   coordinateFrame: read.draft.coordinateFrame,
-                  workspace: read.draft.workspace,
                   scene: read.draft.scene,
+                  room: read.draft.room,
                 }
               : null,
           placedPropIds,

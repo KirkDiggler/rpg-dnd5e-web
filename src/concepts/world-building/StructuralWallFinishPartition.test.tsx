@@ -3,14 +3,18 @@ import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { setRegionWallFinish } from './regionFinishEdits';
 import {
   finishRoomFixture,
   FIT_WALL_REF,
   GRAY_REF,
 } from './roomFinishTestFixtures';
-import { projectRoomWallFinishes } from './roomWallFinishes';
+import {
+  surfaceRepeatSceneUnits,
+  type WallFinishSpan,
+} from './roomWallFinishes';
 import { StructuralWallSurfacePieces } from './StructuralWallSurfaces';
+import { setWallFinishes } from './wallFinishEdits';
+import { projectWallFinishes } from './wallFinishProjection';
 import type { WorldPropModelProps } from './WorldPropModel';
 // Stop only at the model leaf: this test owns projection → partition → fitted
 // piece/finish inputs. Real loaded-model charts and GPU appearance have separate
@@ -71,11 +75,38 @@ function document() {
   const draft = finishRoomFixture(true);
   const divider = draft.room.walls!.find((wall) => wall.id === 'divider')!;
   divider.line = { start: { x: 3, z: 0 }, end: { x: 3, z: 4 } };
-  return setRegionWallFinish(
-    setRegionWallFinish(draft, 'left', { materialRef: GRAY_REF }),
-    'right',
-    { materialRef: small }
-  );
+  return draft;
+}
+/** Two owners of the north face, split where the divider meets it. Region
+ * charts no longer resolve from walls (rpg-project#725: no region is
+ * wall-bound), so the rows a chart provider would hand the pieces are built
+ * here; the partition into fitted pieces is what this test owns. */
+function northSpans(): WallFinishSpan[] {
+  const row = (
+    regionId: string,
+    ref: string,
+    start: number,
+    end: number
+  ): WallFinishSpan => {
+    const material = catalog.materials.find((m) => m.ref === ref)!;
+    return {
+      regionId,
+      wallId: 'north',
+      side: 'positive-z',
+      start,
+      end,
+      provider: catalog.surfaces[0],
+      material,
+      chart: {
+        surfaceId: 'front',
+        phase: start,
+        direction: 1,
+        repeat: surfaceRepeatSceneUnits(material),
+        elevation: 0,
+      },
+    };
+  };
+  return [row('left', GRAY_REF, 0, 3), row('right', small, 3, 8)];
 }
 function probes(
   renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
@@ -95,14 +126,13 @@ function probes(
 describe('room finish composition through real visual pieces', () => {
   it('splits a repeated piece internally at room ownership and carries only terminal miters', async () => {
     const draft = document(),
-      before = structuredClone(draft),
-      projection = projectRoomWallFinishes(draft, catalog);
+      before = structuredClone(draft);
     const wall = draft.room.walls!.find((row) => row.id === 'north')!;
     const renderer = await ReactThreeTestRenderer.create(
       <StructuralWallSurfacePieces
         wall={wall}
         endFits={{ start: 1, end: -1 }}
-        finishSpans={projection.spans.filter((span) => span.wallId === wall.id)}
+        finishSpans={northSpans()}
       />
     );
     const rows = probes(renderer);
@@ -141,9 +171,15 @@ describe('room finish composition through real visual pieces', () => {
     expect(draft).toEqual(before);
     await renderer.unmount();
   });
-  it('keeps both room-facing plans on the same shared-divider geometry', async () => {
-    const draft = document(),
-      projection = projectRoomWallFinishes(draft, catalog),
+  // The divider's two faces now come from wall-owned face choices: explicit
+  // intent is the finish that still resolves (rpg-project#725).
+  it('keeps both face plans on the same shared-divider geometry', async () => {
+    const draft = document();
+    draft.scene = setWallFinishes(draft.scene, 'divider', {
+      'positive-z': GRAY_REF,
+      'negative-z': small,
+    });
+    const projection = projectWallFinishes(draft, catalog),
       wall = draft.room.walls!.find((row) => row.id === 'divider')!;
     const renderer = await ReactThreeTestRenderer.create(
       <StructuralWallSurfacePieces

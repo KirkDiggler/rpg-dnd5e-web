@@ -1,47 +1,70 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { setActorName, setCreaturePalette } from './creaturePalette';
-import { moveMapLabel } from './mapLabelEdits';
 import { projectRegionWallBoundaries } from './regionBoundaryGeometry';
-import { setExplicitRegionArea, setRegionLighting } from './regionEdits';
+import { setRegionLighting } from './regionEdits';
 import { setRegionWallFinish } from './regionFinishEdits';
-import { parseRoomDraftJson, stringifyRoomDraft } from './roomDraft';
+import type { RoomWallFinish } from './regionFinishTypes';
+import {
+  parseRoomDraftJson,
+  stringifyRoomDraft,
+  type RoomDraft,
+} from './roomDraft';
 import { finishRoomFixture, GRAY_REF } from './roomFinishTestFixtures';
 import { validateScene } from './serialization';
 
+const CARRIED: RoomWallFinish = {
+  materialRef: GRAY_REF,
+  patternStart: {
+    incoming: { wallId: 'west', direction: 'end-to-start' },
+    outgoing: { wallId: 'north', direction: 'start-to-end' },
+  },
+};
+
+/** A saved finish, written straight into the document: no edit can choose
+ * one now, because no region is wall-bound (rpg-project#725). */
+function carried(): RoomDraft {
+  const draft = finishRoomFixture();
+  return {
+    ...draft,
+    scene: {
+      ...draft.scene,
+      version: 6,
+      regionPresentation: { left: { wallFinish: structuredClone(CARRIED) } },
+    },
+  };
+}
+
 describe('saved region wall finish', () => {
-  it('chooses once, preserves anchor on material changes and returns the input for no-op/reset', () => {
+  // Regions are their cells and name no wall face (rpg-project#725), so a
+  // finish can no longer be chosen; it is refused with the boundary's reason.
+  it('refuses to choose a finish for a region that is not wall-bound, leaving the input untouched', () => {
     const original = finishRoomFixture(),
       snapshot = structuredClone(original);
+    expect(projectRegionWallBoundaries(original)).toEqual([
+      { id: 'room-region', status: 'unresolved', reason: 'not-wall-bound' },
+      { id: 'left', status: 'unresolved', reason: 'not-wall-bound' },
+    ]);
     expect(setRegionWallFinish(original, 'left', null)).toBe(original);
-    const draft = setRegionWallFinish(original, 'left', {
-      materialRef: GRAY_REF,
-    });
-    expect(draft.scene.version).toBe(6);
-    const finish = draft.scene.authoringRegions![0].wallFinish!;
-    expect(finish.materialRef).toBe(GRAY_REF);
-    expect(setRegionWallFinish(draft, 'left', { materialRef: GRAY_REF })).toBe(
-      draft
-    );
-    const changed = setRegionWallFinish(draft, 'left', {
-      materialRef: 'dnd5e:material:test:small_gray',
-    });
-    expect(changed.scene.authoringRegions![0].wallFinish!.patternStart).toEqual(
-      finish.patternStart
-    );
-    expect(setRegionWallFinish(changed, 'left', null).scene.version).toBe(6);
+    expect(() =>
+      setRegionWallFinish(original, 'left', { materialRef: GRAY_REF })
+    ).toThrow('Wall-bound region required: not-wall-bound.');
+    expect(() =>
+      setRegionWallFinish(carried(), 'left', {
+        patternStart: CARRIED.patternStart,
+      })
+    ).toThrow('Wall-bound region required: not-wall-bound.');
     expect(original).toEqual(snapshot);
   });
-  it('persists source identity through JSON, label motion and other scene edits without demotion', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
+
+  it('carries a saved finish through JSON and other scene edits without demotion', () => {
+    const draft = carried();
     expect(parseRoomDraftJson(stringifyRoomDraft(draft))).toEqual(draft);
-    const moved = moveMapLabel(draft, 'left-label', { x: 3, z: 2 });
-    expect(moved.scene.authoringRegions).toEqual(draft.scene.authoringRegions);
-    expect(
-      setRegionLighting(draft, 'left', { background: 0.2 }).scene.version
-    ).toBe(6);
+    const dimmed = setRegionLighting(draft, 'left', 0.2);
+    expect(dimmed.scene.version).toBe(6);
+    expect(dimmed.scene.regionPresentation).toEqual(
+      draft.scene.regionPresentation
+    );
     expect(setActorName(draft.scene, 'actor', 'Name').version).toBe(6);
     expect(
       setCreaturePalette(draft.scene, [
@@ -54,43 +77,29 @@ describe('saved region wall finish', () => {
       ]).version
     ).toBe(6);
   });
-  it('rejects old-version/invalid fields but retains shape-valid unavailable intent on load', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
+
+  it('clears a carried finish and keeps the scene version', () => {
+    const cleared = setRegionWallFinish(carried(), 'left', null);
+    expect(cleared.scene.regionPresentation).toBeUndefined();
+    expect(cleared.scene.version).toBe(6);
+  });
+
+  it('rejects old-version finishes but retains shape-valid unavailable intent on load', () => {
+    const draft = carried();
     expect(() => validateScene({ ...draft.scene, version: 5 })).toThrow(
       /wallFinish/
     );
-    const region = draft.scene.authoringRegions![0];
-    region.wallFinish!.patternStart.incoming.wallId = 'removed-wall';
-    expect(validateScene(draft.scene).authoringRegions![0].wallFinish).toEqual(
-      region.wallFinish
+    const scene = structuredClone(draft.scene);
+    scene.regionPresentation!.left.wallFinish!.patternStart.incoming.wallId =
+      'removed-wall';
+    expect(validateScene(scene).regionPresentation!.left.wallFinish).toEqual(
+      scene.regionPresentation!.left.wallFinish
     );
-    expect(() =>
-      setRegionWallFinish(draft, 'left', {
-        materialRef: 'dnd5e:material:test:small_gray',
-      })
-    ).toThrow(/pattern/i);
   });
-  it('repairs only to an existing offered corner and refuses explicit/unresolved regions', () => {
-    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
-      materialRef: GRAY_REF,
-    });
-    const boundary = projectRegionWallBoundaries(draft)[0];
-    if (boundary.status !== 'resolved') throw new Error(boundary.reason);
-    const next = setRegionWallFinish(draft, 'left', {
-      patternStart: boundary.corners[1].reference,
-    });
-    expect(next.scene.authoringRegions![0].wallFinish!.patternStart).toEqual(
-      boundary.corners[1].reference
+
+  it('refuses a missing region', () => {
+    expect(() => setRegionWallFinish(carried(), 'missing', null)).toThrow(
+      /exists/
     );
-    expect(() =>
-      setRegionWallFinish(
-        setExplicitRegionArea(draft, 'left', [{ q: 0, r: 0 }]),
-        'left',
-        { materialRef: GRAY_REF }
-      )
-    ).toThrow(/wall-bound/);
-    expect(() => setRegionWallFinish(draft, 'missing', null)).toThrow(/exists/);
   });
 });

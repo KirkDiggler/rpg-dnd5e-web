@@ -168,14 +168,19 @@ describe('useSaveDungeon generation fencing', () => {
     await act(async () => {
       answers[0]!.resolve({
         errors: [
-          { path: 'room.walkableHexes[3]', message: 'cell outside workspace' },
+          {
+            path: 'room.room.regions[0].cells[3].q[0]',
+            message: 'spans must be ascending and merged',
+          },
         ],
       });
     });
     await waitFor(() => expect(result.current.status).toBe('invalid'));
     expect(ok).toBe(false);
     expect(result.current.submittedYaml).toBe('yaml-1');
-    expect(result.current.errors[0]?.path).toBe('room.walkableHexes[3]');
+    expect(result.current.errors[0]?.path).toBe(
+      'room.room.regions[0].cells[3].q[0]'
+    );
   });
 
   it('drops a response after unmount without acting on it', async () => {

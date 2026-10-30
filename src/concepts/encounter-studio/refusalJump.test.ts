@@ -184,6 +184,26 @@ describe('refusalJumps', () => {
     });
   });
 
+  // F12 (rpg-project#725): a refusal about a region or any of its cells —
+  // the engine's `room.room.regions[i].cells[j].q[k]` — lands on that region.
+  it('a region path, its cells included, jumps to that region', () => {
+    const document = castle();
+    const third = document.draft.room.regions[2]!.id;
+    expect(targetOf('room.room.regions[2].cells[4].q[0]', document)).toEqual({
+      kind: 'region',
+      id: third,
+    });
+    expect(targetOf('room.room.regions[2]', document)).toEqual({
+      kind: 'region',
+      id: third,
+    });
+    expect(
+      targetOf('room.room.regions[2].lighting.intensity', document)
+    ).toEqual({ kind: 'region', id: third });
+    expect(targetOf('room.room.regions[99].cells', document)).toBeNull();
+    expect(targetOf('room.room.regions', document)).toBeNull();
+  });
+
   it('an unknown id is a sentence', () => {
     expect(targetOf('room.room.monsterBindings.nobody.faction')).toBeNull();
     expect(targetOf('room.room.propBindings.nothing-here')).toBeNull();

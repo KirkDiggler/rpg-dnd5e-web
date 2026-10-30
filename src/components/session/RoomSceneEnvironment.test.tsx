@@ -1,7 +1,4 @@
-import {
-  centeredRoomWorkspace,
-  type RoomWorkspace,
-} from '@/concepts/world-building/workspaceGeometry';
+import { type RoomWorkspace } from '@/concepts/world-building/workspaceGeometry';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -123,8 +120,14 @@ vi.mock('@/components/hex-grid/WorldAssetModel', () => ({
   },
 }));
 
+import { castleRectangleCells } from '@/concepts/encounter-studio/fixtures/castleWorkspace';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '@/concepts/world-building/catalog';
-import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
+import { contentWorkspace } from '@/concepts/world-building/contentGrid';
+import {
+  createRoomDraft,
+  paintCells,
+  type RoomScenePresentation,
+} from '@/concepts/world-building/roomDraft';
 import { RoomSceneEnvironment } from './RoomSceneEnvironment';
 
 const presentation: RoomScenePresentation = {
@@ -135,7 +138,12 @@ const presentation: RoomScenePresentation = {
     hexRadius: 1 as const,
     footprintFrame: 'owner-local-xz' as const,
   },
-  workspace: { hexRadius: 6, horizontalLimit: 12 },
+  // No stored workspace (rpg-project#725 R3): an unpainted room; the floor
+  // grid is derived from the content (the scene items here).
+  room: createRoomDraft(
+    { version: 1, id: 'scene-1', name: 'Workshop', items: [], groups: [] },
+    'room-1'
+  ).room,
   scene: {
     version: 1 as const,
     id: 'scene-1',
@@ -263,17 +271,25 @@ describe('RoomSceneEnvironment', () => {
     ).toHaveLength(0);
   });
 
-  it('passes complete rectangular workspace only through the optional author-preview floor gate', async () => {
-    const rectangular = {
+  it('passes the grid derived from a rectangular floor only through the optional author-preview floor gate', async () => {
+    // The grid is derived from the painted floor, never stored (rpg-project#725 R3).
+    const rectangular: RoomScenePresentation = {
       ...presentation,
-      workspace: centeredRoomWorkspace(73, 48),
+      room: paintCells(
+        { ...presentation, version: 3, id: 'room-1', name: 'Room' },
+        castleRectangleCells()
+      ).room,
     };
     const view = await ReactThreeTestRenderer.create(
       <RoomSceneEnvironment presentation={rectangular} />
     );
     expect(hoisted.floorSurfaceCalls[0]!.workspace).toEqual(
-      rectangular.workspace
+      contentWorkspace(rectangular)
     );
+    expect(
+      (hoisted.floorSurfaceCalls[0]!.workspace as { widthHexes: number })
+        .widthHexes
+    ).toBeGreaterThanOrEqual(73);
     hoisted.floorSurfaceCalls.length = 0;
     await view.update(
       <RoomSceneEnvironment
@@ -289,16 +305,18 @@ describe('RoomSceneEnvironment', () => {
     await view.unmount();
   });
 
-  it('presents the whole workspace Crypt floor at the authoring radius through the shared surface', async () => {
+  it('presents the whole derived-grid Crypt floor at the grid radius through the shared surface', async () => {
     await ReactThreeTestRenderer.create(
       <RoomSceneEnvironment presentation={presentation} />
     );
 
+    // The disc is sized from the derived grid (rpg-project#725 R3).
+    const derived = contentWorkspace(presentation);
     expect(hoisted.floorSurfaceCalls).toHaveLength(1);
-    expect(hoisted.floorSurfaceCalls[0]!.radius).toBe(13);
-    expect(hoisted.floorSurfaceCalls[0]!.workspace).toEqual(
-      presentation.workspace
+    expect(hoisted.floorSurfaceCalls[0]!.radius).toBe(
+      derived.horizontalLimit + 1
     );
+    expect(hoisted.floorSurfaceCalls[0]!.workspace).toEqual(derived);
     expect(hoisted.floorSurfaceCalls[0]!.profile).toEqual({
       diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
       sha256:

@@ -31,6 +31,9 @@ export type RefusalTarget =
   | { kind: 'prop'; id: string }
   | { kind: 'door'; target: StudioDoorTarget }
   | { kind: 'hex'; cell: RoomHexCell }
+  /** An authored region (rpg-project#725): any path under
+   * `room.room.regions[i]`, its cells included. */
+  | { kind: 'region'; id: string }
   | { kind: 'castMember'; ref: string }
   | {
       kind: 'home';
@@ -110,6 +113,12 @@ function roomTarget(
     case 'doorBindings': {
       const target = typeof key === 'string' ? doorTarget(document, key) : null;
       return target ? { kind: 'door', target } : null;
+    }
+    case 'regions': {
+      // `regions[i]`, `regions[i].cells[j].q[k]`, `regions[i].lighting…`:
+      // every refusal about a region or its cells is that region.
+      const id = typeof key === 'number' ? room.regions[key]?.id : undefined;
+      return id ? { kind: 'region', id } : null;
     }
     case 'walls': {
       // `walls[i].openings[j].door…` is that door; any other wall path has

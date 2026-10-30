@@ -74,8 +74,9 @@ describe('useDungeonScene', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.presentation).toEqual({
       coordinateFrame: draft.coordinateFrame,
-      workspace: draft.workspace,
       scene: draft.scene,
+      // The floor travels as the room's regions; no workspace (rpg-project#725).
+      room: draft.room,
     });
     // The placement-id universe rides ALONGSIDE the presentation, not inside
     // it: the authored `place[].id` (the propDeclarations keys), surfaced for
@@ -111,7 +112,8 @@ describe('useDungeonScene', () => {
 
   it('names a single-room file it cannot read whole, never calling it roomless', async () => {
     const client = clientReturning(
-      'version: 3\nkey: room-workshop\nplay: {}\nroom: {}\n'
+      // Version 5: versions 3 and 4 are retired (rpg-project#725).
+      'version: 5\nkey: room-workshop\nplay: {}\nroom: {}\n'
     );
     const { result } = renderHook(() =>
       useDungeonScene('room-workshop', client)

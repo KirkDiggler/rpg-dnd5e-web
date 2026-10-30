@@ -63,10 +63,13 @@ export function useStudioLabels(
       );
     return accepted;
   };
+  // A room placement names a new region (rpg-project#725): its label is its
+  // name, drawn at its cells' centroid once painted, so the click location
+  // is not stored.
   const create = (text: string, location: WorldPoint): boolean =>
     result(
       placementKind === 'room'
-        ? session.regionEditing.createRoomLabel(text, location)
+        ? session.regionEditing.createRegion(text)
         : session.createMapLabel(text, location)
     );
   const move = (id: string, location: WorldPoint): boolean =>

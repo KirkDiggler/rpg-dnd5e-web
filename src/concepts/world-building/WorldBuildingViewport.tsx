@@ -55,7 +55,6 @@ import {
   type RoomMonsterBinding,
   type RoomMonsterPlacement,
   type RoomPropDeclaration,
-  type RoomWorkspace,
 } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
@@ -71,6 +70,7 @@ import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
+import type { RoomWorkspace } from './workspaceGeometry';
 import {
   rectangleOf,
   workspaceBounds,
@@ -78,6 +78,7 @@ import {
   workspaceCells,
 } from './workspaceGeometry';
 import { createWorkspaceRectangleSelection } from './workspaceRectangleSelection';
+import { MAX_WORLD_COORD } from './worldBounds';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
   WorldBuildingDropInteraction,
@@ -142,11 +143,14 @@ export interface WorldBuildingViewportProps {
      * that hex. Absent keeps the legacy clear-the-scene-selection click. */
     onSelectHex?(cell: RoomHexCell): void;
     intentEpoch?: number;
-    walkableHexes: readonly RoomHexCell[];
+    /** The floor: the union of the authored regions (rpg-project#725). */
+    floorCells: readonly RoomHexCell[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;
     onConcealmentCellPick?: (cell: RoomHexCell) => void;
     onConcealmentPropPick?: (id: string) => void;
+    /** The grid to draw, derived from the content bounds; never stored
+     * (rpg-project#725 R3). */
     workspace: RoomWorkspace;
     propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
     onWalkableGesture: (
@@ -506,14 +510,14 @@ function RoomAuthoringDeclarations({
       {rectangular ? (
         <WorkspaceCellOverlay
           name="room-walkable-cells"
-          cells={authoring.walkableHexes}
+          cells={authoring.floorCells}
           geometry={fillGeometry}
           y={DUNGEON_SURFACE_Y + 0.018}
           color="#34d399"
           opacity={0.34}
         />
       ) : (
-        authoring.walkableHexes.map((cell) => {
+        authoring.floorCells.map((cell) => {
           const center = cubeToWorld(
             { x: cell.q, y: -cell.q - cell.r, z: cell.r },
             HEX_SIZE
@@ -692,7 +696,7 @@ export function WorldSceneContents(
     const authoring = props.roomAuthoring;
     if (!cell || !authoring?.activeConcealmentId) return;
     if (
-      authoring.walkableHexes.some(
+      authoring.floorCells.some(
         (value) => value.q === cell.q && value.r === cell.r
       )
     ) {
@@ -897,7 +901,7 @@ export function WorldSceneContents(
     props.roomAuthoring?.activeConcealmentId,
     scene,
     props.roomAuthoring?.workspace,
-    props.roomAuthoring?.walkableHexes,
+    props.roomAuthoring?.floorCells,
     props.roomAuthoring?.walls,
   ]);
   useEffect(() => {
@@ -1106,9 +1110,7 @@ export function WorldSceneContents(
                   (transform) => !pickGroundCell(transform)
                 )
               )
-                throw new Error(
-                  'Repeat anchor outside the authoring workspace.'
-                );
+                throw new Error('Repeat anchor is outside the drawn grid.');
               const target = event.target as Element;
               target.setPointerCapture?.(event.pointerId);
               floorGesture.current = {
@@ -1217,9 +1219,7 @@ export function WorldSceneContents(
                   (transform) => !pickGroundCell(transform)
                 )
               )
-                throw new Error(
-                  'Repeat anchor outside the authoring workspace.'
-                );
+                throw new Error('Repeat anchor is outside the drawn grid.');
               gesture.transforms = layout.transforms;
               setRepeatPreview({
                 assetRef: gesture.descriptor.assetRef,
@@ -1470,8 +1470,7 @@ export function WorldSceneContents(
         onCommit={props.onTransformCommit}
         onReject={props.onTransformReject}
         onTransformingChange={setTransforming}
-        workspace={props.roomAuthoring?.workspace}
-        sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
+        sceneHorizontalLimit={props.roomAuthoring ? MAX_WORLD_COORD : undefined}
         wallTarget={(() => {
           const room = props.roomAuthoring;
           const wall = room?.walls?.find(
@@ -1488,8 +1487,7 @@ export function WorldSceneContents(
             return undefined;
           return {
             wall,
-            horizontalLimit: room.workspace.horizontalLimit,
-            workspace: room.workspace,
+            horizontalLimit: MAX_WORLD_COORD,
             onPreview: room.onWallTransformPreview,
             onCommit: room.onWallTransformCommit,
           };
@@ -1500,7 +1498,6 @@ export function WorldSceneContents(
           props.roomAuthoring?.activeConcealmentId ? null : activeDrag
         }
         floorY={DUNGEON_SURFACE_Y}
-        workspace={props.roomAuthoring?.workspace}
         onDrop={props.onDrop}
         onDragFinished={props.onDragFinished}
       />

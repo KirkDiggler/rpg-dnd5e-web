@@ -1,4 +1,5 @@
-import type { AuthoringRegion, RegionResolution } from './authoringRegions';
+import type { RegionResolution } from './authoringRegions';
+import type { RoomRegion } from './roomDraft';
 
 export type RegionLightingProjection = {
   readonly areas: readonly {
@@ -8,9 +9,12 @@ export type RegionLightingProjection = {
   }[];
 };
 
-/** Only current configured resolutions apply. No acquisition or last-good extent. */
+/** Every region carries a lighting intensity (rpg-project#725); a region at
+ * full intensity is the bright baseline and draws no area, exactly as an
+ * unlit region did before lighting was required. Only resolved regions with
+ * cells apply. */
 export function projectRegionLighting(
-  regions: readonly AuthoringRegion[],
+  regions: readonly RoomRegion[],
   resolutions: readonly RegionResolution[]
 ): RegionLightingProjection {
   const byId = new Map(
@@ -19,11 +23,11 @@ export function projectRegionLighting(
   return {
     areas: regions.flatMap((region) => {
       const resolution = byId.get(region.id);
-      return region.lighting && resolution?.status === 'resolved'
+      return region.lighting.intensity < 1 && resolution?.status === 'resolved'
         ? [
             {
               regionId: region.id,
-              background: region.lighting.background,
+              background: region.lighting.intensity,
               area: resolution.area,
             },
           ]
