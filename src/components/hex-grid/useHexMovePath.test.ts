@@ -382,7 +382,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
 
   function renderMovePath(
     onHeading?: (radians: number) => void,
-    onPresentationComplete?: (moveSeq: number) => void
+    onPresentationComplete?: (moveSeq: number) => void,
+    presentation?: { canAdvance: (moveSeq: number) => boolean; speed: number }
   ) {
     // Caller-owned as of rpg-dnd5e-web#590 — the hook no longer creates and
     // returns this ref, because useEntityFacing drives rotation.y on the same
@@ -405,7 +406,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
           groupRef,
           onHeading,
           onPresentationComplete,
-          deferPositionReconciliation
+          deferPositionReconciliation,
+          presentation
         ),
       {
         initialProps: {
@@ -427,6 +429,40 @@ describe('useHexMovePath (hook-level regression test)', () => {
   beforeEach(() => {
     hoisted.frameCallback = undefined;
     hoisted.invalidate.mockReset();
+  });
+
+  it('waits for exact-route animation readiness without accruing time, then scales travel', () => {
+    let readySeq = 0;
+    const complete = vi.fn();
+    const { rerender, groupRef } = renderMovePath(undefined, complete, {
+      canAdvance: (seq) => seq === readySeq,
+      speed: 2,
+    });
+    groupRef.current = new THREE.Group();
+    rerender({
+      entityPosition: { ...posA },
+      movePath: undefined,
+      moveSeq: undefined,
+    });
+    const start = groupRef.current.position.clone();
+    rerender({ entityPosition: posB, movePath: [posA, posB], moveSeq: 1 });
+    tick(100);
+    expect(groupRef.current.position).toEqual(start);
+    expect(complete).not.toHaveBeenCalled();
+    readySeq = 1;
+    tick(SECONDS_PER_HEX_STEP / 4);
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posB, HEX_SIZE).x / 2
+    );
+    tick(SECONDS_PER_HEX_STEP / 4);
+    expect(complete).toHaveBeenCalledExactlyOnceWith(1);
+    rerender({ entityPosition: posC, movePath: [posB, posC], moveSeq: 2 });
+    const atB = groupRef.current.position.clone();
+    tick(100);
+    expect(groupRef.current.position).toEqual(atB);
+    readySeq = 2;
+    tick(SECONDS_PER_HEX_STEP / 2);
+    expect(complete).toHaveBeenLastCalledWith(2);
   });
 
   it('holds already displayed pixels against a newer snapshot until its queued route starts', () => {

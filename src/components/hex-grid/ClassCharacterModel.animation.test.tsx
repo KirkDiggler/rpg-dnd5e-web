@@ -54,6 +54,7 @@ vi.mock('@react-three/drei', async (importOriginal) => {
   };
 });
 
+import { NPC_ACTIVITY_PROFILES } from '@/generated/npcAppearanceCatalog';
 import { ClassCharacterModel } from './ClassCharacterModel';
 
 let state: RootState;
@@ -123,6 +124,50 @@ describe('Bard idle/walk playback through ClassCharacterModel', () => {
 
     await renderer.update(bard(true));
     expect(fixture.played.at(-1)).toBe('Walk_Forward');
+    await renderer.unmount();
+  });
+});
+
+describe('provider activity playback through ClassCharacterModel', () => {
+  it('uses exact default clips and acknowledges walking only after the mixer finishes the exit', async () => {
+    const profile = NPC_ACTIVITY_PROFILES[0];
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_Relaxed', 1, []),
+      new THREE.AnimationClip('Walk_Forward', 1, []),
+    ];
+    const clips = profile.library.clips.map(
+      (name) => new THREE.AnimationClip(name, 1, [])
+    );
+    const ready = vi.fn();
+    const model = (moving: boolean, remembered = false) => (
+      <ClassCharacterModel
+        url="/body.glb"
+        isMoving={moving}
+        remembered={remembered}
+        activity={{
+          profile,
+          clips,
+          defaultActivityRef: 'dnd5e:activities:thoughtful',
+          moveSeq: 1,
+          ready,
+        }}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(model(false));
+    expect(fixture.played.at(-1)).toBe('Idle_Thoughtful');
+    await renderer.update(model(true));
+    expect(ready).toHaveBeenLastCalledWith({ moveSeq: 1, ready: false });
+    await renderer.advanceFrames(1, 1.01);
+    expect(fixture.played.at(-1)).toBe('Idle_Thoughtful_Exit');
+    await renderer.advanceFrames(1, 0.68);
+    expect(fixture.played.at(-1)).toBe('Walk_Forward');
+    expect(ready).toHaveBeenLastCalledWith({ moveSeq: 1, ready: true });
+    await renderer.update(model(false, true));
+    const count = fixture.played.length;
+    await renderer.advanceFrames(3, 2);
+    expect(fixture.played).toHaveLength(count);
+    await renderer.update(model(false));
+    expect(fixture.played.at(-1)).toBe('Idle_Thoughtful');
     await renderer.unmount();
   });
 });

@@ -44,6 +44,11 @@
 
 import type { OutfitPresentation } from '@/character/customization/outfitCustomization';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import {
+  createActivityPlayback,
+  type WalkingReadiness,
+} from '@/npc-activities/activityPlayback';
+import type { NpcActivityProfile } from '@/npc-activities/activityTypes';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -101,6 +106,15 @@ export interface ClassCharacterModelProps {
    * instead of idle. Defaults false (idle), matching every pre-#542 caller
    * unchanged. */
   isMoving?: boolean;
+  presentationSpeed?: number;
+  transitionSpeed?: number;
+  activity?: {
+    readonly profile: NpcActivityProfile;
+    readonly clips: readonly THREE.AnimationClip[];
+    readonly defaultActivityRef?: string;
+    readonly moveSeq?: number;
+    readonly ready: (value: WalkingReadiness) => void;
+  };
   /** True when `url` resolves a downed/dead-pose GLB (rpg-dnd5e-web#501/
    * #559) — those ship with 0 baked clips BY DESIGN (a static collapsed
    * pose, not an animated one), so the dev-mode zero-clip warning below
@@ -187,6 +201,9 @@ export function ClassCharacterModel({
   remembered = false,
   facingRotation = 0,
   isMoving = false,
+  presentationSpeed = 1,
+  transitionSpeed = 1.5,
+  activity,
   isDownedVariant = false,
   mainHandPresentation,
   mainHandSocketOverride,
@@ -405,18 +422,64 @@ export function ClassCharacterModel({
   // `Idle_Relaxed`, then `Walk_Forward`; downed variants ship 0 clips, so
   // `names` is empty and `resolvedClipName` is undefined — this effect
   // no-ops cleanly for those, same as before #542.
-  const { actions, names, mixer } = useAnimations(animations, cloned);
-  const resolvedClipName = remembered
-    ? undefined
-    : isMoving
-      ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
-      : resolveIdleClipName(names);
+  const activityClips = activity?.clips;
+  const combinedClips = useMemo(
+    () => (activityClips ? [...animations, ...activityClips] : animations),
+    [animations, activityClips]
+  );
+  const { actions, names, mixer } = useAnimations(combinedClips, cloned);
+  const playbackRef = useRef<
+    ReturnType<typeof createActivityPlayback> | undefined
+  >(undefined);
+  const readinessRef = useRef(activity?.ready);
+  readinessRef.current = activity?.ready;
+  const profile = activity?.profile;
+  useLayoutEffect(() => {
+    if (!profile) return;
+    const playback = createActivityPlayback({
+      mixer,
+      clips: combinedClips,
+      profile,
+      ready: (value) => readinessRef.current?.(value),
+    });
+    playbackRef.current = playback;
+    return () => {
+      playback.dispose();
+      playbackRef.current = undefined;
+    };
+  }, [mixer, combinedClips, profile]);
+  useLayoutEffect(() => {
+    playbackRef.current?.update({
+      defaultActivityRef: activity?.defaultActivityRef,
+      moveSeq: activity?.moveSeq,
+      wantsWalk: isMoving,
+      active: !remembered && !isDownedVariant,
+      speed: presentationSpeed,
+      transitionSpeed,
+    });
+  }, [
+    profile,
+    combinedClips,
+    activity?.defaultActivityRef,
+    activity?.moveSeq,
+    isMoving,
+    remembered,
+    isDownedVariant,
+    presentationSpeed,
+    transitionSpeed,
+  ]);
+  const resolvedClipName =
+    remembered || profile
+      ? undefined
+      : isMoving
+        ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
+        : resolveIdleClipName(names);
   // Other live entities can still drive Canvas frames. Freeze this mixer's
   // clock too, preserving the last evaluated pose and any pending fade rather
   // than allowing a remembered body to animate or fade back to its bind pose.
   useEffect(() => {
-    mixer.timeScale = remembered ? 0 : 1;
-  }, [mixer, remembered]);
+    if (!profile) mixer.timeScale = remembered ? 0 : presentationSpeed;
+  }, [mixer, remembered, profile, presentationSpeed]);
   useEffect(() => {
     if (!resolvedClipName) return;
     const action = actions[resolvedClipName];
