@@ -6637,23 +6637,25 @@ it('the castle’s gate tables read as use: lines that resolve in the studio (rp
     tables.querySelectorAll('li.wb-entry-use .wb-entry-summary')
   ).map((node) => node.textContent);
   expect(lines).toEqual([
-    'pursuer',
-    'alarm-reactor',
-    // The route given to the bundle is its waypoints as chips (rpg-project#720).
-    'patrol · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
+    // ONE LINE, `guard-base`, a bundle of the dasher, the pursuer, the alarm
+    // and the patrol; the route given to it is its waypoints as chips
+    // (rpg-project#720).
+    'guard-base · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
   ]);
   expect(within(tables).queryByRole('alert')).toBeNull();
   fireEvent.click(
     within(tables).getByRole('button', {
-      name: /Show the rows of .* entry pursuer/,
+      name: /Show the rows of .* entry guard-base/,
     })
   );
   expect(
-    within(within(tables).getByLabelText('pursuer rows'))
+    within(within(tables).getByLabelText('guard-base rows'))
       .getAllByRole('listitem')
       .map((node) => node.textContent)
   ).toEqual([
-    expect.stringContaining('enemy remembered'),
-    expect.stringContaining('search 6'),
+    'dasher',
+    'pursuer · when enemy lost',
+    'alarm-reactor',
+    'patrol · with path a route of 3 waypoints',
   ]);
 });
