@@ -207,6 +207,15 @@ export interface LayoutLabelEditing {
 }
 
 /** A controlled presentation: no document copy, persistence or history owner. */
+/** The Layout's half of a row's pick on map: what to draw and where a
+ * clicked cell goes. */
+export interface LayoutRoutePick {
+  mode: 'cell' | 'route';
+  /** The waypoints picked so far, in walking order. */
+  waypoints: readonly RoomHexCell[];
+  onPick(cell: RoomHexCell): void;
+}
+
 export interface LayoutViewportProps {
   draft: Readonly<RoomDraft>;
   tool: LayoutTool;
@@ -239,6 +248,11 @@ export interface LayoutViewportProps {
   documentContext?: Readonly<RoomDraftDocument>;
   /** Select-tool click on a bare workspace cell selects that hex. */
   onSelectHex?(cell: RoomHexCell): void;
+  /** Pick on map (rpg-project#720): while set, a left click on any
+   * workspace cell is a waypoint (or the one cell) for a table row, ahead of
+   * every other tool, and the route picked so far is drawn as a numbered
+   * loop. Absent is the ordinary Layout. */
+  routePick?: LayoutRoutePick;
   /** Select-tool click off the workspace floor selects nothing. */
   onClearSelection?(): void;
   /** Placed creatures, props and the party start, drawn and selectable

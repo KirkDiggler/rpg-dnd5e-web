@@ -6639,7 +6639,8 @@ it('the castle’s gate tables read as use: lines that resolve in the studio (rp
   expect(lines).toEqual([
     'pursuer',
     'alarm-reactor',
-    'patrol · with path a route of 3 waypoints',
+    // The route given to the bundle is its waypoints as chips (rpg-project#720).
+    'patrol · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
   ]);
   expect(within(tables).queryByRole('alert')).toBeNull();
   fireEvent.click(

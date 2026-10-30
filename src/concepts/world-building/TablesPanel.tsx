@@ -27,14 +27,16 @@
  * THE GRAMMAR INSIDE A TABLE IS THE ONE GRAMMAR. Entries are edited by the SAME
  * `AnswerEntryRow` a faction's table uses, driven by the same one vocabulary
  * declaration, so a word the engine adds shows up here with no change. A cell
- * (`at: { q, r }`) or a route (`path: [{ q, r }, …]`) a file carries is read,
- * shown in words and kept verbatim (rpg-toolkit#2063); no picker offers one
- * yet.
+ * (`at: { q, r }`) or a route (`path: [{ q, r, wait?, facing? }, …]`) is
+ * offered on `toward` and picked on the Layout, its waypoints shown as chips
+ * with their wait and facing (rpg-project#720); the engine's refusals of one
+ * come back through the validate-only `PutDungeon` and are said at the row.
  */
 import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
 import type { RoomGameplayData } from './roomDraft';
+import { tableRowPaths, useRowRefusals } from './rowRefusals';
 import { AnswerEntryRow, EntryList } from './SitePolicies';
 import {
   addSiteTable,
@@ -105,6 +107,14 @@ function TableRow({
    * half-typed name never becomes a table's id mid-keystroke — `FactionRow`
    * already keeps this rule for the same reason. */
   const [typedId, setTypedId] = useState(id);
+  /** A refusal's jump to one of this table's rows opens the table. */
+  const { focus } = useRowRefusals();
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const focusHere =
+    focus !== null && focus.path.startsWith(`tables.${id}.`) ? focus.nonce : 0;
+  useEffect(() => {
+    if (focusHere && detailsRef.current) detailsRef.current.open = true;
+  }, [focusHere]);
   const entries = authored.reduce(
     (count, key) => count + (table[key]?.length ?? 0),
     0
@@ -133,7 +143,11 @@ function TableRow({
 
   return (
     <li className="wb-policy-faction" data-table-id={id}>
-      <details className="wb-policy-row" data-testid={`site-table-${id}`}>
+      <details
+        ref={detailsRef}
+        className="wb-policy-row"
+        data-testid={`site-table-${id}`}
+      >
         {/* THE LINE IS THE ID AND HOW MUCH IT CARRIES: "what does this table
             say" is the fact worth reading at a glance, and the entry count is
             the honest answer when the triggers are closed. */}
@@ -217,6 +231,7 @@ function TableRow({
                       collapsed={collapsedEntries}
                       trigger={trigger}
                       entry={entry}
+                      at={tableRowPaths(id, trigger, index)}
                       onCommit={(next: AnswerEntryShape) =>
                         onChange(
                           patchSiteTableAnswerEntry(
