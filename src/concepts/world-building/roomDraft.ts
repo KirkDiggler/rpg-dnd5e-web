@@ -15,6 +15,7 @@ import {
   type OptionShape,
 } from './answerTableShape';
 import { setActorName } from './creaturePalette';
+import { requiresRead } from './predicateNot';
 import { fromRows, rowCellCount, toRows, type RoomCellRow } from './regionRuns';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
@@ -1294,13 +1295,15 @@ function requireOptionHoldings(
   );
   const check = (owner: string, options: RoomOption[] | undefined) => {
     for (const [index, option] of (options ?? []).entries()) {
-      if (option.requires === undefined || !('holds' in option.requires))
-        continue;
-      const refusal = optionHoldsRefusal(option.requires.holds, props);
+      if (option.requires === undefined) continue;
+      // A `not` of a holding names its prop one level down (rpg-project#719).
+      const read = requiresRead(option.requires);
+      if (!('holds' in read)) continue;
+      const refusal = optionHoldsRefusal(read.holds, props);
+      const at =
+        'not' in option.requires ? 'requires.not.holds' : 'requires.holds';
       if (refusal)
-        throw new Error(
-          `${owner} options[${index}].requires.holds: ${refusal}`
-        );
+        throw new Error(`${owner} options[${index}].${at}: ${refusal}`);
     }
   };
   for (const [id, binding] of Object.entries(monsterBindings ?? {}))

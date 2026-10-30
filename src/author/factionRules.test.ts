@@ -1,4 +1,8 @@
 // @vitest-environment node
+import {
+  NOT_HOLDS_FROM_THE_START_REFUSAL,
+  NOT_OF_NOT_REFUSAL,
+} from '@/concepts/world-building/predicateNot';
 import { describe, expect, it } from 'vitest';
 import {
   addDisposition,
@@ -299,7 +303,30 @@ describe('predicates — sub-paths and sentences', () => {
       'x.stance.between[0]',
       'x.stance.between[1]',
       'x.stance.is',
+      'x.not',
+      'x.not.round',
+      'x.not.down',
+      'x.not.fact',
+      'x.not.stance',
+      'x.not.stance.between',
+      'x.not.stance.between[0]',
+      'x.not.stance.between[1]',
+      'x.not.stance.is',
     ]);
+  });
+
+  it('not: the inner refusals one level down, then the engine’s liveness sentence (rpg-project#719)', () => {
+    const doc = camp();
+    expect(predicateRefusals(doc, { not: { round: 0 } }, 'x')).toEqual([
+      { path: 'x.not.round', message: 'round 0: a round is counted from 1' },
+    ]);
+    expect(predicateRefusals(doc, { not: { fact: 'caught' } }, 'x')).toEqual([
+      { path: 'x.not', message: NOT_HOLDS_FROM_THE_START_REFUSAL },
+    ]);
+    // A not of a not is refused at the outer not, and nothing else is said.
+    expect(
+      predicateRefusals(doc, { not: { not: { fact: 'caught' } } }, 'x')
+    ).toEqual([{ path: 'x.not', message: NOT_OF_NOT_REFUSAL }]);
   });
 
   it('round: counted from 1', () => {

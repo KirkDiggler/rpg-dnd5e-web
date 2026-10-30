@@ -30,6 +30,10 @@
  * sentences land here through the same `messagesAt`.
  */
 import {
+  NOT_OF_NOT_REFUSAL,
+  waitedNotRefusal,
+} from '@/concepts/world-building/predicateNot';
+import {
   factionMembers,
   isMonsterRef,
   MONSTERS,
@@ -139,6 +143,16 @@ export function predicatePaths(base: string): string[] {
     `${base}.stance.between[0]`,
     `${base}.stance.between[1]`,
     `${base}.stance.is`,
+    // A `not`'s inner refusals land one level down (rpg-project#719).
+    `${base}.not`,
+    `${base}.not.round`,
+    `${base}.not.down`,
+    `${base}.not.fact`,
+    `${base}.not.stance`,
+    `${base}.not.stance.between`,
+    `${base}.not.stance.between[0]`,
+    `${base}.not.stance.between[1]`,
+    `${base}.not.stance.is`,
   ];
 }
 
@@ -151,6 +165,20 @@ export function predicateRefusals(
   path: string
 ): Refusal[] {
   const out: Refusal[] = [];
+  if ('not' in p) {
+    // THE ONE NEGATION (rpg-project#719), waited for wherever this editor
+    // stands: the inner form's own refusals one level down, then the
+    // engine's sentence for a not that can never fire.
+    // A not of a not is refused at the outer not and nothing else is said,
+    // as the engine's `grammar.not` does.
+    if ('not' in p.not)
+      return [{ path: `${path}.not`, message: NOT_OF_NOT_REFUSAL }];
+    out.push(...predicateRefusals(doc, p.not, `${path}.not`));
+    const refusal = waitedNotRefusal(p);
+    if (out.length === 0 && refusal !== undefined)
+      out.push({ path: `${path}.not`, message: refusal });
+    return out;
+  }
   if ('round' in p) {
     if (p.round < 1) {
       out.push({

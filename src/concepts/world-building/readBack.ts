@@ -35,6 +35,7 @@ import {
   type OrdersSource,
 } from './layeredOrders';
 import { documentPlacementNames } from './placementNames';
+import { requiresId, requiresRead, requiresSentence } from './predicateNot';
 import {
   dispositionSentence,
   possessive,
@@ -385,13 +386,11 @@ function optionSentence(
   const refs: ReadBackRef[] = [];
   const facts: string[] = [];
   if (option.requires !== undefined) {
-    if ('fact' in option.requires) {
-      parts.push(`Offered to a speaker who knows ${option.requires.fact}.`);
-      facts.push(option.requires.fact);
-    } else
-      parts.push(
-        `Offered to a speaker carrying the ${propName(document, option.requires.holds)}.`
-      );
+    parts.push(
+      requiresSentence(option.requires, (id) => propName(document, id))
+    );
+    const gate = requiresRead(option.requires);
+    if ('fact' in gate) facts.push(gate.fact);
   }
   parts.push(
     `${option.check
@@ -484,8 +483,8 @@ function optionFacts(
   reads: Set<string>
 ) {
   for (const option of options ?? []) {
-    if (option.requires && 'fact' in option.requires)
-      reads.add(option.requires.fact);
+    if (option.requires && 'fact' in requiresRead(option.requires))
+      reads.add(requiresId(option.requires));
     for (const row of [...(option.success ?? []), ...(option.failure ?? [])])
       if (row.fact !== undefined) writes.add(row.fact);
   }

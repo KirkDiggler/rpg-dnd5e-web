@@ -48,6 +48,10 @@ export const MONSTERS = 'monsters';
  *                      `until`, by anyone on `arrives`
  *   `{ stance: { between: [a, b], is: <stance> } }`
  *                      the pair's stance folds to that value
+ *   `{ not: <one predicate> }`
+ *                      the inner predicate does not hold, judged where and
+ *                      when the inner one is (rpg-project#719); never a not
+ *                      of a not — see `predicateNot.ts`
  *
  * Each form compiles to an encounter `Trigger`; the set is sealed the way
  * `Trigger` is and grows one form per use case. Two keys in one map is not
@@ -59,13 +63,18 @@ export type PredicateDoc =
   | { round: number }
   | { down: string }
   | { fact: string }
-  | { stance: { between: [string, string]; is: Stance } };
+  | { stance: { between: [string, string]; is: Stance } }
+  | { not: PredicateDoc };
 
 export const PREDICATE_FORMS = ['round', 'down', 'fact', 'stance'] as const;
 export type PredicateForm = (typeof PREDICATE_FORMS)[number];
 
+/** A form, or `not` around one (rpg-project#719). */
+export type PredicateKind = PredicateForm | 'not';
+
 /** Which form a predicate is — the one key it carries. */
-export function predicateForm(p: PredicateDoc): PredicateForm {
+export function predicateForm(p: PredicateDoc): PredicateKind {
+  if ('not' in p) return 'not';
   if ('round' in p) return 'round';
   if ('down' in p) return 'down';
   if ('fact' in p) return 'fact';

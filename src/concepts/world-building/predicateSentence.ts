@@ -44,6 +44,7 @@ export function predicateSentence(
   predicate: PredicateDoc,
   ctx: PredicateContext
 ): string {
+  if ('not' in predicate) return notSentence(predicate.not, ctx);
   if ('round' in predicate) return `round ${predicate.round} begins`;
   if ('down' in predicate)
     return `${ctx.names.get(predicate.down) ?? predicate.down} is down`;
@@ -53,6 +54,21 @@ export function predicateSentence(
       : `${predicate.fact} is known`;
   const [a, b] = predicate.stance.between;
   return `${sideName(a)} and ${sideName(b)} are ${predicate.stance.is}`;
+}
+
+/** A `not` (rpg-project#719) as the clause that completes "until …" or
+ * "when …": the inner predicate, turned over. */
+function notSentence(inner: PredicateDoc, ctx: PredicateContext): string {
+  if ('not' in inner) return `it is not so that ${notSentence(inner.not, ctx)}`;
+  if ('round' in inner) return `round ${inner.round} has not begun`;
+  if ('down' in inner)
+    return `${ctx.names.get(inner.down) ?? inner.down} is not down`;
+  if ('fact' in inner)
+    return ctx.mindName !== undefined
+      ? `${ctx.mindName}${ctx.mindName.includes(',') ? ',' : ''} does not know ${inner.fact}`
+      : `${inner.fact} is not known`;
+  const [a, b] = inner.stance.between;
+  return `${sideName(a)} and ${sideName(b)} are no longer ${inner.stance.is}`;
 }
 
 /** The minds of a pair, as the noun phrase a fact `until` waits on: each
