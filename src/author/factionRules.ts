@@ -29,7 +29,10 @@
  * a ring of arrivals): the compiler folds the world for those, and its
  * sentences land here through the same `messagesAt`.
  */
-import { waitedNotRefusal } from '@/concepts/world-building/predicateNot';
+import {
+  NOT_OF_NOT_REFUSAL,
+  waitedNotRefusal,
+} from '@/concepts/world-building/predicateNot';
 import {
   factionMembers,
   isMonsterRef,
@@ -166,6 +169,10 @@ export function predicateRefusals(
     // THE ONE NEGATION (rpg-project#719), waited for wherever this editor
     // stands: the inner form's own refusals one level down, then the
     // engine's sentence for a not that can never fire.
+    // A not of a not is refused at the outer not and nothing else is said,
+    // as the engine's `grammar.not` does.
+    if ('not' in p.not)
+      return [{ path: `${path}.not`, message: NOT_OF_NOT_REFUSAL }];
     out.push(...predicateRefusals(doc, p.not, `${path}.not`));
     const refusal = waitedNotRefusal(p);
     if (out.length === 0 && refusal !== undefined)

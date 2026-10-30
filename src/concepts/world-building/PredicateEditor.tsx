@@ -75,6 +75,9 @@ export interface PredicateEditorProps {
   room: Pick<RoomGameplayData, 'monsterDeclarations'>;
   /** Placement id to its shown name. */
   names: ReadonlyMap<string, string>;
+  /** Inside a `not` of a `not`: the outer one carries the engine's one
+   * sentence, so this one says nothing (rpg-project#719). */
+  quiet?: boolean;
 }
 
 export function PredicateEditor({
@@ -87,6 +90,7 @@ export function PredicateEditor({
   scope,
   room,
   names,
+  quiet,
 }: PredicateEditorProps): React.JSX.Element {
   const form = value === undefined ? 'none' : predicateForm(value);
   const shown = value as unknown as Record<string, unknown> | undefined;
@@ -144,6 +148,7 @@ export function PredicateEditor({
           scope={scope}
           room={room}
           names={names}
+          quiet={quiet}
         />
       )}
       {form === 'round' && (
@@ -268,10 +273,11 @@ function NotEditor({
   scope,
   room,
   names,
+  quiet,
 }: Omit<PredicateEditorProps, 'label' | 'none' | 'value'> & {
   value: { not: PredicateDoc };
 }): React.JSX.Element {
-  const refusal = waitedNotRefusal(value);
+  const refusal = quiet ? undefined : waitedNotRefusal(value);
   return (
     <div className="wb-policy-until-not" data-testid={`${name} not`}>
       <PredicateEditor
@@ -285,6 +291,7 @@ function NotEditor({
         scope={scope}
         room={room}
         names={names}
+        quiet={'not' in value.not}
       />
       {refusal !== undefined && (
         <p

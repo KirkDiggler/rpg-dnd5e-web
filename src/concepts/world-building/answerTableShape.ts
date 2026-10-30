@@ -88,6 +88,7 @@ import {
   whenShapeRefusal,
   type SearchHeading,
 } from '@/author/answerVocabulary';
+import { PREDICATE_SHAPE } from '@/author/factionVocabulary';
 import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
 import {
   NOT_OF_NOT_REFUSAL,
@@ -1262,6 +1263,14 @@ function validateOptionRequires(
   const form = Object.keys(value)[0];
   if (form === 'not') {
     const inner = value.not;
+    // `{ not: {} }` or `{ not: }`: the engine's decode refuses it as a
+    // predicate that says nothing (`PredicateSpec.UnmarshalYAML`).
+    if (
+      inner === null ||
+      inner === undefined ||
+      (isMapping(inner) && Object.keys(inner).length === 0)
+    )
+      fail(`${path}.not`, `this predicate says nothing — ${PREDICATE_SHAPE}`);
     if (isMapping(inner) && Object.keys(inner).length === 1 && 'not' in inner)
       fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
     const read = validateOptionRequires(inner, `${path}.not`);

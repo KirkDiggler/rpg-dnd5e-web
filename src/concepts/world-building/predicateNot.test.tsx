@@ -3,7 +3,7 @@
  * read from a file, written back, offered by the predicate editor and the
  * requires picker, said by the Read back, and refused in the engine's words.
  */
-import type { PredicateDoc } from '@/author/factionVocabulary';
+import { PREDICATE_SHAPE, type PredicateDoc } from '@/author/factionVocabulary';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -83,6 +83,12 @@ describe('the not predicate is read and written', () => {
     expect(() =>
       validateOptions(line({ not: { not: { fact: 'x' } } }), 'options', false)
     ).toThrow(`options[0].requires.not: ${NOT_OF_NOT_REFUSAL}`);
+    for (const empty of [{}, null])
+      expect(() =>
+        validateOptions(line({ not: empty }), 'options', false)
+      ).toThrow(
+        `options[0].requires.not: this predicate says nothing — ${PREDICATE_SHAPE}`
+      );
     expect(() => validateOptions(line({ round: 2 }), 'options', false)).toThrow(
       `options[0].requires: ${OPTION_REQUIRES_FORMS}, and \`round\` is none of them`
     );
@@ -213,6 +219,19 @@ describe('the predicate editor offers not', () => {
     expect(onValue).toHaveBeenLastCalledWith({
       not: { stance: { between: ['goblins', 'party'], is: 'hostile' } },
     });
+  });
+
+  it('says only the outer sentence under a not of a not', () => {
+    render(
+      <Editor
+        initial={{ not: { not: { fact: 'caught' } } }}
+        onValue={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('Until not refusal').textContent).toBe(
+      NOT_OF_NOT_REFUSAL
+    );
+    expect(screen.queryByTestId('Until not not refusal')).toBeNull();
   });
 
   it('shows the engine’s sentence under a not that can never fire', () => {

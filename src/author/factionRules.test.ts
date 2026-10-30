@@ -1,5 +1,8 @@
 // @vitest-environment node
-import { NOT_HOLDS_FROM_THE_START_REFUSAL } from '@/concepts/world-building/predicateNot';
+import {
+  NOT_HOLDS_FROM_THE_START_REFUSAL,
+  NOT_OF_NOT_REFUSAL,
+} from '@/concepts/world-building/predicateNot';
 import { describe, expect, it } from 'vitest';
 import {
   addDisposition,
@@ -320,6 +323,10 @@ describe('predicates — sub-paths and sentences', () => {
     expect(predicateRefusals(doc, { not: { fact: 'caught' } }, 'x')).toEqual([
       { path: 'x.not', message: NOT_HOLDS_FROM_THE_START_REFUSAL },
     ]);
+    // A not of a not is refused at the outer not, and nothing else is said.
+    expect(
+      predicateRefusals(doc, { not: { not: { fact: 'caught' } } }, 'x')
+    ).toEqual([{ path: 'x.not', message: NOT_OF_NOT_REFUSAL }]);
   });
 
   it('round: counted from 1', () => {
