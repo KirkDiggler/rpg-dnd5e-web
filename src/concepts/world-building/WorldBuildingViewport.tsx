@@ -1110,9 +1110,7 @@ export function WorldSceneContents(
                   (transform) => !pickGroundCell(transform)
                 )
               )
-                throw new Error(
-                  'Repeat anchor outside the authoring workspace.'
-                );
+                throw new Error('Repeat anchor is outside the drawn grid.');
               const target = event.target as Element;
               target.setPointerCapture?.(event.pointerId);
               floorGesture.current = {
@@ -1221,9 +1219,7 @@ export function WorldSceneContents(
                   (transform) => !pickGroundCell(transform)
                 )
               )
-                throw new Error(
-                  'Repeat anchor outside the authoring workspace.'
-                );
+                throw new Error('Repeat anchor is outside the drawn grid.');
               gesture.transforms = layout.transforms;
               setRepeatPreview({
                 assetRef: gesture.descriptor.assetRef,

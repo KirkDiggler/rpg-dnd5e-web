@@ -6319,9 +6319,7 @@ describe('S3 the overview through the real owner', () => {
     fireEvent.click(
       inspector().getByRole('button', { name: 'Paint this region' })
     );
-    const armed = within(
-      screen.getByLabelText('Explicit region area controls')
-    );
+    const armed = within(screen.getByLabelText('Region brush controls'));
     expect(
       armed.getAllByRole('button').map((node) => node.textContent)
     ).toEqual([
@@ -6336,12 +6334,12 @@ describe('S3 the overview through the real owner', () => {
         .getAttribute('aria-pressed')
     ).toBe('true');
     expect(surface().querySelector('desc')?.textContent).toMatch(
-      /Drag to paint region/
+      /Drag to paint into the selected region: a brushed cell becomes floor/
     );
     expect(pressed('Build')).toBe('true');
     // Escape retires the tool and keeps the region selected.
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByLabelText('Explicit region area controls')).toBeNull();
+    expect(screen.queryByLabelText('Region brush controls')).toBeNull();
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Chapel'
     );

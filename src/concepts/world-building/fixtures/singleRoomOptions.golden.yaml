@@ -36,7 +36,9 @@ room:
       - id: room-1-region
         name: Untitled room
         lighting: {intensity: 1}
-        cells: []
+        cells:
+          - r: 0
+            q: [[0, 0]]
     propDeclarations:
       prop-1:
         blocksMovement: true

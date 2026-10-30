@@ -680,15 +680,15 @@ function StudioSurface({
     ) : layoutTool === 'region' && selectedRegion ? (
       <div
         className="es-context-panel es-region-controls"
-        aria-label="Explicit region area controls"
+        aria-label="Region brush controls"
       >
-        <h2>
-          Explicit area ·{' '}
-          {session.arrange?.kind === 'label' ? session.arrange.label.text : ''}
-        </h2>
+        <h2>Region brush · {selectedRegion.name}</h2>
         <p className="es-help">
-          Only region membership changes. Floor, walls and props stay untouched.
-          Drag, then release to apply once. Escape cancels.
+          Paint puts the brushed cells in this region, making them floor if they
+          were not and taking them from any region that held them. Erase hands
+          this region’s cells back to the implicit region; they stay floor.
+          Walls and props are untouched. Drag, then release to apply once.
+          Escape cancels.
         </p>
         <div className="es-buttons">
           {(['paint', 'erase', 'rectangle'] as const).map((mode) => (

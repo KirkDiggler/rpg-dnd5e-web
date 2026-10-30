@@ -68,29 +68,20 @@ export function decodeRoomDocumentJson(json: string): RoomDraft {
     throw new Error(
       'Expected a version 3 room draft in a version 2 room snapshot.'
     );
-  // THE SYNTHESIZED ENVELOPE CARRIES THE **CURRENT** DRAFT SHAPE.
-  //
-  // This used to write `envelope.version === 1 ? 2 : 3` — the SNAPSHOT
-  // envelope's own number, borrowed for the draft envelope. The two axes only
-  // agreed by coincidence, and when the draft envelope went to 5 for
-  // `startingCell` (rpg-project#501 §6.1) this build began REFUSING ITS OWN
-  // freshly-decoded snapshot. `singleRoomDungeon` had the identical bug and was
-  // fixed the same way: a wrapper mints the CURRENT shape, never a number it
-  // inherited from a different version axis.
-  //
-  // The snapshot's own version still guards what it always did — which DRAFT
-  // version a snapshot may carry, checked above — and that check is unchanged.
-  //
-  // A LEGACY SNAPSHOT KEEPS ITS OWN DRAFT VERSION, because that number is
-  // still true of it: envelope 1 carries draft 2, and `parseRoomDocumentJson`
-  // has a v2 legacy path that migrates exactly that shape. Stamping the
-  // CURRENT version on it would claim a shape it does not have and skip the
-  // migration it needs. Only the CURRENT snapshot (envelope 2, draft 3) is
-  // stamped current — it is the one this build writes.
+  // A VERSION 1 SNAPSHOT PREDATES REGIONS AS THE FLOOR (rpg-project#725): its
+  // draft stores a walkable list, and there is no migration. It is refused
+  // here, naming its own version, rather than handed on to be refused under
+  // a draft-envelope number it never carried.
+  if (envelope.version === 1)
+    throw new Error(
+      'This room snapshot was saved before regions were the floor (it is a version 1 snapshot): rebuild, no migration (rpg-project#725).'
+    );
+  // The synthesized draft envelope carries the CURRENT draft shape: a wrapper
+  // mints the current number, never one borrowed from the snapshot's axis.
   return parseRoomDraftJson(
     JSON.stringify({
       kind: 'rpg-room-authoring-draft',
-      version: envelope.version === 1 ? 2 : ROOM_DRAFT_ENVELOPE_VERSION,
+      version: ROOM_DRAFT_ENVELOPE_VERSION,
       draft,
     })
   );

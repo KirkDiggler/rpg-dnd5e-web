@@ -345,7 +345,7 @@ export function LayoutViewport({
       abandon();
   }, [doorEditing?.selectedTarget, abandon]);
   // The grid is derived from the content, never stored (rpg-project#725 R3).
-  const presentationWorkspace = useContentWorkspace(draft);
+  const presentationWorkspace = useContentWorkspace(draft, frame.center);
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(presentationWorkspace),
     [presentationWorkspace]
@@ -1053,7 +1053,9 @@ export function LayoutViewport({
       <title>Layout floor surface</title>
       <desc>
         {tool === 'region'
-          ? `Drag to ${regionTool} region membership only; floor is unchanged.`
+          ? regionTool === 'erase'
+            ? 'Drag to hand the selected region’s cells back to the implicit region; they stay floor.'
+            : 'Drag to paint into the selected region: a brushed cell becomes floor if it was not, and leaves any region that held it.'
           : tool === 'wall'
             ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
             : tool === 'select'

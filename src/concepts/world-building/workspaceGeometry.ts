@@ -116,6 +116,24 @@ function rectangleCells(rect: WorkspaceRectangle): RoomHexCell[] {
       cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
   return cells;
 }
+/** The cells on a rectangle's edge, each once. */
+function perimeterCells(rect: WorkspaceRectangle): RoomHexCell[] {
+  dimensions(rect.widthHexes, rect.heightHexes);
+  const cells: RoomHexCell[] = [];
+  const lastRow = rect.minRow + rect.heightHexes - 1;
+  const lastCol = rect.minCol + rect.widthHexes - 1;
+  const at = (col: number, r: number) =>
+    cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
+  for (let r = rect.minRow; r <= lastRow; r++) {
+    if (r === rect.minRow || r === lastRow)
+      for (let col = rect.minCol; col <= lastCol; col++) at(col, r);
+    else {
+      at(rect.minCol, r);
+      if (lastCol !== rect.minCol) at(lastCol, r);
+    }
+  }
+  return cells;
+}
 /** hexRadius and horizontalLimit, derived from the cells. */
 function envelopes(rect: WorkspaceRectangle): {
   hexRadius: number;
@@ -123,7 +141,10 @@ function envelopes(rect: WorkspaceRectangle): {
 } {
   let hexRadius = 1;
   let horizontalLimit = 12;
-  for (const cell of rectangleCells(rect)) {
+  // Every measure here is extreme on the rectangle's edge (|q|, |r|, |q+r|
+  // and the corner coordinates are monotone along a row or a column), so the
+  // perimeter answers for the whole rectangle at a fraction of the cost.
+  for (const cell of perimeterCells(rect)) {
     hexRadius = Math.max(
       hexRadius,
       Math.abs(cell.q),
