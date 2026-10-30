@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  arrangeFields,
+  arrangeIntent,
+} from '../encounter-studio/StudioArrangeFields';
+import {
   createRoomDraft,
   parseRoomDraftJson,
   placeRoomMonster,
@@ -12,6 +16,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
+import { applyStudioActorArrange, projectStudioArrange } from './studioArrange';
 
 const THOUGHTFUL = 'dnd5e:activities:thoughtful';
 function fixture() {
@@ -29,6 +34,70 @@ function fixture() {
 }
 
 describe('authored default activity', () => {
+  it('offers provider activities and applies the selected default in one Arrange edit', () => {
+    const draft = fixture();
+    draft.room.monsterDeclarations[0].appearanceRef =
+      'dnd5e:npcs:goblin:prisoner-02';
+    const selection = projectStudioArrange({
+      draft,
+      target: { kind: 'actor', id: 'prisoner' },
+      selectionRevision: 1,
+    })!;
+    const field = arrangeFields(selection, []).find(
+      (f) => f.key === 'defaultActivityRef'
+    )!;
+    expect(field).toBeDefined();
+    expect(field.choices?.map((c) => c.value)).toEqual([
+      '',
+      'dnd5e:activities:relaxed',
+      THOUGHTFUL,
+    ]);
+    const intent = arrangeIntent(selection, {
+      defaultActivityRef: THOUGHTFUL,
+      q: '2',
+    })!;
+    if (intent.kind !== 'actor-start') throw new Error('wrong intent');
+    const changed = applyStudioActorArrange(draft, intent);
+    expect(changed.room.monsterDeclarations[0]).toEqual({
+      ...draft.room.monsterDeclarations[0],
+      defaultActivityRef: THOUGHTFUL,
+      startingCell: {
+        ...draft.room.monsterDeclarations[0].startingCell,
+        location: { q: 2, r: 0 },
+      },
+    });
+    expect(changed.room.monsterBindings).toBe(draft.room.monsterBindings);
+    const cleared = applyStudioActorArrange(changed, {
+      kind: 'actor-start',
+      target: { kind: 'actor', id: 'prisoner' },
+      defaultActivityRef: null,
+    });
+    expect(cleared.room.monsterDeclarations[0]).not.toHaveProperty(
+      'defaultActivityRef'
+    );
+  });
+
+  it('keeps unsupported imported defaults visible after a look change, without substitution', () => {
+    const draft = setRoomMonsterDefaultActivity(
+      fixture(),
+      'prisoner',
+      THOUGHTFUL
+    );
+    const selection = projectStudioArrange({
+      draft,
+      target: { kind: 'actor', id: 'prisoner' },
+      selectionRevision: 1,
+    })!;
+    const field = arrangeFields(selection, []).find(
+      (f) => f.key === 'defaultActivityRef'
+    )!;
+    expect(field?.value).toBe(THOUGHTFUL);
+    expect(field.choices).toContainEqual({
+      value: THOUGHTFUL,
+      label: `Unavailable: ${THOUGHTFUL}`,
+    });
+    expect(field.disabled).toBe(false);
+  });
   it('changes only the optional default and clears it without changing appearance, rules or orders', () => {
     const draft = fixture();
     expect(setRoomMonsterDefaultActivity(draft, 'prisoner', undefined)).toBe(
