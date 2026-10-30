@@ -51,6 +51,11 @@ import type { SiteScope } from './siteScope';
 import { repeatableWallAssetRefs } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
+import {
+  MAX_GRID_HEXES,
+  MAX_GRID_SIDE,
+  rectangleOf,
+} from './workspaceGeometry';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 import {
   WorldBuildingPaletteCard,
@@ -4856,6 +4861,29 @@ describe('Studio owner facade', () => {
     return storage;
   }
 
+  // #1351 review: content the draft accepts once crashed the owner's render
+  // (the derived grid threw past its cap), and an autosaved draft crashed it
+  // on every reload. The grid now draws a capped window (rpg-project#725 R3).
+  it('mounts a stored draft whose content spans far past the grid cap, and its viewport draws a capped grid', () => {
+    const storage = new MemoryStorage();
+    const document = createPopulatedStudioDocument();
+    document.draft.scene.items[0]!.transform.x = 9999;
+    document.draft = paintCells(document.draft, [{ q: 5000, r: 0 }]);
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    const owner = mountStudio(storage);
+    expect(owner.session.document.draft.scene.items[0]!.transform.x).toBe(9999);
+    const grid = owner.session.viewportProps.roomAuthoring!.workspace;
+    const rect = rectangleOf(grid)!;
+    expect(rect.widthHexes).toBeLessThanOrEqual(MAX_GRID_SIDE);
+    expect(rect.widthHexes * rect.heightHexes).toBeLessThanOrEqual(
+      MAX_GRID_HEXES
+    );
+    owner.unmount();
+  });
+
   it('Group selection makes one group from a pick and selects it', () => {
     const owner = mountStudio(populatedStorage());
     const scene = owner.session.document.draft.scene;
@@ -5520,7 +5548,46 @@ describe('Studio owner facade', () => {
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
   });
 
-  it('region callbacks retire synchronously on selection round trips, epoch, view, undo and unmount', () => {
+  // The regions list edits a region it has not selected (rpg-project#725):
+  // the id is the argument. A refusal is never a silent false.
+  it('region edits act on the given id with nothing selected, and a refusal shows the notice', () => {
+    const owner = mountStudio(populatedStorage(), true);
+    act(() =>
+      expect(owner.session.regionEditing.createRegion('Hall')).toBe(true)
+    );
+    const hall = owner.session.document.draft.room.regions.at(-1)!;
+    act(() => owner.session.clearSelection());
+    act(() =>
+      expect(
+        owner.session.regionEditing.renameRegion(hall.id, 'Great hall')
+      ).toBe(true)
+    );
+    act(() =>
+      expect(owner.session.regionEditing.setRegionLighting(hall.id, 0.2)).toBe(
+        true
+      )
+    );
+    expect(
+      owner.session.document.draft.room.regions.find((r) => r.id === hall.id)
+    ).toMatchObject({ name: 'Great hall', lighting: { intensity: 0.2 } });
+    const implicit = owner.session.document.draft.room.implicitRegionId;
+    act(() =>
+      expect(owner.session.regionEditing.removeRegion(implicit)).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/implicit region cannot be removed/);
+    act(() =>
+      expect(owner.session.regionEditing.removeRegion(hall.id)).toBe(true)
+    );
+    expect(
+      owner.session.document.draft.room.regions.some((r) => r.id === hall.id)
+    ).toBe(false);
+    owner.unmount();
+  });
+
+  // Region edits are addressed by id (rpg-project#725): another selection
+  // does not retire them; a document change, the epoch, a view switch, undo
+  // and unmount do.
+  it('region callbacks act by id across selection, and retire on document, epoch, view, undo and unmount', () => {
     const owner = mountStudio(populatedStorage(), true);
     act(() =>
       expect(owner.session.regionEditing.createRegion('Forest')).toBe(true)
@@ -5529,10 +5596,14 @@ describe('Studio owner facade', () => {
     const selected = owner.session.regionEditing;
     act(() => {
       owner.session.wallEditing.select('studio-wall');
-      expect(selected.setRegionLighting(region.id, 0.5)).toBe(false);
-      owner.session.selectRegion(region.id);
-      expect(selected.removeRegion(region.id)).toBe(false);
+      expect(selected.setRegionLighting(region.id, 0.5)).toBe(true);
     });
+    expect(
+      owner.session.document.draft.room.regions.find((r) => r.id === region.id)!
+        .lighting
+    ).toEqual({ intensity: 0.5 });
+    // That commit replaced the document: the captured callbacks retire.
+    act(() => expect(selected.removeRegion(region.id)).toBe(false));
     const canceled = owner.session.regionEditing;
     act(() => {
       owner.session.cancelTransients();

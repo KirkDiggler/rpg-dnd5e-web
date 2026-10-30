@@ -258,7 +258,7 @@ describe('room snapshot document', () => {
   // with the rebuild sentence rather than upgraded (rpg-project#725).
   it('refuses the historical envelope 1 / draft 2 snapshot: rebuild, no migration', () => {
     expect(() => decodeRoomDocumentJson(legacyV1RoomDocument())).toThrow(
-      'This room authoring draft was saved before regions were the floor (it is a version 2 envelope, and this build writes version 6), so it stores a walkable list this build no longer reads: rebuild, no migration (rpg-project#725).'
+      'This room snapshot was saved before regions were the floor (it is a version 1 snapshot): rebuild, no migration (rpg-project#725).'
     );
   });
 

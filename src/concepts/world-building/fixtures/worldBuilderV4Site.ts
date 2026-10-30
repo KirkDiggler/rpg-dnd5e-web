@@ -3,17 +3,15 @@
  *
  * `worldBuilderV4Site.yaml` beside this module is a verbatim copy of
  * `rpg-toolkit` `rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-site.yaml`
- * **as it stood at `3bba256e`** (rpg-toolkit#2039, options on bindings —
- * rpg-project#569). That sha is the PUSHED head of a draft PR, not a merge: the
- * copy is re-pinned again when #2039 merges if the file moved. It is not a
- * conversion and not this module's idea of what a site should be, so the
- * engine's own example and this copy were one text when it was taken.
+ * **as it stands at tag `rulebooks/dnd5e/encounter/v0.152.0`** (re-pinned
+ * below for rpg-project#725). It is not this module's idea of what a site
+ * should be, so the engine's own example and this copy were one text when it
+ * was taken.
  *
  * RE-PINNED for regions as the floor (rpg-project#725 S1): the copy is the
- * toolkit's file as its `ConvertV4` rewrote it on `feat/site-format-s1` at
- * `f7b7a1b2` — root `version: 5`, `room.room.regions` in place of
- * `walkableHexes`, no `workspace`. Byte-identical to that branch's
- * testdata; re-pin when it merges if the file moved.
+ * toolkit's file as its `ConvertV4` rewrote it, byte-identical to the file
+ * at tag `rulebooks/dnd5e/encounter/v0.152.0` — root `version: 5`,
+ * `room.room.regions` in place of `walkableHexes`, no `workspace`.
  *
  * RE-PINNED for options (rpg-toolkit#2039): the faction's social
  * `intimidated` table retired (a social trigger is no longer a table key) and
@@ -54,13 +52,15 @@ import worldBuilderV4SiteYaml from './worldBuilderV4Site.yaml?raw';
  * `reference-front-room.yaml` is pinned.
  *
  * The hash does NOT pin the copy to the toolkit's file: it proves the bytes are
- * the ones taken at `f7b7a1b2`, so the test keeps passing after upstream moves.
+ * the ones taken at `encounter/v0.152.0`, so the test keeps passing after
+ * upstream moves.
  * That is a property of any hash-pinned snapshot. */
 export const WORLD_BUILDER_V4_SITE_YAML = worldBuilderV4SiteYaml;
 
-/** sha256 of the pinned snapshot taken at `f7b7a1b2` — rpg-project#725 S1's
- * pushed head, converted to version 5.
- * NOT a hash of the file the toolkit ships today.
+/** sha256 of the pinned snapshot: the toolkit's file at tag
+ * `rulebooks/dnd5e/encounter/v0.152.0`, converted to version 5
+ * (rpg-project#725). It stays a snapshot: when upstream moves, the hash does
+ * not follow on its own.
  * Re-pin it in the same change that reconciles the copy with upstream. */
 export const WORLD_BUILDER_V4_SITE_SHA256 =
   '4224fbd1d21ed57766ca9214dd7b78a71eb2c03a30246339a55fb7ae1afc6f14';

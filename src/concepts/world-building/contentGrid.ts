@@ -3,6 +3,8 @@ import { floorCells, type RoomDraft } from './roomDraft';
 import type { WorldPoint } from './types';
 import {
   anchoredRoomWorkspace,
+  MAX_GRID_HEXES,
+  MAX_GRID_SIDE,
   type RoomHexCell,
   type RoomWorkspace,
   type WorkspaceRectangle,
@@ -66,11 +68,40 @@ export function contentRectangle(
   };
 }
 
-/** The grid to draw: content bounds grown by `margin` on every side, or the
- * empty square around the origin. A presentation value; never written. */
+/** Content wider than this many columns or rows is drawn as a window that
+ * re-centres in steps of this size as the view moves, so panning does not
+ * rebuild the grid on every frame. */
+export const GRID_WINDOW_STEP = 32;
+
+/** One axis of the drawn window: the whole span when it fits the cap, else a
+ * `size`-long window around `centre`, kept inside the span. */
+function windowOn(
+  min: number,
+  span: number,
+  size: number,
+  centre: number
+): number {
+  if (span <= size) return min;
+  const stepped = Math.round(centre / GRID_WINDOW_STEP) * GRID_WINDOW_STEP;
+  const start = Math.round(stepped - size / 2);
+  return Math.min(Math.max(start, min), min + span - size);
+}
+
+/**
+ * The grid to draw: content bounds grown by `margin` on every side, or the
+ * empty square around the origin. A presentation value; never written.
+ *
+ * IT NEVER THROWS ON CONTENT THE DRAFT ACCEPTS (rpg-project#725 R3). The
+ * canvas is unbounded and a room may hold content far apart, but the drawn
+ * grid has a cap (`MAX_GRID_SIDE`, `MAX_GRID_HEXES`). Content larger than the
+ * cap is drawn as a capped window around `around` — the view centre, when the
+ * caller has one, else the content's centre. Picking and painting are not
+ * bounded by the window; only drawing is.
+ */
 export function contentWorkspace(
   draft: Pick<RoomDraft, 'room' | 'scene'>,
-  margin = LAYOUT_GRID_MARGIN
+  margin = LAYOUT_GRID_MARGIN,
+  around?: WorldPoint
 ): RoomWorkspace {
   const rect = contentRectangle(draft);
   if (!rect) {
@@ -82,10 +113,32 @@ export function contentWorkspace(
       heightHexes: EMPTY_GRID_HEXES,
     });
   }
+  const minCol = rect.minCol - margin;
+  const minRow = rect.minRow - margin;
+  const width = rect.widthHexes + 2 * margin;
+  const height = rect.heightHexes + 2 * margin;
+  let drawnHeight = Math.min(height, MAX_GRID_SIDE);
+  let drawnWidth = Math.min(width, MAX_GRID_SIDE);
+  if (drawnWidth * drawnHeight > MAX_GRID_HEXES) {
+    // Keep the window square-ish: shrink the longer side first.
+    const side = Math.floor(Math.sqrt(MAX_GRID_HEXES));
+    if (drawnWidth >= drawnHeight)
+      drawnWidth = Math.max(side, Math.floor(MAX_GRID_HEXES / drawnHeight));
+    else drawnHeight = Math.max(side, Math.floor(MAX_GRID_HEXES / drawnWidth));
+    if (drawnWidth * drawnHeight > MAX_GRID_HEXES) {
+      drawnWidth = Math.min(drawnWidth, side);
+      drawnHeight = Math.min(drawnHeight, side);
+    }
+  }
+  const centre = around ? cellOf(around) : null;
+  const centreCol = centre
+    ? centre.q + Math.floor(centre.r / 2)
+    : minCol + width / 2;
+  const centreRow = centre ? centre.r : minRow + height / 2;
   return anchoredRoomWorkspace({
-    minCol: rect.minCol - margin,
-    minRow: rect.minRow - margin,
-    widthHexes: rect.widthHexes + 2 * margin,
-    heightHexes: rect.heightHexes + 2 * margin,
+    minCol: windowOn(minCol, width, drawnWidth, centreCol),
+    minRow: windowOn(minRow, height, drawnHeight, centreRow),
+    widthHexes: drawnWidth,
+    heightHexes: drawnHeight,
   });
 }

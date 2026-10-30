@@ -3695,6 +3695,16 @@ export function WorldBuildingConcept({
     () => projectRegionLighting(roomDraft.room.regions, regionResolutions),
     [roomDraft, regionResolutions]
   );
+  /** One region edit, addressed by id, as one ordinary history step. */
+  const editRegionById = (edit: (draft: RoomDraft) => RoomDraft): boolean => {
+    if (refuseWhilePublishing()) return false;
+    try {
+      const current = roomHistoryRef.current.present;
+      return commitRoomDocument({ ...current, draft: edit(current.draft) });
+    } catch (error) {
+      return rejectEdit(error);
+    }
+  };
   const selectStudioRegion = (id: string | null): boolean => {
     if (refuseWhilePublishing()) return false;
     if (id !== null && !roomDraft.room.regions.some((r) => r.id === id))
@@ -5066,28 +5076,30 @@ export function WorldBuildingConcept({
                 return rejectEdit(error);
               }
             }),
+            // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
+            // argument, so these act on it whatever is selected. A refusal
+            // (unknown region, blank name, the implicit region's removal)
+            // surfaces through the owner's notice, never a silent false.
             renameRegion: guardSnapshotIntent(
               (regionId: string, name: string): boolean =>
-                commitArrange({
-                  kind: 'region-edit',
-                  target: { kind: 'region', id: regionId },
-                  name,
-                })
+                editRegionById((draft) => renameRegion(draft, regionId, name))
             ),
             setRegionLighting: guardSnapshotIntent(
               (regionId: string, intensity: number): boolean =>
-                commitArrange({
-                  kind: 'region-edit',
-                  target: { kind: 'region', id: regionId },
-                  intensity,
-                })
+                editRegionById((draft) =>
+                  setRegionLighting(draft, regionId, intensity)
+                )
             ),
-            removeRegion: guardSnapshotIntent((regionId: string): boolean =>
-              commitArrange({
-                kind: 'region-remove',
-                target: { kind: 'region', id: regionId },
-              })
-            ),
+            removeRegion: guardSnapshotIntent((regionId: string): boolean => {
+              if (!editRegionById((draft) => removeRegion(draft, regionId)))
+                return false;
+              if (
+                activeStudioTargetRef.current?.kind === 'region' &&
+                activeStudioTargetRef.current.id === regionId
+              )
+                activateStudioTarget(null);
+              return true;
+            }),
           },
           renameDocument: guardSnapshotIntent(renameDocument),
           importDocument: guardSnapshotIntent(importCanonicalRoomYaml),

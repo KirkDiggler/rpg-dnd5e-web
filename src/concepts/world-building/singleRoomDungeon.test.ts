@@ -90,9 +90,14 @@ const engineGoblinOptions = () =>
   ).options;
 
 /** The golden's own draft: a room with a prop, a start and one actor, and none
- * of the new keys. */
+ * of the new keys. Its start cell is painted, so the golden is a document the
+ * engine accepts: a site whose regions own no cell is refused at PutDungeon
+ * ("no region owns a cell"). */
 function goldenDraft(): RoomDraft {
-  const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+  const draft = paintCells(
+    createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+    [{ q: 0, r: 0 }]
+  );
   draft.scene.items.push({
     id: 'prop-1',
     kind: 'prop',

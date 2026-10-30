@@ -333,7 +333,8 @@ export function LayoutViewport({
       abandon();
   }, [doorEditing?.selectedTarget, abandon]);
   // The grid is derived from the content, never stored (rpg-project#725 R3).
-  const presentationWorkspace = useContentWorkspace(draft);
+  // Content wider than the grid cap is drawn as a window around the view.
+  const presentationWorkspace = useContentWorkspace(draft, frame.center);
   // A rectangle selects every cell whose centre it holds, anywhere: the
   // canvas is unbounded (R3). Past the paint cap it selects nothing.
   const rectangleCells = (start: WorldPoint, end: WorldPoint) => {

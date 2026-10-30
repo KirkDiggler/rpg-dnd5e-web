@@ -271,6 +271,25 @@ describe('controlled derived-grid Layout', () => {
     expect(reported[0]!.zoom).toBeGreaterThan(1.5);
   });
 
+  // #1351 review: content wider than the grid cap renders (rpg-project#725
+  // R3); the drawn window covers the view centre, wherever it is.
+  it('renders content spanning past the grid cap, drawing the window under the view', () => {
+    const draft = paintCells(floorDraft(4, 4), [{ q: 5000, r: 0 }]);
+    for (const centre of [
+      { x: 0, z: 0 },
+      { x: 5000 * Math.sqrt(3), z: 0 },
+    ]) {
+      const frame = { center: centre, zoom: 1 };
+      const view = render(<LayoutViewport {...props({ draft, frame })} />);
+      const q = Math.round(centre.x / Math.sqrt(3));
+      expect(surface().querySelector(`[data-cell="${q},0"]`)).not.toBeNull();
+      expect(
+        surface().querySelectorAll('[data-cell]').length
+      ).toBeLessThanOrEqual(131072);
+      view.unmount();
+    }
+  });
+
   it.each([
     [73, 48],
     [128, 128],

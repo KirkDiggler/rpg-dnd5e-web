@@ -253,8 +253,9 @@ export interface LayoutViewportProps {
 
 /** Regions belong to the one document owner (rpg-project#725 R5). Cells move
  * between regions by painting (`commitFloor` with a region id); these edit the
- * regions themselves. Each is one history entry; an equal edit adds none.
- * Captured callbacks retire on document/epoch/selection changes. */
+ * regions themselves, ADDRESSED BY ID whatever is selected. Each is one
+ * history entry; an equal edit adds none; a refusal shows the owner's notice.
+ * Captured callbacks retire on document/epoch changes. */
 export interface StudioRegionEditing {
   readonly resolutions: readonly RegionResolution[];
   readonly finishes?: {

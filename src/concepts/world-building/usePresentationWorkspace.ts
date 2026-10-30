@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { contentWorkspace } from './contentGrid';
+import { contentWorkspace, GRID_WINDOW_STEP } from './contentGrid';
 import type { RoomDraft } from './roomDraft';
+import type { WorldPoint } from './types';
 import { rectangleOf, type RoomWorkspace } from './workspaceGeometry';
 
 /** Value-stable presentation input, not a document cache. Owner normalization
@@ -58,8 +59,24 @@ export function usePresentationWorkspace(
 /** The derived grid for a draft (rpg-project#725 R3), value-stable by its
  * dimensions so geometry and camera resources survive unrelated commits. */
 export function useContentWorkspace(
-  draft: Pick<RoomDraft, 'room' | 'scene'>
+  draft: Pick<RoomDraft, 'room' | 'scene'>,
+  around?: WorldPoint
 ): RoomWorkspace {
-  const workspace = useMemo(() => contentWorkspace(draft), [draft]);
+  // Content wider than the grid cap is drawn as a window around the view
+  // centre; the centre only matters in steps, so it is quantised here and a
+  // pan within a step reuses the grid.
+  const stepX = around ? Math.round(around.x / GRID_WINDOW_STEP) : undefined;
+  const stepZ = around ? Math.round(around.z / GRID_WINDOW_STEP) : undefined;
+  const workspace = useMemo(
+    () =>
+      contentWorkspace(
+        draft,
+        undefined,
+        stepX === undefined || stepZ === undefined
+          ? undefined
+          : { x: stepX * GRID_WINDOW_STEP, z: stepZ * GRID_WINDOW_STEP }
+      ),
+    [draft, stepX, stepZ]
+  );
   return usePresentationWorkspace(workspace)!;
 }
