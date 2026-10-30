@@ -1,5 +1,6 @@
 import { ABILITIES, APPROACH_ABILITIES } from '@/author/types';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ActionAugmentKey } from '../world-building/actionAugments';
 import {
   applyCastEdit,
   castMemberOf,
@@ -208,10 +209,26 @@ export function CastMemberForm({
   const [stage, setStage] = useState<Stage>({});
   const [error, setError] = useState<string | null>(null);
   const [idOpen, setIdOpen] = useState(false);
+  /** Text typed in Add action / Drop action but not yet added. Apply refuses
+   * while one is pending (rpg-project#721); Cancel clears both. */
+  const [refDrafts, setRefDrafts] = useState<Record<ActionAugmentKey, string>>({
+    addActions: '',
+    dropActions: '',
+  });
+  const [pendingRef, setPendingRef] = useState<ActionAugmentKey | null>(null);
+  const refInputs = {
+    addActions: useRef<HTMLInputElement>(null),
+    dropActions: useRef<HTMLInputElement>(null),
+  };
+  const clearRefDrafts = (): void => {
+    setRefDrafts({ addActions: '', dropActions: '' });
+    setPendingRef(null);
+  };
   useEffect(() => {
     setStage({});
     setError(null);
     setIdOpen(false);
+    clearRefDrafts();
   }, [session.document, session.intentEpoch, member?.ref]);
   const patch = (next: Partial<Stage>): void => {
     setStage((current) => ({ ...current, ...next }));
@@ -259,6 +276,17 @@ export function CastMemberForm({
   const numberText = (key: 'proficiency' | 'experience'): string =>
     stage[key] ?? (template?.[key] === undefined ? '' : String(template[key]));
   const apply = (): void => {
+    const unadded = (['addActions', 'dropActions'] as const).find(
+      (key) => refDrafts[key].trim() !== ''
+    );
+    if (unadded) {
+      setPendingRef(unadded);
+      setError(
+        `${unadded === 'addActions' ? 'Add action' : 'Drop action'} holds “${refDrafts[unadded].trim()}”, which is not added. Add it or clear the field before Apply.`
+      );
+      refInputs[unadded].current?.focus();
+      return;
+    }
     const edit = castEditOf(member, stage);
     if (typeof edit === 'string') {
       setError(edit);
@@ -453,16 +481,27 @@ export function CastMemberForm({
           rulebook catalog.
         </FieldHelp>
       </fieldset>
-      <ActionRefList
-        kind="addActions"
-        refs={addActions}
-        onChange={(next) => patch({ addActions: [...next] })}
-      />
-      <ActionRefList
-        kind="dropActions"
-        refs={dropActions}
-        onChange={(next) => patch({ dropActions: [...next] })}
-      />
+      {(['addActions', 'dropActions'] as const).map((key) => (
+        <ActionRefList
+          key={key}
+          kind={key}
+          refs={key === 'addActions' ? addActions : dropActions}
+          onChange={(next) => {
+            patch({ [key]: [...next] });
+            setPendingRef(null);
+          }}
+          draft={refDrafts[key]}
+          onDraftChange={(next) => {
+            setRefDrafts((current) => ({ ...current, [key]: next }));
+            if (pendingRef === key) {
+              setPendingRef(null);
+              setError(null);
+            }
+          }}
+          inputRef={refInputs[key]}
+          pending={pendingRef === key}
+        />
+      ))}
       <fieldset className="es-skill-fields">
         <legend>Skills</legend>
         {SKILL_IDS.map((id) => (
@@ -520,6 +559,7 @@ export function CastMemberForm({
             setStage({});
             setError(null);
             setIdOpen(false);
+            clearRefDrafts();
             if (!member) onSaved?.(null);
           }}
         >

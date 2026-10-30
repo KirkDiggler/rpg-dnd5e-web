@@ -84,6 +84,12 @@ export function weaponNoun(ref: string): string {
   return `${/^[aeiou]/i.test(words) ? 'an' : 'a'} ${words}`;
 }
 
+/** One Read back line: its text, or the engine law it states. */
+export interface ActionSentence {
+  text: string;
+  law?: 'dropAbsent' | 'noWeapons';
+}
+
 /** One authored step the Read back says. */
 export interface ActionStep {
   key: ActionAugmentKey;
@@ -92,6 +98,8 @@ export interface ActionStep {
   /** A drop whose weapon is not in the list at its layer: the session
    * refuses the run at launch. Only knowable when a layer replaced the list. */
   absent?: boolean;
+  /** An add of a weapon the list already holds at its layer: a second copy. */
+  again?: boolean;
 }
 
 export interface ResolvedActions {
@@ -133,8 +141,14 @@ export function resolvedActionsOf(
       out.droppedFromKind = [];
     }
     for (const ref of block.addActions ?? []) {
+      const again = out.refs.includes(ref);
       out.refs.push(ref);
-      out.steps.push({ key: 'addActions', ref, layer: name });
+      out.steps.push({
+        key: 'addActions',
+        ref,
+        layer: name,
+        ...(again ? { again: true } : {}),
+      });
     }
     for (const ref of block.dropActions ?? []) {
       const had = out.refs.includes(ref);
@@ -159,17 +173,21 @@ export function resolvedActionsOf(
 export function actionAugmentSentences(
   document: Readonly<RoomDraftDocument>,
   placementId: string
-): { text: string; law?: 'dropAbsent' }[] {
+): ActionSentence[] {
   const resolved = resolvedActionsOf(document, placementId);
   if (resolved.steps.length === 0) return [];
   const from = (step: ActionStep): string =>
     step.layer === 'template' ? 'from its stat block' : 'by its own orders';
-  const sentences: { text: string; law?: 'dropAbsent' }[] = [];
+  const sentences: ActionSentence[] = [];
   for (const step of resolved.steps) {
     const noun = weaponNoun(step.ref);
     if (step.key === 'addActions')
       sentences.push({
-        text: `It carries ${noun} the kind does not, ${from(step)}.`,
+        text: step.again
+          ? `It carries another ${noun.replace(/^an? /, '')}, ${from(step)}.`
+          : resolved.known
+            ? `It carries ${noun} the kind does not, ${from(step)}.`
+            : `It carries ${noun} on top of the kind’s weapons, ${from(step)}.`,
       });
     else if (step.absent)
       sentences.push({
@@ -181,12 +199,14 @@ export function actionAugmentSentences(
     sentences.push({ text: '', law: 'dropAbsent' });
   const dropped = resolved.steps.some((step) => step.key === 'dropActions');
   const nouns = resolved.refs.map(weaponNoun);
-  if (resolved.known)
+  if (resolved.known && nouns.length === 0) {
+    // The engine will not arm a creature with nothing (rpg-dnd5e-web#1353
+    // review): the run is refused at launch, and the Read back says so.
+    sentences.push({ text: 'It is left with no weapon.' });
+    sentences.push({ text: '', law: 'noWeapons' });
+  } else if (resolved.known)
     sentences.push({
-      text:
-        nouns.length === 0
-          ? 'It fights with no weapon.'
-          : `It fights with ${dropped ? 'only ' : ''}${joinAnd(nouns)}${nouns.length > 1 ? ', in that order' : ''}.`,
+      text: `It fights with ${dropped ? 'only ' : ''}${joinAnd(nouns)}${nouns.length > 1 ? ', in that order' : ''}.`,
     });
   else {
     const less = resolved.droppedFromKind.length

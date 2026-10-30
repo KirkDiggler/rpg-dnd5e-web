@@ -29,7 +29,8 @@ export type EngineLawId =
   | 'hearing'
   | 'weights'
   | 'holds'
-  | 'dropAbsent';
+  | 'dropAbsent'
+  | 'noWeapons';
 
 export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
   Object.freeze({
@@ -77,6 +78,13 @@ export const ENGINE_LAWS: Readonly<Record<EngineLawId, EngineLaw>> =
       id: 'holds',
       sentence: 'When no row holds, it stands where it is.',
       source: 'rpg-toolkit mind/behavior/table.go holdPick',
+    },
+    noWeapons: {
+      id: 'noWeapons',
+      sentence:
+        'A creature must keep at least one weapon: the session refuses the run at launch when every one is dropped.',
+      source:
+        'rpg-toolkit rulebooks/dnd5e/monster/weapons.go Monster.SetWeapons',
     },
     dropAbsent: {
       id: 'dropAbsent',

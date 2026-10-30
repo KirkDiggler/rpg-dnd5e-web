@@ -555,6 +555,32 @@ describe('Add action and Drop action (rpg-project#721)', () => {
     expect(history).toHaveLength(1);
   });
 
+  it('Apply refuses while a typed ref is not added, at that field; Cancel clears it', () => {
+    const { history } = harness(createGuardCastDocument());
+    fireEvent.click(member('Guard'));
+    change('Armor', 'dnd5e:armor:chain-mail');
+    const field = screen.getByLabelText(
+      'New dropped action reference'
+    ) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'dnd5e:weapons:spear' } });
+    fireEvent.click(button('Apply'));
+    expect(history).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Drop action holds “dnd5e:weapons:spear”, which is not added. Add it or clear the field before Apply.'
+    );
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(field);
+    fireEvent.click(button('Cancel'));
+    expect(
+      (
+        screen.getByLabelText(
+          'New dropped action reference'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it("authors the castle captain's javelin through the form and the file says it", async () => {
     const { readFileSync } = await import('node:fs');
     const { readDraftYaml, exportDraftYaml } = await import('./draftFile');

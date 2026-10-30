@@ -8,7 +8,7 @@
  * move rather than sort. A ref the engine's grammar refuses is said in the
  * engine's words under the field and never enters the list.
  */
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import {
   actionRefRefusal,
   moveRef,
@@ -32,16 +32,30 @@ const LABELS: Record<
   },
 };
 
+/** The typed-but-not-added text is the caller's when it passes `draft`
+ * (the cast form, whose Apply refuses while one is pending and whose Cancel
+ * clears it); otherwise it is this list's own. */
 export function ActionRefList({
   kind,
   refs,
   onChange,
+  draft: heldDraft,
+  onDraftChange,
+  inputRef,
+  pending = false,
 }: {
   kind: ActionAugmentKey;
   refs: readonly string[];
   onChange(next: readonly string[]): void;
+  draft?: string;
+  onDraftChange?(next: string): void;
+  inputRef?: Ref<HTMLInputElement>;
+  /** Apply was refused because this field still holds text. */
+  pending?: boolean;
 }): React.JSX.Element {
-  const [draft, setDraft] = useState('');
+  const [ownDraft, setOwnDraft] = useState('');
+  const draft = heldDraft ?? ownDraft;
+  const setDraft = onDraftChange ?? setOwnDraft;
   const label = LABELS[kind];
   const refusal = draft.trim() ? actionRefRefusal(draft) : null;
   return (
@@ -90,7 +104,8 @@ export function ActionRefList({
       <div className="es-buttons">
         <input
           aria-label={`New ${label.noun} reference`}
-          aria-invalid={refusal !== null}
+          ref={inputRef}
+          aria-invalid={refusal !== null || pending}
           placeholder="dnd5e:weapons:javelin"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
