@@ -1564,6 +1564,8 @@ button.wb-tree-row[aria-pressed='true'] {
   line-height: 1;
   display: inline-grid;
   place-items: center;
+  box-sizing: border-box;
+  width: 1.1rem;
   min-width: 1.1rem;
   height: 1.1rem;
   border-radius: 999px;
@@ -1608,8 +1610,17 @@ button.wb-tree-row[aria-pressed='true'] {
   gap: 0.25rem;
 }
 
-.wb-waypoint-wait {
+.wb-policy-entry .wb-waypoint-row input.wb-waypoint-wait,
+.wb-policy-entry .wb-waypoint-row select {
+  width: auto;
+}
+
+.wb-policy-entry .wb-waypoint-row input.wb-waypoint-wait {
   width: 3.5rem;
+}
+
+.wb-waypoint-row label {
+  margin: 0;
 }
 
 .wb-use-route {

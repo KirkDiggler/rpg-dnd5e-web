@@ -224,6 +224,36 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     });
   });
 
+  it('Done writes through the row as it last rendered, not as it was armed', () => {
+    // The studio retires a presentation's callbacks when the pick switches to
+    // the Layout; a commit through the armed render's closure is refused.
+    const { picking, requests } = arming();
+    const stale = vi.fn();
+    const fresh = vi.fn();
+    const scope: SiteScope = {
+      tables: {
+        patrol: { time: [{ when: { enemy: 'none' }, toward: 'enemy' }] },
+      },
+    };
+    const view = render(
+      <RoutePickContext.Provider value={picking}>
+        <TablesPanel scope={scope} onChange={stale} />
+      </RoutePickContext.Provider>
+    );
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    fireEvent.change(screen.getByLabelText('To for time entry'), {
+      target: { value: 'path' },
+    });
+    view.rerender(
+      <RoutePickContext.Provider value={picking}>
+        <TablesPanel scope={scope} onChange={fresh} />
+      </RoutePickContext.Provider>
+    );
+    requests[0]!.onDone([{ q: 1, r: 0 }]);
+    expect(stale).not.toHaveBeenCalled();
+    expect(fresh).toHaveBeenCalledTimes(1);
+  });
+
   it('Add waypoints on map hands the pick the route it already holds', () => {
     const { picking, requests } = arming();
     mount(
