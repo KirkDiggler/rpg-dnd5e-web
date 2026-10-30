@@ -226,7 +226,10 @@ export function useHexMovePath(
   onHeading?: (radians: number) => void,
   /** Reports completion of the exact move instance that finished painting.
    * Presentation-only: callers must not treat this as game-state completion. */
-  onPresentationComplete?: (moveSeq: number) => void
+  onPresentationComplete?: (moveSeq: number) => void,
+  /** A queued/active presented walk owns the already drawn location, not a
+   * newer authoritative snapshot. Initial mounting still places normally. */
+  deferPositionReconciliation: boolean = false
 ): UseHexMovePathResult {
   const [isMoving, setIsMoving] = useState(false);
   const { invalidate } = useThree();
@@ -244,6 +247,7 @@ export function useHexMovePath(
   const onPresentationCompleteRef = useRef(onPresentationComplete);
   onPresentationCompleteRef.current = onPresentationComplete;
 
+  const positionedGroupRef = useRef<THREE.Group | null>(null);
   const seenSeqRef = useRef<number | undefined>(undefined);
   const activeMoveSeqRef = useRef<number | undefined>(undefined);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
@@ -268,6 +272,14 @@ export function useHexMovePath(
     // rpg-dnd5e-web#551 gate-review fix. Do not gate this on
     // `moveSeq !== undefined`.
     seenSeqRef.current = result.nextSeenSeq;
+    if (
+      !result.isGenuineMove &&
+      deferPositionReconciliation &&
+      positionedGroupRef.current === groupRef.current
+    ) {
+      return;
+    }
+    positionedGroupRef.current = groupRef.current;
 
     if (!result.isGenuineMove) {
       // A canonical/knowledge refresh can replace position/path objects while
@@ -316,6 +328,7 @@ export function useHexMovePath(
     yOffset,
     invalidate,
     groupRef,
+    deferPositionReconciliation,
   ]);
 
   useFrame((_state, delta) => {
