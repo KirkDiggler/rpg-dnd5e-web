@@ -20,6 +20,7 @@ import { documentPlacementNames } from './placementNames';
 import { requiresRead } from './predicateNot';
 import { sideName } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
+import { stepPredicate, untilSteps } from './siteScope';
 
 /** Where clicking a use goes: a placed thing, or a home section on an id. */
 export type FactUseTarget =
@@ -126,13 +127,15 @@ export function factIndexOf(
       id: faction.id,
     });
   }
-  (scope.dispositions ?? []).forEach((d, index) =>
-    predicate(d.until, {
-      kind: 'disposition',
-      label: `${sideName(d.between[0])} and ${sideName(d.between[1])}`,
-      target: { home: 'dispositions', id: String(index) },
-    })
-  );
+  (scope.dispositions ?? []).forEach((d, index) => {
+    // EVERY STEP OF AN UNTIL reads its fact (rpg-project#717).
+    for (const step of untilSteps(d.until))
+      predicate(stepPredicate(step), {
+        kind: 'disposition',
+        label: `${sideName(d.between[0])} and ${sideName(d.between[1])}`,
+        target: { home: 'dispositions', id: String(index) },
+      });
+  });
   for (const record of scope.intel ?? [])
     if ('fact' in record.reveals)
       write(record.reveals.fact, {

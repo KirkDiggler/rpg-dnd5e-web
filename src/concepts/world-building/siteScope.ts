@@ -124,13 +124,72 @@ export interface SiteBundle {
 /** The site's `bundles:`, by id. */
 export type SiteBundles = Record<string, SiteBundle>;
 
-/** How two factions stand, and the predicate that flips hostile/neutral.
- * The published encounter grammar refuses `until` only for allied. */
+/** One step of an `until` (rpg-project#717): ONE predicate, and the stance
+ * it turns the pair to — `then`, or absent for the other of hostile and
+ * neutral. Written as the file writes it: the predicate's one key, then
+ * `then` beside it. */
+export type SiteUntilStep = PredicateDoc & { then?: Stance };
+
+/** A disposition's `until` AS WRITTEN (`dungeonspec.UntilSpec`): one step as a
+ * mapping — every file before the list — or a list of steps, the FIRST THAT
+ * HOLDS WINNING (`encounter.DispositionInput.Until`). Both spellings are
+ * carried as the file had them, so the bytes round-trip. */
+export type SiteUntil = SiteUntilStep | SiteUntilStep[];
+
+/** The steps an `until` holds, in order; a single mapping is one step. */
+export function untilSteps(until: SiteUntil | undefined): SiteUntilStep[] {
+  if (until === undefined) return [];
+  return Array.isArray(until) ? until : [until];
+}
+
+/** A step's predicate, its `then` taken away. */
+export function stepPredicate(step: SiteUntilStep): PredicateDoc {
+  const { then: _then, ...predicate } = step as SiteUntilStep &
+    Record<string, unknown>;
+  void _then;
+  return predicate as PredicateDoc;
+}
+
+/** How two factions stand, and what turns them (rpg-project#493,
+ * rpg-project#717). */
 export interface SiteDisposition {
   between: [string, string];
   stance: Stance;
-  until?: PredicateDoc;
+  until?: SiteUntil;
 }
+
+// THE ENGINE'S UNTIL SENTENCES (`dungeonspec/predicate.go` `UntilSpec`,
+// `dungeonspec/factions.go` `steps`), word for word.
+
+/** `untilOnAllied`. */
+export const UNTIL_ON_ALLIED =
+  'an allied pair has nothing to become unless `then` names where it goes';
+
+/** `untilListOnFacts`. */
+export const UNTIL_LIST_ON_FACTS =
+  'a list of until steps turns on facts only: a round, a fall or a stance is a public ' +
+  'turn and cannot keep its place in the list, so give it a disposition of its own step';
+
+export const UNTIL_SENTENCES = Object.freeze({
+  /** `UntilSpec.UnmarshalYAML`: `until: []`. */
+  noSteps: (): string =>
+    'this until lists no steps — write a step, or drop the until',
+  /** `UntilSpec.UnmarshalYAML`: neither a mapping nor a list. */
+  shape: (): string =>
+    `an until is one step, { <predicate>, then: <stance> }, or a list of them: ${PREDICATE_SHAPE}`,
+  /** `UntilStepSpec.UnmarshalYAML`: a step that is not a mapping. */
+  stepShape: (): string =>
+    `an until step is { <predicate>, then: <stance> }: ${PREDICATE_SHAPE}`,
+  /** `steps`: a `then` that is not a stance word. */
+  notAStance: (word: string): string =>
+    `${JSON.stringify(word)} is not a stance: hostile, neutral or allied`,
+  /** `steps`: an allied pair's step naming no `then`. */
+  alliedNoThen: (): string =>
+    `${UNTIL_ON_ALLIED}: name a \`then: hostile\` or \`then: neutral\`, drop the until, or make the pair hostile or neutral`,
+  /** `steps`: a `then` to the stance the pair already holds. */
+  thenIsStance: (stance: string, then: string): string =>
+    `the pair is ${stance} and \`then\` turns it ${then}, which it already is`,
+});
 
 /** The authored site scope. Each key is absent when nothing was authored, so a
  * document with none of it writes v3 exactly as it always did. */
@@ -415,19 +474,49 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
         `must be one of ${STANCES.join(', ')}, and this is ${String(raw.stance)}`
       );
     const disposition: SiteDisposition = { between, stance: raw.stance };
-    if (Object.hasOwn(raw, 'until')) {
-      // Match the published both-ways grammar: hostile and neutral may flip;
-      // allied has no authored opposite stance in this slice.
-      if (raw.stance === 'allied')
-        fail(
-          `${path} until`,
-          'is not supported for allied; use hostile or neutral'
-        );
-      disposition.until = validatePredicate(raw.until, `${path} until`);
-    }
+    if (Object.hasOwn(raw, 'until'))
+      disposition.until = validateUntil(raw.until, `${path} until`, raw.stance);
     dispositions.push(disposition);
   }
   return dispositions;
+}
+
+/** A disposition's `until`: one step or a list of steps (rpg-project#717),
+ * in the engine's order — the shape (`UntilSpec`), each step's predicate
+ * (`UntilStepSpec`), then each step's `then` (`grammar.steps`). Whether a
+ * fact step has a mind to learn it, or a stance step can be reached, is the
+ * engine's at Save & Play. */
+function validateUntil(
+  value: unknown,
+  path: string,
+  stance: Stance
+): SiteUntil {
+  const list = Array.isArray(value);
+  if (list && value.length === 0) fail(path, UNTIL_SENTENCES.noSteps());
+  if (!list && !isMapping(value)) fail(path, UNTIL_SENTENCES.shape());
+  const raws: unknown[] = list ? value : [value];
+  const steps = raws.map((raw, j) => {
+    const at = list ? `${path}[${j}]` : path;
+    if (!isMapping(raw)) fail(at, UNTIL_SENTENCES.stepShape());
+    const { then: rawThen, ...rest } = raw;
+    const predicate = validatePredicate(rest, at);
+    const step: SiteUntilStep = { ...predicate };
+    if (rawThen !== undefined && rawThen !== null) {
+      const then = typeof rawThen === 'string' ? rawThen : String(rawThen);
+      if (!isStance(then)) fail(`${at}.then`, UNTIL_SENTENCES.notAStance(then));
+      step.then = then;
+    }
+    return step;
+  });
+  steps.forEach((step, j) => {
+    const at = list ? `${path}[${j}]` : path;
+    if (step.then === undefined && stance === 'allied')
+      fail(at, UNTIL_SENTENCES.alliedNoThen());
+    if (step.then !== undefined && step.then === stance)
+      fail(`${at}.then`, UNTIL_SENTENCES.thenIsStance(stance, step.then));
+    if (steps.length > 1 && !('fact' in step)) fail(at, UNTIL_LIST_ON_FACTS);
+  });
+  return list ? steps : steps[0]!;
 }
 
 function isStance(word: string): word is Stance {

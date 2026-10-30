@@ -44,7 +44,7 @@ import {
   sideName,
 } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
-import type { SiteIntelRecord, SiteTemper } from './siteScope';
+import { untilSteps, type SiteIntelRecord, type SiteTemper } from './siteScope';
 
 /** What a ref in a sentence selects or opens. */
 export type ReadBackTarget =
@@ -282,13 +282,16 @@ function whoParagraph(
     );
     for (const d of dispositions) {
       const text = dispositionSentence(d, factionId, document);
+      // EVERY FACT STEP is a ref (rpg-project#717), and any one of them
+      // makes the sentence the mind law's.
+      const facts = untilSteps(d.until).flatMap((step) =>
+        'fact' in step ? [step.fact] : []
+      );
       sentences.push(
         sentence(
           text,
-          d.until !== undefined && 'fact' in d.until
-            ? [factRef(d.until.fact)]
-            : [],
-          d.until !== undefined && 'fact' in d.until ? 'untilOnMind' : undefined
+          facts.map(factRef),
+          facts.length > 0 ? 'untilOnMind' : undefined
         )
       );
     }

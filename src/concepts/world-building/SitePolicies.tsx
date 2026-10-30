@@ -135,6 +135,7 @@ import {
   dispositionLine,
   pairMindNameIn,
   predicateSentence,
+  untilTextIn,
 } from './predicateSentence';
 import type {
   RoomDraftDocument,
@@ -165,11 +166,17 @@ import {
   setSiteFactionOption,
   updateSiteDisposition,
 } from './sitePolicyEdits';
-import type {
-  SiteDisposition,
-  SiteFaction,
-  SiteScope,
-  SiteTemper,
+import {
+  stepPredicate,
+  UNTIL_LIST_ON_FACTS,
+  UNTIL_SENTENCES,
+  untilSteps,
+  type SiteDisposition,
+  type SiteFaction,
+  type SiteScope,
+  type SiteTemper,
+  type SiteUntil,
+  type SiteUntilStep,
 } from './siteScope';
 import { useRowKeys } from './useRowKeys';
 
@@ -1909,8 +1916,15 @@ function FactionRow({
 // Dispositions
 // ---------------------------------------------------------------------------
 
-/** The `until:` predicate editor. Four forms, exactly one key; the value is
- * written as typed and the server judges whether the pair may carry it. */
+/** The `until:` editor (rpg-project#717): no step, one step, or a list of
+ * steps, each one predicate and the stance it turns the pair to (`then`).
+ * The first step that holds wins.
+ *
+ * ONE STEP KEEPS TODAY'S SPELLING, a mapping; a second step makes the list.
+ * A list of more than one step turns on facts only (the engine's limit), so
+ * a list's steps offer the fact form alone, and a hand-written step of
+ * another form shows the engine's sentence. Whether a fact has a mind to
+ * learn it, or a stance can be reached, is the engine's at Save & Play. */
 function UntilEditor({
   scope,
   room,
@@ -1922,40 +1936,163 @@ function UntilEditor({
   room: RoomGameplayData;
   placementNames?: PlacementNames;
   disposition: SiteDisposition;
-  onCommit: (until: PredicateDoc | undefined) => void;
+  onCommit: (until: SiteUntil | undefined) => void;
 }) {
   const until = disposition.until;
+  const steps = untilSteps(until);
+  const names = namesFor(room, placementNames);
+  const list = steps.length > 1;
+  /** Write the steps back: none is no until; one is the mapping, unless the
+   * file wrote a list of one and the count did not change. */
+  const write = (next: SiteUntilStep[]) => {
+    if (next.length === 0) return onCommit(undefined);
+    if (
+      next.length === 1 &&
+      !(Array.isArray(until) && until.length === next.length)
+    )
+      return onCommit(next[0]);
+    onCommit(next);
+  };
+  const setStep = (j: number, step: SiteUntilStep) =>
+    write(steps.map((s, i) => (i === j ? step : s)));
+  const removeStep = (j: number) => write(steps.filter((_, i) => i !== j));
+  const thenChoices = STANCES.filter((word) => word !== disposition.stance);
   return (
     <div className="wb-policy-until">
-      <PredicateEditor
-        value={until}
-        onChange={onCommit}
-        forms={PREDICATE_FORMS}
-        name="Until"
-        label="Until"
-        none="No authored condition"
-        scope={scope}
-        room={room}
-        names={namesFor(room, placementNames)}
-      />
+      {steps.length === 0 ? (
+        <PredicateEditor
+          value={undefined}
+          onChange={(predicate) =>
+            predicate === undefined ? write([]) : write([predicate])
+          }
+          forms={PREDICATE_FORMS}
+          name="Until"
+          label="Until"
+          none="No authored condition"
+          scope={scope}
+          room={room}
+          names={names}
+        />
+      ) : (
+        <ol className="wb-policy-until-steps" aria-label="Until steps">
+          {steps.map((step, j) => {
+            const n = j === 0 ? '' : ` step ${j + 1}`;
+            const name = `Until${n}`;
+            const refusal =
+              list && !('fact' in step)
+                ? UNTIL_LIST_ON_FACTS
+                : step.then === undefined && disposition.stance === 'allied'
+                  ? UNTIL_SENTENCES.alliedNoThen()
+                  : step.then === disposition.stance
+                    ? UNTIL_SENTENCES.thenIsStance(
+                        disposition.stance,
+                        step.then
+                      )
+                    : undefined;
+            return (
+              <li key={j} data-until-step={j}>
+                <PredicateEditor
+                  value={stepPredicate(step)}
+                  onChange={(predicate) =>
+                    predicate === undefined
+                      ? removeStep(j)
+                      : setStep(
+                          j,
+                          step.then !== undefined
+                            ? { ...predicate, then: step.then }
+                            : predicate
+                        )
+                  }
+                  forms={list ? (['fact'] as const) : PREDICATE_FORMS}
+                  name={name}
+                  label={j === 0 ? 'Until' : `Or, step ${j + 1}`}
+                  none={list ? 'Remove this step' : 'No authored condition'}
+                  scope={scope}
+                  room={room}
+                  names={names}
+                />
+                <label>
+                  <span>Then</span>
+                  <select
+                    aria-label={`Then${n}`}
+                    value={step.then ?? ''}
+                    onChange={(event) => {
+                      const predicate = stepPredicate(step);
+                      setStep(
+                        j,
+                        event.target.value === ''
+                          ? predicate
+                          : {
+                              ...predicate,
+                              then: event.target.value as Stance,
+                            }
+                      );
+                    }}
+                  >
+                    <option value="">
+                      {disposition.stance === 'allied'
+                        ? '(choose where it goes)'
+                        : `(the other: ${turnsTo(disposition.stance)})`}
+                    </option>
+                    {thenChoices.map((word) => (
+                      <option key={word} value={word}>
+                        {word}
+                      </option>
+                    ))}
+                    {step.then === disposition.stance && (
+                      <option value={step.then}>{step.then}</option>
+                    )}
+                  </select>
+                </label>
+                {list && (
+                  <button
+                    type="button"
+                    className="wb-danger"
+                    aria-label={`Remove until${n}`}
+                    onClick={() => removeStep(j)}
+                  >
+                    Remove step
+                  </button>
+                )}
+                {refusal !== undefined && (
+                  <p className="wb-entry-refusal" role="alert">
+                    {refusal}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {steps.length > 0 && (
+        <button
+          type="button"
+          aria-label="Add until step"
+          onClick={() => write([...steps, { fact: '' }])}
+        >
+          Add step
+        </button>
+      )}
       <p className="wb-help">
         {until === undefined
           ? 'The hostility never ends.'
-          : `Until ${predicateSentence(until, {
-              names: namesFor(room, placementNames),
-              mindName:
-                'fact' in until
-                  ? pairMindNameIn(
-                      scope,
-                      room,
-                      namesFor(room, placementNames),
-                      disposition.between
-                    )
-                  : undefined,
-            })}; then ${turnsTo(disposition.stance)}.`}
+          : untilHelp(
+              disposition.stance,
+              untilTextIn(disposition, names, (pair) =>
+                pairMindNameIn(scope, room, names, pair)
+              )
+            )}
       </p>
     </div>
   );
+}
+
+/** The until's help line: one step reads "Until …; then neutral." as it
+ * always did, a list "Neutral: once …, allied; once …, hostile — …". */
+function untilHelp(stance: string, text: string): string {
+  if (text.startsWith(' until '))
+    return `Until ${text.slice(' until '.length)}`;
+  return `${stance.charAt(0).toUpperCase()}${stance.slice(1)}${text}`;
 }
 
 function DispositionRow({
