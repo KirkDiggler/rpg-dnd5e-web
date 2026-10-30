@@ -115,15 +115,17 @@ describe('the form writes the shapes the reader reads (rpg-project#720)', () => 
       opened.key
     );
     const { scope, rebuilt } = rebuildCastle(opened.scope);
-    // The gate guards' loops (given to the patrol bundle), the knights' and
-    // the hall guard's own routes, and the marches on a cell.
+    // The gate guards' loops (given to the guard-base bundle), the knights'
+    // and the hall guard's own routes, and the marches on a cell. The
+    // storming garrison follows its captain now (`toward: ally`,
+    // rpg-project#717), so its march is the gate guards'.
     expect(rebuilt).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^gate-patrol\.time\[\d+\] with\.path$/),
         expect.stringMatching(/^gate-patrol-east\.time\[\d+\] with\.path$/),
         expect.stringMatching(/^keep-patrol\.time\[\d+\] path$/),
         expect.stringMatching(/^hall-patrol\.time\[\d+\] path$/),
-        expect.stringMatching(/^storm-the-keep\.time\[\d+\] at$/),
+        expect.stringMatching(/^gate-patrol\.time\[\d+\] at$/),
         expect.stringMatching(/^answer-the-gate\.time\[\d+\] at$/),
       ])
     );

@@ -19,12 +19,8 @@ import {
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import type { KeyValueStorage, WorldPoint } from '../world-building/types';
-import {
-  rectangleOf,
-  workspaceBounds,
-} from '../world-building/workspaceGeometry';
+import { rectangleOf } from '../world-building/workspaceGeometry';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
-import { createLayoutTransform, worldToClient } from './layoutGeometry';
 import { studioButton } from './studioTestNavigation';
 
 // Real Studio shell, owner, codecs and Layout gestures. Only WebGL and private
@@ -152,19 +148,23 @@ const submit = (name: string): void => {
 const surface = (): HTMLElement =>
   screen.getByRole('application', { name: 'Layout floor surface' });
 function point(
-  storage: MemoryStorage,
+  _storage: MemoryStorage,
   location: WorldPoint
 ): { clientX: number; clientY: number } {
-  // Layout fits the grid derived from the content (rpg-project#725).
-  const client = worldToClient(
-    location,
-    createLayoutTransform(
-      bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      workspaceBounds(contentWorkspace(storage.document().draft))
-    )
-  )!;
-  return { clientX: client.x, clientY: client.y };
+  // THE LAYOUT'S OWN TRANSFORM, read from what it renders: zoom is relative
+  // to the derived grid's fit, and the view rescales it as the grid grows so
+  // the map holds still on screen (rpg-project#725 R3). A helper that assumed
+  // zoom 1 fits the current grid would drift after the first commit.
+  const g = surface().querySelector('.encounter-studio-layout-committed');
+  const match = /translate\(([^ ]+) ([^)]+)\) scale\(([^)]+)\)/.exec(
+    g?.getAttribute('transform') ?? ''
+  );
+  if (!match) throw new Error('Layout has no rendered transform.');
+  const [tx, tz, scale] = match.slice(1).map(Number);
+  return {
+    clientX: bounds.left + tx! + location.x * scale!,
+    clientY: bounds.top + tz! + location.z * scale!,
+  };
 }
 /** The derived grid's fit is irrational in world units, so a pointer
  * round-trip lands within float noise of the requested point. */

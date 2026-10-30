@@ -119,6 +119,7 @@ import {
   createLayoutTransform,
   layoutCellCenter,
   worldToClient,
+  type LayoutTransform,
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
@@ -969,19 +970,47 @@ function drawnExtent(): WorkspaceBounds | null {
     }
   return extent;
 }
-let lastExtent: WorkspaceBounds | null = null;
-function at(cell: RoomHexCell): { clientX: number; clientY: number } {
-  // A retired (hidden) surface keeps the extent it last drew.
-  lastExtent = drawnExtent() ?? lastExtent;
-  const point = worldToClient(
-    layoutCellCenter(cell),
-    createLayoutTransform(
+/** THE LAYOUT'S OWN TRANSFORM, rebuilt from the frame it draws with. Zoom is
+ * relative to the derived grid's fit and the view rescales it as the grid
+ * grows, so the map holds still on screen (rpg-project#725 R3): a helper
+ * that assumed zoom 1 fits the current grid would drift after the first
+ * commit. The surface publishes its live frame; the transform is rebuilt
+ * with the production function so pointer round trips are exact. A retired
+ * (hidden) surface keeps the transform it last drew. */
+let lastDrawn: LayoutTransform | null = null;
+function drawnTransform(
+  extent: WorkspaceBounds | null = drawnExtent()
+): LayoutTransform {
+  const svg = document.querySelector('.encounter-studio-layout');
+  if (svg && extent && svg.hasAttribute('data-frame-zoom')) {
+    lastDrawn = createLayoutTransform(
       bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      lastExtent!
-    )
-  )!;
+      {
+        center: {
+          x: Number(svg.getAttribute('data-frame-x')),
+          z: Number(svg.getAttribute('data-frame-z')),
+        },
+        zoom: Number(svg.getAttribute('data-frame-zoom')),
+      },
+      extent
+    );
+  }
+  if (!lastDrawn) throw new Error('Layout has never drawn a transform.');
+  return lastDrawn;
+}
+function toClient(
+  world: WorldPoint,
+  extent?: WorkspaceBounds
+): { clientX: number; clientY: number } {
+  const point = worldToClient(world, drawnTransform(extent))!;
   return { clientX: point.x, clientY: point.y };
+}
+/** The fit extent exactly as the Layout computes it, from the document. */
+function documentFit(storage: MemoryStorage): WorkspaceBounds {
+  return workspaceBounds(contentWorkspace(storage.document().draft));
+}
+function at(cell: RoomHexCell): { clientX: number; clientY: number } {
+  return toClient(layoutCellCenter(cell));
 }
 const zero = { q: 0, r: 0 };
 const one = { q: 1, r: 0 };
@@ -1864,31 +1893,31 @@ function submitForm(name: string): void {
 /** The studio opens framed on the origin at zoom 1 and fits the derived
  * grid (rpg-project#725 R3); read that grid from the surface when it is
  * drawn, else derive it from the stored document. */
-function documentExtent(storage: MemoryStorage): WorkspaceBounds {
-  return (
-    drawnExtent() ?? workspaceBounds(contentWorkspace(storage.document().draft))
-  );
-}
 function pointInDocument(
   storage: MemoryStorage,
   world: WorldPoint
 ): { clientX: number; clientY: number } {
-  const client = worldToClient(
-    world,
-    createLayoutTransform(
-      bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      documentExtent(storage)
-    )
-  )!;
-  return { clientX: client.x, clientY: client.y };
+  return toClient(world, documentFit(storage));
 }
 function paintWorkspace(storage: MemoryStorage): void {
-  // Paint every cell of the drawn (derived) grid with one rectangle from
-  // corner to corner of its bounds, which enclose every cell centre.
-  const grid = workspaceBounds(contentWorkspace(storage.document().draft));
-  const start = pointInDocument(storage, { x: grid.minX, z: grid.minZ });
-  const end = pointInDocument(storage, { x: grid.maxX, z: grid.maxZ });
+  // Paint every cell of the drawn (derived) grid with one rectangle over the
+  // box of its cell CENTRES. The rectangle selects every centre it holds,
+  // anywhere (rpg-project#725 R3), and the box of an odd-r rectangle's
+  // centres holds exactly that rectangle's cells — its corner bounds would
+  // also hold the half-offset cells just past each row's end.
+  const centres = workspaceCells(
+    contentWorkspace(storage.document().draft)
+  ).map(layoutCellCenter);
+  const xs = centres.map((p) => p.x);
+  const zs = centres.map((p) => p.z);
+  const start = pointInDocument(storage, {
+    x: Math.min(...xs),
+    z: Math.min(...zs),
+  });
+  const end = pointInDocument(storage, {
+    x: Math.max(...xs),
+    z: Math.max(...zs),
+  });
   fireEvent.click(button('Rectangle'));
   fireEvent.pointerDown(surface(), { ...start, pointerId: 7, button: 0 });
   fireEvent.pointerMove(surface(), { ...end, pointerId: 7 });
@@ -2293,11 +2322,7 @@ function sampledPoint(storage: MemoryStorage, world: WorldPoint): WorldPoint {
   const client = pointInDocument(storage, world);
   return clientToWorld(
     { x: client.clientX, y: client.clientY },
-    createLayoutTransform(
-      bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      documentExtent(storage)
-    )
+    drawnTransform(documentFit(storage))
   )!;
 }
 function draw(
@@ -2525,7 +2550,14 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(storage.roomWrites()).toBe(writes); // selection/context demand is not a commit
     const from = sampledPoint(storage, anchor),
       to = sampledPoint(storage, destination);
-    wall = translateWall(wall, { x: to.x - from.x, z: to.z - from.z });
+    // The surface moves the start by the pointer's travel, then translates
+    // by the start's change — the same operations in the same order, so the
+    // expected wall is bit-exact at any zoom (rpg-project#725 R3 rescales it).
+    const start = wall.line.start;
+    wall = translateWall(wall, {
+      x: start.x + (to.x - from.x) - start.x,
+      z: start.z + (to.z - from.z) - start.z,
+    });
     fireEvent.pointerUp(surface(), pointer(storage, destination));
     expect(storage.document()).toEqual(withWall(states.at(-1)!, wall));
     states.push(storage.document());
@@ -4392,14 +4424,19 @@ describe('Layout regions joined to the real owner', () => {
     ];
     return document;
   }
-  /** The label tool's room kind names a new region and selects it
-   * (rpg-project#725 R5); a note kind places a note. */
+  /** New region in the regions list names a region, selects it and makes
+   * it ACTIVE (rpg-project#725 R5); a note kind places a note with the
+   * label tool, which places notes only. */
   function place(name: string, x: number, z: number, kind = 'room'): void {
     if (kind === 'room') {
       fireEvent.click(button('Regions'));
-      fireEvent.click(button('Inspector'));
-      fireEvent.click(button('New region'));
-    } else fireEvent.click(button('Label'));
+      fireEvent.change(screen.getByLabelText('New region name'), {
+        target: { value: name },
+      });
+      fireEvent.submit(screen.getByRole('form', { name: 'New region' }));
+      return;
+    }
+    fireEvent.click(button('Label'));
     fireEvent.change(screen.getByLabelText('Label name'), {
       target: { value: name },
     });
@@ -4411,6 +4448,15 @@ describe('Layout regions joined to the real owner', () => {
       target: { value: String(z) },
     });
     fireEvent.click(button('Place label at coordinates'));
+  }
+  /** The regions list's radio makes a region the one Paint brushes into. */
+  function activate(name: string): void {
+    fireEvent.click(button('Build'));
+    fireEvent.click(screen.getByRole('radio', { name: `Paint into ${name}` }));
+  }
+  function floorTool(name: 'Paint' | 'Rectangle' | 'Erase'): void {
+    fireEvent.click(button('Build'));
+    fireEvent.click(button(name));
   }
   /** A Rooms list row selects its region through session.selectRegion. */
   function selectRegion(name: string): void {
@@ -4457,12 +4503,11 @@ describe('Layout regions joined to the real owner', () => {
     await settled();
     place('Left room', 1, 2);
     expect(status()).toMatch(/Not painted yet/);
-    fireEvent.click(button('Paint this region'));
-    fireEvent.click(button('Rectangle region'));
+    // The new region is active: the rectangle brushes into it.
+    floorTool('Rectangle');
     dragWorld(storage, { x: 0.4, z: 0.4 }, { x: 3.6, z: 3.6 });
     place('Right room', 7, 2);
-    fireEvent.click(button('Paint this region'));
-    fireEvent.click(button('Rectangle region'));
+    floorTool('Rectangle');
     dragWorld(storage, { x: 4.4, z: 0.4 }, { x: 7.6, z: 3.6 });
     const painted = storage.document();
     const left = regionNamed(painted, 'Left room')!;
@@ -4535,20 +4580,24 @@ describe('Layout regions joined to the real owner', () => {
     ).toEqual(pair);
   });
 
-  // Rewritten (rpg-project#725 R5): explicit areas are retired; the region
-  // tool paints into the selected region, reassigning cells (no overlap),
-  // and its erase hands the region's cells back to the implicit region.
-  it('paints forest beside meadow by reassigning floor, cancels pending strokes, preserves selection through views and shares history', async () => {
+  // Rewritten (rpg-project#725 R5): explicit areas and the region tool are
+  // retired. Paint brushes into the ACTIVE region, reassigning cells (no
+  // overlap); handing cells back is painting them with the implicit region
+  // active; erase removes floor.
+  it('paints forest beside meadow by reassigning floor, cancels pending strokes, preserves the brush through views and shares history', async () => {
     const original = seed();
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
     const implicit = original.draft.room.implicitRegionId;
+    const implicitName = original.draft.room.regions.find(
+      (r) => r.id === implicit
+    )!.name;
     const floor = floorCells(original.draft);
     place('Forest', 0, 0);
     expect(status()).toMatch(/Not painted yet/);
     const forestId = regionNamed(storage.document(), 'Forest')!.id;
-    fireEvent.click(button('Paint this region'));
+    floorTool('Paint');
     const writes = storage.roomWrites();
     fireEvent.pointerDown(surface(), { ...at(zero), button: 0, pointerId: 7 });
     fireEvent.pointerMove(surface(), { ...at(one), pointerId: 7 });
@@ -4556,7 +4605,7 @@ describe('Layout regions joined to the real owner', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
     expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Paint this region'));
+    floorTool('Paint');
     gesture(zero, one);
     expect(storage.roomWrites()).toBe(writes + 1);
     const owner = (cell: RoomHexCell): string | undefined =>
@@ -4565,13 +4614,21 @@ describe('Layout regions joined to the real owner', () => {
     expect(owner(one)).toBe(forestId);
     // The cells were already floor: painting a region reassigns, never adds.
     expect(floorCells(storage.document().draft)).toEqual(floor);
+    // Select by the region's name on the map: unlike a list row, it does not
+    // reframe the view, so the cells below stay on the surface.
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Select region Forest' }),
+      { key: 'Enter' }
+    );
     expect(status()).toMatch(/Painted · 2 hexes/);
     gesture(zero, one);
     expect(storage.roomWrites()).toBe(writes + 1); // accepted no-op
-    fireEvent.click(button('Rectangle region'));
+    floorTool('Rectangle');
     gesture(one, two);
     expect(owner(two)).toBe(forestId);
-    fireEvent.click(button('Erase region'));
+    // Handing a cell back is painting it with the implicit region active.
+    activate(implicitName);
+    floorTool('Paint');
     gesture(two);
     expect(owner(two)).toBe(implicit); // handed back, still floor
     expect(owner(zero)).toBe(forestId);
@@ -4582,15 +4639,17 @@ describe('Layout regions joined to the real owner', () => {
     switchTo('Layout');
     fireEvent.pointerUp(surface(), { ...at(two), button: 0, pointerId: 7 });
     expect(storage.document()).toEqual(beforeView);
-    expect(button('Select').getAttribute('aria-pressed')).toBe('true');
+    // The active region is workspace state: it survives the view switch.
     expect(
-      screen
-        .getByRole('button', { name: 'Select region Forest' })
-        .getAttribute('aria-pressed')
-    ).toBe('true');
+      (
+        screen.getByRole('radio', {
+          name: `Paint into ${implicitName}`,
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
     place('Meadow', 4, 0);
     const meadowId = regionNamed(storage.document(), 'Meadow')!.id;
-    fireEvent.click(button('Paint this region'));
+    floorTool('Paint');
     gesture({ q: 3, r: 0 });
     expect(owner({ q: 3, r: 0 })).toBe(meadowId);
     expect(areaIds()).toEqual(expect.arrayContaining([forestId, meadowId]));
@@ -4609,19 +4668,17 @@ describe('Layout regions joined to the real owner', () => {
       original.draft.scene.groups
     );
     expect(afterRegions.draft.room.walls).toEqual(original.draft.room.walls);
-    fireEvent.click(button('Done area editing'));
     place('Plain note', -5, 0, 'note');
     fireEvent.keyDown(
       screen.getByRole('button', { name: 'Select map label Plain note' }),
       { key: 'Enter' }
     );
     fireEvent.click(button('Inspector'));
-    expect(
-      screen.queryByRole('button', { name: 'Paint this region' })
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Make active' })).toBeNull();
     expect(button('Delete label')).toBeTruthy();
     const noted = storage.document();
-    fireEvent.click(button('Paint'));
+    activate(implicitName);
+    floorTool('Paint');
     gesture({ q: 4, r: 0 });
     const withFloor = storage.document();
     expect(owner({ q: 4, r: 0 })).toBe(implicit);
@@ -4647,46 +4704,49 @@ describe('Layout regions joined to the real owner', () => {
     expect(areaIds()).toEqual(expect.arrayContaining([forestId, meadowId]));
   });
 
-  // Rewritten (rpg-project#725): an explicit empty area is retired; a region
-  // declared and not yet painted is its successor and survives every codec.
-  it('retires a pending region stroke when selection or history changes and retains a declared unpainted region in every codec', async () => {
-    const storage = new MemoryStorage(seed());
+  // Rewritten (rpg-project#725 R5): a stroke paints into the region that was
+  // active when it began; a history change retires it; a region declared and
+  // not yet painted (the successor of an explicit empty area) survives every
+  // codec.
+  it('a pending stroke keeps the region it began in, history retires it, and a declared unpainted region survives every codec', async () => {
+    const original = seed();
+    const storage = new MemoryStorage(original);
     mount(storage);
     await settled();
+    const implicit = original.draft.room.implicitRegionId;
+    const implicitName = original.draft.room.regions.find(
+      (r) => r.id === implicit
+    )!.name;
+    const owner = (cell: RoomHexCell): string | undefined =>
+      cellOwners(storage.document().draft).get(`${cell.q},${cell.r}`);
     place('Forest', 0, 0);
     place('Meadow', 4, 0);
-    selectRegion('Forest');
-    fireEvent.click(button('Paint this region'));
+    const forestId = regionNamed(storage.document(), 'Forest')!.id;
+    activate('Forest');
+    floorTool('Paint');
     gesture(zero);
-    const before = storage.document();
-    const writes = storage.roomWrites();
+    expect(owner(zero)).toBe(forestId);
     fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
-    selectRegion('Meadow');
+    activate('Meadow');
     fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
-    expect(storage.document()).toEqual(before);
-    expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Paint this region'));
-    gesture(two);
-    fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
+    expect(owner(one)).toBe(forestId);
+    const before = storage.document();
     fireEvent.click(button('Undo'));
     const undone = storage.document();
-    fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
-    expect(storage.document()).toEqual(undone);
-    expect(undone).toEqual(before);
+    fireEvent.pointerDown(surface(), { ...at(two), button: 0, pointerId: 7 });
     fireEvent.click(button('Redo'));
-    selectRegion('Forest');
-    fireEvent.click(button('Paint this region'));
-    fireEvent.click(button('Erase region'));
-    gesture(zero);
+    fireEvent.pointerUp(surface(), { ...at(two), button: 0, pointerId: 7 });
+    expect(undone).not.toEqual(before);
+    expect(storage.document()).toEqual(before);
+    // Hand Forest's cells back: it stays listed, declared and unpainted.
+    activate(implicitName);
+    floorTool('Paint');
+    gesture(zero, one);
     const empty = storage.document();
     expect(regionNamed(empty, 'Forest')).toMatchObject({ cells: [] });
+    selectRegion('Forest');
     expect(status()).toMatch(/Not painted yet/);
     expectCodecs(empty);
-    const emptyBytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
-    const emptyWrites = storage.roomWrites();
-    gesture(zero); // the region owns nothing there: nothing to hand back
-    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(emptyBytes);
-    expect(storage.roomWrites()).toBe(emptyWrites);
     cleanup();
     mount(storage);
     await settled();
@@ -5286,6 +5346,69 @@ describe('S4 the draft as a file through the real owner', () => {
     expect(storage.document()).toEqual(before);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
     expect(storage.document()).toEqual(castle);
+  });
+
+  // An import replaces the whole document, so the Layout refits to it
+  // (rpg-project#725 R3); before this, the castle opened cropped on the
+  // previous room's frame until Show entire was pressed.
+  it('an accepted import frames the imported content whole at the surface working size', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    const fullHeight = bounds.height;
+    const frameNow = (): string =>
+      ['zoom', 'x', 'z']
+        .map((k) =>
+          document
+            .querySelector('.encounter-studio-layout')!
+            .getAttribute(`data-frame-${k}`)
+        )
+        .join(',');
+    const resize = (): void => {
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+    };
+    try {
+      // The Site panel that imports takes most of the surface's height
+      // while it is open; the replacement refits at that short size.
+      bounds.height = 260;
+      resize();
+      await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      const short = frameNow();
+      // Closing Site gives the surface its working size: the standing
+      // request frames again there.
+      fireEvent.click(screen.getByRole('button', { name: 'Close Site' }));
+      bounds.height = fullHeight;
+      resize();
+      await settled();
+      expect(frameNow()).not.toBe(short);
+      const content = contentBounds(storage.document().draft);
+      for (const corner of [
+        { x: content.minX, z: content.minZ },
+        { x: content.maxX, z: content.maxZ },
+      ]) {
+        const client = toClient(corner, documentFit(storage));
+        expect(client.clientX).toBeGreaterThanOrEqual(bounds.left);
+        expect(client.clientX).toBeLessThanOrEqual(bounds.left + bounds.width);
+        expect(client.clientY).toBeGreaterThanOrEqual(bounds.top);
+        expect(client.clientY).toBeLessThanOrEqual(bounds.top + bounds.height);
+      }
+      // Navigating ends the request: a later resize keeps the user's view.
+      fireEvent.wheel(surface(), {
+        deltaY: -300,
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+      });
+      const navigated = frameNow();
+      bounds.height = fullHeight - 100;
+      resize();
+      expect(frameNow()).toBe(navigated);
+    } finally {
+      bounds.height = fullHeight;
+    }
   });
 
   it('the next export defaults to the imported key', async () => {
@@ -6306,9 +6429,94 @@ describe('S3 the overview through the real owner', () => {
       .getByRole('button', { name })
       .getAttribute('aria-pressed');
 
-  // Rewritten (rpg-project#725 R5): "Define explicit area" is now "Paint
-  // this region"; the armed tool paints the selected region.
-  it('Paint this region arms the region tool in Layout', async () => {
+  // The walk's "Chapel annex" box (rpg-project#730): New region is active,
+  // paint lands in it, a rename moves its map label, removal returns its
+  // cells to the implicit region and the floor never changes.
+  it('New region is active; it paints, its label follows a rename, and removal returns its cells', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    const regions = () => storage.document().draft.room.regions;
+    const implicit = storage.document().draft.room.implicitRegionId;
+    const floor = floorCells(storage.document().draft);
+    fireEvent.click(button('Build'));
+    fireEvent.change(screen.getByLabelText('New region name'), {
+      target: { value: 'Chapel annex' },
+    });
+    fireEvent.submit(screen.getByRole('form', { name: 'New region' }));
+    const annex = regions().find((r) => r.name === 'Chapel annex')!;
+    expect(annex.cells).toEqual([]);
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Paint into Chapel annex',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
+    // Ten courtyard cells, one stroke along a row.
+    const row = keepRoomCells(
+      KEEP_ROOMS.find((room) => room.id === 'courtyard')!
+    ).filter((cell) => cell.r === 0);
+    const ten = row.slice(10, 20);
+    fireEvent.click(button('Paint'));
+    fireEvent.pointerDown(surface(), {
+      ...at(ten[0]!),
+      pointerId: 7,
+      button: 0,
+    });
+    for (const cell of ten.slice(1))
+      fireEvent.pointerMove(surface(), { ...at(cell), pointerId: 7 });
+    fireEvent.pointerUp(surface(), {
+      ...at(ten.at(-1)!),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(regionCells(regions().find((r) => r.id === annex.id)!)).toHaveLength(
+      10
+    );
+    expect(floorCells(storage.document().draft)).toEqual(floor);
+    expect(
+      screen.getByRole('button', { name: /^Room Chapel annex, 10 hexes/ })
+    ).toBeTruthy();
+    // Rename: the region's label on the map is its name.
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Select region Chapel annex' }),
+      { key: 'Enter' }
+    );
+    fireEvent.click(button('Inspector'));
+    fireEvent.change(screen.getByLabelText('Region name'), {
+      target: { value: 'Vestry' },
+    });
+    fireEvent.submit(
+      screen.getByRole('form', { name: 'Arrange selected noun' })
+    );
+    expect(
+      surface().querySelector(`[data-region-label="${annex.id}"]`)?.textContent
+    ).toBe('Vestry');
+    expect(
+      screen.queryByRole('button', { name: 'Select region Chapel annex' })
+    ).toBeNull();
+    // Remove: its cells fall back to the implicit region, still floor.
+    fireEvent.click(button('Remove region'));
+    expect(regions().some((r) => r.id === annex.id)).toBe(false);
+    for (const cell of ten)
+      expect(
+        cellOwners(storage.document().draft).get(`${cell.q},${cell.r}`)
+      ).toBe(implicit);
+    expect(floorCells(storage.document().draft)).toEqual(floor);
+    // The removed region was active; paint falls back to the implicit one.
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: `Paint into ${regions().find((r) => r.id === implicit)!.name}`,
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
+  });
+
+  // Rewritten (rpg-project#725 R5): "Define explicit area" became the active
+  // region. "Make active" on a region's view makes Paint brush into it.
+  it('Make active on a region view sets the region Paint brushes into', async () => {
     const storage = new MemoryStorage(createCastleKeepDocument());
     mount(storage);
     await settled();
@@ -6316,34 +6524,72 @@ describe('S3 the overview through the real owner', () => {
     expect(inspector().getByRole('status').textContent).toMatch(
       /^Painted · \d+ hexes$/
     );
-    fireEvent.click(
-      inspector().getByRole('button', { name: 'Paint this region' })
-    );
-    const armed = within(screen.getByLabelText('Region brush controls'));
+    const chapel = storage
+      .document()
+      .draft.room.regions.find((r) => r.name === 'Chapel')!;
+    fireEvent.click(inspector().getByRole('button', { name: 'Make active' }));
     expect(
-      armed.getAllByRole('button').map((node) => node.textContent)
-    ).toEqual([
-      'Paint region',
-      'Erase region',
-      'Rectangle region',
-      'Done area editing',
-    ]);
-    expect(
-      armed
-        .getByRole('button', { name: 'Paint region' })
+      inspector()
+        .getByRole('button', { name: 'Active · Paint lands here' })
         .getAttribute('aria-pressed')
     ).toBe('true');
-    expect(surface().querySelector('desc')?.textContent).toMatch(
-      /Drag to paint into the selected region: a brushed cell becomes floor/
-    );
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Paint into Chapel',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
     expect(pressed('Build')).toBe('true');
-    // Escape retires the tool and keeps the region selected.
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByLabelText('Region brush controls')).toBeNull();
-    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
-      'Chapel'
-    );
-    expect(row('Chapel').getAttribute('aria-pressed')).toBe('true');
+    // A courtyard cell painted now moves to the chapel.
+    const courtyard = KEEP_ROOMS.find((room) => room.id === 'courtyard')!;
+    const cell = keepRoomCells(courtyard)[0]!;
+    // Selecting the row framed the chapel; frame the whole keep again so the
+    // courtyard cell is on the surface.
+    fireEvent.click(button('Show entire'));
+    fireEvent.click(button('Paint'));
+    gesture(cell);
+    expect(
+      cellOwners(storage.document().draft).get(`${cell.q},${cell.r}`)
+    ).toBe(chapel.id);
+  });
+
+  // Erase is never region-scoped (rpg-project#725 R5): with a region active,
+  // an Erase stroke removes the floor wherever it lands, active or not.
+  it('Erase with a region active removes the cells from the floor and that region', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document().draft;
+    const chapel = before.room.regions.find((r) => r.name === 'Chapel')!;
+    const owners = cellOwners(before);
+    const inChapel = [...owners].filter(([, id]) => id === chapel.id).length;
+    const courtyard = KEEP_ROOMS.find((room) => room.id === 'courtyard')!;
+    const chapelRoom = KEEP_ROOMS.find((room) => room.id === 'chapel')!;
+    const chapelCell = keepRoomCells(chapelRoom)[40]!;
+    const courtyardCell = keepRoomCells(courtyard)[40]!;
+    fireEvent.click(row('Chapel'));
+    fireEvent.click(inspector().getByRole('button', { name: 'Make active' }));
+    fireEvent.click(button('Show entire'));
+    fireEvent.click(button('Erase'));
+    gesture(chapelCell);
+    gesture(courtyardCell);
+    const after = storage.document().draft;
+    const floor = new Set(floorCells(after).map((c) => `${c.q},${c.r}`));
+    expect(floor.has(`${chapelCell.q},${chapelCell.r}`)).toBe(false);
+    expect(floor.has(`${courtyardCell.q},${courtyardCell.r}`)).toBe(false);
+    expect(floor.size).toBe(floorCells(before).length - 2);
+    expect(
+      [...cellOwners(after)].filter(([, id]) => id === chapel.id).length
+    ).toBe(inChapel - 1);
+    // Erase leaves the active region as it was.
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Paint into Chapel',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
   });
 
   it("the hex view's Edit region selects the label without changing home", async () => {
@@ -6637,23 +6883,25 @@ it('the castle’s gate tables read as use: lines that resolve in the studio (rp
     tables.querySelectorAll('li.wb-entry-use .wb-entry-summary')
   ).map((node) => node.textContent);
   expect(lines).toEqual([
-    'pursuer',
-    'alarm-reactor',
-    // The route given to the bundle is its waypoints as chips (rpg-project#720).
-    'patrol · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
+    // ONE LINE, `guard-base`, a bundle of the dasher, the pursuer, the alarm
+    // and the patrol; the route given to it is its waypoints as chips
+    // (rpg-project#720).
+    'guard-base · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
   ]);
   expect(within(tables).queryByRole('alert')).toBeNull();
   fireEvent.click(
     within(tables).getByRole('button', {
-      name: /Show the rows of .* entry pursuer/,
+      name: /Show the rows of .* entry guard-base/,
     })
   );
   expect(
-    within(within(tables).getByLabelText('pursuer rows'))
+    within(within(tables).getByLabelText('guard-base rows'))
       .getAllByRole('listitem')
       .map((node) => node.textContent)
   ).toEqual([
-    expect.stringContaining('enemy remembered'),
-    expect.stringContaining('search 6'),
+    'dasher',
+    'pursuer · when enemy lost',
+    'alarm-reactor',
+    'patrol · with path a route of 3 waypoints',
   ]);
 });

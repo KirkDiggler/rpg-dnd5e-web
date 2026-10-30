@@ -137,6 +137,7 @@ describe('the vocabulary declaration is the single source', () => {
       'hold',
       'attack',
       'toward',
+      'dash',
       'away',
       'search',
     ]);
@@ -157,6 +158,7 @@ describe('the vocabulary declaration is the single source', () => {
       'hold',
       'attack',
       'toward',
+      'dash',
       'away',
       'search',
     ]);
@@ -171,12 +173,18 @@ describe('the vocabulary declaration is the single source', () => {
       'remembered',
       'lost',
       'none',
+      // rpg-project#671: the three move words, after the bands.
+      'walk',
+      'dash',
+      'far',
     ]);
     expect(ANSWER_WHEN.deeds).toEqual([
       'attacked',
       'intimidated',
       'persuaded',
       'fled',
+      // rpg-project#716: the fifth deed.
+      'fell',
     ]);
     expect(ANSWER_WHEN.minimumWithin).toBe(1);
     // `when` is a `time` word: a social key IS the condition.

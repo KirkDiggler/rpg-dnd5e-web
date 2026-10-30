@@ -1117,6 +1117,20 @@
   margin: 0;
   font-size: 0.95rem;
 }
+/* The active-region radio sits beside its row (rpg-project#725 R5). */
+.es-room-list .es-region-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-room-list .es-region-row > input[type='radio'] {
+  flex: none;
+  margin: 0;
+}
+.es-room-list .es-region-row > button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .es-room-list .es-region-list button {
   display: grid;
   grid-template-columns: 0.9rem minmax(0, 1fr);

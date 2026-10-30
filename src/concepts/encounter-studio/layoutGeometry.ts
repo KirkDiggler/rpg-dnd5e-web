@@ -4,6 +4,7 @@ import {
   hexCorners,
 } from '@/components/hex-grid/hexMath';
 import {
+  cellAtWorldPoint,
   workspaceCellAtPoint,
   workspaceCells,
   type RoomWorkspace,
@@ -106,13 +107,17 @@ export function layoutCellCorners(cell: RoomHexCell): WorldPoint[] {
   return hexCorners(layoutCellCenter(cell), HEX_SIZE);
 }
 
+/** The cell under a client point. Without a grid the canvas is unbounded
+ * (rpg-project#725 R3): any cell is paintable, and the drawn grid grows to
+ * meet it. A grid, when given, keeps the old containment. */
 export function pickLayoutCell(
   point: ClientPoint,
   transform: LayoutTransform | null,
-  workspace: RoomWorkspace | number
+  workspace?: RoomWorkspace | number
 ): RoomHexCell | null {
   const world = clientToWorld(point, transform);
   if (!world) return null;
+  if (workspace === undefined) return cellAtWorldPoint(world);
   return workspaceCellAtPoint(
     typeof workspace === 'number'
       ? { hexRadius: workspace, horizontalLimit: 12 }

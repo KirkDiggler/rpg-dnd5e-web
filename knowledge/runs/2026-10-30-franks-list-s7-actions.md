@@ -1,5 +1,7 @@
 # 2026-10-30 · Frank's list S7 · Add action and Drop action in the studio
 
+processed: 2026-10-30T183312Z
+
 Story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), slice [rpg-project#721](https://github.com/KirkDiggler/rpg-project/issues/721), PR [rpg-dnd5e-web#1353](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1353).
 
 ## Shipped

@@ -141,13 +141,7 @@ export type StudioSocialSection =
   | 'tables'
   | 'facts';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
-export type LayoutTool =
-  | LayoutFloorTool
-  | 'select'
-  | 'wall'
-  | 'label'
-  | 'door'
-  | 'region';
+export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label' | 'door';
 
 export type StudioWallThumbnail =
   | { status: 'ready'; image: string }
@@ -198,7 +192,6 @@ export interface LayoutLabelEditing {
   active: boolean;
   placementText: string | null;
   /** Explicit creation choice; absent preserves legacy Note consumers. */
-  placementKind?: 'note' | 'room';
   selectedId: string | null;
   onSelect(id: string | null): void;
   onCreate(text: string, location: WorldPoint): boolean;
@@ -227,6 +220,9 @@ export interface LayoutViewportProps {
     mode: 'paint' | 'erase',
     regionId?: string
   ): boolean;
+  /** A floor gesture refused on release (a rectangle past the paint cap)
+   * reports its sentence here instead of committing nothing silently. */
+  onRefuse?(sentence: string): void;
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
   doorEditing?: StudioDoorEditing;
@@ -236,8 +232,6 @@ export interface LayoutViewportProps {
   /** A click on a region's name selects that region. */
   onSelectRegion?(id: string): void;
   patternStart?: WorldPoint;
-  regionTool?: LayoutFloorTool;
-  onExitRegionTool?(): void;
   onExitDoorTool?(): void;
   /** Owner generation: option/tool/view cancellation fences late releases. */
   intentEpoch?: number;
@@ -271,6 +265,11 @@ export interface LayoutViewportProps {
     /** Client-pixel spans of overlays over the surface, such as the open
      * inspector, read when the surface applies the request. */
     occluders?(): readonly { left: number; right: number }[];
+    /** A standing request: the surface re-applies it whenever its size
+     * changes, until the view is navigated. A replaced document asks for
+     * this, because the surface may still be taking its working size (the
+     * Site panel that imported it is closing). */
+    standing?: boolean;
   };
 }
 
@@ -440,6 +439,10 @@ export interface EncounterStudioSession {
     mode: 'paint' | 'erase',
     regionId?: string
   ): boolean;
+  /** A gesture the presentation refuses before any edit exists (a
+   * rectangle past the paint cap) shows its sentence as the owner's
+   * notice, the same path a refused edit takes. Adds no history. */
+  refuseEdit(sentence: string): false;
   createMapLabel(text: string, location: WorldPoint): boolean;
   moveMapLabel(id: string, location: WorldPoint): boolean;
   renameMapLabel(id: string, text: string): boolean;
