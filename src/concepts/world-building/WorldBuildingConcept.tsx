@@ -5220,6 +5220,7 @@ export function WorldBuildingConcept({
                 studioHomeRef.current === 'build' &&
                 commitFloor(cells, mode, regionId)
             ),
+            refuseEdit: (sentence: string) => rejectEdit(new Error(sentence)),
             createMapLabel: guardIntent((text: string, location: WorldPoint) =>
               applyRoomIntent((current) => ({
                 ...current,

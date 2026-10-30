@@ -58,9 +58,10 @@ export interface StudioInspectorProps {
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
   /** Select the region's label: its label view holds the region. */
   onOpenRegion(regionId: string): void;
-  /** Arm the region tool in Layout for the selected region label. Absent
-   * outside Layout. */
-  onDefineRegion?(): void;
+  /** The region Paint and Rectangle put cells in (rpg-project#725 R5). */
+  activeRegionId?: string;
+  /** Make a region the active one. */
+  onMakeActive?(regionId: string): void;
   /** Arm the party-start gesture; the next 3D floor click places it. */
   onPlacePartyStart(): void;
   /** Open one cast member, by its monster ref (rpg-project#575). */
@@ -161,13 +162,14 @@ function Form({
   session,
   onConfigure,
   onMoveCreature,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   ...composition
 }: Pick<StudioInspectorProps, 'session'> &
   Partial<
     Pick<
       StudioInspectorProps,
-      'onConfigure' | 'onMoveCreature' | 'onDefineRegion'
+      'onConfigure' | 'onMoveCreature' | 'activeRegionId' | 'onMakeActive'
     >
   > &
   ArrangeComposition): React.JSX.Element | null {
@@ -178,7 +180,8 @@ function Form({
       heading={false}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       {...composition}
     />
   );
@@ -655,6 +658,8 @@ function HexView({
   session,
   arrange,
   onOpenRegion,
+  activeRegionId,
+  onMakeActive,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element | null {
@@ -693,7 +698,7 @@ function HexView({
                 return (
                   <li key={region.id}>
                     <span>
-                      {text} · Lighting:{' '}
+                      Region: {text} · Lighting:{' '}
                       {Math.round(region.lighting.intensity * 100)}%
                     </span>{' '}
                     <button
@@ -702,6 +707,17 @@ function HexView({
                     >
                       Edit region {text}
                     </button>
+                    {onMakeActive && (
+                      <button
+                        type="button"
+                        aria-pressed={activeRegionId === region.id}
+                        onClick={() => onMakeActive(region.id)}
+                      >
+                        {activeRegionId === region.id
+                          ? `Painting into ${text}`
+                          : `Make ${text} active`}
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -829,7 +845,8 @@ function LabelView({ session }: StudioInspectorProps): React.JSX.Element {
 function RegionView({
   session,
   arrange,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element | null {
@@ -838,7 +855,8 @@ function RegionView({
     <Form
       session={session}
       sectionTitle="Region"
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       extras={
         <StudioRegionFinishes region={arrange.region} session={session} />
       }

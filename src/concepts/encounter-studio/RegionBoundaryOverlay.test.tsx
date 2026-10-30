@@ -160,7 +160,7 @@ describe('Layout region boundary projection', () => {
     ).toBe('Painted · 2 hexes');
     expect(
       regionStatus({ id: 'a', status: 'unresolved', reason: 'empty' })
-    ).toBe('Not painted yet. Arm the region tool and paint its cells.');
+    ).toBe('Not painted yet. Make it active and paint its cells.');
     expect(regionStatus(undefined)).toMatch(/^Not painted yet/);
   });
 });

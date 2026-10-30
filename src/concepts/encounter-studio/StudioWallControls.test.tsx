@@ -99,6 +99,7 @@ function fixture(): EncounterStudioSession {
     undo: vi.fn(),
     redo: vi.fn(),
     commitFloor: vi.fn(() => true),
+    refuseEdit: vi.fn(() => false as const),
     createMapLabel: vi.fn(() => true),
     moveMapLabel: vi.fn(() => true),
     renameMapLabel: vi.fn(() => true),

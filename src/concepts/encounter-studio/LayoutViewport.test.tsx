@@ -17,18 +17,16 @@ import {
 } from 'vitest';
 import {
   contentWorkspace,
+  EMPTY_GRID_HEXES,
   LAYOUT_GRID_MARGIN,
 } from '../world-building/contentGrid';
-import { toRows } from '../world-building/regionRuns';
 import {
   cellsInWorldRectangle,
   createRoomDraft,
   eraseCells,
   floorCells,
   paintCells,
-  regionCells,
   type RoomDraft,
-  type RoomRegion,
 } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
@@ -37,6 +35,7 @@ import {
   translateWall,
 } from '../world-building/structuralWallEditing';
 import {
+  cellAtWorldPoint,
   centeredRoomWorkspace,
   rectangleOf,
   workspaceBounds,
@@ -207,6 +206,72 @@ function floorDraft(w: number, h: number): RoomDraft {
 // The grid is derived from content plus a margin (rpg-project#725 R3): a
 // painted w × h floor draws (w + 2m) × (h + 2m) cells, never a stored size.
 describe('controlled derived-grid Layout', () => {
+  it('an empty room draws the default square around the origin', () => {
+    const draft = createRoomDraft(
+      { version: 1, id: 'scene', name: 'Empty', items: [], groups: [] },
+      'room'
+    );
+    render(<LayoutViewport {...props({ draft })} />);
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(
+      EMPTY_GRID_HEXES * EMPTY_GRID_HEXES
+    );
+    expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
+      0
+    );
+  });
+
+  // The view is not stored and zoom is relative to the derived grid's fit, so
+  // a grid that grows must not shrink the map under the pointer: the surface
+  // rescales the frame's zoom by the ratio of the fits and reports it.
+  it('grows the grid when paint lands past its edge, and the view keeps its on-screen scale', () => {
+    const before = floorDraft(10, 8);
+    const reported: LayoutFrame[] = [];
+    // The frame is the host's view state, as the studio holds it: whatever
+    // the surface reports is applied.
+    function Host({ draft }: { draft: RoomDraft }): React.JSX.Element {
+      const [frame, setFrame] = useState<LayoutFrame>({
+        center: { x: 1, z: -2 },
+        zoom: 1.5,
+      });
+      return (
+        <LayoutViewport
+          {...props({
+            draft,
+            frame,
+            onFrameChange: (next) => {
+              reported.push(next);
+              setFrame(next);
+            },
+          })}
+        />
+      );
+    }
+    const view = render(<Host draft={before} />);
+    const scaleOf = (): number =>
+      Number(
+        /scale\(([^)]+)\)/.exec(
+          surface()
+            .querySelector('.encounter-studio-layout-committed')!
+            .getAttribute('transform')!
+        )![1]
+      );
+    const scale = scaleOf();
+    const cellsBefore = surface().querySelectorAll('[data-cell]').length;
+    const rect = rectangleOf(contentWorkspace(before))!;
+    const past = { q: rect.minCol + rect.widthHexes + 3, r: 0 };
+    view.rerender(<Host draft={paintCells(before, [past])} />);
+    expect(surface().querySelectorAll('[data-cell]').length).toBeGreaterThan(
+      cellsBefore
+    );
+    expect(
+      surface().querySelector(`[data-cell="${past.q},${past.r}"]`)
+    ).not.toBeNull();
+    expect(scaleOf()).toBeCloseTo(scale, 9);
+    expect(reported).toHaveLength(1);
+    expect(reported[0]!.center).toEqual({ x: 1, z: -2 });
+    expect(reported[0]!.zoom).toBeGreaterThan(1.5);
+  });
+
   // #1351 review: content wider than the grid cap renders (rpg-project#725
   // R3); the drawn window covers the view centre, wherever it is.
   it('renders content spanning past the grid cap, drawing the window under the view', () => {
@@ -262,12 +327,12 @@ describe('controlled derived-grid Layout', () => {
         'paint'
       );
       if (h === 48) {
-        // One column past the margin is outside the drawn grid.
-        const outside = at({ q: 36 + LAYOUT_GRID_MARGIN + 1, r: 0 });
-        fireEvent.pointerDown(surface(), { ...outside, pointerId: 8 });
-        fireEvent.pointerUp(surface(), { ...outside, pointerId: 8 });
-        expect(previewCells()).toEqual([]);
-        expect(input.onCommit).toHaveBeenCalledTimes(1);
+        // One column past the margin is outside the drawn grid, and still
+        // paintable: the canvas is unbounded and the grid grows to meet it.
+        const past = { q: 36 + LAYOUT_GRID_MARGIN + 1, r: 0 };
+        fireEvent.pointerDown(surface(), { ...at(past), pointerId: 8 });
+        fireEvent.pointerUp(surface(), { ...at(past), pointerId: 8 });
+        expect(input.onCommit).toHaveBeenLastCalledWith([past], 'paint');
       }
     }
   );
@@ -552,18 +617,22 @@ describe('controlled Layout floor surface', () => {
     }
   );
 
-  it('the derived grid boundary filters outside cells without altering committed content', () => {
+  // No grid edge refuses a stroke any more (rpg-project#725 R3): a stroke
+  // that crosses the drawn grid's last column paints the cell past it too.
+  it('a stroke crossing the derived grid edge paints past it without altering committed content', () => {
     const input = props();
     const original = structuredClone(input.draft);
     render(<LayoutViewport {...input} />);
-    // The last column of the derived grid on row 0 (rpg-project#725 R3).
     const rect = rectangleOf(contentWorkspace(input.draft))!;
     const edge = { q: rect.minCol + rect.widthHexes - 1, r: 0 };
     const past = { q: edge.q + 1, r: 0 };
     fireEvent.pointerDown(surface(), { ...at(edge), pointerId: 7 });
     fireEvent.pointerMove(surface(), { ...at(past), pointerId: 7 });
     fireEvent.pointerUp(surface(), { ...at(past), pointerId: 7 });
-    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith([edge], 'paint');
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+      [edge, past],
+      'paint'
+    );
     expect(input.draft).toEqual(original);
   });
 
@@ -1075,27 +1144,32 @@ describe('2D map label pointer ownership and shared transforms', () => {
     );
     expect(nextMove).not.toHaveBeenCalled();
   });
-  // The envelope is gone with the stored workspace (rpg-project#725 R3): a
-  // point outside the derived grid is refused for placement and move release.
-  it('rejects label points outside the derived grid and an invalid move release instead of using last valid preview', () => {
+  // The canvas is unbounded (rpg-project#725 R3): a note may be placed past
+  // the drawn grid. A move released off the surface is still refused, and
+  // the last valid preview is never used in its place.
+  it('places a label past the derived grid and refuses a move released off the surface', () => {
     const input = labelled();
     input.labelEditing!.placementText = 'Courtyard';
     const { rerender } = render(<LayoutViewport {...input} />);
-    const outside = {
+    const pastGrid = {
       x: workspaceBounds(contentWorkspace(input.draft)).maxX + 1,
       z: 0,
     };
     fireEvent.pointerDown(surface(), {
-      ...position(outside),
+      ...position(pastGrid),
       pointerId: 7,
       button: 0,
     });
     fireEvent.pointerUp(surface(), {
-      ...position(outside),
+      ...position(pastGrid),
       pointerId: 7,
       button: 0,
     });
-    expect(input.labelEditing!.onCreate).not.toHaveBeenCalled();
+    expect(input.labelEditing!.onCreate).toHaveBeenCalledOnce();
+    expect(
+      (input.labelEditing!.onCreate as Mock).mock.calls[0]![1].x
+    ).toBeCloseTo(pastGrid.x, 9);
+    const outside = { x: 10_000, z: 0 };
     rerender(
       <LayoutViewport
         {...input}
@@ -2060,177 +2134,19 @@ describe('controlled Layout wall gestures', () => {
   );
 });
 
-// The region tool paints into the selected region (rpg-project#725 R5):
-// paint reassigns the stroked cells to it; erase hands the stroked cells it
-// owns back to the implicit region. Floor membership is never erased.
-describe('region tool gesture routing', () => {
-  const region: RoomRegion = {
-    id: 'forest',
-    name: 'Forest',
-    lighting: { intensity: 1 },
-    cells: toRows([{ q: 0, r: 0 }]),
-  };
-  function regionProps(
-    overrides: Partial<LayoutViewportProps> = {}
-  ): LayoutViewportProps {
-    return props({
-      tool: 'region',
-      selectedRegion: region,
-      regionTool: 'paint',
-      regionEditing: {
-        resolutions: [],
-        createRegion: vi.fn(() => true),
-        renameRegion: vi.fn(() => true),
-        setRegionLighting: vi.fn(() => true),
-        removeRegion: vi.fn(() => true),
-      },
-      ...overrides,
-    });
-  }
-  it('stages the stroke and releases one paint into the selected region; region hits never move labels', () => {
-    const input = regionProps();
-    const create = vi.fn();
-    const move = vi.fn();
-    render(
-      <LayoutViewport
-        {...input}
-        labelEditing={{
-          active: false,
-          selectedId: 'forest-note',
-          placementText: null,
-          onSelect: vi.fn(),
-          onCreate: create,
-          onMove: move,
-          onCancel: vi.fn(),
-        }}
-      />
-    );
-    fireEvent.pointerDown(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(surface(), { ...at({ q: 2, r: 0 }), pointerId: 1 });
-    expect(previewCells()).toEqual(['1,0', '2,0']);
-    expect(input.onCommit).not.toHaveBeenCalled();
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 2, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
-      [
-        { q: 1, r: 0 },
-        { q: 2, r: 0 },
-      ],
-      'paint',
-      'forest'
-    );
-    expect(move).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
-  });
-  it.each([
-    'escape',
-    'capture',
-    'document',
-    'target',
-    'epoch',
-    'mode',
-  ] as const)('retires %s without region or floor writes', (retirement) => {
-    const input = regionProps();
-    const { rerender } = render(<LayoutViewport {...input} />);
-    fireEvent.pointerDown(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    if (retirement === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
-    if (retirement === 'capture')
-      fireEvent.lostPointerCapture(surface(), { pointerId: 1 });
-    if (retirement === 'document')
-      rerender(<LayoutViewport {...input} draft={{ ...input.draft }} />);
-    if (retirement === 'target')
-      rerender(<LayoutViewport {...input} selectedRegion={undefined} />);
-    if (retirement === 'epoch')
-      rerender(<LayoutViewport {...input} intentEpoch={2} />);
-    if (retirement === 'mode')
-      rerender(<LayoutViewport {...input} regionTool="erase" />);
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 2, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    expect(input.onCommit).not.toHaveBeenCalled();
-  });
-  it('erase hands back only cells the region owns; rectangle paints into the region and never erases floor', () => {
-    const input = regionProps({ regionTool: 'erase' });
-    const implicit = input.draft.room.implicitRegionId;
-    const { rerender } = render(<LayoutViewport {...input} />);
-    // A stroke over cells the region does not own changes nothing.
-    fireEvent.pointerDown(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    expect(input.onCommit).not.toHaveBeenCalled();
-    fireEvent.pointerDown(surface(), {
-      ...at({ q: 0, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(surface(), { ...at({ q: 1, r: 0 }), pointerId: 1 });
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
-      [{ q: 0, r: 0 }],
-      'paint',
-      implicit
-    );
-    rerender(<LayoutViewport {...input} regionTool="rectangle" />);
-    fireEvent.pointerDown(surface(), {
-      ...at({ q: 0, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(surface(), { ...at({ q: 1, r: 0 }), pointerId: 1 });
-    fireEvent.pointerUp(surface(), {
-      ...at({ q: 1, r: 0 }),
-      button: 0,
-      pointerId: 1,
-    });
-    expect(input.onCommit).toHaveBeenLastCalledWith(
-      [
-        { q: 0, r: 0 },
-        { q: 1, r: 0 },
-      ],
-      'paint',
-      'forest'
-    );
-    expect(input.onCommit).toHaveBeenCalledTimes(2);
-  });
-  it('erase with the implicit region selected hands nothing back', () => {
-    const base = props();
-    const implicit = base.draft.room.regions.find(
-      (r) => r.id === base.draft.room.implicitRegionId
-    )!;
-    const input = regionProps({
-      regionTool: 'erase',
-      selectedRegion: implicit,
-    });
-    render(<LayoutViewport {...input} />);
-    const owned = regionCells(implicit)[0];
-    fireEvent.pointerDown(surface(), { ...at(owned), button: 0, pointerId: 1 });
-    fireEvent.pointerUp(surface(), { ...at(owned), button: 0, pointerId: 1 });
-    expect(input.onCommit).not.toHaveBeenCalled();
-  });
+// The region tool retired (rpg-project#725 R5): Paint and Rectangle brush
+// into the ACTIVE region, which the owner holds. The surface reports the
+// stroke as paint or erase and names no region, so the choice of region is
+// made in one place.
+it('reports a stroke as paint or erase and leaves the region to the owner', () => {
+  const input = props();
+  render(<LayoutViewport {...input} />);
+  fireEvent.pointerDown(surface(), { ...at(zero), pointerId: 7 });
+  fireEvent.pointerUp(surface(), { ...at(zero), pointerId: 7 });
+  expect(input.onCommit).toHaveBeenCalledExactlyOnceWith([zero], 'paint');
+  expect(
+    (input.onCommit as ReturnType<typeof vi.fn>).mock.calls[0]
+  ).toHaveLength(2);
 });
 
 // Labels are notes (rpg-project#725): a region selection appearing during a
@@ -2355,7 +2271,8 @@ describe('Layout hex selection', () => {
     expect(input.onSelectHex).not.toHaveBeenCalled();
   });
 
-  it('click outside the workspace selects nothing', () => {
+  // No grid edge: a click past the drawn grid selects the hex under it.
+  it('a click past the derived grid selects the hex under it', () => {
     const input = selecting();
     render(<LayoutViewport {...input} />);
     fireEvent.pointerDown(surface(), {
@@ -2363,8 +2280,8 @@ describe('Layout hex selection', () => {
       pointerId: 7,
       button: 0,
     });
-    expect(input.onSelectHex).not.toHaveBeenCalled();
-    expect(input.onClearSelection).toHaveBeenCalledTimes(1);
+    expect(input.onSelectHex).toHaveBeenCalledOnce();
+    expect(input.onClearSelection).not.toHaveBeenCalled();
     expect(input.wallEditing.select).toHaveBeenCalledWith(null);
     expect(input.labelEditing!.onSelect).toHaveBeenCalledWith(null);
   });
@@ -2395,6 +2312,25 @@ describe('Layout pick on map (rpg-project#720)', () => {
     fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
     expect(onPick).toHaveBeenCalledExactlyOnceWith(floor);
     expect(onSelectHex).not.toHaveBeenCalled();
+  });
+
+  // The canvas is unbounded (rpg-project#725 R3): a pick past the drawn
+  // grid is a cell, as paint is.
+  it('a click past the drawn grid still picks that cell', () => {
+    const onPick = vi.fn<(cell: RoomHexCell) => void>();
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        routePick={{ mode: 'cell', waypoints: [], onPick }}
+      />
+    );
+    const far = { x: 400, z: 300 };
+    fireEvent.pointerDown(surface(), {
+      ...position(far),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(cellAtWorldPoint(far));
   });
 
   it('a click on a wall still picks the cell under it, not the wall', () => {

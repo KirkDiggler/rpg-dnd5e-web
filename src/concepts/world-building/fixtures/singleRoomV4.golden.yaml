@@ -37,8 +37,10 @@ room:
         name: Untitled room
         lighting: {intensity: 1}
         cells:
+          - r: -1
+            q: [[2, 2]]
           - r: 0
-            q: [[0, 0]]
+            q: [[0, 1]]
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:

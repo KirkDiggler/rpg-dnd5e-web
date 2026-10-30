@@ -90,13 +90,18 @@ const engineGoblinOptions = () =>
   ).options;
 
 /** The golden's own draft: a room with a prop, a start and one actor, and none
- * of the new keys. Its start cell is painted, so the golden is a document the
- * engine accepts: a site whose regions own no cell is refused at PutDungeon
- * ("no region owns a cell"). */
+ * of the new keys. The party start and every creature's start (the options
+ * golden's goblin included) are painted floor, so each golden is a document
+ * the engine decodes AND compiles: a site whose regions own no cell is refused
+ * ("no region owns a cell"), and a creature off the floor is "not standable". */
 function goldenDraft(): RoomDraft {
   const draft = paintCells(
     createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
-    [{ q: 0, r: 0 }]
+    [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 2, r: -1 },
+    ]
   );
   draft.scene.items.push({
     id: 'prop-1',
