@@ -4,8 +4,14 @@
  *
  * Kirk: "a toast we won or we lost is sufficient."
  */
+import { EndingResult } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
-import { endingDetail, runEndedHeadline, runOutcome } from './runEnding';
+import {
+  endingDetail,
+  endingResultLine,
+  runEndedHeadline,
+  runOutcome,
+} from './runEnding';
 
 describe('the two endings that decide a run', () => {
   it('calls the boss going down a win, and the party going down a loss', () => {
@@ -37,6 +43,35 @@ describe('the two endings that decide a run', () => {
     expect(endingDetail('abandoned')).toBe('The run was abandoned.');
     expect(endingDetail('something-new')).toBe(
       'The encounter is over — the outcome is recorded.'
+    );
+  });
+});
+
+describe('the result the ending declares (rpg-project#733)', () => {
+  it('reads "captain slain — success" and "captain lives — failure"', () => {
+    expect(endingResultLine('captain-slain', EndingResult.SUCCESS)).toBe(
+      'captain slain — success'
+    );
+    expect(endingResultLine('captain-lives', EndingResult.FAILURE)).toBe(
+      'captain lives — failure'
+    );
+  });
+
+  it('says nothing for an ending that declares no result, as an old run does', () => {
+    expect(
+      endingResultLine('captain-slain', EndingResult.UNSPECIFIED)
+    ).toBeUndefined();
+    expect(runOutcome('captain-slain')).toBeUndefined();
+    expect(runEndedHeadline('captain-slain')).toBe('The run has ended');
+  });
+
+  it('lets the declared result decide the headline over the name table', () => {
+    expect(runOutcome('captain-lives', EndingResult.FAILURE)).toBe('lost');
+    expect(runEndedHeadline('captain-slain', EndingResult.SUCCESS)).toBe(
+      'You won'
+    );
+    expect(runEndedHeadline('boss-down', EndingResult.FAILURE)).toBe(
+      'You lost'
     );
   });
 });

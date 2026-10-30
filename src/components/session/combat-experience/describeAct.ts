@@ -32,6 +32,7 @@ import {
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
+import { endingResultLine } from '../runEnding';
 
 /**
  * The cause a creature's `dash` pick writes on every step of its run
@@ -632,7 +633,10 @@ function describeWith(
           return {
             eyebrow: 'End',
             headline: 'The run ends',
-            detail: authoredWords(c.ending),
+            // "captain slain — success" when the ending declares a result
+            // (rpg-project#733); the ending's words alone when it does not.
+            detail:
+              endingResultLine(c.ending, c.outcome) ?? authoredWords(c.ending),
             tone: 'turn',
           };
         case ClockMark.WINDOW_OPENED:

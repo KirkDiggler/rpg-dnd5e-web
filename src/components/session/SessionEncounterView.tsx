@@ -53,6 +53,7 @@ import {
 import {
   type Act,
   ClockMark,
+  EndingResult,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -128,6 +129,13 @@ import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldD
 import { isWalking } from './moveController';
 import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
+import {
+  companionsLine,
+  companionsStanding,
+  type PartySide,
+  sideOf,
+  stancesBySubject,
+} from './partySide';
 import { cubeToPosition } from './positionBridge';
 import { isRefusal, refusalMessage } from './refusal';
 import { RestDialog } from './RestDialog';
@@ -294,6 +302,11 @@ function SessionEncounterScope({
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
+  // The result the ending declares, beside its name (rpg-project#733).
+  // Unspecified for an ending that states none, so the toast shows none.
+  const [runResult, setRunResult] = useState<EndingResult>(
+    EndingResult.UNSPECIFIED
+  );
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [unpackNotice, setUnpackNotice] = useState<string | null>(null);
   /** The one line the loot/hold/leave verbs answer with — a refusal in the
@@ -785,6 +798,18 @@ function SessionEncounterScope({
     () => turnOrder.project(visibleParticipants),
     [turnOrder, visibleParticipants]
   );
+  // Which side of the table each participant stands on for this viewer
+  // (rpg-project#733): its kind and the believed stance on its sighting. A
+  // companion stays a monster in initiative order; only its side is drawn.
+  const participantSides = useMemo(() => {
+    const stances = stancesBySubject(sightings);
+    const sides = new Map<string, PartySide>();
+    for (const p of turnOrderParticipants) {
+      const side = sideOf(p.kind, stances.get(p.member));
+      if (side) sides.set(p.member, side);
+    }
+    return sides;
+  }, [sightings, turnOrderParticipants]);
   // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
   // cast owns the next floor click; otherwise a TURN click walks only while
   // Move is selected. WORLD keeps the established free-roam click behavior.
@@ -1324,6 +1349,7 @@ function SessionEncounterScope({
           // the modal receives focus or can be layered over the panel.
           setEquipmentOpen(false);
           setRunEnded(act.body.value.ending);
+          setRunResult(act.body.value.outcome);
         }
       }
       scheduleRefresh([...keys]);
@@ -1990,6 +2016,7 @@ function SessionEncounterScope({
             clock={experienceClock}
             round={turnOrder.round}
             participants={turnOrderParticipants}
+            participantSides={participantSides}
             declarations={coherentDeclarations}
             characterData={visibleCharacterData}
             privateStatus={privateStatus}
@@ -2261,6 +2288,11 @@ function SessionEncounterScope({
         {runEnded !== null && (
           <RunEndedToast
             ending={runEnded}
+            result={runResult}
+            // Who came with the party: allied creatures this viewer last saw
+            // standing (rpg-project#733). Read off the sightings' believed
+            // stance; a companion never joins the roster.
+            companionsLine={companionsLine(companionsStanding(sightings))}
             // Names the carrier when one walked out through an authored exit
             // holding something, and says nothing about one otherwise — a run
             // that ended for any other reason had no carrier, and the toast
