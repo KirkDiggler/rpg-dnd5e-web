@@ -5,13 +5,14 @@ import { layoutFooterText } from './layoutFooterText';
 import type { RegionOverview } from './overviewColours';
 import { cellsBounds } from './overviewFrame';
 
-/** Layout's room list (R7): every region by its label, with its colour and
- * its size. Selecting a row selects the region's label, the one selection
- * the inspector reads, and frames the region. */
+/** Layout's room list (R7): every authored region by its name — its label
+ * on the map (rpg-project#725) — with its colour and its size. Selecting a
+ * row selects the region, the one selection the inspector reads, and frames
+ * it. */
 export function LayoutRoomList({
   draft,
   overview,
-  selectedLabelId,
+  selectedRegionId,
   onSelect,
   onCreate,
   onShowEntire,
@@ -23,14 +24,13 @@ export function LayoutRoomList({
    * resolve while its finish does not, so this is its own flag. */
   unappliedFinishes?: ReadonlySet<string>;
   overview: RegionOverview;
-  selectedLabelId: string | null;
-  /** Bounds are null for an unresolved region: it is selected, not framed. */
-  onSelect(labelId: string, bounds: WorkspaceBounds | null): void;
+  selectedRegionId: string | null;
+  /** Bounds are null for an unpainted region: it is selected, not framed. */
+  onSelect(regionId: string, bounds: WorkspaceBounds | null): void;
   onCreate(): void;
   onShowEntire(): void;
 }): React.JSX.Element {
-  const regions = draft.scene.authoringRegions ?? [];
-  const labels = draft.scene.mapLabels ?? [];
+  const regions = draft.room.regions;
   return (
     <aside className="es-room-list wb-panel" aria-label="Rooms">
       <div className="es-room-list-header">
@@ -41,14 +41,13 @@ export function LayoutRoomList({
       </div>
       {regions.length === 0 ? (
         <p className="es-help">
-          No rooms yet. A room or outdoor area is a named label with a boundary.
+          No rooms yet. A room or outdoor area is a named region of painted
+          hexes.
         </p>
       ) : (
         <ul className="es-region-list" aria-label="Room list">
           {regions.map((region) => {
-            const text =
-              labels.find((label) => label.id === region.labelId)?.text ??
-              region.id;
+            const text = region.name || region.id;
             const size = overview.sizes.get(region.id) ?? null;
             const colour = size ? overview.colours.get(region.id) : undefined;
             const unapplied = unappliedFinishes?.has(region.id) ?? false;
@@ -57,13 +56,10 @@ export function LayoutRoomList({
                 <button
                   type="button"
                   data-region-row={region.id}
-                  aria-pressed={selectedLabelId === region.labelId}
+                  aria-pressed={selectedRegionId === region.id}
                   aria-label={`Room ${text}, ${regionSizeText(size)}${unapplied ? ', finish unapplied' : ''}`}
                   onClick={() =>
-                    onSelect(
-                      region.labelId,
-                      size ? cellsBounds(size.cells) : null
-                    )
+                    onSelect(region.id, size ? cellsBounds(size.cells) : null)
                   }
                 >
                   <span

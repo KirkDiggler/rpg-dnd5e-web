@@ -3,10 +3,11 @@ import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createGroundBoundaryGeometry } from './groundBoundaryGeometry';
-import { walkableCellsInWorldRectangle } from './roomDraft';
+import { cellsInWorldRectangle } from './roomDraft';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import {
   centeredRoomWorkspace,
+  containsWorkspaceCell,
   workspaceBoundary,
   workspaceCellAtPoint,
   workspaceCells,
@@ -69,7 +70,9 @@ describe('batched rectangle presentation geometry', () => {
     }
   );
 
-  it('memoizable rectangle center selection matches the document helper in both variants', () => {
+  // The document helper is unbounded now (rpg-project#725): the drawn grid's
+  // memoized selection is exactly its cells among the helper's.
+  it('memoizable rectangle center selection is the document helper clipped to the grid, in both variants', () => {
     for (const workspace of [
       centeredRoomWorkspace(73, 48),
       { hexRadius: 6, horizontalLimit: 12 },
@@ -90,7 +93,9 @@ describe('batched rectangle presentation geometry', () => {
         ],
       ]) {
         expect(select(a!, b!)).toEqual(
-          walkableCellsInWorldRectangle(a!, b!, workspace)
+          cellsInWorldRectangle(a!, b!).filter((cell) =>
+            containsWorkspaceCell(workspace, cell)
+          )
         );
       }
       expect(select({ x: NaN, z: 0 }, { x: 1, z: 1 })).toEqual([]);

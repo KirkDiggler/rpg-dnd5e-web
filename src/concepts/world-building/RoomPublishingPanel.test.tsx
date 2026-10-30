@@ -30,7 +30,7 @@ import {
   decodeWorldBuilderV4Site,
   WORLD_BUILDER_V4_SITE_YAML,
 } from './fixtures/worldBuilderV4Site';
-import { createRoomDraft, type RoomDraft } from './roomDraft';
+import { createRoomDraft, paintCells, type RoomDraft } from './roomDraft';
 import { RoomPublishingPanel } from './RoomPublishingPanel';
 import { decodeSingleRoomDungeon } from './singleRoomDungeon';
 import type { SiteScope } from './siteScope';
@@ -212,11 +212,11 @@ function richScene(): WorldScene {
 function richDraft(id = 'room-abc123'): RoomDraft {
   const draft = createRoomDraft(richScene(), id);
   draft.name = 'Torture chamber';
-  draft.room.walkableHexes = [
+  draft.room = paintCells(draft, [
     { q: 0, r: 0 },
     { q: 1, r: 0 },
     { q: -1, r: 0 },
-  ];
+  ]).room;
   draft.room.propDeclarations = {
     table: {
       blocksMovement: true,
@@ -377,13 +377,11 @@ describe('RoomPublishingPanel — save to a new key', () => {
     getAnswers[0]!.reject(new ConnectError('no such key', Code.NotFound));
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     await resolvePut(savePuts()[0]!.deferred, {
-      errors: [
-        { path: 'room.walkableHexes[3]', message: 'cell outside workspace' },
-      ],
+      errors: [{ path: 'room.regions[0].cells[3]', message: 'cell refused' }],
     });
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /room\.walkableHexes\[3\].*cell outside workspace/s
+        /room\.regions\[0\]\.cells\[3\].*cell refused/s
       )
     );
   });
@@ -751,7 +749,7 @@ describe('RoomPublishingPanel — canonical YAML exchange', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Canonical YAML' }), {
       target: {
         value:
-          'version: 3\nkey: other-key\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3, id: room-abc123, name: X, coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}, workspace: {hexRadius: 6, horizontalLimit: 12}, scene: {version: 1, id: s, name: X, items: [], groups: []}, room: {implicitRegionId: r, walkableHexes: [], propDeclarations: {}, arrangementDeclarations: {}, monsterDeclarations: []}}\n',
+          'version: 5\nkey: other-key\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3, id: room-abc123, name: X, coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}, scene: {version: 1, id: s, name: X, items: [], groups: []}, room: {implicitRegionId: r, regions: [{id: r, name: X, lighting: {intensity: 1}, cells: []}], propDeclarations: {}, arrangementDeclarations: {}, monsterDeclarations: []}}\n',
       },
     });
     fireEvent.click(
@@ -789,8 +787,8 @@ describe('RoomPublishingPanel — the site scope (web#1157)', () => {
     );
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     const yaml = savePuts()[0]!.request.yaml;
-    // The document carries v4 keys, so the root claims v4.
-    expect(yaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 now; 3 and 4 are retired (rpg-project#725).
+    expect(yaml.startsWith('version: 5\n')).toBe(true);
     const emitted = decodeSingleRoomDungeon(yaml);
     expect(emitted.factions).toEqual(fixture.factions);
     expect(emitted.dispositions).toEqual(fixture.dispositions);
@@ -889,7 +887,8 @@ describe('RoomPublishingPanel — the site scope (web#1157)', () => {
     await waitFor(() => expect(rpc.puts.length).toBeGreaterThan(before));
     const last = rpc.puts[rpc.puts.length - 1]!;
     expect(last.request.validateOnly).toBe(true);
-    expect(last.request.yaml.startsWith('version: 4\n')).toBe(true);
+    // The root is always version 5 (rpg-project#725).
+    expect(last.request.yaml.startsWith('version: 5\n')).toBe(true);
   });
 
   it('names a document the strict encoder refuses instead of going inert', () => {

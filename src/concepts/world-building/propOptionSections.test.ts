@@ -17,7 +17,14 @@ const PLAIN_REF = 'dnd5e:env:dark-fantasy:pillar_01';
 function room(overrides: Partial<RoomGameplayData> = {}): RoomGameplayData {
   return {
     implicitRegionId: 'room-1-region',
-    walkableHexes: [{ q: 0, r: 0 }],
+    regions: [
+      {
+        id: 'room-1-region',
+        name: 'Room',
+        lighting: { intensity: 1 },
+        cells: [{ r: 0, q: [[0, 0]] }],
+      },
+    ],
     propDeclarations: {},
     arrangementDeclarations: {},
     monsterDeclarations: [],

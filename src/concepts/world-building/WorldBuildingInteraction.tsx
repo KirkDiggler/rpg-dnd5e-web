@@ -19,11 +19,6 @@ import {
 } from './structuralWalls';
 import type { WorldScene } from './types';
 import {
-  containsWorkspacePoint,
-  rectangleOf,
-  type RoomWorkspace,
-} from './workspaceGeometry';
-import {
   readWorldBuildingDragPayload,
   type WorldBuildingDragPayload,
 } from './worldBuildingDrag';
@@ -32,27 +27,11 @@ import {
   type WorldBuildingDropTarget,
 } from './worldBuildingPointer';
 
-/** Only authored anchors are available here. The document owner remains the
- * final gate for declared footprints, scope, wall thickness/doors and size. */
-function assertSceneAnchors(
-  scene: WorldScene,
-  workspace?: RoomWorkspace
-): void {
-  if (!workspace || !rectangleOf(workspace)) return;
-  for (const entry of [...scene.items, ...scene.groups]) {
-    if (!containsWorkspacePoint(workspace, entry.transform))
-      throw new Error(
-        `scene (${entry.id}).transform: outside the authoring workspace.`
-      );
-  }
-}
-
 export type WorldBuildingTool = 'select' | 'move' | 'rotate';
 
 interface WorldBuildingDropInteractionProps {
   activeDrag: WorldBuildingDragPayload | null;
   floorY: number;
-  workspace?: RoomWorkspace;
   onDrop: (
     payload: WorldBuildingDragPayload,
     target: WorldBuildingDropTarget
@@ -63,7 +42,6 @@ interface WorldBuildingDropInteractionProps {
 export function WorldBuildingDropInteraction({
   activeDrag,
   floorY,
-  workspace,
   onDrop,
   onDragFinished,
 }: WorldBuildingDropInteractionProps) {
@@ -95,20 +73,10 @@ export function WorldBuildingDropInteraction({
         raycaster.intersectObjects(scene.children, true),
         floorY
       );
-      return target &&
-        (!workspace || containsWorkspacePoint(workspace, target.point))
-        ? target
-        : null;
+      // The canvas is unbounded (rpg-project#725 R3): any drop target lands.
+      return target ?? null;
     },
-    [
-      camera,
-      floorY,
-      gl.domElement,
-      pointer,
-      raycaster,
-      scene.children,
-      workspace,
-    ]
+    [camera, floorY, gl.domElement, pointer, raycaster, scene.children]
   );
 
   useEffect(() => {
@@ -151,7 +119,7 @@ export function WorldBuildingDropInteraction({
     };
   }, [activeDrag, gl.domElement, onDragFinished, onDrop, targetAt]);
 
-  useEffect(() => setPreview(null), [activeDrag, workspace]);
+  useEffect(() => setPreview(null), [activeDrag]);
 
   if (!preview) return null;
   const position: [number, number, number] =
@@ -210,7 +178,6 @@ type TransformPreview =
 export interface WallTransformTarget {
   wall: StructuralWall;
   horizontalLimit: number;
-  workspace?: RoomWorkspace;
   onPreview: (wall: StructuralWall | null) => void;
   onCommit: (wall: StructuralWall) => void;
 }
@@ -225,7 +192,6 @@ interface WorldBuildingTransformGizmoProps {
   onReject: (message: string) => void;
   onTransformingChange: (transforming: boolean) => void;
   sceneHorizontalLimit?: number;
-  workspace?: RoomWorkspace;
   wallTarget?: WallTransformTarget;
 }
 
@@ -239,7 +205,6 @@ export function WorldBuildingTransformGizmo({
   onReject,
   onTransformingChange,
   sceneHorizontalLimit,
-  workspace,
   wallTarget,
 }: WorldBuildingTransformGizmoProps) {
   const { gl } = useThree();
@@ -362,18 +327,16 @@ export function WorldBuildingTransformGizmo({
         validateStructuralWalls({
           value: [preview.value],
           horizontalLimit: target.horizontalLimit,
-          workspace: target.workspace,
           itemIds: new Set(),
         });
         target.onPreview(preview.value);
       } else if (preview?.kind === 'scene') {
-        assertSceneAnchors(preview.value, workspace);
         onPreview(preview.value);
       }
     } catch {
       clearPreview();
     }
-  }, [currentPreview, onPreview, workspace, clearPreview]);
+  }, [currentPreview, onPreview, clearPreview]);
 
   const commit = useCallback(() => {
     if (!dragStartRef.current) return;
@@ -395,16 +358,13 @@ export function WorldBuildingTransformGizmo({
         const validated = validateStructuralWalls({
           value: [next.value],
           horizontalLimit: target.horizontalLimit,
-          workspace: target.workspace,
           itemIds: new Set(),
         });
         target.onCommit(validated[0]!);
       } else {
-        assertSceneAnchors(next.value, workspace);
         onCommit(
           validateScene(next.value, {
             horizontalLimit: sceneHorizontalLimit,
-            workspace,
           })
         );
       }
@@ -422,23 +382,13 @@ export function WorldBuildingTransformGizmo({
     clearPreview,
     onReject,
     sceneHorizontalLimit,
-    workspace,
     syncProxy,
   ]);
 
   useEffect(() => {
     if (dragStartRef.current) cancel();
     syncProxy();
-  }, [
-    cancel,
-    scene,
-    selectedIds,
-    syncProxy,
-    tool,
-    wallTarget?.wall,
-    workspace,
-    wallTarget?.workspace,
-  ]);
+  }, [cancel, scene, selectedIds, syncProxy, tool, wallTarget?.wall]);
 
   useEffect(() => {
     const element = gl.domElement;

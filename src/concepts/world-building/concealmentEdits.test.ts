@@ -12,7 +12,10 @@ import {
   toggleConcealmentMember,
 } from './concealmentEdits';
 import {
+  eraseCells,
+  floorCells,
   lifetimeNotice,
+  paintCells,
   parseRoomDocumentJson,
   stringifyRoomDraft,
   stripLegacyLifetime,
@@ -76,9 +79,7 @@ describe('concealment members on the map (rpg-project#578, S4-Q5)', () => {
     return populated;
   }
   const walkable = (doc: RoomDraftDocument) =>
-    doc.draft.room.walkableHexes.find(
-      (cell) => !(cell.q === 1 && cell.r === 0)
-    )!;
+    floorCells(doc.draft).find((cell) => !(cell.q === 1 && cell.r === 0))!;
 
   it('a walkable cell toggles in and out', () => {
     const doc = document();
@@ -112,8 +113,11 @@ describe('concealment members on the map (rpg-project#578, S4-Q5)', () => {
   });
 
   it('an unwalkable cell is refused', () => {
-    const doc = document();
-    doc.draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const populated = document();
+    const doc = {
+      ...populated,
+      draft: eraseCells(populated.draft, floorCells(populated.draft)),
+    };
     expect(() =>
       toggleConcealmentMember(doc, 'stash', {
         kind: 'cell',
@@ -124,10 +128,7 @@ describe('concealment members on the map (rpg-project#578, S4-Q5)', () => {
 
   it('a member already in another concealment is refused', () => {
     const doc = document();
-    doc.draft.room.walkableHexes = [
-      ...doc.draft.room.walkableHexes,
-      { q: 1, r: 0 },
-    ];
+    doc.draft = paintCells(doc.draft, [{ q: 1, r: 0 }]);
     expect(() =>
       toggleConcealmentMember(doc, 'stash', {
         kind: 'prop',

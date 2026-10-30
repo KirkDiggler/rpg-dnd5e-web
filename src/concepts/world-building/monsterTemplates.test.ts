@@ -114,10 +114,12 @@ describe('authored stat blocks through the shared scope and codecs', () => {
       })
     ).toMatchObject({ custom: { armor: 'dnd5e:armor:future-armor' } });
   });
-  it('keeps absence unchanged, promotes template-only source to v4 and refuses an unsupported envelope', () => {
+  // The root is version 5 always (rpg-project#725): templates no longer
+  // promote it, and roots 3 and 4 are retired outright.
+  it('keeps absence unchanged, writes templates under the v5 root and refuses an unsupported envelope', () => {
     const draft = createRoomDraft(createEmptyScene('scene'), 'room');
     const base = encodeSingleRoomDungeon({ key: 'empty', draft });
-    expect(parse(base).version).toBe(3);
+    expect(parse(base).version).toBe(5);
     expect(base).not.toContain('templates:');
     expect(
       encodeSingleRoomDungeon({ key: 'empty', draft, templates: {} })
@@ -125,11 +127,17 @@ describe('authored stat blocks through the shared scope and codecs', () => {
     const withTemplate = parse(
       encodeSingleRoomDungeon({ key: 'empty', draft, templates: { guard } })
     );
-    expect(withTemplate.version).toBe(4);
+    expect(withTemplate.version).toBe(5);
     expect(withTemplate.room.version).toBe(3);
+    expect(withTemplate.templates).toEqual({ guard });
+    expect(decodeSingleRoomDungeon(stringify(withTemplate)).templates).toEqual({
+      guard,
+    });
     expect(() =>
       decodeSingleRoomDungeon(stringify({ ...withTemplate, version: 3 }))
-    ).toThrow(/templates.*version 4/);
+    ).toThrow(
+      'version: versions 3 and 4 are retired; regions are the floor (rpg-project#725)'
+    );
     expect(() =>
       decodeSingleRoomDungeon(
         stringify({

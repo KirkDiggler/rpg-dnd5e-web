@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { wordRowsOf } from '../world-building/bundles';
+import {
+  floorCellCount,
+  stringifyRoomDraft,
+} from '../world-building/roomDraft';
 import { encodeSingleRoomDungeon } from '../world-building/singleRoomDungeon';
 import { renderScope } from '../world-building/siteScope';
 import {
@@ -13,6 +17,11 @@ import {
 } from './draftFile';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+
+/** The castle's stored envelope measured 78,830 characters with its scope
+ * (63,708 for the draft alone; its regions are 13,087) after rpg-project#725,
+ * against about 274,000 before. The bound keeps that fact with headroom. */
+const MAX_CASTLE_ENVELOPE = 100_000;
 
 type SingleRoomFile = {
   templates?: Record<string, unknown>;
@@ -322,6 +331,31 @@ describe('the draft as a file (rpg-project#578)', () => {
     ).toBe(once);
   });
 
+  // REGIONS ARE THE FLOOR (rpg-project#725). The castle's nine explicit
+  // authoring regions became nine named regions and its leftover walkable
+  // cells the implicit region; the union is the 1,586 cells it always had.
+  it('opens the castle as nine named regions plus the implicit one, the floor unchanged', () => {
+    const opened = readDraftYaml(
+      readFileSync(
+        'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
+        'utf8'
+      )
+    );
+    if (!opened.ok) throw new Error(opened.refusal);
+    const regions = opened.draft.room.regions;
+    expect(regions[0]!.id).toBe(opened.draft.room.implicitRegionId);
+    expect(regions.slice(1).map((r) => r.name)).toHaveLength(9);
+    expect(regions.every((r) => r.name.trim() !== '')).toBe(true);
+    expect(regions.every((r) => r.lighting.intensity === 1)).toBe(true);
+    expect(floorCellCount(opened.draft)).toBe(1586);
+    expect(opened.draft).not.toHaveProperty('workspace');
+    expect(opened.draft.scene).not.toHaveProperty('authoringRegions');
+    // rpg-dnd5e-web#1284: the castle's stored envelope, regions as row runs,
+    // is a fraction of the 500,000-character cap that refused a full floor.
+    const envelope = stringifyRoomDraft(opened.draft, opened.scope);
+    expect(envelope.length).toBeLessThan(MAX_CASTLE_ENVELOPE);
+  });
+
   it('the castle round-trips: open from server, save, open again equal', () => {
     const yaml = readFileSync(
       'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
@@ -351,14 +385,14 @@ describe('the draft as a file (rpg-project#578)', () => {
   });
 
   /**
-   * THE TWO REFERENCE SITES (rpg-dnd5e-web#1311). Verbatim copies of rpg-api
+   * THE TWO REFERENCE SITES (rpg-dnd5e-web#1311). Copies of rpg-api
    * `content/creature-facts-walk.yaml` (85d50e9) and
-   * `content/reference-discovery-checks.yaml` (105c2fe). The engine reads
-   * exactly one number from each presentation block —
-   * `coordinateFrame.hexRadius` (must be 1) and `workspace.hexRadius` (the
-   * floor bound, positive) — so a frame that states only its scale and a
-   * radius workspace off the editor's three presets are files the engine
-   * plays, and the studio reads them.
+   * `content/reference-discovery-checks.yaml` (105c2fe), converted to version
+   * 5 by the toolkit's `ConvertV4` (rpg-project#725): their walkable lists
+   * became one region each and their workspaces were dropped. The engine
+   * reads one number from the presentation block — `coordinateFrame.hexRadius`
+   * (must be 1) — so a frame that states only its scale is a file the engine
+   * plays, and the studio reads it.
    */
   const reference = (file: string) =>
     readFileSync(`src/concepts/encounter-studio/fixtures/${file}.yaml`, 'utf8');
@@ -367,10 +401,12 @@ describe('the draft as a file (rpg-project#578)', () => {
     const opened = readDraftYaml(reference('creature-facts-walk'));
     if (!opened.ok) throw new Error(opened.refusal);
     expect(opened.key).toBe('creature-facts-walk');
-    expect(opened.draft.workspace).toEqual({
-      hexRadius: 6,
-      horizontalLimit: 12,
-    });
+    // The twelve walkable cells the file listed are the one region's cells.
+    expect(opened.draft).not.toHaveProperty('workspace');
+    expect(opened.draft.room.regions.map((r) => r.name)).toEqual([
+      'The Watch Post',
+    ]);
+    expect(floorCellCount(opened.draft)).toBe(12);
     const saved = exportDraftYaml(
       { draft: opened.draft, scope: opened.scope },
       opened.key
@@ -383,19 +419,19 @@ describe('the draft as a file (rpg-project#578)', () => {
     });
   });
 
-  it('reads Discovery Check Walk\'s radius-9 workspace (before: "Could not import: Unsupported room workspace extent.") and names the prop the studio cannot draw', () => {
+  it('reads Discovery Check Walk (before: "Could not import: Unsupported room workspace extent.") and names the prop the studio cannot draw', () => {
     const yaml = reference('reference-discovery-checks');
-    // The workspace is read as written once the uncatalogued props are out
-    // of the way: the extent is no longer the refusal.
+    // The room is read as written once the uncatalogued props are out of the
+    // way: no extent is stored any more, so none can be the refusal.
     const withoutUncatalogued = yaml
       .replace('dnd5e:props:scroll', 'dnd5e:props:books')
       .replace('dnd5e:props:reliquary', 'dnd5e:props:vase');
     const opened = readDraftYaml(withoutUncatalogued);
     if (!opened.ok) throw new Error(opened.refusal);
-    expect(opened.draft.workspace).toEqual({
-      hexRadius: 9,
-      horizontalLimit: 20,
-    });
+    expect(opened.draft).not.toHaveProperty('workspace');
+    expect(opened.draft.room.regions.map((r) => r.id)).toEqual([
+      'discovery-room',
+    ]);
     const saved = exportDraftYaml(
       { draft: opened.draft, scope: opened.scope },
       opened.key

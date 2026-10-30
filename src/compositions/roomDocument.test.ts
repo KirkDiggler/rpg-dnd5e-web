@@ -1,12 +1,12 @@
 import { createPopulatedStudioDocument } from '@/concepts/encounter-studio/fixtures/studioDocument';
 import { createMapLabel } from '@/concepts/world-building/mapLabelEdits';
 import {
-  createRoomLabel,
+  createRegion,
   setRegionLighting,
 } from '@/concepts/world-building/regionEdits';
 import {
   createRoomDraft,
-  resizeRoomWorkspace,
+  paintCells,
   stringifyRoomDraft,
   type RoomDraft,
   type RoomPropDeclaration,
@@ -32,13 +32,12 @@ const tableDeclaration: RoomPropDeclaration = {
 };
 
 /** One complete, valid room fixture: props with non-cardinal yaw and unequal
- * Y, nested groups, a support link, an enabled point light, an expanded
- * workspace, walkable cells, and both declaration maps. */
+ * Y, nested groups, a support link, an enabled point light, painted floor in
+ * two regions (one dimmed), and both declaration maps. */
 function richRoomDraft(): RoomDraft {
-  const draft = createRoomDraft(createEmptyScene('scene-rich'), 'room-rich');
+  let draft = createRoomDraft(createEmptyScene('scene-rich'), 'room-rich');
   draft.name = 'Room metadata 1090';
   draft.scene.name = 'Rich room';
-  draft.workspace = { hexRadius: 14, horizontalLimit: 28 };
   draft.scene.groups = [
     {
       id: 'group-corner',
@@ -81,13 +80,18 @@ function richRoomDraft(): RoomDraft {
       supportId: 'prop-table',
     },
   ];
-  draft.room.walkableHexes = [
+  draft = paintCells(draft, [
     { q: 0, r: 0 },
     { q: 1, r: 0 },
     { q: 0, r: 1 },
     { q: -2, r: 2 },
-    { q: 14, r: 0 },
-  ];
+  ]);
+  draft = createRegion(draft, 'room-rich-annex', 'Annex');
+  draft = setRegionLighting(
+    paintCells(draft, [{ q: 14, r: 0 }], 'room-rich-annex'),
+    'room-rich-annex',
+    0.4
+  );
   draft.room.propDeclarations = {
     'prop-table': tableDeclaration,
     'prop-books': {
@@ -250,28 +254,29 @@ describe('room snapshot document', () => {
     });
   }
 
-  it('upgrades only the historically written envelope 1 / draft 2 combination', () => {
-    const legacyRaw = legacyV1RoomDocument();
-    const migrated = decodeRoomDocumentJson(legacyRaw);
+  // A version 1 snapshot (draft 2) stores a walkable list, so it is refused
+  // with the rebuild sentence rather than upgraded (rpg-project#725).
+  it('refuses the historical envelope 1 / draft 2 snapshot: rebuild, no migration', () => {
+    expect(() => decodeRoomDocumentJson(legacyV1RoomDocument())).toThrow(
+      'This room snapshot was saved before regions were the floor (it is a version 1 snapshot): rebuild, no migration (rpg-project#725).'
+    );
+  });
 
-    expect(migrated.version).toBe(3);
-    expect(migrated.id).toBe('legacy-room');
-    expect(migrated.scene.name).toBe('Legacy cellar scene');
-    expect(migrated.scene.items[0]?.transform).toEqual({
-      x: -2.25,
-      y: 1.2,
-      z: 1.3,
-      rotationY: 0.37,
-    });
-    expect(migrated.room.walkableHexes).toContainEqual({ q: -3, r: 1 });
-    expect(migrated.room.propDeclarations['prop-table']).toEqual({
-      blocksMovement: true,
-      blocksLineOfSight: false,
-      footprint: { width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2 },
-    });
-    // Lossless upgrade: no monsters are invented and no start appears.
-    expect(migrated.room.monsterDeclarations).toEqual([]);
-    expect('partyStart' in migrated.room).toBe(false);
+  it('refuses a current snapshot that still carries a walkable list or a workspace, by name', () => {
+    const canonical = JSON.parse(encodeRoomDocument(richRoomDraft())) as {
+      draft: { room: Record<string, unknown> } & Record<string, unknown>;
+    };
+    const walkable = structuredClone(canonical);
+    walkable.draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    // Refused by name, in the sentence that says what replaced it.
+    expect(() => decodeRoomDocumentJson(JSON.stringify(walkable))).toThrow(
+      'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
+    );
+    const workspace = structuredClone(canonical);
+    workspace.draft.workspace = { hexRadius: 14, horizontalLimit: 28 };
+    expect(() => decodeRoomDocumentJson(JSON.stringify(workspace))).toThrow(
+      'room.workspace: the canvas is unbounded and the file carries no workspace (rpg-project#725); remove the key'
+    );
   });
 
   it('retains authored actors through the version 2 snapshot round trip', () => {
@@ -310,7 +315,6 @@ describe('room snapshot document', () => {
       const draftBody = structuredClone(canonical.draft);
       if (draftVersion === 1) {
         draftBody.version = 1;
-        delete draftBody.workspace;
         const room = draftBody.room as Record<string, unknown>;
         delete room.monsterDeclarations;
         delete room.partyStart;
@@ -333,11 +337,9 @@ describe('room snapshot document', () => {
 });
 
 it('preserves promoted room snapshots and scene-composition metadata through actual adapters', () => {
-  const room = resizeRoomWorkspace(
-    { draft: richRoomDraft(), scope: {} },
-    73,
-    48
-  ).draft;
+  // The workspace resize is retired (unbounded canvas, rpg-project#725); a
+  // far painted cell is what widens a room now.
+  const room = paintCells(richRoomDraft(), [{ q: -36, r: 23 }]);
   const labeled = createMapLabel(room, 'label', 'Kitchen', {
     x: 1.125,
     z: -2.75,
@@ -349,24 +351,31 @@ it('preserves promoted room snapshots and scene-composition metadata through act
   expect(decodeCompositionScene(composition)).toEqual(labeled.scene);
 });
 
-it('scene4 room snapshots intentionally preserve the whole draft only; scene composition retains optional lighting', () => {
+// Region lighting is gameplay now, in room.room.regions (rpg-project#725):
+// the snapshot carries it with the whole draft and the scene carries none.
+it('room snapshots preserve the whole draft, region lighting included; scene composition carries the scene only', () => {
   const document = createPopulatedStudioDocument();
   document.draft = setRegionLighting(
-    createRoomLabel(
-      document.draft,
-      'lighting-region',
-      'lighting-label',
-      'Room',
-      { x: 0, z: 0 }
-    ),
+    createRegion(document.draft, 'lighting-region', 'Room'),
     'lighting-region',
-    { background: 1 }
+    0.5
   );
+  const sceneVersion = document.draft.scene.version;
   const encoded = encodeRoomDocument(document.draft);
   const snapshot = JSON.parse(encoded);
   expect(snapshot.version).toBe(2);
   expect(snapshot.draft.version).toBe(3);
-  expect(snapshot.draft.scene.version).toBe(4);
+  expect(snapshot.draft.scene.version).toBe(sceneVersion);
+  expect(
+    snapshot.draft.room.regions.find(
+      (region: { id: string }) => region.id === 'lighting-region'
+    )
+  ).toEqual({
+    id: 'lighting-region',
+    name: 'Room',
+    lighting: { intensity: 0.5 },
+    cells: [],
+  });
   expect(snapshot).not.toHaveProperty('scope');
   expect(decodeRoomDocumentJson(encoded)).toEqual(document.draft);
   expect(encodeRoomDocument(decodeRoomDocumentJson(encoded))).toBe(encoded);

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createGroundBoundaryGeometry } from './groundBoundaryGeometry';
-import { ROOM_WORKSPACE_STEPS } from './roomDraft';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
+import { ROOM_WORKSPACE_STEPS } from './workspaceGeometry';
 
 function transformedPerimeter(geometry: THREE.BufferGeometry) {
   const position = geometry.getAttribute('position');

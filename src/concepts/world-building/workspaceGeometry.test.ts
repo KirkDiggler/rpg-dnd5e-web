@@ -102,12 +102,13 @@ describe('centered workspace authority', () => {
   it.each([
     [0, 1],
     [-1, 2],
-    [129, 1],
-    [1, 129],
+    // The derived grid's cap (rpg-project#725): sides <= 1024, <= 131072 cells.
+    [1025, 1],
+    [1, 1025],
     [1.5, 2],
     [NaN, 2],
     [Infinity, 1],
-    [128, 129],
+    [1024, 129],
   ])('refuses invalid dimensions before allocation: %s/%s', (w, h) => {
     expect(() => centeredRoomWorkspace(w, h)).toThrow(/integers/);
     expect(() =>
@@ -119,6 +120,13 @@ describe('centered workspace authority', () => {
         horizontalLimit: 12,
       })
     ).toThrow(/integers/);
+  });
+  it('accepts the derived grid cap exactly', () => {
+    expect(centeredRoomWorkspace(1024, 128)).toMatchObject({
+      widthHexes: 1024,
+      heightHexes: 128,
+    });
+    expect(centeredRoomWorkspace(1, 1024)).toMatchObject({ heightHexes: 1024 });
   });
   it('refuses invalid, untagged dimensions and false envelopes', () => {
     for (const bad of [

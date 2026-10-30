@@ -15,7 +15,7 @@
 # `temper` is the other asymmetry: the faction has a MIX (dealt once per member
 # as it enters the world), and `goblin-2` names ONE WORD that wins outright —
 # the mix is not dealt for it.
-version: 4
+version: 5
 key: sample-inheritance
 play: { void: transparent, lighting: bright, standing: centre-covered }
 factions:
@@ -52,7 +52,6 @@ room:
       hexRadius: 1,
       footprintFrame: owner-local-xz,
     }
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene:
     version: 1
     id: scene-1
@@ -61,17 +60,17 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes:
-      [
-        { q: 0, r: 0 },
-        { q: 1, r: 0 },
-        { q: 2, r: 0 },
-        { q: 0, r: 1 },
-        { q: -1, r: 1 },
-        { q: -1, r: 0 },
-        { q: 0, r: -1 },
-        { q: 1, r: -1 },
-      ]
+    regions:
+      - id: room-1-region
+        name: Inheritance
+        lighting: { intensity: 1 }
+        cells:
+          - r: -1
+            q: [[0, 1]]
+          - r: 0
+            q: [[-1, 2]]
+          - r: 1
+            q: [[-1, 0]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }

@@ -1,4 +1,4 @@
-import { createRoomLabel } from './regionEdits';
+import { createRegion } from './regionEdits';
 import { createRoomDraft, type RoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import type { StructuralWall } from './structuralWalls';
@@ -45,11 +45,8 @@ export function finishRoomFixture(two = false): RoomDraft {
     draft.room.walls.push(
       finishWall('divider', { x: 4, z: 0 }, { x: 4, z: 4 })
     );
-  const left = createRoomLabel(draft, 'left', 'left-label', 'Left', {
-    x: 2,
-    z: 2,
-  });
-  return two
-    ? createRoomLabel(left, 'right', 'right-label', 'Right', { x: 6, z: 2 })
-    : left;
+  // Regions list cells and name no wall face (rpg-project#725), so a region
+  // here is never wall-bound: its finish is carried and shown unapplied.
+  const left = createRegion(draft, 'left', 'Left');
+  return two ? createRegion(left, 'right', 'Right') : left;
 }

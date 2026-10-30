@@ -1,8 +1,6 @@
+import { createRegion } from '../../world-building/regionEdits';
 import {
-  createRoomLabel,
-  setExplicitRegionArea,
-} from '../../world-building/regionEdits';
-import {
+  paintCells,
   placeRoomMonster,
   setRoomPartyStart,
   validateRoomDocument,
@@ -45,32 +43,19 @@ export function keepRoomCells(room: KeepRoom): RoomHexCell[] {
   return cells;
 }
 
-function centreOf(cells: readonly RoomHexCell[]): WorldPoint {
-  const points = cells.map(layoutCellCenter);
-  return {
-    x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
-    z: points.reduce((sum, p) => sum + p.z, 0) / points.length,
-  };
-}
-
 /** THE KEEP, AS LAYOUT'S OVERVIEW READS IT (rpg-project#577). The 73 × 48
- * castle workspace (3,504 hexes, all floor) with eight explicit-area rooms,
+ * castle rectangle (3,504 hexes, all floor) with eight named regions painted
+ * over it (rpg-project#725: painting with a region reassigns its cells),
  * walls with doors between some of them, the castle cast placed in its rooms,
  * a few props and the party start in the gatehouse. Test and walk authority
- * only: a region here is an annotation, never membership. */
+ * only: a region here owns presentation, never mechanics. */
 export function createCastleKeepDocument(): RoomDraftDocument {
   const base = createCastleWorkspaceDocument();
   let draft = base.draft;
   for (const room of KEEP_ROOMS) {
     const cells = keepRoomCells(room);
-    draft = createRoomLabel(
-      draft,
-      `region-${room.id}`,
-      `label-${room.id}`,
-      room.text,
-      centreOf(cells)
-    );
-    draft = setExplicitRegionArea(draft, `region-${room.id}`, cells);
+    draft = createRegion(draft, `region-${room.id}`, room.text);
+    draft = paintCells(draft, cells, `region-${room.id}`);
   }
   const template = draft.room.walls![0];
   const wall = (

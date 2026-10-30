@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createLayoutTransform } from './layoutGeometry';
+import { regionLabelPoint } from '../world-building/regionLabel';
+import { toRows } from '../world-building/regionRuns';
+import type { RoomRegion } from '../world-building/roomDraft';
+import { createLayoutTransform, worldToClient } from './layoutGeometry';
 import { MapLabelOverlay } from './MapLabelOverlay';
 
 describe('MapLabelOverlay', () => {
@@ -74,56 +77,69 @@ describe('MapLabelOverlay', () => {
   });
 });
 
-it('keeps unresolved labels selectable with a visible warning and actionable title; notes have no region badge', () => {
+// A region's label is its name drawn at the centroid of its cells
+// (rpg-project#725); notes are linked to no region and carry no warning.
+it('draws each painted region by name at its centroid and selects it; an unpainted region has no label', () => {
   const transform = createLayoutTransform(
     { left: 0, top: 0, width: 800, height: 600 },
     { center: { x: 0, z: 0 }, zoom: 1 },
     12
   )!;
+  const kitchen: RoomRegion = {
+    id: 'kitchen',
+    name: 'Kitchen',
+    lighting: { intensity: 1 },
+    cells: toRows([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]),
+  };
+  const onSelect = vi.fn();
+  const onSelectRegion = vi.fn();
   const { container } = render(
     <svg>
       <MapLabelOverlay
-        labels={[
-          { id: 'room-label', text: 'Kitchen', location: { x: 0, z: 0 } },
-          { id: 'note', text: 'Note', location: { x: 2, z: 0 } },
-        ]}
+        labels={[{ id: 'note', text: 'Note', location: { x: 2, z: 0 } }]}
         transform={transform}
-        selectedId="room-label"
+        selectedId={null}
         preview={null}
-        onSelect={vi.fn()}
+        onSelect={onSelect}
         regions={[
+          kitchen,
           {
-            id: 'region',
-            labelId: 'room-label',
-            boundary: { kind: 'automatic' },
+            id: 'unpainted',
+            name: 'Cellar',
+            lighting: { intensity: 1 },
+            cells: [],
           },
         ]}
-        resolutions={[
-          { id: 'region', status: 'unresolved', reason: 'unbound' },
-        ]}
+        selectedRegionId="kitchen"
+        onSelectRegion={onSelectRegion}
       />
     </svg>
   );
-  expect(
-    container.querySelector('[data-label-id="room-label"]')?.textContent
-  ).toMatch(/No enclosure accepted.*Kitchen ⚠/);
+  const label = container.querySelector('[data-region-label="kitchen"]')!;
+  expect(label.textContent).toBe('Kitchen');
+  const at = worldToClient(regionLabelPoint(kitchen)!, transform)!;
+  expect(Number(label.getAttribute('x'))).toBeCloseTo(at.x);
+  expect(Number(label.getAttribute('y'))).toBeCloseTo(at.y);
+  expect(container.querySelector('[data-region-label="unpainted"]')).toBeNull();
   expect(container.querySelector('[data-label-id="note"]')?.textContent).toBe(
     'Note'
   );
-  expect(
-    screen
-      .getByRole('button', { name: 'Select map label Kitchen' })
-      .getAttribute('aria-pressed')
-  ).toBe('true');
+  const button = screen.getByRole('button', { name: 'Select region Kitchen' });
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.pointerDown(button, { button: 0 });
+  fireEvent.keyDown(button, { key: 'Enter' });
+  expect(onSelectRegion).toHaveBeenCalledTimes(2);
+  expect(onSelectRegion).toHaveBeenLastCalledWith('kitchen');
+  expect(onSelect).not.toHaveBeenCalled();
 });
 it("a region label is drawn in its region's colour; a note is not", () => {
   const { container } = render(
     <svg>
       <MapLabelOverlay
-        labels={[
-          { id: 'hall-label', text: 'Hall', location: { x: 0, z: 0 } },
-          { id: 'note', text: 'Note', location: { x: 1, z: 0 } },
-        ]}
+        labels={[{ id: 'note', text: 'Note', location: { x: 1, z: 0 } }]}
         transform={
           createLayoutTransform(
             { left: 0, top: 0, width: 600, height: 600 },
@@ -137,15 +153,9 @@ it("a region label is drawn in its region's colour; a note is not", () => {
         regions={[
           {
             id: 'hall',
-            labelId: 'hall-label',
-            boundary: { kind: 'explicit', cells: [{ q: 0, r: 0 }] },
-          },
-        ]}
-        resolutions={[
-          {
-            id: 'hall',
-            status: 'resolved',
-            area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+            name: 'Hall',
+            lighting: { intensity: 1 },
+            cells: toRows([{ q: 0, r: 0 }]),
           },
         ]}
         colours={new Map([['hall', '#5cc98a']])}
@@ -153,9 +163,7 @@ it("a region label is drawn in its region's colour; a note is not", () => {
     </svg>
   );
   expect(
-    container
-      .querySelector('[data-label-id="hall-label"]')
-      ?.getAttribute('fill')
+    container.querySelector('[data-region-label="hall"]')?.getAttribute('fill')
   ).toBe('#5cc98a');
   expect(
     container.querySelector('[data-label-id="note"]')?.getAttribute('fill')
