@@ -35,6 +35,7 @@ import {
   translateWall,
 } from '../world-building/structuralWallEditing';
 import {
+  cellAtWorldPoint,
   centeredRoomWorkspace,
   rectangleOf,
   workspaceBounds,
@@ -2292,5 +2293,116 @@ describe('Layout hex selection', () => {
     fireEvent.pointerUp(surface(), { ...at(floor), pointerId: 7, button: 0 });
     expect(input.onSelectHex).not.toHaveBeenCalled();
     expect(input.onCommit).toHaveBeenCalledWith([floor], 'paint');
+  });
+});
+
+describe('Layout pick on map (rpg-project#720)', () => {
+  const floor = { q: 1, r: 1 };
+
+  it('a click on a cell is the waypoint, ahead of the select tool', () => {
+    const onPick = vi.fn<(cell: RoomHexCell) => void>();
+    const onSelectHex = vi.fn<(cell: RoomHexCell) => void>();
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        onSelectHex={onSelectHex}
+        routePick={{ mode: 'route', waypoints: [], onPick }}
+      />
+    );
+    fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(floor);
+    expect(onSelectHex).not.toHaveBeenCalled();
+  });
+
+  // The canvas is unbounded (rpg-project#725 R3): a pick past the drawn
+  // grid is a cell, as paint is.
+  it('a click past the drawn grid still picks that cell', () => {
+    const onPick = vi.fn<(cell: RoomHexCell) => void>();
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        routePick={{ mode: 'cell', waypoints: [], onPick }}
+      />
+    );
+    const far = { x: 400, z: 300 };
+    fireEvent.pointerDown(surface(), {
+      ...position(far),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(cellAtWorldPoint(far));
+  });
+
+  it('a click on a wall still picks the cell under it, not the wall', () => {
+    const onPick = vi.fn<(cell: RoomHexCell) => void>();
+    const select = vi.fn(() => true);
+    const input = props({ tool: 'select' });
+    render(
+      <LayoutViewport
+        {...input}
+        wallEditing={{
+          selectedId: null,
+          assetRef: input.draft.room.walls![0].appearance.assetRef,
+          snapEnabled: false,
+          endpointSnapEnabled: false,
+          rightAngleEnabled: false,
+          setRightAngle: vi.fn(() => true),
+          setEndpointSnap: vi.fn(() => true),
+          options: [],
+          select,
+          setAsset: vi.fn(() => true),
+          setSnap: vi.fn(() => true),
+          create: vi.fn(() => true),
+          edit: vi.fn(() => true),
+          remove: vi.fn(() => true),
+          reportRefusal: vi.fn(),
+        }}
+        routePick={{ mode: 'cell', waypoints: [], onPick }}
+      />
+    );
+    const wall = surface().querySelector('line[data-wall-id="studio-wall"]')!;
+    fireEvent.pointerDown(wall, {
+      ...position({ x: 0, z: -3 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('draws the route picked so far as numbered waypoints', () => {
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        routePick={{
+          mode: 'route',
+          waypoints: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+            { q: 1, r: 1 },
+          ],
+          onPick: vi.fn(),
+        }}
+      />
+    );
+    const overlay = screen.getByTestId('route-pick-overlay');
+    expect(
+      Array.from(overlay.querySelectorAll('[data-route-waypoint] text')).map(
+        (t) => t.textContent
+      )
+    ).toEqual(['1', '2', '3']);
+  });
+
+  it('no pick, no overlay and no capture', () => {
+    const onSelectHex = vi.fn<(cell: RoomHexCell) => void>();
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        onSelectHex={onSelectHex}
+      />
+    );
+    expect(screen.queryByTestId('route-pick-overlay')).toBeNull();
+    fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
+    expect(onSelectHex).toHaveBeenCalledExactlyOnceWith(floor);
   });
 });

@@ -43,7 +43,8 @@ describe('StudioEndings (rpg-project#578)', () => {
       'Ending when form'
     ) as HTMLSelectElement;
     const values = [...form.options].map((option) => option.value);
-    expect(values).toEqual(['', 'fact', 'round', 'down', 'stance']);
+    // `not` follows the forms everywhere a predicate is (rpg-project#719).
+    expect(values).toEqual(['', 'fact', 'round', 'down', 'stance', 'not']);
     expect(values).not.toContain('holds');
     expect(values).not.toContain('none');
   });

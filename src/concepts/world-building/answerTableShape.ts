@@ -88,7 +88,13 @@ import {
   whenShapeRefusal,
   type SearchHeading,
 } from '@/author/answerVocabulary';
+import { PREDICATE_SHAPE } from '@/author/factionVocabulary';
 import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
+import {
+  NOT_OF_NOT_REFUSAL,
+  OPTION_REQUIRES_FORMS,
+  type OptionRequires,
+} from './predicateNot';
 
 /** One cell of the room, as its walkable hexes are written: axial. */
 export interface AnswerCellShape {
@@ -1039,7 +1045,7 @@ export interface AnswerApproachShape {
  * speaker knows, or a placed prop the speaker carries. Exactly one form, and
  * only these two — `round`, `down` and `stance` answer "when", not "who may
  * say this". */
-export type OptionRequiresShape = { fact: string } | { holds: string };
+export type OptionRequiresShape = OptionRequires;
 
 /** One option as written (`dungeonspec.OptionSpec`): an id, the line, the
  * approaches through its check, what gates it, and what is answered on each
@@ -1097,9 +1103,10 @@ export function optionDuplicateRefusal(id: string, previous: number): string {
 export function optionEmptyVerdictRefusal(verdict: string): string {
   return `\`${verdict}\` lists nothing — omit it, or write what is answered`;
 }
-/** `grammar.optionRequires`: a predicate form that is not fact or holds. */
+/** `grammar.optionRequires`: a predicate form that is not fact or holds,
+ * or `not` of one (rpg-project#719). */
 export function optionRequiresFormRefusal(form: string): string {
-  return `an option requires { fact: <id> } or { holds: <prop id> }, and \`${form}\` is neither`;
+  return `${OPTION_REQUIRES_FORMS}, and \`${form}\` is none of them`;
 }
 /** `grammar.optionRequires`: a holding of a prop the room does not place. */
 export function optionHoldsNotAPropRefusal(id: string): string {
@@ -1243,16 +1250,32 @@ function validateApproaches(
   });
 }
 
-/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`. A real
- * predicate of another form is refused BY NAME with the engine's sentence,
- * since the author wrote something meaningful in the wrong place. */
+/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`, or `{ not:
+ * }` one of them (rpg-project#719). A real predicate of another form is
+ * refused BY NAME with the engine's sentence, since the author wrote
+ * something meaningful in the wrong place. */
 function validateOptionRequires(
   value: unknown,
   path: string
 ): OptionRequiresShape {
-  const shape = 'an option requires { fact: <id> } or { holds: <prop id> }';
+  const shape = OPTION_REQUIRES_FORMS;
   if (!isMapping(value) || Object.keys(value).length !== 1) fail(path, shape);
   const form = Object.keys(value)[0];
+  if (form === 'not') {
+    const inner = value.not;
+    // `{ not: {} }` or `{ not: }`: the engine's decode refuses it as a
+    // predicate that says nothing (`PredicateSpec.UnmarshalYAML`).
+    if (
+      inner === null ||
+      inner === undefined ||
+      (isMapping(inner) && Object.keys(inner).length === 0)
+    )
+      fail(`${path}.not`, `this predicate says nothing — ${PREDICATE_SHAPE}`);
+    if (isMapping(inner) && Object.keys(inner).length === 1 && 'not' in inner)
+      fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
+    const read = validateOptionRequires(inner, `${path}.not`);
+    return { not: read as Exclude<OptionRequiresShape, { not: unknown }> };
+  }
   if (OTHER_PREDICATE_FORMS.includes(form))
     fail(path, optionRequiresFormRefusal(form));
   if (form !== 'fact' && form !== 'holds') fail(path, shape);

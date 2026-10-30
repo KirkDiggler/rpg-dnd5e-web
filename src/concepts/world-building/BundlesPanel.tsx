@@ -22,6 +22,10 @@ import { parse, stringify } from 'yaml';
 import type { AnswerEntryShape } from './answerTableShape';
 import { groupRefusals } from './bundles';
 import { BundleParamsContext } from './bundlesContext';
+import { RouteEditor } from './RouteEditor';
+import { isRouteValue } from './routeEdits';
+import { useLatest, useRoutePicking } from './routePicking';
+import { bundleRowPaths } from './rowRefusals';
 import { AnswerEntryRow, EntryList } from './SitePolicies';
 import type { SiteBundle, SiteBundles, SiteScope } from './siteScope';
 
@@ -63,6 +67,8 @@ function ParamsEditor({
 }) {
   const names = Object.keys(params);
   const [renaming, setRenaming] = useState<Record<string, string>>({});
+  const picking = useRoutePicking();
+  const changeLatest = useLatest(onChange);
   const rename = (from: string) => {
     const to = (renaming[from] ?? from).trim();
     setRenaming((was) => {
@@ -105,7 +111,20 @@ function ParamsEditor({
                   onBlur={() => rename(name)}
                 />
                 {route ? (
-                  <span className="wb-help">default: a route</span>
+                  isRouteValue(value) ? (
+                    // A ROUTE DEFAULT (rpg-project#720): its waypoints as
+                    // chips, edited and picked the way a row's route is.
+                    <RouteEditor
+                      mode="route"
+                      route={value}
+                      label={`default of ${name} in ${id}`}
+                      onChange={(next) =>
+                        next.length > 0 && onChange({ ...params, [name]: next })
+                      }
+                    />
+                  ) : (
+                    <span className="wb-help">default: a route</span>
+                  )
                 ) : (
                   <input
                     aria-label={`Default of ${name} in ${id}`}
@@ -133,6 +152,26 @@ function ParamsEditor({
                   />
                   none
                 </label>
+                {picking && !route && (
+                  // The `$path` slot takes a route picked on the Layout, as
+                  // its default; a `use:` row may still give its own.
+                  <button
+                    type="button"
+                    aria-label={`Pick a route on the map as the default of ${name} in ${id}`}
+                    onClick={() =>
+                      picking.arm({
+                        mode: 'route',
+                        label: `default of ${name} in ${id}`,
+                        route: [],
+                        onDone: (picked) =>
+                          picked.length > 0 &&
+                          changeLatest({ ...params, [name]: picked }),
+                      })
+                    }
+                  >
+                    Pick a route
+                  </button>
+                )}
                 <button
                   type="button"
                   className="wb-danger"
@@ -298,6 +337,7 @@ function BundleCard({
                 key={key}
                 trigger="time"
                 label={`${id} row ${index + 1}`}
+                at={bundleRowPaths(id, index)}
                 entry={row}
                 collapsed
                 onCommit={(next) =>

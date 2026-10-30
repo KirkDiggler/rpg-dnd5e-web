@@ -1782,7 +1782,7 @@ describe('options on a binding (rpg-project#569)', () => {
           })
       )
     ).toThrow(
-      'options[0].requires: an option requires { fact: <id> } or { holds: <prop id> }, and `round` is neither'
+      'options[0].requires: an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, and `round` is none of them'
     );
     expect(refusal((d) => (goblin(d)[0].failure = []))).toThrow(
       'options[0].failure: `failure` lists nothing — omit it, or write what is answered'
@@ -1823,6 +1823,12 @@ describe('options on a binding (rpg-project#569)', () => {
     expect(
       refusal((d) => (goblin(d)[1].requires = { holds: 'altar' }))
     ).toThrow('"altar" is a prop nobody can pick up, so nobody can hold it');
+    // A `not` of a holding names its prop one level down (rpg-project#719).
+    expect(
+      refusal((d) => (goblin(d)[1].requires = { not: { holds: 'crown' } }))
+    ).toThrow(
+      'Monster binding for goblin-1 options[1].requires.not.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
+    );
     expect(
       refusal(
         (d) =>

@@ -17,6 +17,7 @@ import type { AnswerTableShape, OptionShape } from './answerTableShape';
 import { wordRowsOf } from './bundles';
 import { walkFacts } from './factWalk';
 import { documentPlacementNames } from './placementNames';
+import { requiresRead } from './predicateNot';
 import { sideName } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
 
@@ -89,8 +90,10 @@ export function factIndexOf(
         label: `${owner}: ${option.id}`,
         target,
       };
-      if (option.requires && 'fact' in option.requires)
-        read(option.requires.fact, { ...use, kind: 'requires' });
+      if (option.requires) {
+        const gate = requiresRead(option.requires);
+        if ('fact' in gate) read(gate.fact, { ...use, kind: 'requires' });
+      }
       for (const entry of [
         ...(option.success ?? []),
         ...(option.failure ?? []),
@@ -98,8 +101,9 @@ export function factIndexOf(
         if (entry.fact !== undefined) write(entry.fact, use);
     }
   };
-  const predicate = (p: PredicateDoc | undefined, use: FactUse) => {
-    if (p !== undefined && 'fact' in p) read(p.fact, use);
+  const predicate = (p: PredicateDoc | undefined, use: FactUse): void => {
+    if (p !== undefined && 'not' in p) predicate(p.not, use);
+    else if (p !== undefined && 'fact' in p) read(p.fact, use);
   };
 
   const scope = document.scope;

@@ -11,6 +11,7 @@ import { doorAlongWall } from '../world-building/studioDoorEditing';
 import {
   clientToWorld,
   createLayoutTransform,
+  layoutCellCenter,
   layoutCellCorners,
   layoutWorkspaceCells,
   MAX_LAYOUT_ZOOM,
@@ -69,6 +70,82 @@ const withinWorld = (point: WorldPoint): boolean =>
   Number.isFinite(point.z) &&
   Math.abs(point.x) <= MAX_WORLD_COORD &&
   Math.abs(point.z) <= MAX_WORLD_COORD;
+
+/** The route being picked, drawn over the map: each leg from waypoint to
+ * waypoint, the closing leg dashed (a route loops), and each waypoint a
+ * numbered disc on its cell (rpg-project#720). Presentation only — the legs
+ * are straight lines between centres, not the engine's hex line. */
+function LayoutRouteOverlay({
+  waypoints,
+  loop,
+  transform,
+}: {
+  waypoints: readonly RoomHexCell[];
+  loop: boolean;
+  transform: string | undefined;
+}): React.JSX.Element {
+  const centres = waypoints.map(layoutCellCenter);
+  const legs = centres.slice(1).map((to, i) => [centres[i]!, to] as const);
+  const closing =
+    loop && centres.length > 2
+      ? ([centres[centres.length - 1]!, centres[0]!] as const)
+      : null;
+  return (
+    <g
+      transform={transform}
+      pointerEvents="none"
+      aria-label="Route being picked"
+      data-testid="route-pick-overlay"
+    >
+      {legs.map(([from, to], i) => (
+        <line
+          key={`leg-${i}`}
+          x1={from.x}
+          y1={from.z}
+          x2={to.x}
+          y2={to.z}
+          stroke="#ffd36e"
+          strokeWidth={3}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {closing && (
+        <line
+          x1={closing[0].x}
+          y1={closing[0].z}
+          x2={closing[1].x}
+          y2={closing[1].z}
+          stroke="#ffd36e"
+          strokeWidth={2}
+          strokeDasharray="6 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      {centres.map((centre, i) => (
+        <g key={`stop-${i}`} data-route-waypoint={i}>
+          <circle
+            cx={centre.x}
+            cy={centre.z}
+            r={0.42}
+            fill="#ffd36e"
+            stroke="#1b1300"
+            strokeWidth={0.05}
+          />
+          <text
+            x={centre.x}
+            y={centre.z + 0.17}
+            fontSize={0.48}
+            textAnchor="middle"
+            fill="#1b1300"
+            fontWeight="bold"
+          >
+            {i + 1}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
 
 type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
 
@@ -221,6 +298,7 @@ export function LayoutViewport({
   exits,
   concealedCells,
   frameTarget,
+  routePick,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -734,6 +812,21 @@ export function LayoutViewport({
     }
     setPreview([...gesture.cells.values()]);
   };
+  /** Pick on map (rpg-project#720): in the CAPTURE phase, so a creature,
+   * a label or a wall drawn on the cell never takes the click — the cell is
+   * the answer, whatever stands on it. */
+  const routePickDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    if (!routePick || event.button !== 0 || event.isPrimary === false) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const world = clientToWorld(
+      pointerPoint(event),
+      eventTransform(event.currentTarget)
+    );
+    // Unbounded like paint (rpg-project#725 R3): any cell is a pick.
+    const cell = world ? cellAtWorldPoint(world) : null;
+    if (cell) routePick.onPick(cell);
+  };
   const pointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const active = gestureRef.current;
     if (active && active.pointerId !== event.pointerId) return;
@@ -1062,6 +1155,7 @@ export function LayoutViewport({
       viewBox={
         transform && bounds ? `0 0 ${bounds.width} ${bounds.height}` : undefined
       }
+      onPointerDownCapture={routePick ? routePickDown : undefined}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
@@ -1104,13 +1198,17 @@ export function LayoutViewport({
     >
       <title>Layout floor surface</title>
       <desc>
-        {tool === 'wall'
-          ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
-          : tool === 'select'
-            ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
-            : tool === 'label' || labelEditing?.active
-              ? 'Select and drag map labels. When placement is armed, click on the map or press Enter to place at the view center.'
-              : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+        {routePick
+          ? routePick.mode === 'cell'
+            ? 'Click the cell to walk to. Escape cancels.'
+            : 'Click cells in walking order; the route loops back to its first waypoint. Escape cancels.'
+          : tool === 'wall'
+            ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
+            : tool === 'select'
+              ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
+              : tool === 'label' || labelEditing?.active
+                ? 'Select and drag map labels. When placement is armed, click on the map or press Enter to place at the view center.'
+                : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -1256,6 +1354,13 @@ export function LayoutViewport({
           interactive={tool === 'select' && !!wallEditing}
           preview={wallPreview}
           layer="handles"
+        />
+      )}
+      {transform && routePick && (
+        <LayoutRouteOverlay
+          waypoints={routePick.waypoints}
+          loop={routePick.mode === 'route'}
+          transform={worldTransform}
         />
       )}
     </svg>
