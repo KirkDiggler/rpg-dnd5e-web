@@ -141,13 +141,7 @@ export type StudioSocialSection =
   | 'tables'
   | 'facts';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
-export type LayoutTool =
-  | LayoutFloorTool
-  | 'select'
-  | 'wall'
-  | 'label'
-  | 'door'
-  | 'region';
+export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label' | 'door';
 
 export type StudioWallThumbnail =
   | { status: 'ready'; image: string }
@@ -198,7 +192,6 @@ export interface LayoutLabelEditing {
   active: boolean;
   placementText: string | null;
   /** Explicit creation choice; absent preserves legacy Note consumers. */
-  placementKind?: 'note' | 'room';
   selectedId: string | null;
   onSelect(id: string | null): void;
   onCreate(text: string, location: WorldPoint): boolean;
@@ -227,8 +220,6 @@ export interface LayoutViewportProps {
   /** A click on a region's name selects that region. */
   onSelectRegion?(id: string): void;
   patternStart?: WorldPoint;
-  regionTool?: LayoutFloorTool;
-  onExitRegionTool?(): void;
   onExitDoorTool?(): void;
   /** Owner generation: option/tool/view cancellation fences late releases. */
   intentEpoch?: number;

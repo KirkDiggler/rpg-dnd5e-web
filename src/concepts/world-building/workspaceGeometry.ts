@@ -395,6 +395,24 @@ export function workspaceCellAtPoint(
     null
   );
 }
+/** The cell under a world point anywhere on the unbounded canvas
+ * (rpg-project#725 R3): the same rounding and closed-boundary tie-break as
+ * `workspaceCellAtPoint`, with no grid to fall outside of. Null only for a
+ * point that is not finite. */
+export function cellAtWorldPoint(point: WorldPos): RoomHexCell | null {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.z)) return null;
+  const cube = worldToCube(point, HEX_SIZE);
+  const first = { q: cube.x || 0, r: cube.z || 0 };
+  if (inHex(point, first, true)) return first;
+  const ties = [
+    first,
+    ...HEX_DIRECTIONS.map((d) => ({
+      q: cube.x + d.x || 0,
+      r: cube.z + d.z || 0,
+    })),
+  ].sort((a, b) => a.r - b.r || a.q - b.q);
+  return ties.find((c) => inHex(point, c)) ?? first;
+}
 export function containsWorkspacePoint(
   workspace: RoomWorkspace,
   point: WorldPos

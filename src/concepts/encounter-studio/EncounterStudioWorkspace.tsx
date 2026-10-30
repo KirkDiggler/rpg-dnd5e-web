@@ -60,9 +60,9 @@ import {
   studioInspectionOf,
   type EncounterStudioSession,
   type EncounterStudioView,
-  type LayoutFloorTool,
   type LayoutFrame,
   type LayoutTool,
+  type RoomHexCell,
   type StudioDoorEditing,
   type StudioHome,
   type StudioSocialSection,
@@ -154,9 +154,39 @@ function StudioSurface({
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
-  const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
     session.arrange?.kind === 'region' ? session.arrange.region : undefined;
+  /** THE ACTIVE REGION (rpg-project#725 R5): where Paint and Rectangle put
+   * the cells they brush, reassigning any another region held. The implicit
+   * region by default, and again when the chosen one is removed. Workspace
+   * state, never written to the document. */
+  const room = session.document.draft.room;
+  const [activeChoice, setActiveChoice] = useState<string | null>(null);
+  const activeRegionId =
+    activeChoice !== null &&
+    room.regions.some((region) => region.id === activeChoice)
+      ? activeChoice
+      : room.implicitRegionId;
+  /** A region New region just created is made active once it is selected. */
+  const [activateCreated, setActivateCreated] = useState(false);
+  useEffect(() => {
+    if (!activateCreated || !selectedRegion) return;
+    setActiveChoice(selectedRegion.id);
+    setActivateCreated(false);
+  }, [activateCreated, selectedRegion]);
+  const createRegion = (name: string): boolean => {
+    if (!session.regionEditing.createRegion(name)) return false;
+    setActivateCreated(true);
+    setSidebarOpen(true);
+    return true;
+  };
+  const commitStroke = (
+    cells: readonly RoomHexCell[],
+    mode: 'paint' | 'erase'
+  ): boolean =>
+    mode === 'paint'
+      ? session.commitFloor(cells, mode, activeRegionId)
+      : session.commitFloor(cells, mode);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sections, setSections] = useState<
@@ -180,9 +210,6 @@ function StudioSurface({
     if (next !== layoutTool) session.cancelTransients();
     onLayoutToolChange(next);
   };
-  /** Which label the Build home's label tool places: New region arms a
-   * room, Note and Add a note arm a note. */
-  const [labelKind, setLabelKind] = useState<'note' | 'room'>('note');
   const labels = useStudioLabels(
     session,
     view,
@@ -191,8 +218,7 @@ function StudioSurface({
     () => {
       changeTool('select');
       showSection('inspector');
-    },
-    labelKind
+    }
   );
   const startLabel = (): void => {
     if (session.doorEditing.active) session.doorEditing.setActive(false);
@@ -204,7 +230,6 @@ function StudioSurface({
    * the inspector while armed. */
   const armTool = (next: 'wall' | 'door' | 'label'): void => {
     if (next === 'label') {
-      setLabelKind('note');
       startLabel();
       return;
     }
@@ -214,11 +239,6 @@ function StudioSurface({
       changeTool('wall');
     } else if (session.doorEditing.setActive(true)) onLayoutToolChange('door');
     setSidebarOpen(true);
-  };
-  /** New region: the room-label tool, as the retired Regions home armed it. */
-  const armRoomLabel = (): void => {
-    setLabelKind('room');
-    startLabel();
   };
   /** A request the Layout surface fits to its own size. */
   const [frameTarget, setFrameTarget] = useState<{
@@ -275,17 +295,6 @@ function StudioSurface({
   };
   const exitWall = (): void => {
     changeTool('select');
-  };
-  const exitRegion = (): void => {
-    changeTool('select');
-  };
-  /** Define explicit area: the region tool in Layout, armed for the
-   * selected region label, with its group at the top of the inspector. */
-  const defineRegion = (): void => {
-    labels.editing.onCancel();
-    changeTool('region');
-    setRegionTool('paint');
-    setSidebarOpen(true);
   };
   const changeHome = (next: StudioHome): void => {
     if (next === home) return;
@@ -534,8 +543,7 @@ function StudioSurface({
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
     if (session.doorEditing.active) session.doorEditing.setActive(false);
-    if (layoutTool === 'door' || layoutTool === 'region')
-      onLayoutToolChange('select');
+    if (layoutTool === 'door') onLayoutToolChange('select');
     session.cancelTransients();
     setRenaming(false);
     onViewChange(next);
@@ -677,42 +685,6 @@ function StudioSurface({
       <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
     ) : layoutTool === 'label' ? (
       labels.controls
-    ) : layoutTool === 'region' && selectedRegion ? (
-      <div
-        className="es-context-panel es-region-controls"
-        aria-label="Explicit region area controls"
-      >
-        <h2>
-          Explicit area ·{' '}
-          {session.arrange?.kind === 'label' ? session.arrange.label.text : ''}
-        </h2>
-        <p className="es-help">
-          Only region membership changes. Floor, walls and props stay untouched.
-          Drag, then release to apply once. Escape cancels.
-        </p>
-        <div className="es-buttons">
-          {(['paint', 'erase', 'rectangle'] as const).map((mode) => (
-            <button
-              type="button"
-              key={mode}
-              aria-pressed={regionTool === mode}
-              onClick={() => {
-                session.cancelTransients();
-                setRegionTool(mode);
-              }}
-            >
-              {mode === 'paint'
-                ? 'Paint region'
-                : mode === 'erase'
-                  ? 'Erase region'
-                  : 'Rectangle region'}
-            </button>
-          ))}
-          <button type="button" onClick={exitRegion}>
-            Done area editing
-          </button>
-        </div>
-      </div>
     ) : null;
 
   return (
@@ -1121,7 +1093,8 @@ function StudioSurface({
                 onOpenRegion={(regionId) => {
                   session.selectRegion(regionId);
                 }}
-                onDefineRegion={view === 'layout' ? defineRegion : undefined}
+                activeRegionId={activeRegionId}
+                onMakeActive={setActiveChoice}
               />
             )}
           </StudioSidebar>
@@ -1146,7 +1119,9 @@ function StudioSurface({
                     setSidebarOpen(true);
                     if (bounds) frameBounds(bounds);
                   }}
-                  onCreate={armRoomLabel}
+                  activeRegionId={activeRegionId}
+                  onActivate={setActiveChoice}
+                  onCreate={createRegion}
                   unappliedFinishes={unappliedFinishes}
                   onShowEntire={() =>
                     frameBounds(contentBounds(session.document.draft))
@@ -1160,7 +1135,7 @@ function StudioSurface({
                     tool={layoutTool}
                     frame={frame}
                     onFrameChange={onFrameChange}
-                    onCommit={session.commitFloor}
+                    onCommit={commitStroke}
                     labelEditing={labels.editing}
                     documentContext={session.document}
                     wallEditing={layoutWallEditing}
@@ -1175,8 +1150,6 @@ function StudioSurface({
                         (r) => r.id === selectedRegion?.id
                       )?.marker
                     }
-                    regionTool={regionTool}
-                    onExitRegionTool={exitRegion}
                     onExitDoorTool={exitDoor}
                     intentEpoch={session.intentEpoch}
                     onExitWallTool={exitWall}
@@ -1482,7 +1455,6 @@ export function EncounterStudioWorkspace({
       studioPresentation={{
         home,
         view,
-        escapeKeepsSelection: layoutTool === 'region',
         render: renderPresentation,
       }}
     />

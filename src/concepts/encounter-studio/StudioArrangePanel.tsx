@@ -96,7 +96,8 @@ function SelectedArrange({
   session,
   selection,
   expanded,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   onConfigure,
   onMoveCreature,
   heading = true,
@@ -110,7 +111,9 @@ function SelectedArrange({
   selection: StudioArrangeSelection;
   onMoveCreature?(): void;
   expanded: boolean;
-  onDefineRegion?(): void;
+  /** The region paint lands in, and how to make another one it. */
+  activeRegionId?: string;
+  onMakeActive?(regionId: string): void;
   onConfigure?(section: StudioSocialSection): void;
 } & ArrangeComposition): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
@@ -303,10 +306,16 @@ function SelectedArrange({
         {selection.kind === 'region' && region && (
           <div className="es-region-controls" aria-label="Region cells">
             <p role="status">{regionStatus(selection.resolution)}</p>
-            {onDefineRegion && (
+            {onMakeActive && (
               <div className="es-buttons">
-                <button type="button" onClick={onDefineRegion}>
-                  Paint this region
+                <button
+                  type="button"
+                  aria-pressed={activeRegionId === region.id}
+                  onClick={() => onMakeActive(region.id)}
+                >
+                  {activeRegionId === region.id
+                    ? 'Active · Paint lands here'
+                    : 'Make active'}
                 </button>
               </div>
             )}
@@ -516,7 +525,8 @@ function SelectedArrange({
 export function StudioArrangePanel({
   session,
   expanded,
-  onDefineRegion,
+  activeRegionId,
+  onMakeActive,
   onConfigure,
   onMoveCreature,
   ...composition
@@ -524,7 +534,9 @@ export function StudioArrangePanel({
   session: EncounterStudioSession;
   onMoveCreature?(): void;
   expanded: boolean;
-  onDefineRegion?(): void;
+  /** The region paint lands in, and how to make another one it. */
+  activeRegionId?: string;
+  onMakeActive?(regionId: string): void;
   onConfigure?(section: StudioSocialSection): void;
 } & ArrangeComposition): React.JSX.Element | null {
   return session.arrange ? (
@@ -533,7 +545,8 @@ export function StudioArrangePanel({
       session={session}
       selection={session.arrange}
       expanded={expanded}
-      onDefineRegion={onDefineRegion}
+      activeRegionId={activeRegionId}
+      onMakeActive={onMakeActive}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
       {...composition}

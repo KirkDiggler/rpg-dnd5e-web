@@ -447,10 +447,23 @@ export function cellsInWorldRectangle(
   start: WorldPos,
   end: WorldPos
 ): RoomHexCell[] {
-  const minX = Math.min(start.x, end.x);
-  const maxX = Math.max(start.x, end.x);
-  const minZ = Math.min(start.z, end.z);
-  const maxZ = Math.max(start.z, end.z);
+  if (![start.x, start.z, end.x, end.z].every(Number.isFinite)) return [];
+  // Absorb only screen/world roundtrip error at inclusive centre boundaries,
+  // as the grid-bound selection always did.
+  const epsilon =
+    16 *
+    Number.EPSILON *
+    Math.max(
+      1,
+      Math.abs(start.x),
+      Math.abs(start.z),
+      Math.abs(end.x),
+      Math.abs(end.z)
+    );
+  const minX = Math.min(start.x, end.x) - epsilon;
+  const maxX = Math.max(start.x, end.x) + epsilon;
+  const minZ = Math.min(start.z, end.z) - epsilon;
+  const maxZ = Math.max(start.z, end.z) + epsilon;
   // Pointy-top axial: z = 1.5 r, x = sqrt3 (q + r/2) at HEX_SIZE.
   const rowStep = 1.5 * HEX_SIZE;
   const colStep = Math.sqrt(3) * HEX_SIZE;

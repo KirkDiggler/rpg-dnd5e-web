@@ -330,6 +330,81 @@ describe('StudioInspector', () => {
     expect(props.onOpenRegion).toHaveBeenCalledWith('hall');
   });
 
+  // The hex view names the region a cell is in and offers to make it the
+  // region Paint brushes into (rpg-project#725 R5).
+  it('hex view makes the region at the cell the active one', () => {
+    const session = createFakeStudioSession();
+    let draft = createRegion(session.document.draft, 'hall', 'Hall');
+    draft = paintCells(draft, [{ q: 0, r: 0 }], 'hall');
+    const onMakeActive = vi.fn();
+    inspector(
+      selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'hex', cell: { q: 0, r: 0 } }
+      ),
+      { onMakeActive, activeRegionId: draft.room.implicitRegionId }
+    );
+    const view = within(region());
+    expect(view.getByText(/Region: Hall/)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Make Hall active' }));
+    expect(onMakeActive).toHaveBeenCalledExactlyOnceWith('hall');
+  });
+
+  // The region view (rpg-project#725): its name — the label on the map — and
+  // its lighting in one form, its paint status, Make active, and Remove
+  // except for the implicit region.
+  it('region view shows name, lighting, paint status, Make active and Remove', () => {
+    const session = createFakeStudioSession();
+    let draft = createRegion(session.document.draft, 'hall', 'Hall');
+    draft = paintCells(
+      draft,
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+      'hall'
+    );
+    draft = setRegionLighting(draft, 'hall', 0.4);
+    const onMakeActive = vi.fn();
+    const hall = selected(
+      { ...session, document: { ...session.document, draft } },
+      { kind: 'region', id: 'hall' }
+    );
+    inspector(hall, {
+      onMakeActive,
+      activeRegionId: draft.room.implicitRegionId,
+    });
+    const view = within(region());
+    expect(view.getByRole('heading', { level: 2, name: 'Hall' })).toBeTruthy();
+    expect((view.getByLabelText('Region name') as HTMLInputElement).value).toBe(
+      'Hall'
+    );
+    expect(
+      (view.getByLabelText('Lighting (%)') as HTMLInputElement).value
+    ).toBe('40');
+    expect(view.getByText('Painted · 2 hexes')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Remove region' })).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Make active' }));
+    expect(onMakeActive).toHaveBeenCalledExactlyOnceWith('hall');
+    cleanup();
+    inspector(hall, { onMakeActive, activeRegionId: 'hall' });
+    expect(
+      within(region())
+        .getByRole('button', { name: 'Active · Paint lands here' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    cleanup();
+    inspector(
+      selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'region', id: draft.room.implicitRegionId }
+      )
+    );
+    expect(
+      within(region()).queryByRole('button', { name: 'Remove region' })
+    ).toBeNull();
+  });
+
   it('hex view with no region says none is drawn', () => {
     inspector(
       selected(createFakeStudioSession(), { kind: 'hex', cell: { q: 0, r: 0 } })

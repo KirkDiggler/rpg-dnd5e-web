@@ -13,6 +13,8 @@ import {
   createLayoutTransform,
   layoutCellCorners,
   layoutWorkspaceCells,
+  MAX_LAYOUT_ZOOM,
+  MIN_LAYOUT_ZOOM,
   panLayoutFrame,
   pickLayoutCell,
   zoomLayoutFrame,
@@ -21,6 +23,7 @@ import {
 } from './layoutGeometry';
 import type {
   LayoutFloorTool,
+  LayoutFrame,
   LayoutViewportProps,
   RoomHexCell,
   StructuralWall,
@@ -30,7 +33,7 @@ import type {
   WorldPoint,
 } from './studioSession';
 
-import { floorCells, regionCells } from '../world-building/roomDraft';
+import { cellsInWorldRectangle, floorCells } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
   snapWallEndpoint,
@@ -46,18 +49,26 @@ import {
 } from '../world-building/wallAngleConstraint';
 import { snapPerpendicularCorner } from '../world-building/wallCornerJoins';
 import {
-  containsWorkspacePoint,
+  cellAtWorldPoint,
   rectangleOf,
   workspaceBounds,
-  workspaceCellAtPoint,
 } from '../world-building/workspaceGeometry';
-import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+import { MAX_WORLD_COORD } from '../world-building/worldBounds';
 import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { regionOverview } from './overviewColours';
 import { frameOf } from './overviewFrame';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
+
+/** A point an author may place a note at: finite and within the world
+ * bound. The canvas is unbounded (rpg-project#725 R3), so no grid edge
+ * refuses it. */
+const withinWorld = (point: WorldPoint): boolean =>
+  Number.isFinite(point.x) &&
+  Number.isFinite(point.z) &&
+  Math.abs(point.x) <= MAX_WORLD_COORD &&
+  Math.abs(point.z) <= MAX_WORLD_COORD;
 
 type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
 
@@ -98,15 +109,6 @@ type Gesture = {
   client: ClientPoint;
   moved: boolean;
   commitFloor: LayoutViewportProps['onCommit'];
-  /** The region tool's stroke (rpg-project#725 R5): paint reassigns the
-   * stroked cells to this region; erase hands this region's stroked cells
-   * back to the implicit region, so only membership changes. */
-  region?: {
-    id: string;
-    mode: LayoutFloorTool;
-    implicitId: string;
-    owned: ReadonlySet<string>;
-  };
   wall?: {
     source?: StructuralWall;
     endpoint?: 'start' | 'end';
@@ -207,8 +209,6 @@ export function LayoutViewport({
   selectedRegion,
   onSelectRegion,
   patternStart,
-  regionTool = 'paint',
-  onExitRegionTool,
   onExitDoorTool,
   intentEpoch,
   onExitWallTool,
@@ -236,8 +236,6 @@ export function LayoutViewport({
   doorEditingRef.current = doorEditing;
   const doorModeRef = useRef({ tool, onExitDoorTool });
   doorModeRef.current = { tool, onExitDoorTool };
-  const regionModeRef = useRef({ tool, onExitRegionTool });
-  regionModeRef.current = { tool, onExitRegionTool };
   const labelEditingRef = useRef(labelEditing);
   labelEditingRef.current = labelEditing;
 
@@ -288,8 +286,6 @@ export function LayoutViewport({
         labelEditingRef.current?.onCancel();
         if (doorModeRef.current.tool === 'door')
           doorModeRef.current.onExitDoorTool?.();
-        if (regionModeRef.current.tool === 'region')
-          regionModeRef.current.onExitRegionTool?.();
         if (wallModeRef.current.tool === 'wall')
           wallModeRef.current.onExitWallTool?.();
       }
@@ -314,23 +310,15 @@ export function LayoutViewport({
     wallEditing?.assetRef,
     wallEditing?.snapEnabled,
     hasWallEditing,
-    regionTool,
     labelEditing?.active,
     abandon,
   ]);
 
   useLayoutEffect(() => {
-    // Linked projection changes caused by selecting a label must not cancel
-    // that initiating label drag. Only a region gesture owns this target fence.
-    const region = gestureRef.current?.region;
-    if (region && region.id !== selectedRegion?.id) abandon();
-  }, [selectedRegion?.id, abandon]);
-
-  useLayoutEffect(() => {
     // Choosing an existing label cancels arming, not the grab that selected it.
     // Changing/canceling an armed placement still retires its live gesture.
     if (gestureRef.current?.label?.id === null) abandon();
-  }, [labelEditing?.placementText, labelEditing?.placementKind, abandon]);
+  }, [labelEditing?.placementText, abandon]);
 
   useLayoutEffect(() => {
     const gesture = gestureRef.current?.door;
@@ -346,10 +334,15 @@ export function LayoutViewport({
   }, [doorEditing?.selectedTarget, abandon]);
   // The grid is derived from the content, never stored (rpg-project#725 R3).
   const presentationWorkspace = useContentWorkspace(draft);
-  const rectangleCells = useMemo(
-    () => createWorkspaceRectangleSelection(presentationWorkspace),
-    [presentationWorkspace]
-  );
+  // A rectangle selects every cell whose centre it holds, anywhere: the
+  // canvas is unbounded (R3). Past the paint cap it selects nothing.
+  const rectangleCells = (start: WorldPoint, end: WorldPoint) => {
+    try {
+      return cellsInWorldRectangle(start, end);
+    } catch {
+      return [];
+    }
+  };
   const fitExtent = useMemo(
     () =>
       rectangleOf(presentationWorkspace) !== null
@@ -357,6 +350,29 @@ export function LayoutViewport({
         : presentationWorkspace.horizontalLimit,
     [presentationWorkspace]
   );
+  // THE VIEW HOLDS STILL WHILE THE GRID GROWS (rpg-project#725 R3). Zoom is
+  // relative to the fit of the derived grid, so a grid that grows when paint
+  // nears its edge would shrink the map under the pointer. When the extent
+  // changes, the zoom is rescaled by the ratio of the two fits: the on-screen
+  // scale is kept, and the frame stays view state, never document state.
+  const extentRef = useRef(fitExtent);
+  const frameAfterGrowth = ((): LayoutFrame => {
+    if (!bounds || extentRef.current === fitExtent) return frame;
+    const before = createLayoutTransform(bounds, frame, extentRef.current);
+    const after = createLayoutTransform(bounds, frame, fitExtent);
+    if (!before || !after) return frame;
+    const zoom = Math.min(
+      MAX_LAYOUT_ZOOM,
+      Math.max(MIN_LAYOUT_ZOOM, (frame.zoom * before.scale) / after.scale)
+    );
+    return zoom === frame.zoom ? frame : { ...frame, zoom };
+  })();
+  useLayoutEffect(() => {
+    if (extentRef.current === fitExtent) return;
+    extentRef.current = fitExtent;
+    if (frameAfterGrowth !== frame) onFrameChange(frameAfterGrowth);
+  });
+  const viewFrame = frameAfterGrowth;
 
   useLayoutEffect(() => {
     const surface = surfaceRef.current;
@@ -370,10 +386,10 @@ export function LayoutViewport({
         event.deltaY *
         (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
       const next = zoomLayoutFrame(
-        frame,
+        viewFrame,
         { x: event.clientX, y: event.clientY },
         delta,
-        createLayoutTransform(rect, frame, fitExtent)
+        createLayoutTransform(rect, viewFrame, fitExtent)
       );
       if (next) onFrameChange(next);
     };
@@ -381,7 +397,7 @@ export function LayoutViewport({
     return (): void => {
       surface.removeEventListener('wheel', wheel);
     };
-  }, [frame, onFrameChange, fitExtent]);
+  }, [viewFrame, onFrameChange, fitExtent]);
 
   // Frame a requested region or the whole content, at this surface's size.
   const frameRequestRef = useRef({ onFrameChange, fitExtent });
@@ -410,7 +426,7 @@ export function LayoutViewport({
   }, [frameTarget]);
 
   const transform = bounds
-    ? createLayoutTransform(bounds, frame, fitExtent)
+    ? createLayoutTransform(bounds, viewFrame, fitExtent)
     : null;
   const workspace = useMemo(
     () => layoutWorkspaceCells(presentationWorkspace),
@@ -431,7 +447,11 @@ export function LayoutViewport({
   const eventTransform = (
     surface: SVGSVGElement
   ): ReturnType<typeof createLayoutTransform> =>
-    createLayoutTransform(surface.getBoundingClientRect(), frame, fitExtent);
+    createLayoutTransform(
+      surface.getBoundingClientRect(),
+      viewFrame,
+      fitExtent
+    );
   const sample = (
     event: ReactPointerEvent<SVGSVGElement>,
     gesture: Gesture
@@ -629,7 +649,7 @@ export function LayoutViewport({
         point.y >= rect.top &&
         point.x <= rect.left + rect.width &&
         point.y <= rect.top + rect.height &&
-        containsWorkspacePoint(presentationWorkspace, location);
+        withinWorld(location);
       if (location && gesture.label.valid) {
         gesture.label.location = location;
         if (gesture.label.id)
@@ -650,11 +670,7 @@ export function LayoutViewport({
       const cells = rectangleCells(gesture.anchor, world);
       gesture.cells = new Map(cells.map((cell) => [cellKey(cell), cell]));
     } else {
-      const cell = pickLayoutCell(
-        point,
-        currentTransform,
-        presentationWorkspace
-      );
+      const cell = pickLayoutCell(point, currentTransform);
       if (cell) gesture.cells.set(cellKey(cell), cell);
     }
     setPreview([...gesture.cells.values()]);
@@ -667,7 +683,6 @@ export function LayoutViewport({
       labelEditing?.onCancel();
       if (tool === 'wall') onExitWallTool?.();
       if (tool === 'door') onExitDoorTool?.();
-      if (tool === 'region') onExitRegionTool?.();
       return;
     }
     if (
@@ -749,7 +764,7 @@ export function LayoutViewport({
         ? endpoint
         : undefined;
     const labelId =
-      tool !== 'wall' && tool !== 'region' && !endpointHit
+      tool !== 'wall' && !endpointHit
         ? target?.closest('[data-label-id]')?.getAttribute('data-label-id')
         : null;
     const label =
@@ -758,10 +773,7 @@ export function LayoutViewport({
         : undefined;
     const labelMode =
       tool === 'label' ||
-      (tool !== 'select' &&
-        tool !== 'wall' &&
-        tool !== 'region' &&
-        labelEditing?.active);
+      (tool !== 'select' && tool !== 'wall' && labelEditing?.active);
     const placing =
       event.button === 0 && labelMode && !label && labelEditing?.placementText;
     const source =
@@ -769,7 +781,6 @@ export function LayoutViewport({
         ? draft.room.walls?.find((wall) => wall.id === wallId)
         : undefined;
     if (event.button === 0) {
-      if (tool === 'region' && (!regionEditing || !selectedRegion)) return;
       if (tool === 'wall' && (!wallEditing || !wallEditing.assetRef)) {
         wallEditing?.reportRefusal('Choose a wall appearance before drawing.');
         return;
@@ -778,15 +789,14 @@ export function LayoutViewport({
         wallEditing?.select(null);
         labelEditing?.onSelect(null);
         doorEditing?.select(null);
-        // Bare floor selects that hex; off the floor selects nothing.
-        const cell = workspaceCellAtPoint(presentationWorkspace, anchor);
+        // A click selects the hex under it anywhere on the unbounded canvas.
+        const cell = cellAtWorldPoint(anchor);
         if (cell) onSelectHex?.(cell);
         else onClearSelection?.();
         return;
       }
       if (labelMode && !label && !placing) return;
-      if (placing && !containsWorkspacePoint(presentationWorkspace, anchor))
-        return;
+      if (placing && !withinWorld(anchor)) return;
     }
     event.preventDefault();
     event.currentTarget.focus();
@@ -800,28 +810,13 @@ export function LayoutViewport({
             ? 'wall'
             : label || placing
               ? 'label'
-              : tool === 'region'
-                ? regionTool
-                : (tool as LayoutFloorTool),
+              : (tool as LayoutFloorTool),
       anchor,
       client: pointerPoint(event),
       moved: false,
       commitFloor: onCommit,
       cells: new Map(),
     };
-    if (
-      event.button === 0 &&
-      tool === 'region' &&
-      regionEditing &&
-      selectedRegion
-    ) {
-      gesture.region = {
-        id: selectedRegion.id,
-        mode: regionTool,
-        implicitId: draft.room.implicitRegionId,
-        owned: new Set(regionCells(selectedRegion).map(cellKey)),
-      };
-    }
     if (event.button === 0 && wallEditing && (tool === 'wall' || source)) {
       const editing = wallEditing;
       if (source) {
@@ -923,7 +918,7 @@ export function LayoutViewport({
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (gesture.tool === 'pan') {
       const next = panLayoutFrame(
-        frame,
+        viewFrame,
         gesture.anchor,
         pointerPoint(event),
         eventTransform(event.currentTarget)
@@ -967,14 +962,6 @@ export function LayoutViewport({
       ) {
         gesture.label.commit(location);
       }
-    } else if (gesture.region && cells.length > 0) {
-      const edit = gesture.region;
-      if (edit.mode !== 'erase') gesture.commitFloor(cells, 'paint', edit.id);
-      else {
-        const handed = cells.filter((cell) => edit.owned.has(cellKey(cell)));
-        if (handed.length > 0 && edit.id !== edit.implicitId)
-          gesture.commitFloor(handed, 'paint', edit.implicitId);
-      }
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
       gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
@@ -996,6 +983,12 @@ export function LayoutViewport({
       className="encounter-studio-layout"
       role="application"
       aria-label="Layout floor surface"
+      // The live view frame, as presentation state (never document state):
+      // zoom is relative to the derived grid's fit and rescales as the grid
+      // grows, so a reader mapping points needs the frame actually drawn.
+      data-frame-zoom={viewFrame.zoom}
+      data-frame-x={viewFrame.center.x}
+      data-frame-z={viewFrame.center.z}
       tabIndex={0}
       width="100%"
       height="100%"
@@ -1023,7 +1016,6 @@ export function LayoutViewport({
         labelEditing?.onCancel();
         if (tool === 'wall') onExitWallTool?.();
         if (tool === 'door') onExitDoorTool?.();
-        if (tool === 'region') onExitRegionTool?.();
       }}
       onKeyDown={(event): void => {
         if (event.target !== event.currentTarget) return;
@@ -1040,11 +1032,10 @@ export function LayoutViewport({
           event.key === 'Enter' &&
           tool !== 'wall' &&
           tool !== 'select' &&
-          tool !== 'region' &&
           labelEditing?.placementText
         ) {
           event.preventDefault();
-          if (containsWorkspacePoint(presentationWorkspace, frame.center)) {
+          if (withinWorld(frame.center)) {
             labelEditing.onCreate(labelEditing.placementText, frame.center);
           }
         }
@@ -1052,15 +1043,13 @@ export function LayoutViewport({
     >
       <title>Layout floor surface</title>
       <desc>
-        {tool === 'region'
-          ? `Drag to ${regionTool} region membership only; floor is unchanged.`
-          : tool === 'wall'
-            ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
-            : tool === 'select'
-              ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
-              : tool === 'label' || labelEditing?.active
-                ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
-                : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+        {tool === 'wall'
+          ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
+          : tool === 'select'
+            ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
+            : tool === 'label' || labelEditing?.active
+              ? 'Select and drag map labels. When placement is armed, click on the map or press Enter to place at the view center.'
+              : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -1116,17 +1105,9 @@ export function LayoutViewport({
               key={cellKey(cell)}
               data-preview-cell={cellKey(cell)}
               points={polygonPoints(cell)}
-              fill={
-                (tool === 'region' ? regionTool : tool) === 'erase'
-                  ? '#d47867'
-                  : '#67d8c2'
-              }
+              fill={tool === 'erase' ? '#d47867' : '#67d8c2'}
               fillOpacity={0.6}
-              stroke={
-                (tool === 'region' ? regionTool : tool) === 'erase'
-                  ? '#ffb29f'
-                  : '#a7ffeb'
-              }
+              stroke={tool === 'erase' ? '#ffb29f' : '#a7ffeb'}
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
               strokeDasharray="5 3"

@@ -60,26 +60,24 @@ availability and identity lifecycle; availability is not server write permission
 Studio does not inject publication or gameplay launch capabilities.
 
 Studio has two permanent bands: the document/name/save/view header and the
-editing/history toolbar. Header naming stages a canonical rename; **Size** opens
-**Width (hexes)** / **Height (hexes)** with **Apply dimensions**, rather than
-permanently occupying canvas space. Successful Apply commits then dismisses;
-Cancel/Escape discard staging. **Wall** and **Label** settings can also dismiss
-without deleting committed content.
+editing/history toolbar. Header naming stages a canonical rename. There is no
+**Size**: the canvas is unbounded and the file stores no workspace
+(rpg-project#725 R3). **Wall** and **Label** settings can dismiss without
+deleting committed content.
 
-Layout offers **Paint**, **Erase** and **Rectangle** over canonical walkable hex
-cells, **Select** and **Wall** over existing canonical structural walls, Size, and
-**Label** placement/selection/drag, with selected rename/move/delete in **Arrange**.
+Layout offers **Paint** and **Rectangle** into the **active region**, **Erase**
+of floor, **Select** and **Wall** over existing canonical structural walls, and
+**Note** placement/selection/drag, with selected rename/move/delete in
+**Arrange**. See [Regions and the unbounded canvas](#regions-and-the-unbounded-canvas-rpg-project725).
 Brush strokes sample visited
 cells (no interpolation); rectangles include cell centers within the world-XZ
 box. Middle-drag pans, wheel zooms, and Escape cancels. Framing operations and
 view switching do not create document history.
 
-Dimensions are counts from 1 to 128, not world distance. Centered absolute odd-r
-columns/rows span `-floor(count/2)` through `ceil(count/2)-1`; even counts take
-the extra negative side. Negative odd rows also stagger +½ column. Existing
-coordinates never translate. Untagged legacy radius workspaces are identified as
-nonrectangular and remain unchanged until explicit Apply. Labels are 2D plain-text
-annotations, not gameplay regions, floor/policy membership or 3D scenery.
+The grid Layout draws is the content bounding box plus a 6-cell margin, derived
+on every change and never stored; painting past its edge grows it. Notes are 2D
+plain-text annotations, not gameplay regions, floor/policy membership or 3D
+scenery; a region's label is its name.
 Their IDs/text are at most 120 characters, with at most 256 labels. A rectangular
 resize or first ordinary note promotes an older scene to version 2. Explicit
 Room-label creation promotes to scene 3 and links one label to one authoring
@@ -130,14 +128,16 @@ no Studio world-snapshot/reset flow or API/proto change. Visual lights are not g
 
 The shared key is `rpg.concepts.world-building.room-draft.v3`
 (`ROOM_DRAFT_STORAGE_KEY`). Its suffix is historical: the current envelope is
-**version 5**, containing draft version 3 plus optional normalized site scope.
+**version 6** (regions as the floor), containing draft version 3 plus optional
+normalized site scope.
 It is origin-global, not world/session-namespaced. Studio does not copy, migrate
 or reset the draft when entering or switching views. Do not open both editors as
 competing writers in different tabs for this check.
 
-A missing current key follows the existing legacy-key lookup then blank fallback.
-Present empty/malformed current bytes are refused, not treated as absence;
-unsupported current envelope v3/v4 is also refused. The owner displays a fallback
+A missing current key falls back to a blank draft; the retired v1/v2 keys are
+no longer read. Present empty/malformed current bytes are refused, not treated
+as absence; envelopes 1–5 are refused by name ("rebuild, no migration
+(rpg-project#725)"). The owner displays a fallback
 in memory and blocks autosave over unreadable bytes. **Replace unreadable local
 draft** explicitly overwrites those bytes; use it only in a disposable context
 where that consequence is intended. Write failures keep the latest document in
@@ -147,8 +147,8 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
 ## Interaction procedure
 
 1. Enter through **Home → Encounter Studio** in the fresh context. Confirm the two
-   permanent chrome bands, Paint initially active, Select/Wall/Label/Size available,
-   local-save status and no site inspector or publication controls. Default Size,
+   permanent chrome bands, Paint initially active, Select/Wall/Note available,
+   local-save status and no site inspector or publication controls. Default
    Label and appearance fields are hidden. Check desktop and narrow/mobile sizes,
    toolbar overflow and usable canvas area; capture both.
 2. Paint `0,0` and `2,0` as separated samples, then join with `1,0`. Erase `1,0`.
@@ -177,42 +177,35 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
    prop declarations/bindings, transforms/groups/supports/lights, monster
    declarations/bindings, party start and **every** scope key (tables, factions,
    dispositions, intel, exits, endings, scenarios, concealments).
-8. In that populated context, open **Size**, stage 73 × 48 and verify nothing
-   changes before Apply. Apply once; confirm fields disappear, exactly 3504
-   workspace cells, unchanged original
-   coordinates/payload and no automatically painted floor. Paint the exposed
-   negative/positive edges and check both views. Try an unsafe shrink and record
-   the offender path; current dimensions/document/history/stored bytes must stay
-   unchanged. Undo/Redo the resize and confirm navigation created no entry.
+8. In that populated context, paint a cell well past the drawn grid edge and
+   confirm the grid grows to include it, the map holds still under the pointer,
+   and no coordinate or payload changes. Undo removes the cell and the grid
+   shrinks back; navigation created no entry.
 9. Use **Label** to name Kitchen and Courtyard, including pointer placement and
    the accessible exact-coordinate form. Drag one, rename/move it with Apply or
    Enter, then delete/Undo/Redo; verify stable IDs and no floor/policy changes.
-   Stage text/dimensions/drag and cancel with Escape, Cancel or view switching;
-   verify no hidden commit. Apply unchanged dimensions/name/location and confirm
+   Stage text/drag and cancel with Escape, Cancel or view switching;
+   verify no hidden commit. Apply unchanged name/location and confirm
    no history entry. Reload and compare full normalized data in both views.
 10. In a separate fresh context, seed `createCastleWorkspaceDocument()` from
     `src/concepts/encounter-studio/fixtures/castleWorkspace.ts`. This reusable TS
-    fixture uses actual resize/paint/label helpers over the complete populated
-    document: 73 × 48, all 3504 cells, Kitchen/Courtyard, walls/openings/attached
+    fixture uses actual paint/label helpers over the complete populated
+    document: the 73 × 48 rectangle's 3504 cells, Kitchen/Courtyard, walls/openings/attached
     door, props/groups/support/light, actors/start and all site scope. It is the
     authority; do not commit thousands of generated YAML cells. Export to a
     temporary file only when needed. Compare room JSON → YAML → JSON full payload,
     scene/composition decode and room-library snapshot draft equality. Snapshots
     intentionally carry the draft, not site scope; local JSON/YAML carry both.
-11. Seed `createSparseMaxWorkspaceDocument()` from the same fixture module and
-    confirm 128 × 128 / 16384 workspace cells, sparse floor and full payload fit.
-    Commit a label, then attempt to paint every cell with one rectangle. The
-    unchanged 500000-character serialization budget must refuse it **before**
-    history/storage, preserving the prior document and label Undo/Redo. Supported
-    workspace capacity is not a guarantee of fully paintable maximum capacity.
-    Check that ordinary incomplete policy staging in World Builder remains
-    editable-size-valid but is not called persistable; resize/labels/save/export
-    retain full codec validation.
+11. Attempt to paint more than 65,536 floor cells with one rectangle. The paint
+    cap must refuse it **before** history/storage, preserving the prior
+    document and label Undo/Redo. Check that ordinary incomplete policy staging
+    in World Builder remains editable-size-valid but is not called persistable;
+    labels/save/export retain full codec validation.
 12. Keep deterministic write-error and late-callback checks in the injected-memory
     tests below. Optionally use a third fresh context with corrupt current bytes:
     observe refusal/autosave pause, edit/switch, and verify the original corrupt
     bytes remain unless explicit replacement is chosen.
-13. Measure castle and sparse-max render/paint/pick/save timings in the disposable
+13. Measure castle and sparse many-region render/paint/pick/save timings in the disposable
     browser and record frame/latency/memory observations, serialized size and any
     refusal. Do not infer performance acceptance from cell counts or DOM tests.
     If checking provider compatibility, use temporary web-emitted YAML with the
@@ -233,8 +226,7 @@ do not replace it with a new doorless wall or hand-write an unchecked second sch
 1. Open the header name, stage a trimmed name and Apply. Compare both canonical
    scene/draft names, unchanged IDs/storage key/scope, one Undo/Redo and reload.
    Same trimmed name is a no-op; blank/overlong names refuse. Cancel/Escape/view
-   navigation must never commit staging. Open Size, then Cancel/Escape; confirm
-   unchanged document/history and that reopening reads committed dimensions.
+   navigation must never commit staging.
 2. Open **Wall** with no default appearance. Search a wall (for example
    `castle_wall_01`), then a supported non-wall appearance (`alchemy_tools_01`).
    Verify ranked native image buttons, named loading/error fallback and search
@@ -339,7 +331,41 @@ Use the populated context and exact full-document comparisons above:
    support and lights. Reload restores content, not history. Record unavailable
    backend/provider capabilities and unexercised interactions explicitly.
 
+## Regions and the unbounded canvas (rpg-project#725)
+
+The walk for rpg-project#730. Run it against an api that reads version 5 (the
+S3 branch, or dev once S3 lands), with the castle on the shelf.
+
+1. Open the castle from the server. The Rooms list shows ten regions: nine
+   named plus the implicit one. Their hex counts sum to 1,586, and each row
+   shows its light %. There is no Size section in the room view.
+2. Choose Gatehouse's radio (**Paint into Gatehouse**). With **Paint**, brush
+   five courtyard cells. Gatehouse's count rises by five, Courtyard's falls by
+   five, and the footer hex count is unchanged.
+3. With **Erase**, remove three cells. The footer count falls by three. Export
+   the draft file: the rows changed under the right region.
+4. Type "Chapel annex" in **New region name** and press **New region**. It is
+   selected and its radio is checked. Paint ten cells; its row reads 10 hexes.
+   Rename it in the region view; its map label follows. **Remove region**: its
+   cells return to the implicit region, and the implicit region is active again.
+5. Set Chapel's **Lighting (%)** to 30. The preview atlas shows intensity 0.3
+   for that region. Save & Play: standing in the chapel, the current region
+   reads "Chapel", and the 3D ambient is dimmer there.
+6. **Show entire** frames the castle. Paint one cell past the drawn grid edge:
+   the grid grows, and the map does not jump under the pointer.
+7. Export, re-import, export: byte-identical, about 50 KB.
+8. Make a refusal the server raises at a region, for example a region painted
+   only on wall footing ("every cell is wall footing"). The preview's jump
+   button selects that region.
+9. In play with two seats, a clang in the courtyard is heard at the gatehouse
+   with no door between them (Debug tab: Heard, hops 0).
+
 ## Room boundaries and explicit repair
+
+> **Superseded (rpg-project#725).** Automatic regions, enclosure binding,
+> explicit areas and the region tool are retired; regions are painted cells.
+> The procedure below is the record of the label-linked model and no longer
+> applies.
 
 These are **authoring definitions**, not gameplay regions, floor membership,
 concealment or visibility. The label owns text and anchor; the linked
@@ -433,6 +459,11 @@ See the [region contract](../../src/concepts/world-building/CONTRACT.md) and
 [geometry design](../architecture/components/encounter-studio-regions/design.md).
 
 ## Region background lighting procedure
+
+> **Updated (rpg-project#725).** A region's lighting is now its own
+> `lighting.intensity`, edited as **Lighting (%)** on the region view; full
+> intensity draws no background area. Steps below that create Room labels or
+> explicit areas use the regions list and painting instead.
 
 Use `createRegionLightingDocument()` in
 `src/concepts/encounter-studio/fixtures/regionLighting.ts` for the complete synthetic
