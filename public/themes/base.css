@@ -558,7 +558,7 @@
 
   .equip-socket {
     display: grid;
-    grid-template-columns: 44px 1fr;
+    grid-template-columns: 60px 1fr;
     grid-template-areas:
       'icon label'
       'icon name'
@@ -619,8 +619,8 @@
 
   .equip-socket-icon {
     grid-area: icon;
-    width: 40px;
-    height: 40px;
+    width: 56px;
+    height: 56px;
     object-fit: contain;
   }
 
@@ -719,6 +719,25 @@
     object-fit: contain;
   }
 
+  /* Owned inventory gets readable thumbnails; vendor rows retain their
+     existing compact sizing through the shared base classes above. */
+  .equip-inventory-owned .equip-inv-row {
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-areas:
+      'icon name'
+      'icon stat'
+      'icon slot';
+  }
+
+  .equip-inventory-owned .equip-inv-slot {
+    justify-self: start;
+  }
+
+  .equip-inventory-owned .equip-inv-icon {
+    width: 48px;
+    height: 48px;
+  }
+
   .equip-inv-name {
     grid-area: name;
     font-weight: 600;
@@ -770,6 +789,16 @@
     backdrop-filter: blur(3px);
     box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
     border: 2px solid var(--border-primary);
+  }
+
+  .equip-popover-owned {
+    width: min(560px, calc(100% - 16px));
+  }
+
+  @media (max-width: 600px) {
+    .equip-popover-owned .equip-popover-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   .hud-skin .equip-popover,

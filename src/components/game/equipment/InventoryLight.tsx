@@ -52,7 +52,10 @@ export function InventoryLight({
   const [pendingUnpack, setPendingUnpack] = useState<ItemLike | null>(null);
 
   return (
-    <div className="equip-inventory hud-skin" data-testid="inventory-light">
+    <div
+      className="equip-inventory equip-inventory-owned hud-skin"
+      data-testid="inventory-light"
+    >
       <div className="equip-inventory-header">Carried</div>
       {carried.length === 0 && (
         <div className="equip-inventory-empty">Nothing carried.</div>
