@@ -148,7 +148,7 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       'on.time[0].attack: a cell is somewhere to walk toward, and `attack` acts on a creature'
     );
     expect(table({ time: [{ away: { path: [{ q: 1, r: 1 }] } }] })).toThrow(
-      'on.time[0]: `away` cannot take a `path`: a route is walked, and only `toward` walks one'
+      'on.time[0]: `away` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one'
     );
     expect(
       table({
@@ -167,10 +167,10 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       'on.time[0].patrol: `patrol` is not a word: a patrol is a route, write toward: { path: [{ q, r }, …] }'
     );
     expect(table({ time: [{ toward: 'nobody' }] })).toThrow(
-      'on.time[0].toward: "nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }'
+      'on.time[0].toward: "nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }'
     );
     expect(table({ time: [{ toward: 3 }] })).toThrow(
-      'on.time[0].toward: a selector is one of enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }'
+      'on.time[0].toward: a selector is one of enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }'
     );
     // The v2 spelling is the default, word for word what it always was.
     expect(HEARING_SENTENCES.patrol()).toBe(
@@ -180,7 +180,7 @@ describe('the single room reads a cell and a route as { q, r }', () => {
       '"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }'
     );
     expect(selectorShapeRefusal()).toBe(
-      'a selector is one of enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }'
+      'a selector is one of enemy, attacker, actor, sound, ally, or { at: [col, row] }, or { path: [[col, row], …] }'
     );
     expect(unknownSelectorRefusal('x', SINGLE_ROOM_CELL_FORMS)).toContain(
       '{ at: { q, r } }'

@@ -441,11 +441,12 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
   });
 
-  it('`toward` offers exactly enemy and attacker on a row that listens for nothing — never a cell or a route', () => {
+  it('`toward` offers exactly enemy, attacker and ally on a row that listens for nothing — never a cell or a route', () => {
     mount({ when: { enemy: 'none' }, toward: 'enemy' });
     // `actor` waits for a deed and `sound` for a top-level `heard`; a cell
-    // and a route are read from a file but not offered here.
-    expect(options('To for time entry')).toEqual(['enemy', 'attacker']);
+    // and a route are read from a file but not offered here. `ally` is
+    // offered wherever a word walks (rpg-project#717).
+    expect(options('To for time entry')).toEqual(['enemy', 'attacker', 'ally']);
   });
 
   it('a route from the file is shown as its waypoints, and kept verbatim', () => {
@@ -492,6 +493,7 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
       'enemy',
       'attacker',
       'sound',
+      'ally',
     ]);
     fireEvent.change(screen.getByLabelText('To for time entry'), {
       target: { value: 'sound' },

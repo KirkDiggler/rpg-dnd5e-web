@@ -77,6 +77,7 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     expect(options('To for time entry')).toEqual([
       'enemy',
       'attacker',
+      'ally',
       'at',
       'path',
     ]);
