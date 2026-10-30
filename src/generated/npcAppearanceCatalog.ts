@@ -4,7 +4,7 @@ import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation
 import type { NpcActivityProfile } from '../npc-activities/activityTypes';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: '5224bc66c808cd6fef60eea7f06f46a6fbb6e766',
+  commit: 'eed6de18a8f1799b97df175c993b5bb405a12db0',
   manifestSha256:
     'f286568ddc4b16de39002849560b8f1c4a8eff7f81192831a888c24d8c86007d',
   selectionSha256:

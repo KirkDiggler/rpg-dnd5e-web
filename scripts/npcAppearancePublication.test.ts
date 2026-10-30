@@ -165,7 +165,7 @@ describe('approved NPC appearance publication', () => {
   });
   it('exports 13 pack defaults, 66 human palettes and 204 Kingdom looks without provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: '5224bc66c808cd6fef60eea7f06f46a6fbb6e766',
+      commit: 'eed6de18a8f1799b97df175c993b5bb405a12db0',
       releases: [
         'goblin-human-palettes-v2',
         'goblin-war-camp-v1',
