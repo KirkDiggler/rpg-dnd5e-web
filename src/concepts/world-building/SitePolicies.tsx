@@ -119,6 +119,7 @@ import {
   removeOptionRow,
 } from './optionEdits';
 import { ParamChip, ParamSlot } from './ParamSlot';
+import { PlacedMonstersContext } from './placedMonstersContext';
 import { placementDisplayNames } from './placementNames';
 import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
 import {
@@ -315,6 +316,9 @@ type WhenBaseForm =
        * itself. Absent is the third answer and has no spelling (see
        * `AnswerWhenShape`). */
       scope?: { key: string; value: string };
+      /** `fell`'s `who`: the monster placement whose fall the row waits on
+       * (rpg-project#716), or undefined for any fall. */
+      who?: string;
     }
   | { kind: 'heard'; sound: string; within: number }
   | { kind: 'fact'; fact: string }
@@ -342,7 +346,7 @@ function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
   if ('not' in condition) return { kind: 'nested', condition };
   const [deed, span] = Object.entries(condition)[0] as [
     string,
-    { within: number; on?: 'ally'; as?: 'actor' },
+    { within: number; on?: 'ally'; as?: 'actor'; who?: string },
   ];
   // THE SCOPE IS READ OFF THE BODY, not guessed: whichever of the two keys the
   // document carries is the one the form shows, and neither means the creature
@@ -353,7 +357,7 @@ function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
       : span.as !== undefined
         ? { key: 'as', value: span.as }
         : undefined;
-  return { kind: 'deed', deed, within: span.within, scope };
+  return { kind: 'deed', deed, within: span.within, scope, who: span.who };
 }
 
 function conditionFormOf(condition: AnswerWhenCondition): WhenConditionForm {
@@ -367,12 +371,16 @@ function conditionFormOf(condition: AnswerWhenCondition): WhenConditionForm {
  * that by writing no key at all rather than by writing a third word. */
 function deedBody(
   within: number,
-  scope: { key: string; value: string } | undefined
-): { within: number; on?: 'ally'; as?: 'actor' } {
-  if (scope === undefined) return { within };
+  scope: { key: string; value: string } | undefined,
+  who?: string
+): { within: number; on?: 'ally'; as?: 'actor'; who?: string } {
+  // `who` FIRST when there is one: the castle's own spelling, `{ who: king,
+  // within: 3, on: ally }`.
+  const named = who !== undefined ? { who } : {};
+  if (scope === undefined) return { ...named, within };
   return scope.key === 'on'
-    ? { within, on: scope.value as 'ally' }
-    : { within, as: scope.value as 'actor' };
+    ? { ...named, within, on: scope.value as 'ally' }
+    : { ...named, within, as: scope.value as 'actor' };
 }
 
 function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
@@ -389,7 +397,11 @@ function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
       return base.condition;
     case 'deed':
       return {
-        [base.deed]: deedBody(base.within, base.scope),
+        [base.deed]: deedBody(
+          base.within,
+          base.scope,
+          ANSWER_WHEN.whoDeeds.includes(base.deed) ? base.who : undefined
+        ),
       } as AnswerWhenCondition;
   }
 }
@@ -457,6 +469,9 @@ function baseForPicker(
     deed: next.slice('deed:'.length),
     within: span,
     scope: previous?.kind === 'deed' ? previous.scope : undefined,
+    // `who` is a fall's alone: kept between falls, never carried to another
+    // deed, which the engine would refuse.
+    who: previous?.kind === 'deed' ? previous.who : undefined,
   };
 }
 
@@ -600,6 +615,13 @@ function WhenConditionRow({
               </option>
             ))}
           </select>
+          {ANSWER_WHEN.whoDeeds.includes(base.deed) && (
+            <WhoFellSelect
+              label={`Who fell${n} for ${trigger} entry`}
+              value={base.who}
+              onChange={(who) => commitBase({ ...base, who })}
+            />
+          )}
         </>
       )}
       {base?.kind === 'heard' && (
@@ -688,6 +710,43 @@ function WhenConditionRow({
         </button>
       )}
     </li>
+  );
+}
+
+/** `fell`'s `who` (rpg-project#716): one of the monsters placed in the
+ * document, or anyone. A hand-written id the document does not place is kept
+ * as its own choice, so selecting is never a way to lose it; the engine
+ * refuses it by name at Save & Play (`grammar.whenWho`). */
+function WhoFellSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (who: string | undefined) => void;
+}) {
+  const monsters = useContext(PlacedMonstersContext);
+  const dangling = value !== undefined && !monsters.has(value);
+  return (
+    <>
+      <span className="wb-entry-perspective-label">Who</span>
+      <select
+        aria-label={label}
+        value={value ?? ''}
+        onChange={(event) =>
+          onChange(event.target.value === '' ? undefined : event.target.value)
+        }
+      >
+        <option value="">(anyone)</option>
+        {[...monsters].map(([id, name]) => (
+          <option key={id} value={id} title={id}>
+            {name}
+          </option>
+        ))}
+        {dangling && <option value={value}>{value} (not placed here)</option>}
+      </select>
+    </>
   );
 }
 

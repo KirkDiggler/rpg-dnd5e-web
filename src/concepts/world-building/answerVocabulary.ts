@@ -116,16 +116,38 @@ export function threatLabel(word: string, subject: Subject = 'I'): string {
   return threatPhrase(word, subject);
 }
 
-type DeedScope = Pick<AnswerWhenDeed, 'on' | 'as'>;
+type DeedScope = Pick<AnswerWhenDeed, 'on' | 'as' | 'who'>;
+
+/** A FALL (rpg-project#716): its actor is who caused it, its target who
+ * fell, and `who` names that target. "the king, an ally, fell", "I felled
+ * the king", "an ally fell". */
+function fellClause(
+  scope: DeedScope,
+  subject: Subject,
+  negated: boolean
+): string {
+  const fall = negated ? 'did not fall' : 'fell';
+  if (scope.as !== undefined)
+    return negated
+      ? `${subject} did not fell ${scope.who ?? 'anyone'}`
+      : `${subject} felled ${scope.who ?? 'someone'}`;
+  if (scope.on !== undefined)
+    return scope.who !== undefined
+      ? `${scope.who}, an ally, ${fall}`
+      : `an ally ${fall}`;
+  return `${scope.who ?? subject} ${fall}`;
+}
 
 /** Whose deed, and whether it is told in the passive: "an ally was
- * attacked", "I attacked", "I was attacked". `fled` has no passive. */
+ * attacked", "I attacked", "I was attacked". `fled` has no passive, and a
+ * fall reads as [fellClause]. */
 function deedClause(
   deed: string,
   scope: DeedScope,
   subject: Subject,
   negated: boolean
 ): string {
+  if (deed === 'fell') return fellClause(scope, subject, negated);
   const who = scope.on !== undefined ? 'an ally' : subject;
   const passive = deed !== 'fled' && scope.as === undefined;
   if (negated) {
@@ -402,9 +424,10 @@ export function conditionShorthand(condition: AnswerWhenCondition): string {
   // deed the row reads and not merely which deed.
   const whose =
     span.on !== undefined ? 'an ally' : span.as !== undefined ? 'I' : undefined;
+  const named = span.who !== undefined ? ` (${span.who})` : '';
   return whose === undefined
-    ? `${word} within ${span.within}`
-    : `${whose} ${word} within ${span.within}`;
+    ? `${word} within ${span.within}${named}`
+    : `${whose} ${word} within ${span.within}${named}`;
 }
 
 /** A `when` in the file's keys, its conditions joined by "and". */

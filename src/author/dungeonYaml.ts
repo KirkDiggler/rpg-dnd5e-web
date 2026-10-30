@@ -1319,7 +1319,10 @@ function answerWhenCondition(
   // exactly the class of silent rewrite the strict reader was built to stop
   // (#1118), so the sentence is Go's own strict-field text.
   for (const bodyKey of Object.keys(body)) {
-    if (ANSWER_WHEN.bodyKeys.includes(bodyKey)) continue;
+    // `who` (rpg-project#716) is the single-room studio's: this version-2
+    // builder does not carry it, so it refuses it as it always did rather
+    // than drop it on the way out.
+    if (ANSWER_WHEN.bodyKeys.includes(bodyKey) && bodyKey !== 'who') continue;
     throw new DungeonParseError(
       `${path}.${key}.${bodyKey}: field ${bodyKey} not found in type dungeonspec.withinSpec`
     );

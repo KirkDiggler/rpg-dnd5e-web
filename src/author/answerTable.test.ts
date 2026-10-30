@@ -183,6 +183,8 @@ describe('the vocabulary declaration is the single source', () => {
       'intimidated',
       'persuaded',
       'fled',
+      // rpg-project#716: the fifth deed.
+      'fell',
     ]);
     expect(ANSWER_WHEN.minimumWithin).toBe(1);
     // `when` is a `time` word: a social key IS the condition.

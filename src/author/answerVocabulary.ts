@@ -313,14 +313,18 @@ export interface AnswerWhenSpec {
   readonly threatKey: 'threat';
   /** `behavior.ThreatWords`, in the engine's order. */
   readonly threatWords: readonly string[];
-  /** The four deeds a `when` may read, in the engine's past tense. */
+  /** The five deeds a `when` may read, in the engine's past tense
+   * (`behavior.WhenDeeds`). */
   readonly deeds: readonly string[];
+  /** The deeds whose condition may name WHO it was done to, with `who`
+   * (`behavior.WhoDeeds`, rpg-project#716): `fell` alone. */
+  readonly whoDeeds: readonly string[];
   /** A span is counted from 1 (`WhenSpec.Within`): `{ within: 0 }` is a
    * condition that can never hold. */
   readonly minimumWithin: number;
-  /** The three keys a deed condition's body may carry, sealed so the reader
+  /** The four keys a deed condition's body may carry, sealed so the reader
    * and the writer cannot drift apart (`dungeonspec`'s `whenBodyWithin`,
-   * `whenBodyOn`, `whenBodyAs`). */
+   * `whenBodyOn`, `whenBodyAs`, `whenBodyWho`). */
   readonly bodyKeys: readonly string[];
   /** WHOSE deed a condition is about — the two NAMED readings, in the
    * engine's order (`encounter.DeedScopes` minus `ScopeSelf`). */
@@ -369,9 +373,18 @@ export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
   ]),
   threatKey: 'threat',
   threatWords: Object.freeze(['none', 'walk', 'dash']),
-  deeds: Object.freeze(['attacked', 'intimidated', 'persuaded', 'fled']),
+  // `fell` (rpg-project#716): a fall, its actor who caused it, its target
+  // who fell.
+  deeds: Object.freeze([
+    'attacked',
+    'intimidated',
+    'persuaded',
+    'fled',
+    'fell',
+  ]),
+  whoDeeds: Object.freeze(['fell']),
   minimumWithin: 1,
-  bodyKeys: Object.freeze(['within', 'on', 'as']),
+  bodyKeys: Object.freeze(['within', 'on', 'as', 'who']),
   // THE TWO NAMED SCOPES. Omitting both means the creature itself, which is
   // what the field being absent says — so `self` is deliberately NOT a third
   // word a document may write, and a refusal lists only these two.
@@ -743,6 +756,19 @@ export function unknownThreatRefusal(word: string): string {
 /** `WhenSpec.UnmarshalYAML`: a deed with no span written. */
 export function missingSpanRefusal(deed: string): string {
   return `\`${deed}\` names no span — write { within: N }`;
+}
+
+/** `WhenSpec.UnmarshalYAML`: `who` on a deed that is not a fall
+ * (rpg-project#716). */
+export function whoOnlyOnFellRefusal(deed: string): string {
+  return `\`who\` names the one who fell, and only \`${ANSWER_WHEN.whoDeeds.join(
+    '`, `'
+  )}\` takes it; \`${deed}\` does not`;
+}
+
+/** `WhenSpec.UnmarshalYAML`: `who` written and naming nobody. */
+export function whoNamesNobodyRefusal(deed: string): string {
+  return `\`${deed}: { who }\` names nobody: write the id of the monster placement whose fall this waits on`;
 }
 
 /** `WhenSpec.UnmarshalYAML`: a span counted from zero. */

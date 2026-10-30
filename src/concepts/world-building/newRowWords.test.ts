@@ -133,3 +133,71 @@ describe('the ally selector (rpg-project#717)', () => {
     );
   });
 });
+
+describe('the fell deed and its who (rpg-project#716)', () => {
+  it('reads the castle knight’s row, its body in the file’s order', () => {
+    const authored = {
+      time: [
+        {
+          when: { fell: { who: 'king', within: 3, on: 'ally' } },
+          away: 'enemy',
+          weight: 3,
+        },
+        { when: { fell: { within: 2 } }, toward: 'actor' },
+        { when: { attacked: { on: 'ally', within: 2 } }, attack: 'attacker' },
+      ],
+    };
+    const read = validateAnswerTable(authored, 'on');
+    expect(read).toEqual(authored);
+    expect(JSON.stringify(read.time[0]!.when)).toBe(
+      '{"fell":{"who":"king","within":3,"on":"ally"}}'
+    );
+    expect(JSON.stringify(read.time[2]!.when)).toBe(
+      '{"attacked":{"on":"ally","within":2}}'
+    );
+  });
+
+  it('refuses who on another deed, and a who naming nobody, in the engine’s sentences', () => {
+    expect(
+      table({
+        time: [{ when: { attacked: { who: 'king', within: 2 } }, hold: {} }],
+      })
+    ).toThrow(
+      'on.time[0].when: `who` names the one who fell, and only `fell` takes it; `attacked` does not'
+    );
+    expect(
+      table({ time: [{ when: { fell: { who: '', within: 2 } }, hold: {} }] })
+    ).toThrow(
+      'on.time[0].when: `fell: { who }` names nobody: write the id of the monster placement whose fall this waits on'
+    );
+  });
+
+  it('lists fell among the deeds a build holds', () => {
+    expect(
+      table({ time: [{ when: { died: { within: 2 } }, hold: {} }] })
+    ).toThrow(
+      '`died` is not a deed this build holds: they are attacked, intimidated, persuaded, fled, fell (and `enemy`, `heard`, `fact`, `threat`, `not`)'
+    );
+  });
+
+  it('says it in words', () => {
+    expect(
+      whenPhrase({ fell: { who: 'king', within: 3, on: 'ally' } }, 'it')
+    ).toBe('king, an ally, fell within 3 rounds');
+    expect(whenPhrase({ fell: { within: 2, on: 'ally' } }, 'it')).toBe(
+      'an ally fell within 2 rounds'
+    );
+    expect(whenPhrase({ fell: { within: 1, as: 'actor' } }, 'it')).toBe(
+      'it felled someone within 1 round'
+    );
+    expect(
+      whenPhrase(
+        { not: { fell: { who: 'king', within: 3, on: 'ally' } } },
+        'it'
+      )
+    ).toBe('king, an ally, did not fall within 3 rounds');
+    expect(
+      conditionShorthand({ fell: { who: 'king', within: 3, on: 'ally' } })
+    ).toBe('an ally fell within 3 (king)');
+  });
+});

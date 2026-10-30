@@ -88,6 +88,8 @@ import {
   weightRefusal,
   whenIsOneConditionRefusal,
   whenShapeRefusal,
+  whoNamesNobodyRefusal,
+  whoOnlyOnFellRefusal,
   type SearchHeading,
 } from '@/author/answerVocabulary';
 import { PREDICATE_SHAPE } from '@/author/factionVocabulary';
@@ -178,6 +180,9 @@ export type AnswerWhenDeed = {
   within: number;
   on?: 'ally';
   as?: 'actor';
+  /** `fell`'s `who: <monster placement id>` (rpg-project#716): the one
+   * member whose fall the row waits on. Legal on `fell` alone. */
+  who?: string;
 };
 
 /** `heard: { kind, within }` — a sound of a sealed kind, no older than the
@@ -195,6 +200,7 @@ export type AnswerWhenCondition =
   | { intimidated: AnswerWhenDeed }
   | { persuaded: AnswerWhenDeed }
   | { fled: AnswerWhenDeed }
+  | { fell: AnswerWhenDeed }
   | { heard: AnswerWhenHeard }
   | { fact: string }
   /** `threat: none | walk | dash` (rpg-project#671 R18): who else could
@@ -786,7 +792,24 @@ function validateWhenCondition(
   if (within < ANSWER_WHEN.minimumWithin) fail(path, spanRefusal(within));
 
   const scope = validateWhenScope(body, `${path}.${key}`, key);
-  return { [key]: { within, ...scope } } as AnswerWhenCondition;
+  // `who` NAMES WHO FELL, and only a fall has one to name (rpg-project#716).
+  // Whether it names a monster placed in this file is the engine's to judge
+  // at Save & Play (`grammar.whenWho`), at the row.
+  let who: string | undefined;
+  if (body.who !== undefined && body.who !== null) {
+    if (!ANSWER_WHEN.whoDeeds.includes(key))
+      fail(path, whoOnlyOnFellRefusal(key));
+    who = scalarText(body.who);
+    if (who === '') fail(path, whoNamesNobodyRefusal(key));
+  }
+  // THE BODY'S KEYS IN THE FILE'S ORDER, so `{ who: king, within: 3, on:
+  // ally }` is written back as it was read.
+  const read: Record<string, unknown> = { within, ...scope };
+  if (who !== undefined) read.who = who;
+  const ordered: Record<string, unknown> = {};
+  for (const bodyKey of Object.keys(body))
+    if (read[bodyKey] !== undefined) ordered[bodyKey] = read[bodyKey];
+  return { [key]: ordered } as AnswerWhenCondition;
 }
 
 /** `heard: { kind, within }`. The DECODER refuses the shape, an unknown key

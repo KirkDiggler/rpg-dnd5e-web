@@ -357,7 +357,7 @@ describe('the `when` shape', () => {
     expect(() =>
       parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('fled:', 'fleeing:')))
     ).toThrow(
-      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`, `heard`, `fact`, `threat`, `not`\)/
+      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled, fell \(and `enemy`, `heard`, `fact`, `threat`, `not`\)/
     );
   });
 
@@ -377,7 +377,7 @@ describe('the `when` shape', () => {
 
   it('carries the shape the declaration seals', () => {
     expect(ANSWER_WHEN.enemyBands).toHaveLength(8);
-    expect(ANSWER_WHEN.deeds).toHaveLength(4);
+    expect(ANSWER_WHEN.deeds).toHaveLength(5);
   });
 
   it('refuses a non-scalar band exactly as the raw node reads it', () => {
