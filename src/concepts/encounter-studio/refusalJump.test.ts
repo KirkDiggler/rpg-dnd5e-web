@@ -115,10 +115,37 @@ describe('refusalJumps', () => {
     const intel = document.scope.intel!.findIndex(
       (record) => record.id === 'cooks-ledger'
     );
+    // A row's refusal names the row, so the section opens on it
+    // (rpg-project#720); the engine writes a root table's row with or
+    // without `on`.
     expect(targetOf('tables.gate-patrol.time[0].when', document)).toEqual({
       kind: 'home',
       section: 'tables',
       id: 'gate-patrol',
+      row: 'tables.gate-patrol.time[0]',
+    });
+    expect(
+      targetOf('tables.gate-patrol.on.time[10].toward.path', document)
+    ).toEqual({
+      kind: 'home',
+      section: 'tables',
+      id: 'gate-patrol',
+      row: 'tables.gate-patrol.on.time[10]',
+    });
+    expect(targetOf('tables.gate-patrol', document)).toEqual({
+      kind: 'home',
+      section: 'tables',
+      id: 'gate-patrol',
+    });
+    const bundled = {
+      ...document,
+      scope: { ...document.scope, bundles: { patrol: { rows: [] } } },
+    };
+    expect(targetOf('bundles.patrol.rows[0].toward', bundled)).toEqual({
+      kind: 'home',
+      section: 'bundles',
+      id: 'patrol',
+      row: 'bundles.patrol.rows[0]',
     });
     expect(targetOf(`factions[${faction}].mind`, document)).toEqual({
       kind: 'home',
