@@ -1,5 +1,7 @@
 # 2026-10-30 · Frank's list S8 · The studio speaks the engine's new words
 
+processed: 2026-10-30T183312Z
+
 Story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), slice [rpg-project#732](https://github.com/KirkDiggler/rpg-project/issues/732), PR [rpg-dnd5e-web#1357](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1357).
 
 ## Shipped
