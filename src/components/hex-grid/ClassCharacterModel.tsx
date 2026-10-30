@@ -523,11 +523,14 @@ export function ClassCharacterModel({
   // than loop smoothly, only nudging forward whenever some unrelated prop
   // change or user interaction happened to trigger a frame. Each rendered
   // frame requests the next one, self-sustaining for as long as this
-  // component has a clip playing; a no-op (no re-invalidation loop) once
-  // resolvedClipName is undefined (downed variants, or any future model
-  // shipped with no animation).
+  // component has a clip playing. Provider playback intentionally bypasses
+  // resolvedClipName, so its active phase owns the same demand-frame request.
+  // Memory, downed and stopped playback must not sustain a render loop.
   useFrame((state) => {
-    if (resolvedClipName) state.invalidate();
+    if (remembered || isDownedVariant) return;
+    const providerPlaying =
+      playbackRef.current && playbackRef.current.state.phase !== 'stopped';
+    if (resolvedClipName || providerPlaying) state.invalidate();
   });
 
   const effectiveOffHandPresentation = useMemo(

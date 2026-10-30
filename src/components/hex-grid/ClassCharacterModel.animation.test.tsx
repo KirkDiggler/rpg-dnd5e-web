@@ -129,6 +129,59 @@ describe('Bard idle/walk playback through ClassCharacterModel', () => {
 });
 
 describe('provider activity playback through ClassCharacterModel', () => {
+  it('requests demand frames for provider sustain and arrival entry, but not memory or downed playback', async () => {
+    const profile = NPC_ACTIVITY_PROFILES[0];
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_Relaxed', 1, []),
+      new THREE.AnimationClip('Walk_Forward', 1, []),
+    ];
+    const clips = profile.library.clips.map(
+      (name) => new THREE.AnimationClip(name, 1, [])
+    );
+    const ready = vi.fn();
+    const model = (moving = false, remembered = false, downed = false) => (
+      <>
+        <CaptureState />
+        <ClassCharacterModel
+          url="/body.glb"
+          isMoving={moving}
+          remembered={remembered}
+          isDownedVariant={downed}
+          activity={{
+            profile,
+            clips,
+            defaultActivityRef: 'dnd5e:activities:thoughtful',
+            moveSeq: 1,
+            ready,
+          }}
+        />
+      </>
+    );
+    const renderer = await ReactThreeTestRenderer.create(model());
+    const invalidate = vi.spyOn(state, 'invalidate');
+    await renderer.advanceFrames(1, 0.1);
+    expect(invalidate).toHaveBeenCalled();
+    await renderer.update(model(true));
+    await renderer.advanceFrames(1, 1.01);
+    await renderer.advanceFrames(1, 0.68);
+    expect(ready).toHaveBeenLastCalledWith({ moveSeq: 1, ready: true });
+    await renderer.update(model());
+    await renderer.advanceFrames(1, 1.01);
+    expect(fixture.played.at(-1)).toBe('Idle_Thoughtful_Enter');
+    invalidate.mockClear();
+    await renderer.advanceFrames(1, 0.1);
+    expect(invalidate).toHaveBeenCalled();
+    await renderer.update(model(false, true));
+    invalidate.mockClear();
+    await renderer.advanceFrames(1, 0.1);
+    expect(invalidate).not.toHaveBeenCalled();
+    await renderer.update(model(false, false, true));
+    invalidate.mockClear();
+    await renderer.advanceFrames(1, 0.1);
+    expect(invalidate).not.toHaveBeenCalled();
+    invalidate.mockRestore();
+    await renderer.unmount();
+  });
   it('uses exact default clips and acknowledges walking only after the mixer finishes the exit', async () => {
     const profile = NPC_ACTIVITY_PROFILES[0];
     fixture.animations = [
