@@ -134,7 +134,12 @@ export {
   predicateForm,
   STANCES,
 } from './factionVocabulary';
-export type { PredicateDoc, PredicateForm, Stance } from './factionVocabulary';
+export type {
+  PredicateDoc,
+  PredicateForm,
+  PredicateKind,
+  Stance,
+} from './factionVocabulary';
 
 export type VoidKind = 'opaque' | 'transparent';
 
@@ -2408,6 +2413,7 @@ function answerTableLines(
  * spelling being the form (`PredicateDoc`). Exported for the panels that
  * show a predicate read-only in the file's own words. */
 export function predicateText(p: PredicateDoc): string {
+  if ('not' in p) return `{ not: ${predicateText(p.not)} }`;
   if ('round' in p) return `{ round: ${p.round} }`;
   if ('down' in p) return `{ down: ${scalar(p.down)} }`;
   if ('fact' in p) return `{ fact: ${scalar(p.fact)} }`;

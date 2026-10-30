@@ -8,6 +8,14 @@
  *
  * The value is written as typed. Whether a placement or a faction a form
  * names exists is the engine's to judge, at its own path.
+ *
+ * `not` IS OFFERED EVERYWHERE (rpg-project#719): the grammar makes it legal
+ * wherever a predicate is, so the editor offers it after the caller's forms
+ * and edits its one inner predicate with this same editor. Every caller of
+ * this editor is a WAITED-FOR site (an until, an arrival, an ending's when),
+ * where a `not` of a fact, a round or a fall holds from the start; the
+ * engine's sentence for that is shown under the inner one
+ * (`predicateNot.ts`), as Save & Play will say it.
  */
 import {
   PARTY,
@@ -18,6 +26,7 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { factionNameOptions } from './factionNameOptions';
+import { waitedNotRefusal } from './predicateNot';
 import type { RoomGameplayData } from './roomDraft';
 import type { SiteScope } from './siteScope';
 
@@ -94,6 +103,7 @@ export function PredicateEditor({
           onChange={(event) => {
             const next = event.target.value;
             if (next === 'none') onChange(undefined);
+            else if (next === 'not') onChange({ not: notInnerFor(value) });
             else if (next === 'round') onChange({ round: 1 });
             else if (next === 'down')
               onChange({ down: room.monsterDeclarations[0]?.id ?? '' });
@@ -122,8 +132,20 @@ export function PredicateEditor({
               {candidate}
             </option>
           ))}
+          <option value="not">not</option>
         </select>
       </label>
+      {value !== undefined && 'not' in value && (
+        <NotEditor
+          value={value}
+          onChange={onChange}
+          forms={forms}
+          name={name}
+          scope={scope}
+          room={room}
+          names={names}
+        />
+      )}
       {form === 'round' && (
         <label>
           <span>Round</span>
@@ -225,5 +247,54 @@ export function PredicateEditor({
         </div>
       )}
     </>
+  );
+}
+
+/** The inner predicate a fresh `not` starts from: the predicate the author
+ * already had, turned over, or a stance (the one form a waited-for `not` can
+ * fire on). */
+function notInnerFor(value: PredicateDoc | undefined): PredicateDoc {
+  if (value !== undefined && !('not' in value)) return value;
+  return { stance: { between: [PARTY, PARTY], is: 'neutral' } };
+}
+
+/** A `not`'s one inner predicate, edited by the same editor one level down,
+ * with the engine's refusal under it when this `not` can never fire. */
+function NotEditor({
+  value,
+  onChange,
+  forms,
+  name,
+  scope,
+  room,
+  names,
+}: Omit<PredicateEditorProps, 'label' | 'none' | 'value'> & {
+  value: { not: PredicateDoc };
+}): React.JSX.Element {
+  const refusal = waitedNotRefusal(value);
+  return (
+    <div className="wb-policy-until-not" data-testid={`${name} not`}>
+      <PredicateEditor
+        value={value.not}
+        onChange={(inner) =>
+          onChange(inner === undefined ? undefined : { not: inner })
+        }
+        forms={forms}
+        name={`${name} not`}
+        label="Not"
+        scope={scope}
+        room={room}
+        names={names}
+      />
+      {refusal !== undefined && (
+        <p
+          className="wb-entry-refusal"
+          role="alert"
+          data-testid={`${name} not refusal`}
+        >
+          {refusal}
+        </p>
+      )}
+    </div>
   );
 }

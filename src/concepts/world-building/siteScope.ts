@@ -835,6 +835,11 @@ export function validatePredicate(value: unknown, path: string): PredicateDoc {
   if (!isMapping(value) || Object.keys(value).length !== 1)
     fail(path, PREDICATE_SHAPE);
   const form = Object.keys(value)[0];
+  // `{ not: <one predicate> }` (rpg-project#719): the same shape one level
+  // down. Whether its inner can fire where it stands is the engine's
+  // judgement at its own path (`predicateNot.ts` mirrors the sentences).
+  if (form === 'not')
+    return { not: validatePredicate(value.not, `${path}.not`) };
   if (!(PREDICATE_FORMS as readonly string[]).includes(form))
     fail(path, PREDICATE_SHAPE);
 

@@ -119,6 +119,14 @@ import { ParamChip, ParamSlot } from './ParamSlot';
 import { placementDisplayNames } from './placementNames';
 import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
 import {
+  REQUIRES_CHOICES,
+  requiresChoice,
+  requiresGate,
+  requiresId,
+  requiresOf,
+  type RequiresChoice,
+} from './predicateNot';
+import {
   dispositionLine,
   pairMindNameIn,
   predicateSentence,
@@ -2610,11 +2618,7 @@ export function CreatureOrders({
 // ---------------------------------------------------------------------------
 
 /** What gates a line, as the picker names it. */
-const REQUIRES_FORMS = [
-  { value: '', label: 'Always offered' },
-  { value: 'fact', label: 'The speaker knows a fact' },
-  { value: 'holds', label: 'The speaker carries a prop' },
-] as const;
+const REQUIRES_FORMS = REQUIRES_CHOICES;
 
 const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
   success: 'When the check is beaten',
@@ -2669,16 +2673,16 @@ export function OptionsEditor({
       {options.map((option, index) => {
         const n = index + 1;
         const of = `line ${n} of ${owner}`;
-        const requiresForm =
-          option.requires === undefined
-            ? ''
-            : 'fact' in option.requires
-              ? 'fact'
-              : 'holds';
+        // `not:` around either read (rpg-project#719): the choice carries
+        // whether it is negated, and the fact or prop controls read through.
+        const requiresChoiceNow = requiresChoice(option.requires);
+        const negated = requiresChoiceNow.startsWith('not-');
+        const requiresForm = requiresChoiceNow.replace('not-', '') as
+          | ''
+          | 'fact'
+          | 'holds';
         const heldId =
-          option.requires !== undefined && 'holds' in option.requires
-            ? option.requires.holds
-            : undefined;
+          requiresForm === 'holds' ? requiresId(option.requires) : undefined;
         const commit = (next: OptionShape) => onChange(index, next);
         return (
           <div
@@ -2726,17 +2730,15 @@ export function OptionsEditor({
               <span>Requires</span>
               <select
                 aria-label={`Line ${n} requires for ${owner}`}
-                value={requiresForm}
+                value={requiresChoiceNow}
                 onChange={(event) => {
-                  const form = event.target.value;
+                  const choice = event.target.value as RequiresChoice;
                   commit(
                     patchOption(option, {
-                      requires:
-                        form === 'fact'
-                          ? { fact: '' }
-                          : form === 'holds'
-                            ? { holds: holdable[0] ?? '' }
-                            : undefined,
+                      requires: requiresOf(
+                        choice,
+                        choice.endsWith('holds') ? (holdable[0] ?? '') : ''
+                      ),
                     })
                   );
                 }}
@@ -2746,7 +2748,7 @@ export function OptionsEditor({
                     key={form.value}
                     value={form.value}
                     disabled={
-                      form.value === 'holds' &&
+                      form.value.endsWith('holds') &&
                       holdable.length === 0 &&
                       requiresForm !== 'holds'
                     }
@@ -2761,15 +2763,14 @@ export function OptionsEditor({
                 <span>Fact</span>
                 <input
                   aria-label={`Line ${n} requires fact for ${owner}`}
-                  value={
-                    option.requires && 'fact' in option.requires
-                      ? option.requires.fact
-                      : ''
-                  }
+                  value={requiresId(option.requires)}
                   onChange={(event) =>
                     commit(
                       patchOption(option, {
-                        requires: { fact: event.target.value },
+                        requires: requiresOf(
+                          negated ? 'not-fact' : 'fact',
+                          event.target.value
+                        ),
                       })
                     )
                   }
@@ -2785,7 +2786,10 @@ export function OptionsEditor({
                   onChange={(event) =>
                     commit(
                       patchOption(option, {
-                        requires: { holds: event.target.value },
+                        requires: requiresOf(
+                          negated ? 'not-holds' : 'holds',
+                          event.target.value
+                        ),
                       })
                     )
                   }
@@ -2874,11 +2878,6 @@ function optionText(option: OptionShape): string {
   const check = option.check
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');
-  const gate =
-    option.requires === undefined
-      ? ''
-      : 'fact' in option.requires
-        ? ` · requires fact ${option.requires.fact}`
-        : ` · requires holding ${option.requires.holds}`;
+  const gate = requiresGate(option.requires);
   return `${option.id}: “${option.say}” · ${check}${gate}`;
 }

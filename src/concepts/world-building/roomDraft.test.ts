@@ -2053,7 +2053,7 @@ describe('options on a binding (rpg-project#569)', () => {
           })
       )
     ).toThrow(
-      'options[0].requires: an option requires { fact: <id> } or { holds: <prop id> }, and `round` is neither'
+      'options[0].requires: an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, and `round` is none of them'
     );
     expect(refusal((d) => (goblin(d)[0].failure = []))).toThrow(
       'options[0].failure: `failure` lists nothing — omit it, or write what is answered'
