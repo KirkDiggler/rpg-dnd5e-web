@@ -13,6 +13,79 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generateNpcAppearanceCatalog } from './generate-npc-appearance-catalog.mjs';
 
+it('publishes selected hash-bound activity metadata and refuses stale synchronized library bytes', () => {
+  const f = makeFixture();
+  const libraryFile = 'npcs/activities/test/clips.glb';
+  const profileFile = 'npcs/activities/test/profile.json';
+  const libraryBytes = 'fixture animation library';
+  const idle = {
+    label: 'Relaxed',
+    entryPose: 'relaxed',
+    exitPose: 'relaxed',
+    enter: null,
+    sustain: 'Idle_Relaxed',
+    exit: null,
+    leaveAt: 'any-time',
+    moving: false,
+  };
+  const profile = {
+    schemaVersion: 1,
+    id: 'test-v1',
+    jointCount: 50,
+    library: {
+      file: libraryFile,
+      sha256: digest(libraryBytes),
+      clips: ['Thoughtful'],
+    },
+    defaultActivityRef: 'dnd5e:activities:relaxed',
+    walkActivityRef: 'dnd5e:activities:walk',
+    activities: {
+      'dnd5e:activities:relaxed': idle,
+      'dnd5e:activities:walk': {
+        ...idle,
+        label: 'Walking',
+        sustain: 'Walk_Forward',
+        moving: true,
+      },
+      'dnd5e:activities:thoughtful': {
+        ...idle,
+        label: 'Thoughtful',
+        sustain: 'Thoughtful',
+      },
+    },
+    poseBridges: [],
+    appearances: [
+      {
+        assetRef: 'dnd5e:npcs:warrior:01',
+        standingSha256: f.selection.releases[0].appearances[0].standingSha256,
+      },
+    ],
+  };
+  const bytes = JSON.stringify(profile);
+  for (const root of [join(f.provider, 'harness/models/synty'), f.runtime]) {
+    put(join(root, libraryFile), libraryBytes);
+    put(join(root, profileFile), bytes);
+  }
+  f.selection.activityProfiles = [{ file: profileFile, sha256: digest(bytes) }];
+  put(f.selectionPath, JSON.stringify(f.selection));
+  commit(f.provider);
+  const input = {
+    providerRoot: f.provider,
+    selectionPath: f.selectionPath,
+    outputPath: f.output,
+    runtimeRoot: f.runtime,
+  };
+  generateNpcAppearanceCatalog(input);
+  const generated = readFileSync(f.output, 'utf8');
+  expect(generated).toContain('NPC_ACTIVITY_PROFILES');
+  expect(generated).toContain('/models/synty/npcs/activities/test/clips.glb');
+  expect(generated).toContain('dnd5e:activities:thoughtful');
+  put(join(f.runtime, libraryFile), 'stale');
+  expect(() => generateNpcAppearanceCatalog(input)).toThrow(
+    /synchronized.*SHA-256/
+  );
+});
+
 const temporary: string[] = [];
 const digest = (bytes: string | Buffer) =>
   createHash('sha256').update(bytes).digest('hex');
@@ -29,6 +102,7 @@ interface Fixture {
   manifest: { npcs: Record<string, Record<string, unknown>> };
   selection: {
     schemaVersion: number;
+    activityProfiles?: Array<{ file: string; sha256: string }>;
     weaponSets?: Array<{
       manifestId: string;
       assetRef: string;
