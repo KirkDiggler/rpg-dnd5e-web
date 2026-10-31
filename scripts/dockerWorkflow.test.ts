@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   access,
   chmod,
@@ -44,7 +45,7 @@ async function temporaryRoot() {
   return root;
 }
 
-async function put(path: string, bytes: string) {
+async function put(path: string, bytes: string | Buffer) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, bytes);
 }
@@ -136,6 +137,7 @@ async function makeFixture() {
   );
   for (const name of [
     'asset-provider-pins.mjs',
+    'generate-item-thumbnail-catalog.mjs',
     'generate-world-material-catalog.mjs',
     'generate-world-asset-catalog.mjs',
     'world-material-catalog.mjs',
@@ -173,6 +175,72 @@ async function makeFixture() {
     ],
     { env: gitEnvironment }
   );
+  // Items have their own later pin, distinct from every owner above. The
+  // production fetch list must include it even after provider HEAD moves on.
+  const hash = (bytes: Buffer | string) =>
+    createHash('sha256').update(bytes).digest('hex');
+  const itemRef = 'dnd5e:item:spear';
+  const itemFile = `thumbnails/items/${hash(itemRef)}.png`;
+  const itemBytes = Buffer.alloc(24);
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(itemBytes);
+  itemBytes.writeUInt32BE(512, 16);
+  itemBytes.writeUInt32BE(512, 20);
+  const itemModel = 'fixture-weapon';
+  const itemManifest = JSON.stringify({
+    items: {
+      [itemRef]: { path: 'weapons/spear.glb', sha256: hash(itemModel) },
+    },
+  });
+  const itemCatalog = {
+    schemaVersion: 2,
+    generatedBy: 'item-thumbnails@2.0.0',
+    sourceManifestSha256: hash(itemManifest),
+    renderer: {
+      id: 'item-thumbnail-v2',
+      sourceSha256: 'a'.repeat(64),
+      threeVersion: '0.181.2',
+    },
+    items: {
+      [itemRef]: {
+        modelFile: 'weapons/spear.glb',
+        modelSha256: hash(itemModel),
+        thumbnail: {
+          file: itemFile,
+          sha256: hash(itemBytes),
+          sizeBytes: itemBytes.length,
+          width: 512,
+          height: 512,
+        },
+      },
+    },
+  };
+  await put(join(syntyRoot, 'weapons/spear.glb'), itemModel);
+  await put(join(syntyRoot, 'weapons/manifest.json'), itemManifest);
+  await put(join(syntyRoot, itemFile), itemBytes);
+  await put(
+    join(providerRoot, 'harness/catalogs/synty-item-thumbnails.json'),
+    JSON.stringify(itemCatalog)
+  );
+  await execFileAsync('git', ['add', '.'], {
+    cwd: providerRoot,
+    env: gitEnvironment,
+  });
+  await execFileAsync('git', ['commit', '--quiet', '-m', 'item publication'], {
+    cwd: providerRoot,
+    env: gitEnvironment,
+  });
+  await execFileAsync(
+    process.execPath,
+    [
+      join(webRoot, 'scripts/generate-item-thumbnail-catalog.mjs'),
+      '--provider-root',
+      providerRoot,
+      '--output',
+      join(webRoot, 'src/generated/itemThumbnailCatalog.ts'),
+    ],
+    { env: gitEnvironment }
+  );
+
   // The shallow clone starts at a later HEAD. Only the workflow's explicit
   // fetch makes the old pin available, and the material pin owns ABSENCE.
   await put(
@@ -180,6 +248,17 @@ async function makeFixture() {
     'later-head-world'
   );
   await put(join(syntyRoot, 'world-materials', 'future.png'), 'not-in-the-pin');
+  const laterItem = Buffer.concat([
+    itemBytes,
+    Buffer.from('later publication'),
+  ]);
+  await put(join(syntyRoot, itemFile), laterItem);
+  itemCatalog.items[itemRef].thumbnail.sha256 = hash(laterItem);
+  itemCatalog.items[itemRef].thumbnail.sizeBytes = laterItem.length;
+  await put(
+    join(providerRoot, 'harness/catalogs/synty-item-thumbnails.json'),
+    JSON.stringify(itemCatalog)
+  );
   await execFileAsync('git', ['add', '.'], {
     cwd: providerRoot,
     env: gitEnvironment,
@@ -209,6 +288,8 @@ exec "$REAL_GIT" "$@"
   return {
     providerRoot,
     webRoot,
+    itemFile,
+    itemBytes,
     env: {
       ...gitEnvironment,
       ASSETS_READ_TOKEN: 'fixture-token',
@@ -262,6 +343,11 @@ describe('production Docker private runtime packaging', () => {
     const fixture = await makeFixture();
 
     await runAssetStep(script, fixture, 'fixture-token');
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'public/models/synty', fixture.itemFile)
+      )
+    ).toEqual(fixture.itemBytes);
 
     await expect(
       readFile(
