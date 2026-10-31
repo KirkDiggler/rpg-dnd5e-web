@@ -143,7 +143,7 @@ import { RestDialog } from './RestDialog';
 import { RunEndedToast } from './RunEndedToast';
 import { SeatKnowledgeProbe } from './SeatKnowledgeProbe';
 import { SessionCanvas } from './SessionCanvas';
-import { sightingsToEntities } from './sightingEntities';
+import { isSightedDowned, sightingsToEntities } from './sightingEntities';
 import { SneakToggle } from './SneakToggle';
 import {
   type SessionRefreshKey,
@@ -628,6 +628,19 @@ function SessionEncounterScope({
     () => (canPresentMovement ? liveSighted : new Set<string>()),
     [canPresentMovement, liveSighted]
   );
+  const presentableActivityMembers = useMemo(
+    () =>
+      new Set(
+        canPresentMovement
+          ? otherMembers
+              .filter(
+                (body) => !body.remembered && !isSightedDowned(body.standing)
+              )
+              .map((body) => body.subject)
+          : []
+      ),
+    [canPresentMovement, otherMembers]
+  );
   const walkPresentation = useWalkPresentation({
     session: sessionId,
     member,
@@ -754,6 +767,7 @@ function SessionEncounterScope({
     onTurnBeat: turnOrder.onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
     presentableMembers,
+    presentableActivityMembers,
   });
   // The same cursor hold protects a queued watcher's floor overlay before
   // its route starts, not just while the route is already interpolating.
@@ -2142,6 +2156,8 @@ function SessionEncounterScope({
                     myPosition={displayPosition ?? lastGoodPositionRef.current!}
                     movements={moves.movements}
                     heldMovementMembers={combat.heldMovementMembers}
+                    activityCues={combat.activityCues}
+                    onActivityCueConsumed={combat.settleActivityCue}
                     onHexClick={
                       runEnded === null ? handleGroundClick : undefined
                     }

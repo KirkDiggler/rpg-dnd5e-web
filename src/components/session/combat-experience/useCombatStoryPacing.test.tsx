@@ -277,6 +277,167 @@ describe('useCombatStoryPacing tells the turn order what it plays (rpg-project#6
   });
 });
 
+describe('counted say cues on the existing presentation cursor', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const visible = new Set(['pedlar']);
+  const reply = (id: string) =>
+    create(ActSchema, {
+      session: 'crypt-run',
+      id,
+      family: Family.ACT,
+      body: {
+        case: 'speak',
+        value: {
+          by: { kind: PartyKind.MEMBER, id: 'aldric' },
+          answer: {
+            who: { kind: PartyKind.MEMBER, id: 'pedlar' },
+            say: 'Let me think.',
+            activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
+          },
+        },
+      },
+    });
+  const walk = () =>
+    create(ActSchema, {
+      session: 'crypt-run',
+      id: 'walk',
+      family: Family.ACT,
+      body: {
+        case: 'walk',
+        value: {
+          mover: { kind: PartyKind.MEMBER, id: 'pedlar' },
+          path: [{ cell: { x: 1, y: 0 } }, { cell: { x: 2, y: 0 } }],
+        },
+      },
+    });
+
+  it('releases the response and its target cue together after the preceding walk', () => {
+    const run = [walk(), reply('reply')];
+    const story = run.map((item, index) => ({
+      ...storyEntry(BigInt(index)),
+      id: actStoryId(item, index),
+    }));
+    let complete: (() => void) | undefined;
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants: [],
+        story,
+        presentableMembers: visible,
+        onPresentWalk: ({ complete: done }) => {
+          complete = () => done('painted');
+          return () => {};
+        },
+      })
+    );
+    act(() => result.current.acceptActs(run, { source: 'live' }));
+    expect(result.current.story).toEqual([story[0]]);
+    expect(result.current.activityCues?.size).toBe(0);
+    act(() => complete!());
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(result.current.story).toEqual(story);
+    expect(result.current.activityCues?.get('pedlar')).toEqual({
+      id: actStoryId(run[1], 1),
+      activityRef: 'dnd5e:activities:thoughtful',
+      cycles: 2,
+    });
+    expect(result.current.activityCues?.has('aldric')).toBe(false);
+  });
+
+  it('does not animate catch-up, repeated delivery or obsolete completion', () => {
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants: [],
+        story: [],
+        presentableMembers: visible,
+      })
+    );
+    act(() =>
+      result.current.acceptActs([reply('history')], { source: 'catchup' })
+    );
+    expect(result.current.activityCues?.size).toBe(0);
+    act(() => result.current.acceptActs([reply('first')], { source: 'live' }));
+    const old = result.current.activityCues?.get('pedlar');
+    expect(old).toBeDefined();
+    act(() => result.current.acceptActs([reply('second')], { source: 'live' }));
+    act(() =>
+      result.current.settleActivityCue({ member: 'pedlar', id: old!.id })
+    );
+    const current = result.current.activityCues?.get('pedlar');
+    expect(current?.id).not.toBe(old?.id);
+    act(() =>
+      result.current.settleActivityCue({ member: 'pedlar', id: current!.id })
+    );
+    act(() => result.current.acceptActs([reply('second')], { source: 'live' }));
+    expect(result.current.activityCues?.size).toBe(0);
+  });
+
+  it('permanently discards cues on movement, sight loss and scope changes', () => {
+    const { result, rerender } = renderHook(
+      ({ presentable, session }) =>
+        useCombatStoryPacing({
+          session,
+          member: 'aldric',
+          participants: [],
+          story: [],
+          presentableMembers: presentable,
+          onPresentWalk: ({ complete }) => {
+            complete('painted');
+            return () => {};
+          },
+        }),
+      { initialProps: { presentable: visible, session: 'crypt-run' } }
+    );
+    act(() => result.current.acceptActs([reply('first')], { source: 'live' }));
+    expect(result.current.activityCues?.size).toBe(1);
+    act(() => result.current.acceptActs([walk()], { source: 'live' }));
+    expect(result.current.activityCues?.size).toBe(0);
+    act(() => result.current.acceptActs([reply('second')], { source: 'live' }));
+    rerender({ presentable: new Set<string>(), session: 'crypt-run' });
+    expect(result.current.activityCues?.size).toBe(0);
+    rerender({ presentable: visible, session: 'crypt-run' });
+    act(() => result.current.acceptActs([reply('second')], { source: 'live' }));
+    expect(result.current.activityCues?.size).toBe(0);
+    act(() => result.current.acceptActs([reply('third')], { source: 'live' }));
+    const oldSettle = result.current.settleActivityCue;
+    rerender({ presentable: visible, session: 'new-run' });
+    expect(result.current.activityCues?.size).toBe(0);
+    act(() => oldSettle({ member: 'pedlar', id: 'unused' }));
+    expect(result.current.activityCues?.size).toBe(0);
+  });
+
+  it('does not revive a queued cue when sight is lost and regained before reveal', () => {
+    let complete: (() => void) | undefined;
+    const { result, rerender } = renderHook(
+      ({ presentable }) =>
+        useCombatStoryPacing({
+          session: 'crypt-run',
+          member: 'aldric',
+          participants: [],
+          story: [],
+          presentableMembers: presentable,
+          onPresentWalk: ({ complete: done }) => {
+            complete = () => done('painted');
+            return () => {};
+          },
+        }),
+      { initialProps: { presentable: visible } }
+    );
+    act(() =>
+      result.current.acceptActs([walk(), reply('queued')], { source: 'live' })
+    );
+    rerender({ presentable: new Set<string>() });
+    rerender({ presentable: visible });
+    act(() => complete!());
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(result.current.activityCues?.size).toBe(0);
+  });
+});
+
 describe('completion-driven walk presentation', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

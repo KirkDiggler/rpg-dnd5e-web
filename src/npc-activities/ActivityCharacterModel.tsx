@@ -4,11 +4,13 @@ import {
 } from '@/components/hex-grid/ClassCharacterModel';
 import { useGLTF } from '@react-three/drei';
 import type { WalkingReadiness } from './activityPlayback';
-import type { NpcActivityProfile } from './activityTypes';
+import type { ActivityCueRequest, NpcActivityProfile } from './activityTypes';
 
 type Props = Omit<ClassCharacterModelProps, 'activity'> & {
   profile?: NpcActivityProfile;
   defaultActivityRef?: string;
+  activityCue?: ActivityCueRequest;
+  onActivityCueConsumed?: (id: string) => void;
   moveSeq?: number;
   onWalkingReadiness?: (value: WalkingReadiness) => void;
 };
@@ -17,6 +19,8 @@ const ignoreReadiness = () => {};
 function BoundActivityModel({
   profile,
   defaultActivityRef,
+  activityCue,
+  onActivityCueConsumed,
   moveSeq,
   onWalkingReadiness,
   ...props
@@ -29,6 +33,8 @@ function BoundActivityModel({
         profile,
         clips: animations,
         defaultActivityRef,
+        cue: activityCue,
+        consumed: onActivityCueConsumed,
         moveSeq,
         ready: onWalkingReadiness ?? ignoreReadiness,
       }}
@@ -40,6 +46,8 @@ function BoundActivityModel({
 export function ActivityCharacterModel({
   profile,
   defaultActivityRef,
+  activityCue,
+  onActivityCueConsumed,
   moveSeq,
   onWalkingReadiness,
   ...props
@@ -49,6 +57,8 @@ export function ActivityCharacterModel({
       {...props}
       profile={profile}
       defaultActivityRef={defaultActivityRef}
+      activityCue={activityCue}
+      onActivityCueConsumed={onActivityCueConsumed}
       moveSeq={moveSeq}
       onWalkingReadiness={onWalkingReadiness}
     />

@@ -129,6 +129,51 @@ describe('Bard idle/walk playback through ClassCharacterModel', () => {
 });
 
 describe('provider activity playback through ClassCharacterModel', () => {
+  it('consumes a response request once and plays its counted sequence after the request is retired', async () => {
+    const profile = NPC_ACTIVITY_PROFILES[0];
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_Relaxed', 1, []),
+      new THREE.AnimationClip('Walk_Forward', 1, []),
+    ];
+    const clips = profile.library.clips.map(
+      (name) => new THREE.AnimationClip(name, 1, [])
+    );
+    const consumed = vi.fn();
+    const cue = {
+      id: 'reply-1',
+      activityRef: 'dnd5e:activities:thoughtful',
+      cycles: 2,
+    };
+    const model = (request: typeof cue | undefined) => (
+      <ClassCharacterModel
+        url="/body.glb"
+        activity={{
+          profile,
+          clips,
+          cue: request,
+          consumed,
+          ready: () => {},
+        }}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(model(cue));
+    expect(consumed).toHaveBeenCalledExactlyOnceWith('reply-1');
+    await renderer.update(model(undefined));
+    await renderer.advanceFrames(70, 0.1);
+    expect(fixture.played).toEqual([
+      'Idle_Relaxed',
+      'Idle_Thoughtful_Enter',
+      'Idle_Thoughtful',
+      'Idle_Thoughtful_Exit',
+      'Idle_Relaxed',
+    ]);
+    await renderer.unmount();
+    fixture.played.length = 0;
+    const fresh = await ReactThreeTestRenderer.create(model(undefined));
+    await fresh.advanceFrames(30, 0.1);
+    expect(fixture.played).toEqual(['Idle_Relaxed']);
+    await fresh.unmount();
+  });
   it('requests demand frames for provider sustain and arrival entry, but not memory or downed playback', async () => {
     const profile = NPC_ACTIVITY_PROFILES[0];
     fixture.animations = [

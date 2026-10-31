@@ -992,6 +992,18 @@ nouns persist across rooms.
   **Selection declarations stay contextual** — they appear only while props are
   selected, because they belong to a selection and not to the site.
 
+**Counted spoken activities** — a spoken answer can carry optional
+`activity: {ref, cycles}` beside `say`. The picker offers provider-published
+nonmoving activities; counts are positive uint32 sustain cycles, excluding
+Enter/Exit. Ordinary row edits and the v5 export/reopen path preserve the cue.
+Unknown references remain named diagnostics, not substituted activities. The
+selected response's live act triggers playback through the existing presentation
+cursor, never the question click or a scan of historical story. The cursor holds
+only a pending delivery, retired when the body accepts it; the existing mixer
+owns the finite budget. Completion returns to the configured default. Movement,
+sight/surface loss and newer requests discard remaining cycles rather than
+resuming them after arrival. Catch-up carries data without playing it (#746).
+
 **The Identity panel** is opened from the header and overlays the canvas. It is
 the merge of the old `The site` and `Library` destinations, and nothing from
 the old Library is dropped: the editable site name, the local draft

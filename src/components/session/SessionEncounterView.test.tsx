@@ -4370,6 +4370,109 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => screen.getByText(/Skeleton strikes Aldric/i));
   });
 
+  it('discards a queued response when its visible body goes down before a later revival', async () => {
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        { id: 'char-1', kind: MemberKind.PLAYER, name: 'Aldric' },
+        {
+          id: 'pedlar',
+          kind: MemberKind.MONSTER,
+          name: 'Pedlar',
+          monsterRef: 'dnd5e:monsters:goblin',
+          appearanceRef: 'dnd5e:npcs:goblin:knight-01',
+        },
+      ],
+    });
+    let standing = Standing.UP;
+    const sightings = () =>
+      ['commoner', 'pedlar'].map((subject, index) => ({
+        subject,
+        name: subject,
+        kind: MemberKind.MONSTER,
+        seen: {
+          position: { x: index * 3, y: 0 },
+          standing: subject === 'pedlar' ? standing : Standing.UP,
+        },
+        passage: Passage.PASS_THROUGH,
+        currentVia: ['sight'],
+      }));
+    const originalKnowledge = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await originalKnowledge(
+        ...args
+      )) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.sightings =
+        sightings() as unknown as typeof snapshot.view.sightings;
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: sightings(),
+    }));
+    const stream = liveActs();
+    const { unmount } = renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(2)
+    );
+    stream.push(
+      walkAct('commoner', [{ x: 1, y: 0 }]),
+      makeAct(Family.ACT, {
+        case: 'speak',
+        value: {
+          by: { kind: PartyKind.MEMBER, id: 'char-1' },
+          answer: {
+            who: { kind: PartyKind.MEMBER, id: 'pedlar' },
+            say: 'Let me think.',
+            activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
+          },
+        },
+      } as Act['body'])
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
+        true
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.activityCues?.size).toBe(0);
+    standing = Standing.DOWNED;
+    stream.push(stateAct(StateKind.DOWNED, 'pedlar'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.find(
+          (m) => m.subject === 'pedlar'
+        )?.standing
+      ).toBe(Standing.DOWNED)
+    );
+    standing = Standing.UP;
+    stream.push(stateAct(StateKind.STANCE, 'pedlar'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.find(
+          (m) => m.subject === 'pedlar'
+        )?.standing
+      ).toBe(Standing.UP)
+    );
+    const seq =
+      hoisted.lastCanvasProps.current!.movements!.get('commoner')!.seq;
+    vi.useFakeTimers();
+    try {
+      act(() =>
+        hoisted.lastCanvasProps.current?.onMovementPainted?.('commoner', seq, 1)
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(
+        hoisted.lastCanvasProps.current?.activityCues?.get('pedlar')
+      ).toBeUndefined();
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('refreshes Where for self-MOVED and View for another member MOVED', async () => {
     readyScene();
     const burst = deferredActs([
