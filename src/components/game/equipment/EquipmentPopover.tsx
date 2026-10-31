@@ -77,7 +77,7 @@ export function EquipmentPopover({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="equip-popover hud-skin"
+          className="equip-popover equip-popover-owned hud-skin"
           data-testid="equipment-popover"
           role="region"
           aria-label={`Equipment — ${characterName}`}

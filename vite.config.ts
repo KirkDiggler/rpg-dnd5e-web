@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { availableParallelism } from 'node:os';
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
+import { itemArtPreviewPlugin } from './scripts/itemArtPreviewPlugin';
 import { worldMaterialPreviewPlugin } from './scripts/worldMaterialPreviewPlugin';
 
 // Computed once per build. public/ assets (the /themes/*.css files) are not
@@ -35,6 +36,7 @@ export default defineConfig({
     worldMaterialPreviewPlugin(
       resolve(__dirname, '.local/world-material-preview')
     ),
+    itemArtPreviewPlugin(resolve(__dirname, '.local/item-art-preview')),
   ],
   define: {
     __BUILD_ID__: JSON.stringify(buildId()),

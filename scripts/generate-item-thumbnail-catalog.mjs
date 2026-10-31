@@ -48,11 +48,26 @@ export async function generateItemThumbnailCatalog({
       : safeFile(providerRoot, file);
   const bytes = readProvider('harness/catalogs/synty-item-thumbnails.json');
   const catalog = JSON.parse(bytes);
-  requireValue(
+  const legacy =
     catalog.schemaVersion === 1 &&
-      catalog.generatedBy === 'item-thumbnails@1.0.0',
-    'unsupported catalog'
-  );
+    catalog.generatedBy === 'item-thumbnails@1.0.0';
+  const itemOwned =
+    catalog.schemaVersion === 2 &&
+    catalog.generatedBy === 'item-thumbnails@2.0.0';
+  requireValue(legacy || itemOwned, 'unsupported catalog');
+  const dimension = itemOwned ? 512 : 128;
+  const maxImageBytes = itemOwned ? 4 * 1024 * 1024 : 1024 * 1024;
+  if (itemOwned) {
+    requireValue(
+      catalog.renderer &&
+        Object.keys(catalog.renderer).sort().join(',') ===
+          'id,sourceSha256,threeVersion' &&
+        catalog.renderer.id === 'item-thumbnail-v2' &&
+        /^[0-9a-f]{64}$/.test(catalog.renderer.sourceSha256) &&
+        catalog.renderer.threeVersion === '0.181.2',
+      'unsupported item renderer'
+    );
+  }
   const manifestBytes = readProvider(
     'harness/models/synty/weapons/manifest.json'
   );
@@ -100,11 +115,11 @@ export async function generateItemThumbnailCatalog({
       'invalid thumbnail path/hash'
     );
     requireValue(
-      thumb.width === 128 &&
-        thumb.height === 128 &&
+      thumb.width === dimension &&
+        thumb.height === dimension &&
         Number.isSafeInteger(thumb.sizeBytes) &&
         thumb.sizeBytes >= 24 &&
-        thumb.sizeBytes <= 1048576,
+        thumb.sizeBytes <= maxImageBytes,
       'invalid thumbnail dimensions/size'
     );
     const verifyImage = (png) => {
@@ -114,8 +129,8 @@ export async function generateItemThumbnailCatalog({
       );
       requireValue(
         png.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) &&
-          png.readUInt32BE(16) === thumb.width &&
-          png.readUInt32BE(20) === thumb.height,
+          png.readUInt32BE(16) === dimension &&
+          png.readUInt32BE(20) === dimension,
         'image dimensions differ'
       );
     };
