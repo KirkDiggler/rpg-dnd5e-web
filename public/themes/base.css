@@ -551,6 +551,7 @@
   }
 
   .equip-slots {
+    --equip-slot-image-size: 160px;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -558,7 +559,9 @@
 
   .equip-socket {
     display: grid;
-    grid-template-columns: 60px 1fr;
+    grid-template-columns: calc(
+        var(--equip-slot-image-size, 160px) + 4px
+      ) minmax(0, 1fr);
     grid-template-areas:
       'icon label'
       'icon name'
@@ -619,8 +622,8 @@
 
   .equip-socket-icon {
     grid-area: icon;
-    width: 56px;
-    height: 56px;
+    width: var(--equip-slot-image-size, 160px);
+    height: var(--equip-slot-image-size, 160px);
     object-fit: contain;
   }
 
@@ -722,7 +725,7 @@
   /* Owned inventory gets readable thumbnails; vendor rows retain their
      existing compact sizing through the shared base classes above. */
   .equip-inventory-owned .equip-inv-row {
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 132px minmax(0, 1fr);
     grid-template-areas:
       'icon name'
       'icon stat'
@@ -734,8 +737,8 @@
   }
 
   .equip-inventory-owned .equip-inv-icon {
-    width: 48px;
-    height: 48px;
+    width: 128px;
+    height: 128px;
   }
 
   .equip-inv-name {
@@ -792,10 +795,19 @@
   }
 
   .equip-popover-owned {
-    width: min(560px, calc(100% - 16px));
+    width: min(960px, calc(100% - 16px));
+    max-height: calc(100dvh - 200px);
+  }
+
+  .equip-popover-owned .equip-socket {
+    padding-block: 0.5rem;
   }
 
   @media (max-width: 600px) {
+    .equip-popover-owned .equip-slots {
+      --equip-slot-image-size: 128px;
+    }
+
     .equip-popover-owned .equip-popover-body {
       grid-template-columns: minmax(0, 1fr);
     }

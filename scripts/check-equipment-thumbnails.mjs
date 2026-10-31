@@ -59,7 +59,8 @@ try {
     }));
     console.log(width, JSON.stringify(metrics));
     for (const image of metrics.images) {
-      const expected = image.kind === 'equip-socket-icon' ? 56 : 48;
+      const expected =
+        image.kind === 'equip-socket-icon' && width >= 600 ? 160 : 128;
       assert.equal(image.width, expected, `${image.kind} width at ${width}`);
       assert.equal(image.height, expected, `${image.kind} height at ${width}`);
       assert.equal(image.fit, 'contain', 'do not crop blades or handles');
