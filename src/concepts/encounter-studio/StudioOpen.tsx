@@ -111,6 +111,9 @@ export function StudioOpen({
 
   const open = async (summary: DungeonSummary): Promise<void> => {
     // Benchmark harness: the Open row was chosen; the server read starts.
+    // Only this server Open has a start mark: a file chosen from disk
+    // (StudioDraftFile) has none, so the harness driver opens from the
+    // server to read start → decoded.
     mark('studio:open:start');
     setAsking(null);
     setBusyKey(summary.key);
