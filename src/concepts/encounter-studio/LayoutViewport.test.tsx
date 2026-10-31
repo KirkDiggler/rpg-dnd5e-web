@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { useState } from 'react';
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -2422,7 +2423,9 @@ describe('Layout pick on map (rpg-project#720)', () => {
  * test in `draftFile.test.ts`.
  */
 describe('the ceiling fixture on the render path', () => {
-  function ceilingDraft(): RoomDraft {
+  // Parsed once for the describe; neither test mutates it.
+  let ceiling: RoomDraft;
+  beforeAll(() => {
     const read = readDraftYaml(
       readFileSync(
         'src/concepts/encounter-studio/fixtures/bench-keep-30k.yaml',
@@ -2430,11 +2433,11 @@ describe('the ceiling fixture on the render path', () => {
       )
     );
     if (!read.ok) throw new Error(read.refusal);
-    return read.draft;
-  }
+    ceiling = read.draft;
+  });
 
   it('Layout draws the whole ceiling grid, every wall, and commits a stroke with no refusal', () => {
-    const draft = ceilingDraft();
+    const draft = ceiling;
     const onRefuse = vi.fn();
     const input = props({ draft, onRefuse });
     render(<LayoutViewport {...input} />);
@@ -2459,7 +2462,7 @@ describe('the ceiling fixture on the render path', () => {
   // StructuralWallSurfacePieces lays each wall from its catalog entry's
   // boundsMeters with the default cap; a throw there is the refusal marker.
   it('every ceiling wall lays its pieces under MAX_WALL_PIECES_PER_WALL', () => {
-    const walls = ceilingDraft().room.walls ?? [];
+    const walls = ceiling.room.walls ?? [];
     expect(walls).toHaveLength(74);
     const counts = walls.map((wall) => {
       const entry = WORLD_BUILDING_CATALOG_BY_REF.get(wall.appearance.assetRef);

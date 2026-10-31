@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { wordRowsOf } from '../world-building/bundles';
@@ -472,20 +473,31 @@ describe('the draft as a file (rpg-project#578)', () => {
 /**
  * THE SUPPORTED ENVELOPE (rpg-project ideas/benchmark-keep/design.md, R4;
  * rpg-project#749). `fixtures/bench-keep-30k.yaml` is a TEST FIXTURE ONLY: a
- * copy of the ceiling fixture, rpg-toolkit `keepgen -hexes 30000 -seed 1 -key
- * bench-keep-30k` at default density, kept current BY HAND when the generator
- * changes (its header names the command). The shelf copy in rpg-api is the
- * one the server serves; the bench harness's live Open is the real currency
- * check. Every refusal the studio applies on Open and Import must admit it,
- * and it sits under half of each bound. Measured when the bounds were set:
- * 1,618 items, 1,108,811 envelope characters, 584,693 YAML bytes.
+ * byte-for-byte COPY of rpg-api `content/bench/bench-keep-30k.yaml`, the
+ * shelf file the server serves (rpg-toolkit `keepgen -hexes 30000 -seed 1
+ * -key bench-keep-30k` at default density; its header names the command).
+ * When the generator changes, COPY the api file here and update the hash
+ * below; do not regenerate, or the header's `-out` diverges. The bench
+ * harness's live Open is the real currency check. Every refusal the studio
+ * applies on Open and Import must admit it, and it sits under half of each
+ * bound. Measured when the bounds were set: 1,618 items, 1,108,811 envelope
+ * characters, 584,707 YAML bytes.
  */
+const CEILING_SHA256 =
+  '624d937f9577bd1d459e4d7e6716d98aecda859153ec11af744f172636d9834b';
+
 describe('the ceiling fixture (rpg-project#749)', () => {
-  const ceilingYaml = (): string =>
-    readFileSync(
+  let yaml: string;
+  let read: Extract<ReturnType<typeof readDraftYaml>, { ok: true }>;
+  beforeAll(() => {
+    yaml = readFileSync(
       'src/concepts/encounter-studio/fixtures/bench-keep-30k.yaml',
       'utf8'
     );
+    const opened = readDraftYaml(yaml);
+    if (!opened.ok) throw new Error(opened.refusal);
+    read = opened;
+  });
 
   /** Every `assetRef` anywhere in the draft: props, walls, doors. */
   function assetRefsOf(value: unknown, into = new Set<string>()): Set<string> {
@@ -498,12 +510,14 @@ describe('the ceiling fixture (rpg-project#749)', () => {
     return into;
   }
 
-  it('imports the ceiling fixture with no refusal', () => {
-    const yaml = ceilingYaml();
-    const read = readDraftYaml(yaml);
-    if (!read.ok) throw new Error(read.refusal);
-    expect(read.key).toBe('bench-keep-30k');
+  it('is the api shelf copy, byte for byte', () => {
+    expect(createHash('sha256').update(yaml).digest('hex')).toBe(
+      CEILING_SHA256
+    );
+  });
 
+  it('imports the ceiling fixture with no refusal', () => {
+    expect(read.key).toBe('bench-keep-30k');
     const items = read.draft.scene.items.length;
     expect(items).toBe(1618);
     expect(items).toBeLessThan(MAX_ITEMS / 2);
