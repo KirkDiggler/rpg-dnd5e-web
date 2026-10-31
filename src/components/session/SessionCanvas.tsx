@@ -75,6 +75,7 @@ import * as THREE from 'three';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import { PerfMarkFirstFrame } from '../../dev/PerfMarkFirstFrame';
 import { readPerfProbeQuery } from '../../dev/perfProbeQuery';
+import { floorPickingBounds } from '../hex-grid/floorPickingBounds';
 import { HexEntity, type HexEntityProps } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
@@ -102,11 +103,6 @@ import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
 const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
-
-/** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
- * cover any dungeon this route draws; only its raycast target, never
- * rendered. */
-const GROUND_PLANE_SIZE = 200;
 
 /** The passive, persistent in-reach ring — the SAME hue `MoveIndicator`'s
  * own `'target'` kind uses for the hover state, at a much quieter
@@ -371,6 +367,10 @@ export function SessionScene({
   presentationLayer,
   compositionSource,
 }: SessionCanvasProps) {
+  const pickingBounds = useMemo(
+    () => floorPickingBounds(scene.floorTiles.values(), hexSize),
+    [scene.floorTiles, hexSize]
+  );
   // One swatch per declared faction on the roster, by first appearance
   // (`factionColor.ts`) — the same table the sides legend reads, so the
   // map and the key agree. Empty for a dungeon that declares none.
@@ -766,14 +766,13 @@ export function SessionScene({
           map never said where the exit was). Drawing only — Leave stays
           offered wherever the member stands. */}
       <SessionExitMarkers exits={scene.exits} hexSize={hexSize} />
-      {/* Invisible ground plane for hit detection — HexGrid.tsx's own
-          convention, unchanged. */}
+      {/* Invisible input plane follows the actual known floor bounds. */}
       <mesh
-        position={[0, 0, 0]}
+        position={pickingBounds.position}
         rotation={[-Math.PI / 2, 0, 0]}
         {...groundPlaneProps}
       >
-        <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
+        <planeGeometry args={pickingBounds.size} />
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
