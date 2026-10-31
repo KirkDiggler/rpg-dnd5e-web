@@ -10,6 +10,7 @@
  * the question it is asking.
  */
 import type { AuthoringGateState } from '@/author/useAuthoringGate';
+import { mark } from '@/dev/perfMarks';
 import type { DungeonSummary } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { useEffect, useRef, useState } from 'react';
 import { readDraftYaml, type DraftFileRead } from './draftFile';
@@ -109,6 +110,8 @@ export function StudioOpen({
     });
 
   const open = async (summary: DungeonSummary): Promise<void> => {
+    // Benchmark harness: the Open row was chosen; the server read starts.
+    mark('studio:open:start');
     setAsking(null);
     setBusyKey(summary.key);
     const file = await library.read(summary.key);

@@ -1,6 +1,8 @@
+import { mark, markIfArmed, takeArmedMark } from '@/dev/perfMarks';
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -572,6 +574,18 @@ export function LayoutViewport({
     () => new Set(floorCells(draft).map(cellKey)),
     [draft]
   );
+  // Benchmark harness: the grid's commit of an opened document, and the
+  // frame after its commit of a stroke. Only an armed mark fires (an import
+  // or a stroke arms it), so a remount or an unrelated edit marks nothing.
+  const gridDrawn = transform !== null;
+  useEffect(() => {
+    if (!gridDrawn) return;
+    markIfArmed('studio:open:first-paint');
+    // Not cancelled on a re-render: the armed stroke was taken, so its
+    // mark must still land.
+    if (takeArmedMark('studio:stroke:painted'))
+      requestAnimationFrame(() => mark('studio:stroke:painted'));
+  }, [committed, gridDrawn]);
   const resolutions = regionEditing?.resolutions;
   const overview = useMemo(
     () => (resolutions ? regionOverview(draft, resolutions) : null),

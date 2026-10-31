@@ -8,12 +8,11 @@
  * Mounted via `EncounterMap`'s `<HexGrid>` `children` slot (the same slot
  * `PlaytestHarness`'s Synty showcase already uses) -- this is the ONLY
  * wiring point this feature touches; everything else lives in this one
- * new file. Gated behind `import.meta.env.MODE === 'development'` (the
- * same gate `App.tsx`'s `showPlaytestHarness`/`isDevelopment` flags use)
- * AND a `?perfProbe` query flag, read the exact same way HexGrid's
- * existing `?syntyDungeon=0` flag is (`EncounterMap.tsx`: raw
- * `new URLSearchParams(window.location.search).get(...)`, read once via
- * `useMemo`, no router/useSearchParams -- this app has neither).
+ * new file. Also mounted in the session canvas's scene and the studio 3D
+ * view (benchmark-keep harness, rpg-project#750). Every mount reads the one
+ * gate `readPerfProbeQuery()` (`dev/perfProbeQuery.ts`): `isDevLike()`
+ * (development or the bench build) AND a `?perfProbe` query flag, read once
+ * via `useMemo`, no router/useSearchParams -- this app has neither.
  *
  * WHY IT NEEDS `invalidate()` EVERY FRAME
  * ----------------------------------------
@@ -56,6 +55,7 @@
  */
 import { useFrame, useThree } from '@react-three/fiber';
 import { useRef } from 'react';
+import { readRendererString } from './rendererString';
 
 export interface PerfProbeFrameStats {
   mean: number;
@@ -93,6 +93,11 @@ export interface PerfProbeResult {
     textures: number;
     programs: number;
   };
+  /** Unmasked GPU renderer string from `WEBGL_debug_renderer_info`
+   * (e.g. "ANGLE (NVIDIA ...)" or "SwiftShader"), or the masked
+   * `RENDERER` when the extension is unavailable, or null. The bench
+   * harness refuses a run whose renderer is a software rasteriser. */
+  renderer: string | null;
 }
 
 export interface DevPerfProbeProps {
@@ -249,6 +254,7 @@ export function DevPerfProbe({
           textures: info.memory.textures,
           programs: info.programs?.length ?? 0,
         },
+        renderer: readRendererString(gl.getContext?.()),
       };
       emitResult(result);
       onComplete?.(result);

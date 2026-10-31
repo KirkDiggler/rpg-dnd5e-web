@@ -9,6 +9,7 @@ import {
   encodeRoomDocument,
   isRoomDocument,
 } from '@/compositions/roomDocument';
+import { armMark, mark } from '@/dev/perfMarks';
 import {
   useCallback,
   useEffect,
@@ -2232,6 +2233,11 @@ export function WorldBuildingConcept({
             ? 'Imported canonical YAML kept in memory — local save failed'
             : 'Imported canonical single-room YAML'
         );
+        // Benchmark harness: the editor took the document (state queued);
+        // the regions list and the layout grid mark their commits of it.
+        mark('studio:open:imported');
+        armMark('studio:regions:rendered');
+        armMark('studio:open:first-paint');
         return true;
       } catch (error) {
         setNotice(
@@ -3637,6 +3643,10 @@ export function WorldBuildingConcept({
     regionId?: string
   ): boolean => {
     if (refuseWhilePublishing()) return false;
+    // Benchmark harness: one stroke reaches the document; the layout grid
+    // marks the frame after its commit of it.
+    mark('studio:stroke:commit');
+    armMark('studio:stroke:painted');
     try {
       const current = roomHistoryRef.current.present;
       return commitRoomDocument({

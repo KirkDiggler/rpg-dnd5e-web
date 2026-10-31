@@ -5348,6 +5348,65 @@ describe('S4 the draft as a file through the real owner', () => {
     expect(storage.document()).toEqual(castle);
   });
 
+  // The benchmark harness's studio open marks (rpg-project#750, B11): in a
+  // development-like build with ?perfMarks, opening a file marks decoded,
+  // imported, the regions list's commit and the grid's first paint, in that
+  // order, through the real owner.
+  it('marks the studio open path in order under a bench build with ?perfMarks', async () => {
+    vi.stubEnv('MODE', 'bench');
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      const castle = createCastleS4Document();
+      mount(new MemoryStorage(createPopulatedStudioDocument()));
+      await settled();
+      spy.mockClear();
+      await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      await settled();
+      const names = spy.mock.calls
+        .map(([name]) => name)
+        .filter(
+          (name) =>
+            name.startsWith('studio:open:') ||
+            name === 'studio:regions:rendered'
+        );
+      expect(names).toEqual([
+        'studio:open:decoded',
+        'studio:open:imported',
+        'studio:regions:rendered',
+        'studio:open:first-paint',
+      ]);
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('marks nothing in the test mode, even with ?perfMarks', async () => {
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      mount(new MemoryStorage(createPopulatedStudioDocument()));
+      await settled();
+      await choose(
+        'mad-king.yaml',
+        exportDraftYaml(createCastleS4Document(), 'mad-king')
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      await settled();
+      expect(
+        spy.mock.calls.filter(([name]) => name.startsWith('studio:'))
+      ).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+    }
+  });
+
   // An import replaces the whole document, so the Layout refits to it
   // (rpg-project#725 R3); before this, the castle opened cropped on the
   // previous room's frame until Show entire was pressed.
