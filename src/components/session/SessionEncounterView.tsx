@@ -2137,6 +2137,8 @@ function SessionEncounterScope({
                     myPosition={displayPosition ?? lastGoodPositionRef.current!}
                     movements={moves.movements}
                     heldMovementMembers={combat.heldMovementMembers}
+                    activityCues={combat.activityCues}
+                    onActivityCueConsumed={combat.settleActivityCue}
                     onHexClick={
                       runEnded === null ? handleGroundClick : undefined
                     }

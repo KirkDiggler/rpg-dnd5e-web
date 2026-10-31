@@ -17,7 +17,14 @@ function fixture() {
       ])
   );
   const ready = vi.fn();
-  const playback = createActivityPlayback({ mixer, clips, profile, ready });
+  const consumed = vi.fn();
+  const playback = createActivityPlayback({
+    mixer,
+    clips,
+    profile,
+    ready,
+    consumed,
+  });
   const reach = (activity: string, phase: string) => {
     for (let i = 0; i < 600; i++) {
       if (
@@ -31,10 +38,25 @@ function fixture() {
       `Never reached ${activity}/${phase}: ${JSON.stringify(playback.state)}`
     );
   };
-  return { mixer, playback, ready, reach };
+  return { mixer, playback, ready, reach, consumed };
 }
 
 describe('counted response through the real mixer', () => {
+  it('acknowledges delivery once while keeping the finite budget in the mixer owner', () => {
+    const { playback, mixer, reach, consumed } = fixture();
+    playback.update({ ...base, cue });
+    expect(consumed).toHaveBeenCalledExactlyOnceWith('answer-1');
+    reach(thoughtful, 'sustain');
+    playback.update(base); // The cursor retires the dispatched request, not its playback.
+    mixer.update(1.1);
+    expect(playback.state.phase).toBe('sustain');
+    mixer.update(1.1);
+    expect(playback.state.phase).toBe('exit');
+    reach(profile.defaultActivityRef, 'sustain');
+    playback.update({ ...base, cue });
+    expect(consumed).toHaveBeenCalledOnce();
+    playback.dispose();
+  });
   it.each([
     { ...cue, cycles: 0 },
     { ...cue, cycles: 1.5 },

@@ -22,6 +22,8 @@ export function createActivityPlayback(input: {
   readonly clips: readonly THREE.AnimationClip[];
   readonly profile: NpcActivityProfile;
   readonly ready: (value: WalkingReadiness) => void;
+  /** Retire the delivery request immediately; only this owner keeps its budget. */
+  readonly consumed?: (id: string) => void;
 }) {
   const byName = new Map(input.clips.map((clip) => [clip.name, clip]));
   if (byName.size !== input.clips.length)
@@ -104,6 +106,7 @@ export function createActivityPlayback(input: {
       if (!next.active) {
         if (wasActive) sequence.stop();
         wasActive = false;
+        if (newCue && next.cue) input.consumed?.(next.cue.id);
         report();
         return;
       }
@@ -118,6 +121,7 @@ export function createActivityPlayback(input: {
         sequence.state.phase === 'sustain' ? 1 : next.transitionSpeed
       );
       if (starting) input.mixer.update(0);
+      if (newCue && next.cue) input.consumed?.(next.cue.id);
       report();
     },
     dispose(): void {

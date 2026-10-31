@@ -48,6 +48,8 @@
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCameraDials } from '@/feel/useFeelDials';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import type { ActivityCueSettlement } from '@/npc-activities/sayActivityPresentation';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import { refId } from '@/utils/refs';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -188,6 +190,8 @@ export interface SessionCanvasProps {
   movements?: Movements;
   /** Live bodies with queued/active presentation must not jump to newer snapshots. */
   heldMovementMembers?: ReadonlySet<string>;
+  activityCues?: ReadonlyMap<string, ActivityCueRequest>;
+  onActivityCueConsumed?: (input: ActivityCueSettlement) => void;
   /** Fires when a floor hex is clicked (and it isn't an attack — see this
    * component's own doc comment) — the request-shaping/pathfinding and
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
@@ -335,6 +339,8 @@ export function SessionScene({
   startFacing,
   movements,
   heldMovementMembers,
+  activityCues,
+  onActivityCueConsumed,
   onHexClick,
   onCancelSelection,
   onEntityClick,
@@ -900,6 +906,10 @@ export function SessionScene({
             member.kind === MemberKind.MONSTER
               ? roster?.get(member.subject)?.appearanceRef || undefined
               : undefined
+          }
+          activityCue={activityCues?.get(member.subject)}
+          onActivityCueConsumed={(target, id) =>
+            onActivityCueConsumed?.({ member: target, id })
           }
           defaultActivityRef={
             member.kind === MemberKind.MONSTER

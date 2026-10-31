@@ -48,7 +48,10 @@ import {
   createActivityPlayback,
   type WalkingReadiness,
 } from '@/npc-activities/activityPlayback';
-import type { NpcActivityProfile } from '@/npc-activities/activityTypes';
+import type {
+  ActivityCueRequest,
+  NpcActivityProfile,
+} from '@/npc-activities/activityTypes';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -112,6 +115,8 @@ export interface ClassCharacterModelProps {
     readonly profile: NpcActivityProfile;
     readonly clips: readonly THREE.AnimationClip[];
     readonly defaultActivityRef?: string;
+    readonly cue?: ActivityCueRequest;
+    readonly consumed?: (id: string) => void;
     readonly moveSeq?: number;
     readonly ready: (value: WalkingReadiness) => void;
   };
@@ -433,6 +438,8 @@ export function ClassCharacterModel({
   >(undefined);
   const readinessRef = useRef(activity?.ready);
   readinessRef.current = activity?.ready;
+  const consumedRef = useRef(activity?.consumed);
+  consumedRef.current = activity?.consumed;
   const profile = activity?.profile;
   useLayoutEffect(() => {
     if (!profile) return;
@@ -441,6 +448,7 @@ export function ClassCharacterModel({
       clips: combinedClips,
       profile,
       ready: (value) => readinessRef.current?.(value),
+      consumed: (id) => consumedRef.current?.(id),
     });
     playbackRef.current = playback;
     return () => {
@@ -451,6 +459,7 @@ export function ClassCharacterModel({
   useLayoutEffect(() => {
     playbackRef.current?.update({
       defaultActivityRef: activity?.defaultActivityRef,
+      cue: activity?.cue,
       moveSeq: activity?.moveSeq,
       wantsWalk: isMoving,
       active: !remembered && !isDownedVariant,
@@ -461,6 +470,7 @@ export function ClassCharacterModel({
     profile,
     combinedClips,
     activity?.defaultActivityRef,
+    activity?.cue,
     activity?.moveSeq,
     isMoving,
     remembered,
