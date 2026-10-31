@@ -31,16 +31,28 @@ export function perfMarksEnabled(): boolean {
   return new URLSearchParams(window.location.search).has('perfMarks');
 }
 
-/** `detail` (optional) is read only when marks are on, so a caller can pass
- * a function for anything costly to compute (e.g. a response's byte size). */
-export function mark(
-  name: PerfMarkName,
-  detail?: () => Record<string, unknown>
-): void {
+export interface MarkOptions {
+  /** Read only when marks are on, so a caller can pass anything costly to
+   * compute (e.g. a response's byte size). */
+  detail?: () => Record<string, unknown>;
+  /** A `performance.now()` captured earlier, when the event began but was
+   * only known to count later (e.g. a stroke that turns out to commit). */
+  startTime?: number;
+}
+
+export function mark(name: PerfMarkName, options?: MarkOptions): void {
   if (!perfMarksEnabled()) return;
   if (typeof performance === 'undefined' || !performance.mark) return;
-  if (detail) performance.mark(name, { detail: detail() });
-  else performance.mark(name);
+  if (!options) {
+    performance.mark(name);
+    return;
+  }
+  performance.mark(name, {
+    ...(options.detail ? { detail: options.detail() } : {}),
+    ...(options.startTime !== undefined
+      ? { startTime: options.startTime }
+      : {}),
+  });
 }
 
 /**

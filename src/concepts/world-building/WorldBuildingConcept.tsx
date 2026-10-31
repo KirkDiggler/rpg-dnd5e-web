@@ -3648,6 +3648,10 @@ export function WorldBuildingConcept({
     regionId?: string
   ): boolean => {
     if (refuseWhilePublishing()) return false;
+    // Benchmark harness: the stroke's time starts here, before the owner's
+    // paint, validation and equality check, so the commit-to-painted row
+    // measures the whole document cost; it is marked only if it commits.
+    const strokeStart = performance.now();
     try {
       const current = roomHistoryRef.current.present;
       return commitRoomDocument(
@@ -3661,9 +3665,10 @@ export function WorldBuildingConcept({
         selectedIds,
         false,
         // Benchmark harness: only a stroke that changed the document marks
-        // its commit; the layout grid marks the frame after its commit of it.
+        // its commit, stamped at the stroke's start; the layout grid marks
+        // the frame after its commit of it.
         () => {
-          mark('studio:stroke:commit');
+          mark('studio:stroke:commit', { startTime: strokeStart });
           armMark('studio:stroke:painted');
         }
       );

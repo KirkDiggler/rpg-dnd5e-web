@@ -152,9 +152,11 @@ export function useSessionKnowledge(session: string, member: string) {
       // `bytes` is the response's wire size, encoded only when marks are on.
       mark('play:atlas:requested');
       const response = await sessionClient.getKnowledge({ session, member });
-      mark('play:atlas:received', () => ({
-        bytes: toBinary(GetKnowledgeResponseSchema, response).byteLength,
-      }));
+      mark('play:atlas:received', {
+        detail: () => ({
+          bytes: toBinary(GetKnowledgeResponseSchema, response).byteLength,
+        }),
+      });
       if (!current()) return;
       if (response.atlas)
         assertStructuralLayoutIntegrity({

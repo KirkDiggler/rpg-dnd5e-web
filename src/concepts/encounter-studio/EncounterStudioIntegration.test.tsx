@@ -6985,6 +6985,15 @@ describe('stroke perf marks', () => {
     vi.stubEnv('MODE', 'bench');
     window.history.replaceState(null, '', '/?perfMarks');
     const spy = vi.spyOn(performance, 'mark');
+    // The clock reads commitFloor takes, by the stack that asked: its first
+    // is the stroke's start, taken before the owner paints and validates.
+    const realNow = performance.now.bind(performance);
+    const strokeStarts: number[] = [];
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      const value = realNow();
+      if (new Error().stack?.includes('commitFloor')) strokeStarts.push(value);
+      return value;
+    });
     try {
       mount(new MemoryStorage(seed(true)));
       await settled();
@@ -6999,6 +7008,12 @@ describe('stroke perf marks', () => {
           'studio:stroke:painted',
         ])
       );
+      // The commit mark is stamped at commitFloor's entry, not when the
+      // owner's validation and equality check finished.
+      expect(strokeStarts).toHaveLength(1);
+      expect(
+        spy.mock.calls.find(([name]) => name === 'studio:stroke:commit')?.[1]
+      ).toEqual({ startTime: strokeStarts[0] });
       spy.mockClear();
       // Repainting the same cell is an accepted no-op: nothing commits.
       gesture(zero);
@@ -7011,6 +7026,7 @@ describe('stroke perf marks', () => {
       expect(cells()).toEqual([]);
       expect(strokeMarks()).toEqual([]);
     } finally {
+      now.mockRestore();
       spy.mockRestore();
     }
   });
