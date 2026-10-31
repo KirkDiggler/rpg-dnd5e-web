@@ -3,12 +3,24 @@ import { describe, expect, it, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { wordRowsOf } from '../world-building/bundles';
+import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
 import {
   floorCellCount,
+  loadRoomDraft,
+  MAX_FLOOR_HEXES,
+  saveRoomDraft,
   stringifyRoomDraft,
+  validateRoomDocument,
 } from '../world-building/roomDraft';
+import {
+  MAX_GROUPS,
+  MAX_ITEMS,
+  MAX_JSON_LENGTH,
+  MAX_MAP_LABELS,
+} from '../world-building/serialization';
 import { encodeSingleRoomDungeon } from '../world-building/singleRoomDungeon';
 import { renderScope } from '../world-building/siteScope';
+import type { KeyValueStorage } from '../world-building/types';
 import {
   defaultDraftKey,
   exportDraftYaml,
@@ -357,7 +369,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(opened.draft).not.toHaveProperty('workspace');
     expect(opened.draft.scene).not.toHaveProperty('authoringRegions');
     // rpg-dnd5e-web#1284: the castle's stored envelope, regions as row runs,
-    // is a fraction of the 500,000-character cap that refused a full floor.
+    // is a fraction of the then 500,000-character cap that refused a full floor.
     const envelope = stringifyRoomDraft(opened.draft, opened.scope);
     expect(envelope.length).toBeLessThan(MAX_CASTLE_ENVELOPE);
   });
@@ -453,6 +465,86 @@ describe('the draft as a file (rpg-project#578)', () => {
       ok: false,
       refusal:
         'Could not import: scene.items[1].assetRef "dnd5e:props:scroll" is not in the local prop catalog.',
+    });
+  });
+});
+
+/**
+ * THE SUPPORTED ENVELOPE (rpg-project ideas/benchmark-keep/design.md, R4;
+ * rpg-project#749). `fixtures/bench-keep-30k.yaml` is a TEST FIXTURE ONLY: a
+ * copy of the ceiling fixture, rpg-toolkit `keepgen -hexes 30000 -seed 1 -key
+ * bench-keep-30k` at default density, kept current BY HAND when the generator
+ * changes (its header names the command). The shelf copy in rpg-api is the
+ * one the server serves; the bench harness's live Open is the real currency
+ * check. Every refusal the studio applies on Open and Import must admit it,
+ * and it sits under half of each bound. Measured when the bounds were set:
+ * 1,618 items, 1,108,811 envelope characters, 584,693 YAML bytes.
+ */
+describe('the ceiling fixture (rpg-project#749)', () => {
+  const ceilingYaml = (): string =>
+    readFileSync(
+      'src/concepts/encounter-studio/fixtures/bench-keep-30k.yaml',
+      'utf8'
+    );
+
+  /** Every `assetRef` anywhere in the draft: props, walls, doors. */
+  function assetRefsOf(value: unknown, into = new Set<string>()): Set<string> {
+    if (Array.isArray(value)) for (const v of value) assetRefsOf(v, into);
+    else if (value && typeof value === 'object')
+      for (const [key, v] of Object.entries(value)) {
+        if (key === 'assetRef' && typeof v === 'string') into.add(v);
+        else assetRefsOf(v, into);
+      }
+    return into;
+  }
+
+  it('imports the ceiling fixture with no refusal', () => {
+    const yaml = ceilingYaml();
+    const read = readDraftYaml(yaml);
+    if (!read.ok) throw new Error(read.refusal);
+    expect(read.key).toBe('bench-keep-30k');
+
+    const items = read.draft.scene.items.length;
+    expect(items).toBe(1618);
+    expect(items).toBeLessThan(MAX_ITEMS / 2);
+    const envelope = stringifyRoomDraft(read.draft, read.scope);
+    expect(envelope.length).toBeLessThan(MAX_JSON_LENGTH / 2);
+
+    // The other open refusals the ceiling meets.
+    expect(floorCellCount(read.draft)).toBe(30000);
+    expect(floorCellCount(read.draft)).toBeLessThanOrEqual(MAX_FLOOR_HEXES);
+    expect(read.draft.scene.groups.length).toBeLessThanOrEqual(MAX_GROUPS);
+    expect(read.draft.scene.mapLabels?.length ?? 0).toBeLessThanOrEqual(
+      MAX_MAP_LABELS
+    );
+    expect(read.draft.room.regions).toHaveLength(32);
+    expect(read.draft.room.walls).toHaveLength(74);
+    const refs = assetRefsOf(read.draft);
+    expect(refs.size).toBe(32);
+    expect(
+      [...refs].filter((ref) => !WORLD_BUILDING_CATALOG_BY_REF.has(ref))
+    ).toEqual([]);
+
+    // What the session's import does: the full document gate, the autosave,
+    // and the reload the next visit performs.
+    const valid = validateRoomDocument({
+      draft: read.draft,
+      scope: read.scope,
+    });
+    const values = new Map<string, string>();
+    const storage: KeyValueStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => void values.set(key, value),
+    };
+    expect(saveRoomDraft(storage, valid.draft, valid.scope)).toBeNull();
+    const reloaded = loadRoomDraft(storage, valid.draft);
+    expect(reloaded.error).toBeUndefined();
+    expect(reloaded.value.scene.items).toHaveLength(items);
+
+    const importDocument = vi.fn().mockReturnValue(true);
+    expect(importDraftYaml(yaml, { importDocument })).toEqual({
+      ok: true,
+      key: 'bench-keep-30k',
     });
   });
 });
