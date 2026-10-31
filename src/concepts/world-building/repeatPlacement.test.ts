@@ -67,7 +67,7 @@ describe('layoutRepeatedProps', () => {
     { step: 2, originOffset: -1, maxCount: 2 },
     { step: 2, originOffset: 1, maxCount: 0 },
     { step: 2, originOffset: 1, maxCount: 1.5 },
-    { step: 2, originOffset: 1, maxCount: 201 },
+    { step: 2, originOffset: 1, maxCount: MAX_ITEMS + 1 },
   ])(
     'rejects malformed bounded input %#',
     ({ step, originOffset, maxCount }) => {

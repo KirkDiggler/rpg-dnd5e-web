@@ -25,6 +25,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   decodeWorldBuilderV4Site,
@@ -1166,3 +1167,18 @@ async function resolvePut(
     deferred.resolve(answer as never);
   });
 }
+
+// THE PASTE CAP ADMITS THE CEILING (rpg-project#749). A browser cuts a paste
+// at `maxLength` with no notice, so a cap below the ceiling fixture's YAML
+// would hand the decoder a truncated file and a parse error.
+it('the Canonical YAML paste cap admits the ceiling fixture', () => {
+  const ceiling = readFileSync(
+    'src/concepts/encounter-studio/fixtures/bench-keep-30k.yaml',
+    'utf8'
+  );
+  renderPanel(richDraft());
+  const textarea = screen.getByRole('textbox', {
+    name: 'Canonical YAML',
+  }) as HTMLTextAreaElement;
+  expect(textarea.maxLength).toBeGreaterThanOrEqual(ceiling.length);
+});

@@ -5,9 +5,11 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { useState } from 'react';
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -15,6 +17,7 @@ import {
   vi,
   type Mock,
 } from 'vitest';
+import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
 import {
   contentWorkspace,
   EMPTY_GRID_HEXES,
@@ -29,6 +32,9 @@ import {
   type RoomDraft,
 } from '../world-building/roomDraft';
 import {
+  isRepeatableWallAsset,
+  layoutWallPieces,
+  MAX_WALL_PIECES_PER_WALL,
   reshapeWallEndpoint,
   rotateWall,
   snapWallPoint,
@@ -37,11 +43,13 @@ import {
 import {
   cellAtWorldPoint,
   centeredRoomWorkspace,
+  MAX_GRID_HEXES,
   rectangleOf,
   workspaceBounds,
   workspaceCells,
   type WorkspaceBounds,
 } from '../world-building/workspaceGeometry';
+import { readDraftYaml } from './draftFile';
 import { castleRectangleCells } from './fixtures/castleWorkspace';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
@@ -2404,5 +2412,76 @@ describe('Layout pick on map (rpg-project#720)', () => {
     expect(screen.queryByTestId('route-pick-overlay')).toBeNull();
     fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
     expect(onSelectHex).toHaveBeenCalledExactlyOnceWith(floor);
+  });
+});
+
+/**
+ * THE CEILING RENDERS WITHOUT A REFUSAL (rpg-project#749; the supported
+ * envelope, rpg-project ideas/benchmark-keep/design.md). `bench-keep-30k.yaml`
+ * is a TEST FIXTURE ONLY, a copy of rpg-toolkit `keepgen -hexes 30000 -seed 1
+ * -key bench-keep-30k` kept current by hand on regeneration; see the import
+ * test in `draftFile.test.ts`.
+ */
+describe('the ceiling fixture on the render path', () => {
+  // Parsed once for the describe; neither test mutates it.
+  let ceiling: RoomDraft;
+  beforeAll(() => {
+    const read = readDraftYaml(
+      readFileSync(
+        'src/concepts/encounter-studio/fixtures/bench-keep-30k.yaml',
+        'utf8'
+      )
+    );
+    if (!read.ok) throw new Error(read.refusal);
+    ceiling = read.draft;
+  });
+
+  it('Layout draws the whole ceiling grid, every wall, and commits a stroke with no refusal', () => {
+    const draft = ceiling;
+    const onRefuse = vi.fn();
+    const input = props({ draft, onRefuse });
+    render(<LayoutViewport {...input} />);
+    // The drawn grid's MAX_GRID_* bounds clamp to a window rather than
+    // refuse; the ceiling's grid sits inside them, so nothing is windowed.
+    const grid = contentWorkspace(draft);
+    const drawn = surface().querySelectorAll('[data-cell]').length;
+    expect(drawn).toBe(workspaceCells(grid).length);
+    expect(drawn).toBeLessThanOrEqual(MAX_GRID_HEXES);
+    expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
+      30000
+    );
+    expect(surface().querySelectorAll('[data-rendered-wall-id]')).toHaveLength(
+      74
+    );
+    brush();
+    fireEvent.pointerUp(surface(), { ...at(one), pointerId: 7 });
+    expect(input.onCommit).toHaveBeenCalledOnce();
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  // StructuralWallSurfacePieces lays each wall from its catalog entry's
+  // boundsMeters with the default cap; a throw there is the refusal marker.
+  it('every ceiling wall lays its pieces under MAX_WALL_PIECES_PER_WALL', () => {
+    const walls = ceiling.room.walls ?? [];
+    expect(walls).toHaveLength(74);
+    const counts = walls.map((wall) => {
+      const entry = WORLD_BUILDING_CATALOG_BY_REF.get(wall.appearance.assetRef);
+      if (
+        !entry ||
+        entry.source !== 'generated' ||
+        !isRepeatableWallAsset(entry)
+      )
+        throw new Error(`no repeatable asset ${wall.appearance.assetRef}`);
+      const [width, height, depth] = entry.asset.boundsMeters;
+      return layoutWallPieces({
+        wall,
+        sourceWidthMeters: width,
+        sourceHeightMeters: height,
+        sourceDepthMeters: depth,
+      }).reduce((sum, layout) => sum + layout.pieces.length, 0);
+    });
+    const longest = Math.max(...counts);
+    expect(longest).toBe(15);
+    expect(longest).toBeLessThanOrEqual(MAX_WALL_PIECES_PER_WALL);
   });
 });
