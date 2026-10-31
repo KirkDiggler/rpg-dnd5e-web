@@ -16,7 +16,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { StrictMode, type ReactElement } from 'react';
+import { StrictMode, type ReactElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
@@ -160,7 +160,7 @@ const services = vi.hoisted(() => ({
 // its Three/model subtree. Callback invocations below exercise the actual owner
 // commands, NOT real raycasts, loaded meshes, or TransformControls gestures.
 vi.mock('@react-three/fiber', async (importOriginal) => {
-  const { useEffect, useRef } = await import('react');
+  const { Children, isValidElement, useEffect, useRef } = await import('react');
   return {
     ...(await importOriginal<typeof import('@react-three/fiber')>()),
     Canvas: ({
@@ -170,13 +170,18 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
       shadows,
       onCreated,
     }: {
-      children: ReactElement<WorldBuildingViewportProps>;
+      children: ReactNode;
       frameloop?: string;
       dpr?: unknown;
       shadows?: unknown;
       onCreated?: (state: { gl: { domElement: HTMLCanvasElement } }) => void;
     }) => {
-      boundary.latest = children.props;
+      // The scene is the Canvas's first element; a sibling (the ?perfProbe
+      // mount) never stands in for it.
+      const scene = Children.toArray(children).find(isValidElement) as
+        | ReactElement<WorldBuildingViewportProps>
+        | undefined;
+      boundary.latest = scene?.props ?? null;
       boundary.frameloop = frameloop;
       boundary.dpr = dpr;
       boundary.shadows = shadows;
