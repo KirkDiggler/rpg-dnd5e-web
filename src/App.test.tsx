@@ -31,6 +31,7 @@ const hoisted = vi.hoisted(() => ({
     error: null as Error | null,
   },
   activeLobbyCalls: 0,
+  devPlayerIdOverride: undefined as string | null | undefined,
   authDecision: {
     kind: 'dev' as 'dev' | 'discord' | 'unauthenticated',
     playerId: 'test-player' as string | null,
@@ -86,7 +87,9 @@ vi.mock('./api/hooks', () => ({
 }));
 
 vi.mock('./api/useDevPlayerIdAuth', () => ({
-  useDevPlayerIdAuth: () => undefined,
+  useDevPlayerIdAuth: (devPlayerIdOverride: string | null) => {
+    hoisted.devPlayerIdOverride = devPlayerIdOverride;
+  },
 }));
 
 vi.mock('./api/useMyActiveLobby', () => ({
@@ -453,6 +456,25 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   window.history.replaceState({}, '', '/');
+});
+
+// The benchmark harness signs in through ?playerId on a bench bundle
+// (rpg-project#750, G12): the override is read in every development-like
+// build and dropped in production.
+describe('App ?playerId override', () => {
+  it('passes ?playerId to the Dev auth sync under a bench build', () => {
+    vi.stubEnv('MODE', 'bench');
+    window.history.replaceState({}, '', '/?playerId=x');
+    render(<App />);
+    expect(hoisted.devPlayerIdOverride).toBe('x');
+  });
+
+  it('drops ?playerId in production', () => {
+    vi.stubEnv('MODE', 'production');
+    window.history.replaceState({}, '', '/?playerId=x');
+    render(<App />);
+    expect(hoisted.devPlayerIdOverride).toBeNull();
+  });
 });
 
 describe('App running-encounter resume', () => {
