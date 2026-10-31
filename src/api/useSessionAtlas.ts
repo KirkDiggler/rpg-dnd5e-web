@@ -1,6 +1,5 @@
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { useCallback, useEffect, useState } from 'react';
-import { mark } from '../dev/perfMarks';
 import { sessionClient } from './client';
 
 export interface UseSessionAtlasResult {
@@ -54,12 +53,8 @@ export function useSessionAtlas(
     }
     setLoading(true);
     setError(null);
-    // Benchmark harness: the atlas round trip, every fetch (a reveal's
-    // refetch included).
-    mark('play:atlas:requested');
     try {
       const response = await sessionClient.getAtlas({ session, member });
-      mark('play:atlas:received');
       setAtlas(response);
     } catch (err) {
       setAtlas(null);

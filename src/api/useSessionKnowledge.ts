@@ -10,8 +10,10 @@ import {
 } from '@/components/session/propPresentations';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
 import { nextViewerHoldingsFromAct } from '@/components/session/viewerHoldings';
-import { clone, create } from '@bufbuild/protobuf';
+import { mark } from '@/dev/perfMarks';
+import { clone, create, toBinary } from '@bufbuild/protobuf';
 import {
+  GetKnowledgeResponseSchema,
   GetViewResponseSchema,
   type GetKnowledgeResponse,
   type GetViewResponse,
@@ -145,7 +147,14 @@ export function useSessionKnowledge(session: string, member: string) {
         return;
       }
       const readTicket = ++ticket.current;
+      // Benchmark harness: current play's atlas arrives in GetKnowledge
+      // (atlas + view), so the atlas marks wrap this round trip, every read.
+      // `bytes` is the response's wire size, encoded only when marks are on.
+      mark('play:atlas:requested');
       const response = await sessionClient.getKnowledge({ session, member });
+      mark('play:atlas:received', () => ({
+        bytes: toBinary(GetKnowledgeResponseSchema, response).byteLength,
+      }));
       if (!current()) return;
       if (response.atlas)
         assertStructuralLayoutIntegrity({

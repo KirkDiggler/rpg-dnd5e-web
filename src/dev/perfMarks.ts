@@ -31,10 +31,16 @@ export function perfMarksEnabled(): boolean {
   return new URLSearchParams(window.location.search).has('perfMarks');
 }
 
-export function mark(name: PerfMarkName): void {
+/** `detail` (optional) is read only when marks are on, so a caller can pass
+ * a function for anything costly to compute (e.g. a response's byte size). */
+export function mark(
+  name: PerfMarkName,
+  detail?: () => Record<string, unknown>
+): void {
   if (!perfMarksEnabled()) return;
   if (typeof performance === 'undefined' || !performance.mark) return;
-  performance.mark(name);
+  if (detail) performance.mark(name, { detail: detail() });
+  else performance.mark(name);
 }
 
 /**

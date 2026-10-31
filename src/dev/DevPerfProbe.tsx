@@ -55,7 +55,13 @@
  */
 import { useFrame, useThree } from '@react-three/fiber';
 import { useRef } from 'react';
+import {
+  counterStats,
+  type PerfProbeRendererCounterStats,
+} from './perfProbeStats';
 import { readRendererString } from './rendererString';
+
+export type { PerfProbeRendererCounterStats };
 
 export interface PerfProbeFrameStats {
   mean: number;
@@ -63,11 +69,6 @@ export interface PerfProbeFrameStats {
   p95: number;
   p99: number;
   min: number;
-  max: number;
-}
-
-export interface PerfProbeRendererCounterStats {
-  mean: number;
   max: number;
 }
 
@@ -148,10 +149,6 @@ function frameStats(deltasMs: number[]): PerfProbeFrameStats {
     min: sorted.length ? sorted[0] : 0,
     max: sorted.length ? sorted[sorted.length - 1] : 0,
   };
-}
-
-function counterStats(values: number[]): PerfProbeRendererCounterStats {
-  return { mean: mean(values), max: values.length ? Math.max(...values) : 0 };
 }
 
 function emitResult(result: PerfProbeResult): void {
