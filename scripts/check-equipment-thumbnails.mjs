@@ -17,7 +17,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  for (const width of [1280, 800, 390]) {
+  for (const width of [1280, 800, 601, 640, 700, 701, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${origin}/?concept=equipment&thumbnailPreview=1`, {
       waitUntil: 'networkidle',
@@ -60,7 +60,7 @@ try {
     console.log(width, JSON.stringify(metrics));
     for (const image of metrics.images) {
       const expected =
-        image.kind === 'equip-socket-icon' && width >= 600 ? 160 : 128;
+        image.kind === 'equip-socket-icon' && width > 700 ? 160 : 128;
       assert.equal(image.width, expected, `${image.kind} width at ${width}`);
       assert.equal(image.height, expected, `${image.kind} height at ${width}`);
       assert.equal(image.fit, 'contain', 'do not crop blades or handles');

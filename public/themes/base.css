@@ -559,9 +559,7 @@
 
   .equip-socket {
     display: grid;
-    grid-template-columns: calc(
-        var(--equip-slot-image-size, 160px) + 4px
-      ) minmax(0, 1fr);
+    grid-template-columns: var(--equip-slot-image-size, 160px) minmax(0, 1fr);
     grid-template-areas:
       'icon label'
       'icon name'
@@ -803,7 +801,7 @@
     padding-block: 0.5rem;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 700px) {
     .equip-popover-owned .equip-slots {
       --equip-slot-image-size: 128px;
     }
