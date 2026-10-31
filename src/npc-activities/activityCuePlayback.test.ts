@@ -151,6 +151,7 @@ describe('counted response through the real mixer', () => {
   it('returns seamlessly when the cue and the configured default are the same activity', () => {
     const { playback, mixer } = fixture();
     playback.update({ ...base, defaultActivityRef: thoughtful, cue });
+    expect(playback.state.cueId).toBe('answer-1');
     for (let i = 0; i < 50; i++) {
       mixer.update(0.1);
       expect(playback.state).toMatchObject({
@@ -158,6 +159,7 @@ describe('counted response through the real mixer', () => {
         phase: 'sustain',
       });
     }
+    expect(playback.state.cueId).toBeUndefined();
     playback.dispose();
   });
 });
