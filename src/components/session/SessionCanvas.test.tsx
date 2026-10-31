@@ -579,6 +579,43 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('raycasts the actual game input plane beyond the former fixed world bounds', async () => {
+    const cells: [number, number, number][] = [
+      [-120, 120, 0],
+      [120, -120, 0],
+      [0, -150, 150],
+      [0, 150, -150],
+    ];
+    const renderer = await renderSession({
+      ...scene(),
+      floorTiles: floorTiles(...cells),
+      wallRuns: [],
+      doorGaps: [],
+    });
+    try {
+      const input = renderer.scene.find(
+        (node) =>
+          node.fiber.type === 'mesh' &&
+          typeof node.props.onPointerMove === 'function' &&
+          typeof node.props.onClick === 'function'
+      ).instance as THREE.Mesh;
+      input.updateWorldMatrix(true, false);
+      for (const [x, y, z] of cells) {
+        const world = cubeToWorld({ x, y, z }, 1);
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(world.x, 10, world.z),
+          new THREE.Vector3(0, -1, 0)
+        );
+        expect(
+          ray.intersectObject(input).length,
+          `input misses floor at ${world.x},${world.z}`
+        ).toBeGreaterThan(0);
+      }
+    } finally {
+      await renderer.unmount();
+    }
+  });
+
   it('forwards known-floor fit requests to the real camera hook without fitting unrelated renders', async () => {
     const rig = new THREE.OrthographicCamera(-480, 480, 240, -240, 0.1, 1000);
     rig.zoom = 137;
