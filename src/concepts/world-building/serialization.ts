@@ -17,8 +17,10 @@ import { validateWallFinishes } from './wallFinishTypes';
 
 export const SCENE_STORAGE_KEY = 'rpg.concepts.world-building.scene.v1';
 export const LIBRARY_STORAGE_KEY = 'rpg.concepts.world-building.library.v1';
-export const MAX_JSON_LENGTH = 500_000;
-export const MAX_ITEMS = 200;
+/** The supported envelope's character bound (rpg-project ideas/benchmark-keep/design.md, R4). */
+export const MAX_JSON_LENGTH = 2_500_000;
+/** The supported envelope's scene-item bound (rpg-project ideas/benchmark-keep/design.md, R4). */
+export const MAX_ITEMS = 4000;
 export const MAX_GROUPS = 80;
 export const MAX_ARRANGEMENTS = 40;
 export const WORLD_LIMIT = 12;

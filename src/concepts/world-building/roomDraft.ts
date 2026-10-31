@@ -260,7 +260,10 @@ export interface RoomRegion {
 }
 
 /** The most floor cells one draft may paint. A paint cap, not a map size:
- * the canvas is unbounded (R3). */
+ * the canvas is unbounded (R3). It already admits the supported envelope's
+ * ceiling fixture, the 30,000-hex benchmark keep (rpg-project
+ * ideas/benchmark-keep/design.md); `contentGrid`'s `MAX_GRID_*` bounds clamp
+ * the drawn grid to a window rather than refuse. */
 export const MAX_FLOOR_HEXES = 65536;
 
 export interface RoomGameplayData {
