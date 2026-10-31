@@ -5,6 +5,7 @@ import {
   CastOutcome,
   ClockMark,
   DamageType,
+  EndingResult,
   Family,
   InfluenceKind,
   PartyKind,
@@ -616,6 +617,32 @@ describe('the formula verdict is the server’s', () => {
     });
     expect(formatRollFormula(fear, context)).toBe(
       'wis save 15 vs DC 14 — not beaten'
+    );
+  });
+});
+
+describe('the run ending in the story (rpg-project#733)', () => {
+  const ended = (ending: string, outcome?: EndingResult) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.ENDED, ending, outcome },
+    });
+
+  it('names the ending and the result it declares', () => {
+    expect(
+      describeAct(ended('captain-slain', EndingResult.SUCCESS), context)
+    ).toMatchObject({
+      headline: 'The run ends',
+      detail: 'captain slain — success',
+    });
+    expect(
+      describeAct(ended('captain-lives', EndingResult.FAILURE), context)?.detail
+    ).toBe('captain lives — failure');
+  });
+
+  it('names only the ending when it declares no result, as an old run does', () => {
+    expect(describeAct(ended('captain-slain'), context)?.detail).toBe(
+      'captain slain'
     );
   });
 });

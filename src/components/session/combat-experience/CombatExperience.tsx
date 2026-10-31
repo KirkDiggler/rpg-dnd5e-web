@@ -4,6 +4,7 @@ import { PortraitProvider } from '@/portraits';
 import {
   ClockKind,
   LifeState,
+  MemberKind,
   Standing,
   TargetKind,
   Verb,
@@ -21,6 +22,7 @@ import {
   authoredWords as exitWords,
   holdingPhrase as holdingWords,
 } from '../holdingBeat';
+import type { PartySide } from '../partySide';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import { CharacterStatusRail } from './CharacterStatusRail';
@@ -129,17 +131,25 @@ function DeathSaveProgress({ participant }: { participant: Participant }) {
 function InitiativeEntry({
   participant,
   viewerMember,
+  side,
 }: {
   participant: Participant;
   viewerMember: string;
+  /** Where this participant stands for the viewer (rpg-project#733): a
+   *  companion stands with the party. Absent draws the entry as before. */
+  side?: PartySide;
 }) {
   const you = participant.member === viewerMember;
+  // A creature on the party's side that is not a player is a companion: the
+  // tooltip says so, since its portrait alone reads as one more monster.
+  const companion = side === 'party' && participant.kind !== MemberKind.PLAYER;
   return (
     <div
       className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === Standing.DOWNED ? styles.initiativeEntryDowned : ''} ${participant.concentrating ? styles.initiativeEntryConcentrating : ''}`}
-      title={`${participant.name}${you ? ' (you)' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}${participant.concentrating ? ' · concentrating' : ''}`}
+      title={`${participant.name}${you ? ' (you)' : ''}${companion ? ' · with the party' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}${participant.concentrating ? ' · concentrating' : ''}`}
       data-active={participant.active}
       data-concentrating={participant.concentrating}
+      data-side={side}
     >
       <span className={styles.initiativePortrait}>
         <MemberPortrait memberId={participant.member} name={participant.name} />
@@ -185,6 +195,7 @@ function CombatExperienceContent({
   clock,
   round,
   participants,
+  participantSides,
   declarations,
   characterData,
   privateStatus,
@@ -583,6 +594,7 @@ function CombatExperienceContent({
                   key={participant.member}
                   participant={participant}
                   viewerMember={viewerMember}
+                  side={participantSides?.get(participant.member)}
                 />
               ))}
             </div>

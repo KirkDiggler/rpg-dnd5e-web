@@ -697,6 +697,20 @@
   box-shadow: 0 0 14px rgba(232, 183, 95, 0.3);
 }
 
+/*
+ * WHICH SIDE OF THE TABLE (rpg-project#733). Initiative order is the order
+ * and does not move; the side is a bar under the entry: the party's blue for
+ * players and companions, the map's monster red for those opposed. An entry
+ * with no side keeps no bar, exactly as before.
+ */
+.initiativeEntry[data-side='party'] {
+  box-shadow: inset 0 -2px 0 var(--sc-blue);
+}
+
+.initiativeEntry[data-side='opposed'] {
+  box-shadow: inset 0 -2px 0 #e53e3e;
+}
+
 .initiativeEntryDowned {
   opacity: 0.42;
   text-decoration: line-through;

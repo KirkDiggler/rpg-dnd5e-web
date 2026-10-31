@@ -2306,6 +2306,47 @@ describe('SessionScene', () => {
       expect(mediumHumanoidMarkers(renderer)).toHaveLength(2);
     });
 
+    it('carries the observed default activity instead of silently playing a different idle', async () => {
+      const identity = create(PublicMemberInfoSchema, {
+        id: 'merchant',
+        kind: MemberKind.MONSTER,
+        name: 'Merchant',
+        monsterRef: 'dnd5e:monsters:skeleton',
+        appearanceRef: 'dnd5e:npcs:kingdom:merchant-01',
+        defaultActivityRef: 'other:activities:unsupported',
+      });
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'merchant',
+              name: 'Merchant',
+              kind: MemberKind.MONSTER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+              stance: '',
+              equipment: undefined,
+              monsterRefId: 'skeleton',
+            },
+          ]}
+          roster={new Map([['merchant', identity]])}
+        />
+      );
+      expect(
+        gltfMockState.requests.some((url) =>
+          url.includes('castle-merchant-01.glb')
+        )
+      ).toBe(false);
+      await renderer.unmount();
+    });
+
     it('renders the observed appearance ref for current and remembered NPCs without changing their rules ref', async () => {
       for (const remembered of [false, true]) {
         const identity = create(PublicMemberInfoSchema, {

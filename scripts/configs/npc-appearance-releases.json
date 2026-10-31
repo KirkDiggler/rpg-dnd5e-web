@@ -2286,6 +2286,12 @@
     }
   ],
   "schemaVersion": 1,
+  "activityProfiles": [
+    {
+      "file": "npcs/activities/warcamp-human-thoughtful-v1/profile.json",
+      "sha256": "0c83901ccf507c4429a0dbbd85f50581dce57733eb1768295d7016e23581513a"
+    }
+  ],
   "weaponSets": [
     {
       "assetRef": "dnd5e:npcs:goblin:warrior-male-01",

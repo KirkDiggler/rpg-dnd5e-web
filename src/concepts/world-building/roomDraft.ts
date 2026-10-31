@@ -73,6 +73,8 @@ export interface RoomMonsterPlacement {
   ref: string;
   /** Optional visual identity; never a rules/template ref or faction choice. */
   appearanceRef?: string;
+  /** Optional authored presentation default, never a current phase or rule. */
+  defaultActivityRef?: string;
   /** WHERE IT STARTS, and which way it is looking (rpg-project#501 §6.1).
    *
    * `startingCell` NAMES WHEN. The engine reads this once, at compile, into
@@ -740,6 +742,48 @@ export function setRoomMonsterAppearance(
   };
 }
 
+function requireDefaultActivityRef(value: unknown, path: string): string {
+  if (typeof value !== 'string' || !parseRef(value)) {
+    throw new Error(
+      `${path} must be a nonempty, structurally valid activity reference.`
+    );
+  }
+  return value;
+}
+
+/** Set or clear the default without changing appearance, rules or orders. */
+export function setRoomMonsterDefaultActivity(
+  draft: RoomDraft,
+  id: string,
+  defaultActivityRef: string | undefined
+): RoomDraft {
+  const monster = draft.room.monsterDeclarations.find((item) => item.id === id);
+  if (!monster) throw new Error('Default activity target no longer exists.');
+  if (defaultActivityRef !== undefined)
+    requireDefaultActivityRef(
+      defaultActivityRef,
+      `Monster ${id} defaultActivityRef`
+    );
+  if (
+    defaultActivityRef === undefined
+      ? !Object.hasOwn(monster, 'defaultActivityRef')
+      : monster.defaultActivityRef === defaultActivityRef
+  )
+    return draft;
+  const next = { ...monster };
+  if (defaultActivityRef === undefined) delete next.defaultActivityRef;
+  else next.defaultActivityRef = defaultActivityRef;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((item) =>
+        item.id === id ? next : item
+      ),
+    },
+  };
+}
+
 /** Set an explicit compass facing, or delete it to use the asset default.
  * Unknown identities and invalid words refuse; exact no-ops keep absence. */
 export function setRoomMonsterFacing(
@@ -1020,7 +1064,13 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
 export const WEAPON_REF_RE = DND5E_WEAPON_REF_RE;
-const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'appearanceRef'] as const;
+const MONSTER_KEYS = [
+  'id',
+  'ref',
+  'startingCell',
+  'appearanceRef',
+  'defaultActivityRef',
+] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
 const STARTING_CELL_KEYS = ['location', 'facing'] as const;
@@ -1089,6 +1139,12 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       monster.appearanceRef = requireAppearanceRef(
         source.appearanceRef,
         `Monster ${source.id} appearanceRef`
+      );
+    }
+    if (Object.hasOwn(source, 'defaultActivityRef')) {
+      monster.defaultActivityRef = requireDefaultActivityRef(
+        source.defaultActivityRef,
+        `Monster ${source.id} defaultActivityRef`
       );
     }
     monsters.push(monster);

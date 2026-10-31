@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   GENERATED_NPC_APPEARANCES,
   GENERATED_NPC_APPEARANCE_PROVIDER,
+  NPC_ACTIVITY_PROFILES,
   NPC_APPEARANCE_CATALOG,
   NPC_WEAPON_SETS,
   resolveNpcAppearance,
@@ -134,9 +135,37 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 };
 
 describe('approved NPC appearance publication', () => {
+  it('binds Thoughtful to every existing human look without changing body custody', () => {
+    const families = new Set(
+      [
+        'prisoner-01',
+        'prisoner-02',
+        'prisoner-03',
+        'knight-01',
+        'ranger-01',
+        'wizard-01',
+      ].map((name) => `dnd5e:npcs:goblin:${name}`)
+    );
+    const profile = NPC_ACTIVITY_PROFILES.find(
+      (p) => p.id === 'warcamp-human-thoughtful-v1'
+    )!;
+    expect(profile).toBeDefined();
+    const expected = NPC_APPEARANCE_CATALOG.filter(
+      (a) => a.look && families.has(a.look.familyRef)
+    ).map((a) => ({ assetRef: a.assetRef, standingSha256: a.standingSha256 }));
+    expect(profile.appearances).toEqual(expected);
+    expect(profile.activities['dnd5e:activities:thoughtful']).toMatchObject({
+      enter: 'Idle_Thoughtful_Enter',
+      sustain: 'Idle_Thoughtful',
+      exit: 'Idle_Thoughtful_Exit',
+    });
+    expect(profile.library.sha256).toBe(
+      '491729ca7c949cb01c5fff5bc67d095db7a68f07d3944c541c6a7e7be55b9ee6'
+    );
+  });
   it('exports 13 pack defaults, 66 human palettes and 204 Kingdom looks without provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: 'fa590ed40f1aadedb6add6074f8dc6efa07dd457',
+      commit: 'eed6de18a8f1799b97df175c993b5bb405a12db0',
       releases: [
         'goblin-human-palettes-v2',
         'goblin-war-camp-v1',

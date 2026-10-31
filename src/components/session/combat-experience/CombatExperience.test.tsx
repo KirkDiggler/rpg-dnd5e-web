@@ -1487,3 +1487,60 @@ describe('the roster’s concentrating marker (design rpg-project#407, R11)', ()
     ).toBe(0);
   });
 });
+
+describe('a companion on the party’s side of the turn order (rpg-project#733)', () => {
+  /**
+   * The veteran who joined stays a monster in initiative order; only his
+   * side is drawn. The side comes from the viewer's sightings, so the strip
+   * reads it as given.
+   */
+  function entryFor(name: string): HTMLElement {
+    const entry = document
+      .querySelector(`[title^="${name}"]`)
+      ?.closest('[data-concentrating]');
+    if (!entry) throw new Error(`no roster entry for ${name}`);
+    return entry as HTMLElement;
+  }
+
+  const veteran = {
+    ...fresh.participants.find((p) => p.kind !== MemberKind.PLAYER)!,
+    member: 'veteran',
+    name: 'the veteran',
+    kind: MemberKind.MONSTER,
+  } as unknown as Participant;
+
+  it('places an allied creature on the party side and says so', () => {
+    const participants = [...fresh.participants, veteran];
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          participants,
+          participantSides: new Map([
+            [fresh.viewerMember, 'party'],
+            ['veteran', 'party'],
+          ]),
+        })}
+      />
+    );
+
+    expect(entryFor('the veteran').dataset.side).toBe('party');
+    expect(entryFor('the veteran').getAttribute('title')).toContain(
+      'with the party'
+    );
+  });
+
+  it('draws every entry as before when no side is known', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          participants: [...fresh.participants, veteran],
+        })}
+      />
+    );
+
+    expect(document.querySelectorAll('[data-side]').length).toBe(0);
+    expect(entryFor('the veteran').getAttribute('title')).not.toContain(
+      'with the party'
+    );
+  });
+});
