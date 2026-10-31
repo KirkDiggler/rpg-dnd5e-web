@@ -217,6 +217,12 @@ export interface SessionCanvasProps {
    * called in that case unless `cellAimEnabled` gives the occupied cell to
    * CELL aiming instead. */
   onEntityClick?: (subject: string) => void;
+  /** Fires when a click lands on a live, sighted creature that is NOT in
+   * `attackableTargets`, while the caller offers an approach (an armed
+   * Speak choosing who to talk to — rpg-project#753 R4). The walk toward
+   * it is the caller's; this component only owns the click. Absent, such a
+   * click means nothing, as before. */
+  onApproachClick?: (subject: string) => void;
   /** An armed CELL cast owns creature clicks as cell placement. The creature's
    * observed `otherMembers` position routes through the same `onHexClick` seam
    * as exposed floor; MEMBER selection remains unchanged when false. */
@@ -341,6 +347,7 @@ export function SessionScene({
   onHexClick,
   onCancelSelection,
   onEntityClick,
+  onApproachClick,
   cellAimEnabled = false,
   onHoverEntity,
   onMovementPainted,
@@ -511,7 +518,13 @@ export function SessionScene({
         onInteractClick?.(subject);
         return;
       }
-      if (attackableSet.has(subject)) onEntityClick?.(subject);
+      if (attackableSet.has(subject)) {
+        onEntityClick?.(subject);
+        return;
+      }
+      // A remembered sighting is where the creature WAS; walking toward a
+      // memory is not an approach to anyone.
+      if (observed && !observed.remembered) onApproachClick?.(subject);
     },
     [
       membersBySubject,
@@ -521,6 +534,7 @@ export function SessionScene({
       onHexClick,
       attackableSet,
       onEntityClick,
+      onApproachClick,
       onInteractClick,
     ]
   );

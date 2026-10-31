@@ -61,6 +61,8 @@ export interface TargetSurfaceProps {
   onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
   /** Say one of the chosen target's lines. */
   onSpeakOption?: (optionId: string) => void;
+  /** Walk toward a creature or prop the armed Speak does not list. */
+  onApproachTarget?: (target: SpeakTarget) => void;
   onConfirmTargets?: () => void;
   /** Clears a local selection only; no command is sent. */
   onCancelSelection?: () => void;
@@ -94,6 +96,7 @@ export function TargetSurface({
   speakTarget,
   onChooseSpeakTarget,
   onSpeakOption,
+  onApproachTarget,
   onConfirmTargets,
   onCancelSelection,
   hoveredTarget,
@@ -296,6 +299,12 @@ export function TargetSurface({
           ? mapFirstView!.selected.map((target) => target.member)
           : undefined,
         onTargetClick: mapFirstActive ? chooseMapTarget : onTargetClick,
+        // INTERACTION IS BY REACH (rpg-project#753 R4). While Speak chooses
+        // who to talk to, a creature or prop the offer does not list is a
+        // target to walk toward, not a dead click. Which ones are listed is
+        // the server's answer; this surface computes no reach.
+        onApproachClick:
+          phase === 'targeting' && isSpeak ? onApproachTarget : undefined,
       })}
       {mapFirstActive && mapFirst && (
         <MapFirstTargeting

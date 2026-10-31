@@ -12,7 +12,13 @@ import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import { coordToKey } from '../hex-grid/hexMath';
-import { buildAtlasPathIndex, edgePassable, findAtlasPath } from './atlasPath';
+import {
+  buildAtlasPathIndex,
+  edgePassable,
+  findAtlasApproach,
+  findAtlasPath,
+  INTERACTION_REACH,
+} from './atlasPath';
 import { positionToCube } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
@@ -502,5 +508,66 @@ describe('live member occupancy blocks the destination cell (pathing preview fol
     const keys = path.map((c) => coordToKey(c));
     expect(keys).toContain(coordToKey(positionToCube(pos(1, -1))));
     expect(keys).not.toContain(coordToKey(positionToCube(pos(1, 0))));
+  });
+});
+
+describe('findAtlasApproach (rpg-project#753 R4)', () => {
+  /** A straight corridor (q, 0) for q = 0..length-1: each cell hex-adjacent
+   * to the next, hex distance |dq|. */
+  function corridor(length: number) {
+    return {
+      cells: Array.from({ length }, (_, q) => pos(q, 0)),
+      boundaries: [],
+      doorways: [],
+      props: [],
+    };
+  }
+  const at = (q: number) => positionToCube(pos(q, 0));
+  const qs = (path: { x: number }[]) => path.map((cell) => cell.x);
+
+  it('walks toward a far target and stops at the FIRST cell within reach', () => {
+    // The cook stands at q=9; her cell is occupied, so a plain path to it
+    // does not exist at all.
+    const index = buildAtlasPathIndex(
+      corridor(10),
+      undefined,
+      new Set([coordToKey(at(9))])
+    );
+    expect(findAtlasPath(index, at(0), at(9))).toEqual([]);
+
+    const path = findAtlasApproach(index, at(0), at(9), INTERACTION_REACH);
+
+    expect(qs(path)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(INTERACTION_REACH).toBe(3);
+  });
+
+  it('is nothing to walk when the target is already within reach', () => {
+    const index = buildAtlasPathIndex(corridor(10));
+    expect(findAtlasApproach(index, at(6), at(9), 3)).toEqual([]);
+  });
+
+  it('never stops on a pass-through cell; it goes on to the next one in reach', () => {
+    const index = buildAtlasPathIndex(
+      corridor(10),
+      undefined,
+      undefined,
+      new Set([coordToKey(at(6))])
+    );
+    expect(qs(findAtlasApproach(index, at(0), at(9), 3))).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it('goes as far toward the target as the known floor allows when no cell in reach is reachable', () => {
+    // Known floor ends at q=4; the target sits at q=9, beyond it.
+    const index = buildAtlasPathIndex(corridor(5));
+    expect(qs(findAtlasApproach(index, at(0), at(9), 3))).toEqual([
+      0, 1, 2, 3, 4,
+    ]);
+  });
+
+  it('is nothing to walk when no reachable cell is any closer', () => {
+    const index = buildAtlasPathIndex(corridor(1));
+    expect(findAtlasApproach(index, at(0), at(9), 3)).toEqual([]);
   });
 });
