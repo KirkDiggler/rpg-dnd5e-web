@@ -124,6 +124,13 @@ export interface UseSessionCombatExperienceArgs {
   onTurnBeat?: (beat: TurnBeat) => void;
   onPresentWalk?: PresentWalk;
   presentableMembers?: ReadonlySet<string>;
+  /**
+   * Walk toward a Speak target that is beyond interaction reach
+   * (rpg-project#753 R4): the caller composes the Move path from the map it
+   * holds and sends it. Returns true when a Move was dispatched. Absent, a
+   * far target's click means nothing, as before.
+   */
+  approach?: (target: SpeakTarget) => boolean;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -166,6 +173,14 @@ export interface UseSessionCombatExperienceResult {
   onChooseSpeakTarget: (target: SpeakTarget | null) => void;
   /** Speak's second step: say the chosen target's line with this option id. */
   onSpeakOption: (optionId: string) => void;
+  /**
+   * A click on a creature or prop while Speak is armed, from the map. One the
+   * offer already lists is chosen exactly as `onChooseSpeakTarget` would;
+   * one it does not (beyond reach) is walked toward, and Speak re-arms on the
+   * first fresh offer after the walk — with that target's lines open when the
+   * offer now has them (rpg-project#753 R4).
+   */
+  onApproachTarget: (target: SpeakTarget) => void;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -295,6 +310,7 @@ export function useSessionCombatExperience({
   onTurnBeat,
   onPresentWalk,
   presentableMembers,
+  approach,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
@@ -364,6 +380,18 @@ export function useSessionCombatExperience({
   const activateInFlightRef = useRef(false);
   const castInFlightRef = useRef(false);
   const speakInFlightRef = useRef(false);
+  /**
+   * THE APPROACH INTENT (rpg-project#753 R4). A far Speak target's click
+   * becomes a Move; the accepted Move revokes every armed offer, Speak
+   * included, so the intent is what carries the click across the walk.
+   * `walked` turns true when that revocation is seen; the next fresh offer
+   * is the one read at the new cell, and it settles the intent.
+   */
+  const approachRef = useRef<{ target: SpeakTarget; walked: boolean } | null>(
+    null
+  );
+  const approachArgRef = useRef(approach);
+  approachArgRef.current = approach;
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -390,6 +418,7 @@ export function useSessionCombatExperience({
     // A deliberate cancellation also consumes any not-yet-materialized WORLD
     // carry. A later routine TURN refresh must not silently bring Move back.
     carryWorldMovementRef.current = false;
+    approachRef.current = null;
     setInteraction(EMPTY_INTERACTION);
     setTargeting(false);
   }, [setInteraction]);
@@ -480,6 +509,7 @@ export function useSessionCombatExperience({
 
   const invalidateAuthority = useCallback(() => {
     authorityRef.current = { ...authorityRef.current, fresh: false };
+    if (approachRef.current) approachRef.current.walked = true;
     invalidateAuthoritySnapshots();
     setInteraction((current) =>
       staleRecoveryRef.current
@@ -1284,6 +1314,60 @@ export function useSessionCombatExperience({
     },
     [armedSpeak, setInteraction]
   );
+
+  const onApproachTarget = useCallback(
+    (target: SpeakTarget): void => {
+      const declaration = armedSpeak();
+      if (!declaration) return;
+      if (speakLinesFor(declaration, target).length > 0) {
+        approachRef.current = null;
+        chooseSpeakTarget(target);
+        return;
+      }
+      // THE WEB DOES NOT COMPUTE REACH. Not offered is the server's answer;
+      // the walk toward it is the only thing a far click can mean.
+      const intent = { target, walked: false };
+      approachRef.current = intent;
+      if (!approachArgRef.current?.(target) && approachRef.current === intent) {
+        approachRef.current = null;
+      }
+    },
+    [armedSpeak, chooseSpeakTarget]
+  );
+
+  // Settle the approach on the first fresh offer after the walk: re-arm the
+  // one Speak offer, opening the target's lines when it now has some, or the
+  // target list when it does not (the walk fell short; the next click goes
+  // on). Nothing is decided here that the offer did not already say.
+  useEffect(() => {
+    const intent = approachRef.current;
+    if (!intent?.walked || !authorityFresh) return;
+    approachRef.current = null;
+    if (interactionRef.current.armedDeclarationId !== null) return;
+    const speaks = declarations.filter(
+      (declaration) =>
+        declaration.verb === Verb.SPEAK &&
+        declaration.targetKind === TargetKind.MEMBER &&
+        declaration.available &&
+        declaration.id.length > 0
+    );
+    const declaration = speaks.length === 1 ? speaks[0]! : undefined;
+    if (!declaration) return;
+    const freeOnThisClock =
+      clock === ClockKind.WORLD && isFreeOnWorldClock(Verb.SPEAK);
+    if (!freeOnThisClock && (clock !== ClockKind.TURN || active !== member)) {
+      return;
+    }
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      armedDeclarationId: declaration.id,
+      speakTarget:
+        speakLinesFor(declaration, intent.target).length > 0
+          ? intent.target
+          : null,
+    });
+    setTargeting(true);
+  }, [active, authorityFresh, clock, declarations, member, setInteraction]);
 
   /**
    * Speak's second step: say one line. Sends the target and the option id
@@ -2281,6 +2365,7 @@ export function useSessionCombatExperience({
       onTargetClick,
       onChooseSpeakTarget: chooseSpeakTarget,
       onSpeakOption,
+      onApproachTarget,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2315,6 +2400,7 @@ export function useSessionCombatExperience({
       onTargetClick,
       chooseSpeakTarget,
       onSpeakOption,
+      onApproachTarget,
       onConfirmTargets,
       pacing.notice,
       pacing.heldMovementMembers,

@@ -203,6 +203,13 @@ export interface CombatExperienceMapRenderProps {
   /** Presence opts into member-target markers; IDs are local selection, not authorization. */
   selectedTargets?: readonly string[];
   onTargetClick: (targetId: string) => void;
+  /**
+   * Present only while an armed Speak is choosing who to talk to: a click on
+   * a creature or prop the offer does not list (beyond interaction reach)
+   * comes here, and the click walks toward it (rpg-project#753 R4). Absent,
+   * such a click means nothing, as before.
+   */
+  onApproachClick?: (target: SpeakTarget) => void;
 }
 
 interface CombatExperienceBaseProps {
@@ -308,6 +315,8 @@ interface CombatExperienceBaseProps {
   onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
   /** Say one of the chosen target's lines: the option id, echoed verbatim. */
   onSpeakOption?: (optionId: string) => void;
+  /** A map click on a Speak target the offer does not list: walk toward it. */
+  onApproachTarget?: (target: SpeakTarget) => void;
   onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;

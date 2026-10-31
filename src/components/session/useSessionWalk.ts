@@ -37,7 +37,7 @@ import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
-import { findAtlasPath } from './atlasPath';
+import { findAtlasApproach, findAtlasPath } from './atlasPath';
 import { isStaleDeclarationRefusal } from './combat-experience/selection';
 import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
@@ -60,6 +60,11 @@ export interface UseSessionWalkResult {
   /** Call with a clicked floor hex. No-ops (does not dispatch anything)
    * when already there, unreachable, or a walk is already in flight. */
   walkTo: (target: CubeCoord) => void;
+  /** Walk TOWARD a cell the member does not mean to stand on — a creature's
+   * or a prop's — stopping at the first cell within `reach` of it
+   * (`findAtlasApproach`). Returns true when a Move was dispatched; false
+   * for the same silent no-ops as `walkTo`, and when already within reach. */
+  approach: (target: CubeCoord, reach: number) => boolean;
   /** Call when the local player's walk animation has finished painting.
    * Takes no sequence: `busy` already admits exactly one walk at a time,
    * so a completion arriving while busy IS this walk. The sequence itself
@@ -129,8 +134,10 @@ export function useSessionWalk(
     setDisplayPosition((prev) => (sameCube(prev, next) ? prev : next));
   }, [wherePosition, busy]);
 
-  const walkTo = useCallback(
-    (target: CubeCoord) => {
+  // ONE dispatch for every walk: a click on a floor hex and an approach
+  // toward a target differ only in the path they compose.
+  const dispatch = useCallback(
+    (compose: (index: AtlasPathIndex, from: CubeCoord) => CubeCoord[]) => {
       if (
         !pathIndex ||
         !displayPosition ||
@@ -139,13 +146,13 @@ export function useSessionWalk(
         declarationId === undefined ||
         !isAuthorityFresh()
       )
-        return;
-      const path = findAtlasPath(pathIndex, displayPosition, target);
+        return false;
+      const path = compose(pathIndex, displayPosition);
       // Empty means "nothing to walk" either way: already there, or no
       // route exists (blocked/unreachable) — both are silent no-ops, per
       // this slice's done criteria ("click an unreachable/blocked cell:
       // nothing moves, no crash").
-      if (path.length === 0) return;
+      if (path.length === 0) return false;
       // path[0] is the current cell itself (findAtlasPath's own
       // convention, matching hexMath.findPath) — MoveRequest.path wants
       // only the cells to walk THROUGH, not the starting cell.
@@ -200,6 +207,7 @@ export function useSessionWalk(
           setBusy(false);
         }
       })();
+      return true;
     },
     [
       pathIndex,
@@ -212,6 +220,19 @@ export function useSessionWalk(
       isAuthorityFresh,
       onMoveAccepted,
     ]
+  );
+
+  const walkTo = useCallback(
+    (target: CubeCoord) => {
+      dispatch((index, from) => findAtlasPath(index, from, target));
+    },
+    [dispatch]
+  );
+
+  const approach = useCallback(
+    (target: CubeCoord, reach: number): boolean =>
+      dispatch((index, from) => findAtlasApproach(index, from, target, reach)),
+    [dispatch]
   );
 
   const onWalkAnimationComplete = useCallback(() => {
@@ -229,6 +250,7 @@ export function useSessionWalk(
     displayPosition,
     busy,
     walkTo,
+    approach,
     onWalkAnimationComplete,
     moveError,
     notYourTurn,

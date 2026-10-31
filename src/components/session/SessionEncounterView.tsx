@@ -22,6 +22,7 @@ import { useSessionKnowledge } from '@/api/useSessionKnowledge';
 import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRest } from '@/api/useSessionRest';
+import type { SpeakTarget } from '@/api/useSessionSpeak';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
@@ -62,7 +63,12 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import { type CubeCoord, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
+import {
+  coordToKey,
+  type CubeCoord,
+  cubeToWorld,
+  HEX_SIZE,
+} from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -70,7 +76,11 @@ import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import type { ActDeliveryMetadata } from './actFeed';
 import { refreshKeysForAct } from './actRefreshKeys';
-import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
+import {
+  type AtlasPathIndex,
+  buildAtlasPathIndex,
+  INTERACTION_REACH,
+} from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   applyCellKnowledge,
@@ -550,6 +560,14 @@ function SessionEncounterScope({
   const handleMoveAccepted = useCallback(() => {
     moveAcceptedRef.current();
   }, []);
+  // The approach walk (rpg-project#753 R4) needs the walk hook and the
+  // sightings, both declared after the combat hook that asks for it; the
+  // same late-bound ref the Move callbacks above use.
+  const approachRef = useRef<(target: SpeakTarget) => boolean>(() => false);
+  const approachSpeakTarget = useCallback(
+    (target: SpeakTarget) => approachRef.current(target),
+    []
+  );
 
   const beginLocalRoute = useCallback(
     (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
@@ -585,6 +603,7 @@ function SessionEncounterScope({
     displayPosition,
     busy: walking,
     walkTo,
+    approach,
     onWalkAnimationComplete,
     moveError,
   } = useSessionWalk(
@@ -754,6 +773,7 @@ function SessionEncounterScope({
     onTurnBeat: turnOrder.onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
     presentableMembers,
+    approach: approachSpeakTarget,
   });
   // The same cursor hold protects a queued watcher's floor overlay before
   // its route starts, not just while the route is already interpolating.
@@ -868,6 +888,34 @@ function SessionEncounterScope({
     () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
     [otherMembers, combat.unresolvedAttackTargets]
   );
+  // WHERE A SPEAK TARGET STANDS, as this viewer knows it: a creature's live
+  // sighting (never a remembered one), a prop's atlas cell. The walk toward
+  // it is the ordinary Move composition, stopping within reach.
+  approachRef.current = (target) => {
+    const cell =
+      target.case === 'memberId'
+        ? revealedMembers.find(
+            (sighted) => sighted.subject === target.value && !sighted.remembered
+          )?.position
+        : atlasPropCell(target.value);
+    return cell ? approach(cell, INTERACTION_REACH) : false;
+  };
+  const atlasPropCell = (prop: string): CubeCoord | undefined => {
+    const at = atlas?.props.find((candidate) => candidate.id === prop)?.at;
+    return at ? positionToCube(at) : undefined;
+  };
+  // A floor click on a prop's cell, while Speak offers an approach, is a
+  // click on that prop (a prop has no mesh handler of its own).
+  const atlasPropAt = (coord: CubeCoord): string | undefined => {
+    const key = coordToKey(coord);
+    return atlas?.props.find(
+      (prop) =>
+        prop.id.length > 0 &&
+        prop.at &&
+        coordToKey(positionToCube(prop.at)) === key
+    )?.id;
+  };
+
   const localWorldDieOpenDoors = useMemo(
     () =>
       new Set(
@@ -2075,6 +2123,7 @@ function SessionEncounterScope({
               attackableTargets,
               selectedTargets,
               onTargetClick,
+              onApproachClick,
             }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
@@ -2143,11 +2192,31 @@ function SessionEncounterScope({
                     movements={moves.movements}
                     heldMovementMembers={combat.heldMovementMembers}
                     onHexClick={
-                      runEnded === null ? handleGroundClick : undefined
+                      runEnded === null
+                        ? (coord: CubeCoord) => {
+                            const prop = onApproachClick
+                              ? atlasPropAt(coord)
+                              : undefined;
+                            if (prop) {
+                              onApproachClick!({ case: 'propId', value: prop });
+                              return;
+                            }
+                            handleGroundClick(coord);
+                          }
+                        : undefined
                     }
                     onCancelSelection={combat.onCancelSelection}
                     onEntityClick={
                       runEnded === null ? onTargetClick : undefined
+                    }
+                    onApproachClick={
+                      runEnded === null && onApproachClick
+                        ? (subject: string) =>
+                            onApproachClick({
+                              case: 'memberId',
+                              value: subject,
+                            })
+                        : undefined
                     }
                     onHoverEntity={setHoveredTarget}
                     cellAimEnabled={
@@ -2204,6 +2273,7 @@ function SessionEncounterScope({
             onCancelSelection={combat.onCancelSelection}
             onTargetClick={combat.onTargetClick}
             onChooseSpeakTarget={combat.onChooseSpeakTarget}
+            onApproachTarget={combat.onApproachTarget}
             onSpeakOption={combat.onSpeakOption}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
