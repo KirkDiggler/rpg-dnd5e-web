@@ -12,7 +12,10 @@ import {
   type RoomPropDeclaration,
 } from '@/concepts/world-building/roomDraft';
 import { createEmptyScene } from '@/concepts/world-building/sceneState';
-import { stringifyScene } from '@/concepts/world-building/serialization';
+import {
+  MAX_JSON_LENGTH,
+  stringifyScene,
+} from '@/concepts/world-building/serialization';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
@@ -139,9 +142,9 @@ describe('room snapshot document', () => {
 
   it('refuses an oversized encoded envelope before it can be sent', () => {
     const draft = richRoomDraft();
-    draft.name = 'x'.repeat(500_000);
+    draft.name = 'x'.repeat(MAX_JSON_LENGTH);
     expect(() => encodeRoomDocument(draft)).toThrow(
-      'Room draft is too large (maximum 500000 characters).'
+      `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
     );
   });
 

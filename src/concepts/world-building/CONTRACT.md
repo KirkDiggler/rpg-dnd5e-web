@@ -1270,10 +1270,12 @@ LibraryEnvelope {
 ```
 
 Standalone prop-composer bounds are deliberately finite: X/Z `[-12, 12]`,
-Y `[0, 8]`, at most 200
+Y `[0, 8]`, at most 4,000
 props and 80 groups per scene/arrangement, at most 40 arrangements, strings up
 to their field-specific limits, rotations within `[-100π, 100π]`, and imported
-JSON up to 500,000 characters. Parsers reject malformed/wrong-version
+JSON up to 2,500,000 characters. The item and character bounds are the
+supported envelope (rpg-project ideas/benchmark-keep/design.md, R4), shared
+with the room editor. Parsers reject malformed/wrong-version
 envelopes, non-finite or out-of-range transforms, duplicate identities,
 unknown asset refs (including arbitrary URLs), missing/invalid relation
 targets, and relation cycles. Editor commits pass through the same scene

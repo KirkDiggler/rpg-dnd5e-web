@@ -74,6 +74,9 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
+import { DevPerfProbe } from '../../dev/DevPerfProbe';
+import { PerfMarkFirstFrame } from '../../dev/PerfMarkFirstFrame';
+import { readPerfProbeQuery } from '../../dev/perfProbeQuery';
 import { HexEntity, type HexEntityProps } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
@@ -731,8 +734,16 @@ export function SessionScene({
     [otherMembers, attackableSet]
   );
 
+  // Benchmark harness (rpg-project#750): ?perfProbe samples frame time and
+  // draw calls in current play; read once, development-like builds only.
+  const perfProbe = useMemo(() => readPerfProbeQuery(), []);
+
   return (
     <>
+      {perfProbe && (
+        <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
+      )}
+      <PerfMarkFirstFrame name="play:first-frame" />
       <DungeonEnvironment
         scene={scene}
         focus={{ x: target.x, z: target.z }}

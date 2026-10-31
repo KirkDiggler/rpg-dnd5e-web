@@ -34,6 +34,7 @@ import {
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import { mark } from '@/dev/perfMarks';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type {
@@ -414,6 +415,10 @@ function SessionEncounterScope({
           )
         ),
       };
+      // Benchmark harness: a scene built (every rebuild marks; the first
+      // is the open). A mark is a timestamp, not state, so this stays a
+      // pure-enough memo: no render reads it.
+      mark('play:scene:built');
       return {
         ok: true as const,
         scene: seatKnowledge

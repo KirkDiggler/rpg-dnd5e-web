@@ -232,6 +232,14 @@ vi.mock('@react-three/drei', () => {
   };
 });
 
+// The probe's own sampling needs a real GPU; here it is a marker group so the
+// mount itself is what the test reads.
+vi.mock('../../dev/DevPerfProbe', () => ({
+  DevPerfProbe: ({ label }: { label?: string }) => (
+    <group name="dev-perf-probe" userData={{ label }} />
+  ),
+}));
+
 vi.mock('../hex-grid/MediumHumanoid', () => ({
   MediumHumanoid: ({ variant }: { variant?: string }) => (
     <mesh
@@ -758,6 +766,29 @@ describe('SessionScene', () => {
           'PointLight'
       )
     ).toHaveLength(1);
+  });
+
+  it('mounts the perf probe in the session scene only under a development-like build with ?perfProbe', async () => {
+    const url = window.location.href;
+    const probes = async () =>
+      (await renderSession()).scene.findAll(
+        (node) => node.instance.name === 'dev-perf-probe'
+      );
+    try {
+      window.history.replaceState(null, '', '/?perfProbe&perfProbeLabel=play');
+      vi.stubEnv('MODE', 'bench');
+      const mounted = await probes();
+      expect(mounted).toHaveLength(1);
+      expect(mounted[0].instance.userData.label).toBe('play');
+      vi.stubEnv('MODE', 'production');
+      expect(await probes()).toHaveLength(0);
+      vi.stubEnv('MODE', 'bench');
+      window.history.replaceState(null, '', '/');
+      expect(await probes()).toHaveLength(0);
+    } finally {
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
   });
 
   it('mounts the floor, walls, doors, and the local player without throwing', async () => {

@@ -1,3 +1,4 @@
+import { mark } from '@/dev/perfMarks';
 import {
   Document,
   isMap,
@@ -419,6 +420,9 @@ function decodeSingleRoomRoot(
   );
   if (refusals.length > 0)
     throw new Error(`${refusals[0].path}: ${refusals[0].message}`);
+  // Benchmark harness: the document decoded and passed every refusal. Both
+  // exported readers land here, so a session scene's decode marks it too.
+  mark('studio:open:decoded');
   return {
     key: root.key,
     draft,

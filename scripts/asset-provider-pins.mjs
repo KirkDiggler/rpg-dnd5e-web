@@ -6,8 +6,9 @@ const SOURCES = [
   ['npcAppearanceCatalog.ts', 'commit'],
   ['worldAssetCatalog.ts', 'commit'],
   ['worldMaterialCatalog.ts', 'commit'],
+  ['itemThumbnailCatalog.ts', 'commit'],
 ];
-/** Packaging fetches exactly the provider commits the four generated owners
+/** Packaging fetches exactly the provider commits all generated asset owners
  * describe. Missing/malformed pins refuse; never fall back to provider HEAD. */
 export function assetProviderPins(webRoot) {
   const pins = new Set();

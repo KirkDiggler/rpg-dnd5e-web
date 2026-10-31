@@ -8,6 +8,8 @@ import type { PropModelBounds } from '@/components/hex-grid/PropModel';
 import { useRememberedModelTint } from '@/components/hex-grid/useRememberedModelTint';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
+import { DevPerfProbe } from '@/dev/DevPerfProbe';
+import { readPerfProbeQuery } from '@/dev/perfProbeQuery';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type {
@@ -1572,6 +1574,9 @@ export function WorldBuildingViewport({
    * composer's vocabulary. In room authoring they are a leak, so the legend,
    * the toggle and the meshes are all absent (rpg-dnd5e-web#1152). */
   const compositionGuides = !props.roomAuthoring;
+  // Benchmark harness (rpg-project#750): ?perfProbe samples the studio 3D
+  // view's frame time and draw calls; read once, development-like builds only.
+  const perfProbe = useMemo(() => readPerfProbeQuery(), []);
 
   return (
     <>
@@ -1596,6 +1601,9 @@ export function WorldBuildingViewport({
           showCompositionBounds={showCompositionBounds}
           onLightingDiagnosticsChange={setLightingDiagnostics}
         />
+        {perfProbe && (
+          <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
+        )}
       </Canvas>
       {studioCanvas && contextLost && (
         <div role="alert" className="wb-context-lost">
