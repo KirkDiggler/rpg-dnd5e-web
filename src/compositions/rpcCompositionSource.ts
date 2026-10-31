@@ -1,5 +1,6 @@
 import type { AuthDecision } from '@/api/auth';
 import { compositionClient } from '@/api/client';
+import { isDevLike } from '@/devMode';
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import type {
@@ -154,7 +155,10 @@ export function createRpcCompositionSource(
   let worldId: string | undefined;
   if (input.auth.kind === 'discord') {
     worldId = canonicalGuildId(input.auth.guildId);
-  } else if (input.auth.kind === 'dev' && input.mode === 'development') {
+  } else if (input.auth.kind === 'dev' && isDevLike(input.mode)) {
+    // Development-like (development or the benchmark harness's bench build):
+    // the bench bundle's Dev player must resolve composition-ref props, or
+    // the harness's play rows measure a hollow scene (G12, rpg-project#750).
     worldId = input.devWorldId?.trim() || DEFAULT_DEV_WORLD_ID;
   }
   if (!worldId) return undefined;

@@ -863,7 +863,11 @@ export function WorldBuildingConcept({
     (
       candidate: RoomDocument,
       selection = selectedIds,
-      complete = false
+      complete = false,
+      /** Runs only when the candidate actually became the present document
+       * (not for an accepted no-op, a stale generation, a publish refusal or
+       * a rejected edit). */
+      onCommitted?: () => void
     ): boolean => {
       if (
         !mountedRef.current ||
@@ -921,6 +925,7 @@ export function WorldBuildingConcept({
             : 'World workspace changes are not saved locally'
         );
         setNotice('');
+        onCommitted?.();
         return true;
       } catch (error) {
         return rejectEdit(error);
@@ -3643,19 +3648,25 @@ export function WorldBuildingConcept({
     regionId?: string
   ): boolean => {
     if (refuseWhilePublishing()) return false;
-    // Benchmark harness: one stroke reaches the document; the layout grid
-    // marks the frame after its commit of it.
-    mark('studio:stroke:commit');
-    armMark('studio:stroke:painted');
     try {
       const current = roomHistoryRef.current.present;
-      return commitRoomDocument({
-        draft:
-          mode === 'paint'
-            ? paintCells(current.draft, cells, regionId)
-            : eraseCells(current.draft, cells),
-        scope: current.scope,
-      });
+      return commitRoomDocument(
+        {
+          draft:
+            mode === 'paint'
+              ? paintCells(current.draft, cells, regionId)
+              : eraseCells(current.draft, cells),
+          scope: current.scope,
+        },
+        selectedIds,
+        false,
+        // Benchmark harness: only a stroke that changed the document marks
+        // its commit; the layout grid marks the frame after its commit of it.
+        () => {
+          mark('studio:stroke:commit');
+          armMark('studio:stroke:painted');
+        }
+      );
     } catch (error) {
       return rejectEdit(error);
     }

@@ -6969,3 +6969,49 @@ it('the castle’s gate tables read as use: lines that resolve in the studio (rp
     'patrol · with path a route of 3 waypoints',
   ]);
 });
+
+// The benchmark harness's stroke marks (rpg-project#750, B11): only a stroke
+// that changes the document marks its commit and, a frame after the grid's
+// commit, its paint. A no-op stroke marks neither, and leaves nothing armed
+// for the next unrelated edit to fire.
+describe('stroke perf marks', () => {
+  const url = window.location.href;
+  afterEach(() => {
+    window.history.replaceState(null, '', url);
+    vi.unstubAllEnvs();
+  });
+
+  it('a changing stroke marks commit then painted; a no-op stroke marks neither', async () => {
+    vi.stubEnv('MODE', 'bench');
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      mount(new MemoryStorage(seed(true)));
+      await settled();
+      const strokeMarks = () =>
+        spy.mock.calls
+          .map(([name]) => name)
+          .filter((name) => name.startsWith('studio:stroke:'));
+      gesture(zero);
+      await waitFor(() =>
+        expect(strokeMarks()).toEqual([
+          'studio:stroke:commit',
+          'studio:stroke:painted',
+        ])
+      );
+      spy.mockClear();
+      // Repainting the same cell is an accepted no-op: nothing commits.
+      gesture(zero);
+      await settled();
+      expect(strokeMarks()).toEqual([]);
+      // The next, unrelated document change must not fire a stale paint.
+      fireEvent.click(button('Undo'));
+      await settled();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(cells()).toEqual([]);
+      expect(strokeMarks()).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
