@@ -473,10 +473,6 @@ export function HexEntity({
           defaultActivityRef: activityCue.activityRef,
         })
       ));
-  useEffect(() => {
-    if (activityCue && (remembered || isDead || type !== 'monster'))
-      onActivityCueConsumed?.(entityId, activityCue.id);
-  }, [activityCue, remembered, isDead, type, onActivityCueConsumed, entityId]);
   const activityScope = `${entityId}|${appearanceRef ?? ''}|${activityProfile?.id ?? ''}`;
   const currentActivityScope = useRef(activityScope);
   currentActivityScope.current = activityScope;
@@ -486,8 +482,25 @@ export function HexEntity({
     ready: false,
   });
   const [failedActivityScope, setFailedActivityScope] = useState<string>();
-  const activityUnavailable =
-    unsupportedActivity || failedActivityScope === activityScope;
+  const bodyLoadFailed = failedActivityScope === activityScope;
+  const activityUnavailable = unsupportedActivity || bodyLoadFailed;
+  useEffect(() => {
+    // Failure is terminal for pending delivery, including a later request to
+    // an already-failed body. Keep the scope's named diagnostic after retiring it.
+    if (
+      activityCue &&
+      (remembered || isDead || type !== 'monster' || bodyLoadFailed)
+    )
+      onActivityCueConsumed?.(entityId, activityCue.id);
+  }, [
+    activityCue,
+    remembered,
+    isDead,
+    type,
+    bodyLoadFailed,
+    onActivityCueConsumed,
+    entityId,
+  ]);
   const { isMoving } = useHexMovePath(
     position,
     remembered ? undefined : movePath,
