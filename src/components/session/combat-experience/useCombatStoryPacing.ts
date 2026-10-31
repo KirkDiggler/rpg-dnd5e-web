@@ -42,6 +42,8 @@ export interface UseCombatStoryPacingArgs {
   onPresentWalk?: PresentWalk;
   /** Absent means no live render surface. Visibility loss retires queued motion. */
   presentableMembers?: ReadonlySet<string>;
+  /** Live standing bodies eligible for cues; independent of walk presentation. */
+  presentableActivityMembers?: ReadonlySet<string>;
 }
 
 export interface UseCombatStoryPacingResult {
@@ -124,6 +126,7 @@ export function useCombatStoryPacing({
   onTurnBeat,
   onPresentWalk,
   presentableMembers = EMPTY_MEMBERS,
+  presentableActivityMembers = presentableMembers,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
     () => Object.freeze({ session, member }),
@@ -153,6 +156,8 @@ export function useCombatStoryPacing({
   onPresentWalkRef.current = onPresentWalk;
   const presentableMembersRef = useRef(presentableMembers);
   presentableMembersRef.current = presentableMembers;
+  const presentableActivityMembersRef = useRef(presentableActivityMembers);
+  presentableActivityMembersRef.current = presentableActivityMembers;
   const namedInFightRef = useRef(new Set<string>());
   const inScope = useCallback(
     () => mountedRef.current && activeTokenRef.current === token,
@@ -273,7 +278,7 @@ export function useCombatStoryPacing({
         const presenting =
           beat.activityPresentation === 'eligible' &&
           beat.activity &&
-          presentableMembersRef.current.has(beat.activity.member)
+          presentableActivityMembersRef.current.has(beat.activity.member)
             ? beat.activity
             : undefined;
         if (!presenting && (!moving || !base.activityCues.has(moving)))
@@ -431,7 +436,7 @@ export function useCombatStoryPacing({
         const cueFields = activity
           ? {
               activity,
-              activityPresentation: presentableMembersRef.current.has(
+              activityPresentation: presentableActivityMembersRef.current.has(
                 activity.member
               )
                 ? ('eligible' as const)
@@ -497,7 +502,7 @@ export function useCombatStoryPacing({
       if (
         beat.activityPresentation === 'eligible' &&
         beat.activity &&
-        !presentableMembers.has(beat.activity.member)
+        !presentableActivityMembers.has(beat.activity.member)
       ) {
         changed = true;
         return { ...beat, activityPresentation: 'discarded' };
@@ -509,13 +514,13 @@ export function useCombatStoryPacing({
     if (
       scopedPacing.token === token &&
       [...scopedPacing.activityCues.keys()].some(
-        (who) => !presentableMembers.has(who)
+        (who) => !presentableActivityMembers.has(who)
       )
     ) {
       setScopedPacing((current) => {
         if (!inScope() || current.token !== token) return current;
         const entries = [...current.activityCues].filter(([who]) =>
-          presentableMembers.has(who)
+          presentableActivityMembers.has(who)
         );
         return entries.length === current.activityCues.size
           ? current
@@ -526,6 +531,7 @@ export function useCombatStoryPacing({
   }, [
     inScope,
     presentableMembers,
+    presentableActivityMembers,
     publishHeldMembers,
     token,
     scopedPacing.activityCues,

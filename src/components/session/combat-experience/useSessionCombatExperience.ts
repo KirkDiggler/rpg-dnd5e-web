@@ -126,6 +126,7 @@ export interface UseSessionCombatExperienceArgs {
   onTurnBeat?: (beat: TurnBeat) => void;
   onPresentWalk?: PresentWalk;
   presentableMembers?: ReadonlySet<string>;
+  presentableActivityMembers?: ReadonlySet<string>;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -299,6 +300,7 @@ export function useSessionCombatExperience({
   onTurnBeat,
   onPresentWalk,
   presentableMembers,
+  presentableActivityMembers,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
@@ -473,6 +475,7 @@ export function useSessionCombatExperience({
     onTurnBeat,
     onPresentWalk,
     presentableMembers,
+    presentableActivityMembers,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
