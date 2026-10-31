@@ -46,7 +46,7 @@ vi.mock('@/api/client', () => ({
 }));
 
 // Import AFTER vi.mock so the mock is applied.
-import { useSessionWalk } from '../useSessionWalk';
+import { useSessionWalk, type MoveOutcome } from '../useSessionWalk';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 const bard = create(ParticipantSchema, {
@@ -58,6 +58,7 @@ const bard = create(ParticipantSchema, {
 const names = new Map([
   ['bard-1', 'Standre'],
   ['cook-3', 'Cook'],
+  ['guard-2', 'Guard'],
 ]);
 
 /** The great hall to the kitchen as a straight run of floor (q, 0), q=0..11:
@@ -91,6 +92,13 @@ const cookLine = create(SpeakOptionSchema, {
   available: true,
 });
 
+const guardLine = create(SpeakOptionSchema, {
+  target: { case: 'memberId', value: 'guard-2' },
+  optionId: 'hail',
+  line: 'Long night?',
+  available: true,
+});
+
 let latest: ReturnType<typeof useSessionCombatExperience>;
 
 function Harness({ declarations }: { declarations: readonly Declaration[] }) {
@@ -98,7 +106,9 @@ function Harness({ declarations }: { declarations: readonly Declaration[] }) {
   // accepted, fresh again when the refreshed offer lands.
   const [fresh, setFresh] = useState(true);
   useEffect(() => setFresh(true), [declarations]);
-  const approachRef = useRef<(target: SpeakTarget) => boolean>(() => false);
+  const approachRef = useRef<
+    (target: SpeakTarget, outcome: MoveOutcome) => boolean
+  >(() => false);
   latest = useSessionCombatExperience({
     session: 'castle',
     member: 'bard-1',
@@ -110,7 +120,7 @@ function Harness({ declarations }: { declarations: readonly Declaration[] }) {
     declarations,
     invalidateAuthoritySnapshots: () => setFresh(false),
     scheduleRefresh: () => {},
-    approach: (target) => approachRef.current(target),
+    approach: (target, outcome) => approachRef.current(target, outcome),
   });
   const combat = latest;
   const walk = useSessionWalk(
@@ -124,9 +134,9 @@ function Harness({ declarations }: { declarations: readonly Declaration[] }) {
     () => true,
     () => combat.invalidateAuthority()
   );
-  approachRef.current = (target) =>
+  approachRef.current = (target, outcome) =>
     target.case === 'memberId' && target.value === 'cook-3'
-      ? walk.approach(COOK_AT, INTERACTION_REACH)
+      ? walk.approach(COOK_AT, INTERACTION_REACH, outcome)
       : false;
   const state = latest.presentationState;
   return (
@@ -225,6 +235,57 @@ describe('clicking a creature beyond reach (rpg-project#753 R4)', () => {
       Array.from(lines.querySelectorAll('button')).map((b) => b.textContent)
     ).toEqual(['“Heard anything?”']);
     expect(hoisted.speakFn).not.toHaveBeenCalled();
+  });
+
+  it('a walk that falls short opens the target list and sends no second Move', async () => {
+    const far = speak([guardLine]);
+    const { rerender } = render(<Harness declarations={[far]} />);
+    act(() => latest.onSelectDeclaration(far));
+    await act(async () => {
+      fireEvent.click(screen.getByText('the cook on the map'));
+    });
+
+    // The refreshed offer still does not list her.
+    await act(async () => {
+      rerender(<Harness declarations={[speak([guardLine])]} />);
+    });
+
+    const targets = screen.getByRole('list', { name: 'Speak targets' });
+    expect(
+      Array.from(targets.querySelectorAll('button')).map((b) => b.textContent)
+    ).toEqual(['Guard']);
+    expect(screen.queryByText('What do you say to Cook?')).toBeNull();
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a REFUSED approach Move leaves Speak closed when a later verb refreshes the offer', async () => {
+    hoisted.moveFn.mockRejectedValue(new Error('the hall is barred'));
+    hoisted.speakFn.mockResolvedValue({});
+    const offer = speak([guardLine]);
+    const { rerender } = render(<Harness declarations={[offer]} />);
+    act(() => latest.onSelectDeclaration(offer));
+    await act(async () => {
+      fireEvent.click(screen.getByText('the cook on the map'));
+    });
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+
+    // A different verb is accepted: a line to the guard, which revokes
+    // authority exactly as the Move would have.
+    act(() =>
+      latest.onChooseSpeakTarget({ case: 'memberId', value: 'guard-2' })
+    );
+    await act(async () => {
+      latest.onSpeakOption('hail');
+    });
+    expect(hoisted.speakFn).toHaveBeenCalledTimes(1);
+
+    // The refreshed offer now even lists the cook; nobody asked to speak.
+    await act(async () => {
+      rerender(<Harness declarations={[speak([guardLine, cookLine])]} />);
+    });
+
+    expect(screen.queryByRole('region', { name: 'Conversation' })).toBeNull();
+    expect(latest.presentationState.armedDeclarationId).toBeNull();
   });
 
   it('a creature the offer already lists is chosen, not walked to', async () => {

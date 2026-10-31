@@ -36,6 +36,7 @@ import {
   type SetStateAction,
 } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
+import type { MoveOutcome } from '../useSessionWalk';
 import type { TurnBeat } from '../useTurnOrderFollow';
 import type { PresentWalk } from '../walkPresentation';
 import { wardedCastNotice } from '../wardBeat';
@@ -127,10 +128,11 @@ export interface UseSessionCombatExperienceArgs {
   /**
    * Walk toward a Speak target that is beyond interaction reach
    * (rpg-project#753 R4): the caller composes the Move path from the map it
-   * holds and sends it. Returns true when a Move was dispatched. Absent, a
-   * far target's click means nothing, as before.
+   * holds and sends it. Returns true when a Move was dispatched, and then
+   * calls exactly one of `outcome`'s two for THAT Move. Absent, a far
+   * target's click means nothing, as before.
    */
-  approach?: (target: SpeakTarget) => boolean;
+  approach?: (target: SpeakTarget, outcome: MoveOutcome) => boolean;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -384,8 +386,10 @@ export function useSessionCombatExperience({
    * THE APPROACH INTENT (rpg-project#753 R4). A far Speak target's click
    * becomes a Move; the accepted Move revokes every armed offer, Speak
    * included, so the intent is what carries the click across the walk.
-   * `walked` turns true when that revocation is seen; the next fresh offer
-   * is the one read at the new cell, and it settles the intent.
+   * `walked` turns true only when THIS approach's Move is accepted — never
+   * on another verb's revocation — and a refusal drops the intent; the next
+   * fresh offer after acceptance is the one read at the new cell, and it
+   * settles the intent.
    */
   const approachRef = useRef<{ target: SpeakTarget; walked: boolean } | null>(
     null
@@ -509,7 +513,6 @@ export function useSessionCombatExperience({
 
   const invalidateAuthority = useCallback(() => {
     authorityRef.current = { ...authorityRef.current, fresh: false };
-    if (approachRef.current) approachRef.current.walked = true;
     invalidateAuthoritySnapshots();
     setInteraction((current) =>
       staleRecoveryRef.current
@@ -1328,7 +1331,15 @@ export function useSessionCombatExperience({
       // the walk toward it is the only thing a far click can mean.
       const intent = { target, walked: false };
       approachRef.current = intent;
-      if (!approachArgRef.current?.(target) && approachRef.current === intent) {
+      const dispatched = approachArgRef.current?.(target, {
+        accepted: () => {
+          if (approachRef.current === intent) intent.walked = true;
+        },
+        refused: () => {
+          if (approachRef.current === intent) approachRef.current = null;
+        },
+      });
+      if (!dispatched && approachRef.current === intent) {
         approachRef.current = null;
       }
     },

@@ -163,7 +163,7 @@ import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
-import { useSessionWalk } from './useSessionWalk';
+import { type MoveOutcome, useSessionWalk } from './useSessionWalk';
 import { useTurnOrderFollow } from './useTurnOrderFollow';
 import { useWalkPresentation } from './useWalkPresentation';
 import { VendorPopover } from './vendor/VendorPopover';
@@ -563,9 +563,12 @@ function SessionEncounterScope({
   // The approach walk (rpg-project#753 R4) needs the walk hook and the
   // sightings, both declared after the combat hook that asks for it; the
   // same late-bound ref the Move callbacks above use.
-  const approachRef = useRef<(target: SpeakTarget) => boolean>(() => false);
+  const approachRef = useRef<
+    (target: SpeakTarget, outcome: MoveOutcome) => boolean
+  >(() => false);
   const approachSpeakTarget = useCallback(
-    (target: SpeakTarget) => approachRef.current(target),
+    (target: SpeakTarget, outcome: MoveOutcome) =>
+      approachRef.current(target, outcome),
     []
   );
 
@@ -891,21 +894,25 @@ function SessionEncounterScope({
   // WHERE A SPEAK TARGET STANDS, as this viewer knows it: a creature's live
   // sighting (never a remembered one), a prop's atlas cell. The walk toward
   // it is the ordinary Move composition, stopping within reach.
-  approachRef.current = (target) => {
+  approachRef.current = (target, outcome) => {
     const cell =
       target.case === 'memberId'
         ? revealedMembers.find(
             (sighted) => sighted.subject === target.value && !sighted.remembered
           )?.position
         : atlasPropCell(target.value);
-    return cell ? approach(cell, INTERACTION_REACH) : false;
+    return cell ? approach(cell, INTERACTION_REACH, outcome) : false;
   };
   const atlasPropCell = (prop: string): CubeCoord | undefined => {
     const at = atlas?.props.find((candidate) => candidate.id === prop)?.at;
     return at ? positionToCube(at) : undefined;
   };
   // A floor click on a prop's cell, while Speak offers an approach, is a
-  // click on that prop (a prop has no mesh handler of its own).
+  // click on that prop (a prop has no mesh handler of its own). ANY prop
+  // with an id counts, a passable floor prop such as a rug included, so with
+  // Speak armed a click on a rug's cell approaches the rug rather than
+  // walking onto it; two props on one cell resolve to the first in atlas
+  // order. A creature on the cell wins: its click never reaches the floor.
   const atlasPropAt = (coord: CubeCoord): string | undefined => {
     const key = coordToKey(coord);
     return atlas?.props.find(
