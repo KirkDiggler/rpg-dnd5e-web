@@ -233,6 +233,26 @@ describe('describeAct', () => {
     expect(line.roll?.total).toBe(20);
   });
 
+  it("a creature's machine moving reads as one line, named from the party", () => {
+    const moved = (reason: string) =>
+      act(Family.STATE, {
+        case: 'state',
+        value: {
+          party: gate,
+          change: StateKind.MACHINE,
+          machine: { from: 'posted', to: 'alert', reason },
+        },
+      });
+    expect(describeAct(moved('heard something'), context)).toMatchObject({
+      eyebrow: 'State',
+      headline: 'Gate Guard: posted → alert (heard something)',
+      detail: '',
+    });
+    expect(describeAct(moved(''), context)?.headline).toBe(
+      'Gate Guard: posted → alert'
+    );
+  });
+
   it('a reaction names what it was taken as', () => {
     const oa = act(Family.REACTION, {
       case: 'attack',

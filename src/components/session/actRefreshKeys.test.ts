@@ -186,6 +186,17 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     ['characterData'],
   ],
   [
+    'machine moved',
+    act(Family.STATE, {
+      case: 'state',
+      value: {
+        change: StateKind.MACHINE,
+        machine: { from: 'posted', to: 'alert', reason: 'heard something' },
+      },
+    }),
+    [],
+  ],
+  [
     'sighted',
     act(Family.PERCEPTION, {
       case: 'perception',

@@ -527,6 +527,19 @@ function describeWith(
             detail: authoredWords(s.condition?.reason ?? ''),
             tone: 'neutral',
           };
+        // A creature's machine moved: "Gate guard: posted → alert (heard
+        // something)". No reason, no parenthetical.
+        case StateKind.MACHINE: {
+          const from = authoredWords(s.machine?.from ?? '');
+          const to = authoredWords(s.machine?.to ?? '');
+          const reason = authoredWords(s.machine?.reason ?? '');
+          return {
+            eyebrow: 'State',
+            headline: `${name(s.party)}: ${from} → ${to}${reason ? ` (${reason})` : ''}`,
+            detail: '',
+            tone: 'neutral',
+          };
+        }
         case StateKind.EXPERIENCE:
           return {
             eyebrow: 'Experience',

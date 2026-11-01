@@ -96,6 +96,9 @@ export function refreshKeysForAct(
           return COMBAT;
         case StateKind.EXPERIENCE:
           return ['characterData'];
+        // A creature's machine moving moves no geometry and changes no sheet.
+        case StateKind.MACHINE:
+          return [];
         default:
           return [];
       }
