@@ -24,6 +24,7 @@ import {
   npcActivityProfile,
   unsupportedNpcDefault,
 } from '@/npc-activities/activityProfile';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
 import { NpcActivityUnavailable } from '@/npc-activities/NpcActivityUnavailable';
 import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
 import { NpcAppearanceUnavailable } from '@/npc-appearances/NpcAppearanceUnavailable';
@@ -113,6 +114,8 @@ export interface HexEntityProps {
   /** Observer-captured visual override, independent of the monster rules ref. */
   appearanceRef?: string;
   defaultActivityRef?: string;
+  activityCue?: ActivityCueRequest;
+  onActivityCueConsumed?: (member: string, id: string) => void;
   presentationSpeed?: number;
   transitionSpeed?: number;
   /** Override hair style (proto doesn't have this field yet) */
@@ -392,6 +395,8 @@ export function HexEntity({
   monsterRefId,
   appearanceRef,
   defaultActivityRef,
+  activityCue,
+  onActivityCueConsumed,
   presentationSpeed = 1,
   transitionSpeed = 1.5,
   hairStyle,
@@ -460,7 +465,14 @@ export function HexEntity({
   const unsupportedActivity =
     type === 'monster' &&
     !isDead &&
-    unsupportedNpcDefault({ profile: activityProfile, defaultActivityRef });
+    (unsupportedNpcDefault({ profile: activityProfile, defaultActivityRef }) ||
+      Boolean(
+        activityCue &&
+        unsupportedNpcDefault({
+          profile: activityProfile,
+          defaultActivityRef: activityCue.activityRef,
+        })
+      ));
   const activityScope = `${entityId}|${appearanceRef ?? ''}|${activityProfile?.id ?? ''}`;
   const currentActivityScope = useRef(activityScope);
   currentActivityScope.current = activityScope;
@@ -470,8 +482,25 @@ export function HexEntity({
     ready: false,
   });
   const [failedActivityScope, setFailedActivityScope] = useState<string>();
-  const activityUnavailable =
-    unsupportedActivity || failedActivityScope === activityScope;
+  const bodyLoadFailed = failedActivityScope === activityScope;
+  const activityUnavailable = unsupportedActivity || bodyLoadFailed;
+  useEffect(() => {
+    // Failure is terminal for pending delivery, including a later request to
+    // an already-failed body. Keep the scope's named diagnostic after retiring it.
+    if (
+      activityCue &&
+      (remembered || isDead || type !== 'monster' || bodyLoadFailed)
+    )
+      onActivityCueConsumed?.(entityId, activityCue.id);
+  }, [
+    activityCue,
+    remembered,
+    isDead,
+    type,
+    bodyLoadFailed,
+    onActivityCueConsumed,
+    entityId,
+  ]);
   const { isMoving } = useHexMovePath(
     position,
     remembered ? undefined : movePath,
@@ -749,6 +778,12 @@ export function HexEntity({
       activityUnavailable || activityProfile ? (
         <NpcActivityUnavailable
           activityRef={
+            (unsupportedNpcDefault({
+              profile: activityProfile,
+              defaultActivityRef,
+            })
+              ? defaultActivityRef
+              : activityCue?.activityRef) ||
             defaultActivityRef ||
             activityProfile?.defaultActivityRef ||
             'unspecified'
@@ -851,6 +886,10 @@ export function HexEntity({
                   url={effectiveModelUrl}
                   profile={activityProfile}
                   defaultActivityRef={defaultActivityRef}
+                  activityCue={remembered || isDead ? undefined : activityCue}
+                  onActivityCueConsumed={(id) =>
+                    onActivityCueConsumed?.(entityId, id)
+                  }
                   moveSeq={moveSeq}
                   presentationSpeed={presentationSpeed}
                   transitionSpeed={transitionSpeed}

@@ -1,3 +1,10 @@
+/** A single live response's presentation intent, identified by its act. */
+export interface ActivityCueRequest {
+  readonly id: string;
+  readonly activityRef: string;
+  readonly cycles: number;
+}
+
 /** Provider-owned presentation vocabulary; never a gameplay command. */
 export interface NpcActivity {
   readonly label: string;

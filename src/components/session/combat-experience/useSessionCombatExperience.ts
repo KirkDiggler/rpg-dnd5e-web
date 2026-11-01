@@ -10,6 +10,8 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import type { ActivityCueSettlement } from '@/npc-activities/sayActivityPresentation';
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
@@ -125,6 +127,7 @@ export interface UseSessionCombatExperienceArgs {
   onTurnBeat?: (beat: TurnBeat) => void;
   onPresentWalk?: PresentWalk;
   presentableMembers?: ReadonlySet<string>;
+  presentableActivityMembers?: ReadonlySet<string>;
   /**
    * Walk toward a Speak target that is beyond interaction reach
    * (rpg-project#753 R4): the caller composes the Move path from the map it
@@ -159,6 +162,8 @@ export interface UseSessionCombatExperienceResult {
   diceRollerName: string;
   pacingNotice: string | null;
   heldMovementMembers: ReadonlySet<string>;
+  activityCues: ReadonlyMap<string, ActivityCueRequest>;
+  settleActivityCue: (input: ActivityCueSettlement) => void;
   endTurnBlocked: boolean;
   /** `choice` is supplied only for a VERB_REACT declaration: the answer to
    * an open reaction window. */
@@ -312,6 +317,7 @@ export function useSessionCombatExperience({
   onTurnBeat,
   onPresentWalk,
   presentableMembers,
+  presentableActivityMembers,
   approach,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const viewerCellRef = useRef(viewerCell);
@@ -502,6 +508,7 @@ export function useSessionCombatExperience({
     onTurnBeat,
     onPresentWalk,
     presentableMembers,
+    presentableActivityMembers,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
@@ -2368,6 +2375,8 @@ export function useSessionCombatExperience({
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
       heldMovementMembers: pacing.heldMovementMembers,
+      activityCues: pacing.activityCues,
+      settleActivityCue: pacing.settleActivityCue,
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onSelectCastOption,
@@ -2415,6 +2424,8 @@ export function useSessionCombatExperience({
       onConfirmTargets,
       pacing.notice,
       pacing.heldMovementMembers,
+      pacing.activityCues,
+      pacing.settleActivityCue,
       pacing.result,
       pacing.story,
       pendingDeathSaveResponse,

@@ -264,10 +264,17 @@ export function whenNamesDeedShape(when: AnswerWhenShape | undefined): boolean {
   );
 }
 
+/** A presentation cue on a spoken answer. References are provider-owned. */
+export interface AnswerActivityShape {
+  ref: string;
+  cycles: number;
+}
+
 /** One answer entry as written. `weight`/`say`/`when` + at most one word. */
 export interface AnswerEntryShape {
   weight?: number;
   say?: string;
+  activity?: AnswerActivityShape;
   when?: AnswerWhenShape;
   fact?: string;
   flee?: Record<string, unknown>;
@@ -300,6 +307,27 @@ export function isUseEntry(
   return entry.use !== undefined;
 }
 
+/** Strict cue shape; asset support is checked by the appearance provider. */
+function validateAnswerActivity(
+  value: unknown,
+  path: string
+): AnswerActivityShape {
+  if (!isMapping(value)) fail(path, 'expected a mapping');
+  for (const key of Object.keys(value)) {
+    if (key !== 'ref' && key !== 'cycles') fail(path, `unknown key "${key}"`);
+  }
+  if (typeof value.ref !== 'string' || value.ref.length === 0)
+    fail(`${path}.ref`, 'expected a nonempty activity reference');
+  if (
+    typeof value.cycles !== 'number' ||
+    !Number.isInteger(value.cycles) ||
+    value.cycles < 1 ||
+    value.cycles > 4294967295
+  )
+    fail(`${path}.cycles`, 'expected a whole number from 1 through 4294967295');
+  return { ref: value.ref, cycles: value.cycles };
+}
+
 /** `search`'s body as written: `{}`, `{ distance: N }`, `{ heading: H }` or
  * both. Each key absent is the engine's default (six, `went`), carried absent
  * so the file's bytes round-trip. */
@@ -320,6 +348,7 @@ const isMapping = (value: unknown): value is Record<string, unknown> =>
 const ENTRY_KEYS: readonly string[] = Object.freeze([
   'weight',
   'say',
+  'activity',
   'when',
   ...ANSWER_WORD_KEYS,
   'use',
@@ -436,6 +465,8 @@ function validateAnswerEntry(
     );
   }
 
+  if (value.activity === null) fail(`${path}.activity`, 'expected a mapping');
+
   // A GROUP ROW IS ITS OWN SHAPE (rpg-project#670): no word of its own.
   if (value.use !== undefined && value.use !== null)
     return validateUseEntry(value, path, trigger);
@@ -466,6 +497,10 @@ function validateAnswerEntry(
   if (value.say !== undefined && value.say !== null) {
     if (typeof value.say !== 'string') fail(`${path}.say`, 'expected a string');
     entry.say = value.say;
+  }
+  if (value.activity !== undefined) {
+    if (!entry.say) fail(`${path}.activity`, 'requires a nonempty say line');
+    entry.activity = validateAnswerActivity(value.activity, `${path}.activity`);
   }
 
   if (value.when !== undefined && value.when !== null)
@@ -576,6 +611,7 @@ const GROUP_CARRIED_KEYS: readonly string[] = Object.freeze([
   'flee',
   'search',
   'say',
+  'activity',
   'fact',
 ]);
 

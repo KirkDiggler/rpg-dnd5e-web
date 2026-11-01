@@ -1,3 +1,8 @@
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import {
+  sayActivityFromAct,
+  type ActivityCueSettlement,
+} from '@/npc-activities/sayActivityPresentation';
 import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockMark,
@@ -37,9 +42,13 @@ export interface UseCombatStoryPacingArgs {
   onPresentWalk?: PresentWalk;
   /** Absent means no live render surface. Visibility loss retires queued motion. */
   presentableMembers?: ReadonlySet<string>;
+  /** Live standing bodies eligible for cues; independent of walk presentation. */
+  presentableActivityMembers?: ReadonlySet<string>;
 }
 
 export interface UseCombatStoryPacingResult {
+  activityCues: ReadonlyMap<string, ActivityCueRequest>;
+  settleActivityCue: (input: ActivityCueSettlement) => void;
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
   notice: string | null;
@@ -54,6 +63,7 @@ interface PacingScopeToken {
 }
 
 interface ScopedPacingState {
+  readonly activityCues: ReadonlyMap<string, ActivityCueRequest>;
   readonly token: PacingScopeToken;
   readonly hiddenIds: ReadonlySet<string>;
   readonly heldMovementMembers: ReadonlySet<string>;
@@ -68,6 +78,7 @@ interface PendingWalk {
 function emptyScopedPacing(token: PacingScopeToken): ScopedPacingState {
   return {
     token,
+    activityCues: new Map(),
     hiddenIds: new Set(),
     heldMovementMembers: new Set(),
     notice: null,
@@ -115,6 +126,7 @@ export function useCombatStoryPacing({
   onTurnBeat,
   onPresentWalk,
   presentableMembers = EMPTY_MEMBERS,
+  presentableActivityMembers = presentableMembers,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
     () => Object.freeze({ session, member }),
@@ -127,6 +139,7 @@ export function useCombatStoryPacing({
     emptyScopedPacing(token)
   );
   const queueRef = useRef<QueuedBeat[]>([]);
+  const seenActivityIdsRef = useRef(new Set<string>());
   const waitingRef = useRef<PendingWalk | null>(null);
   const drainingRef = useRef(false);
   const turnPresentationActiveRef = useRef(false);
@@ -143,6 +156,8 @@ export function useCombatStoryPacing({
   onPresentWalkRef.current = onPresentWalk;
   const presentableMembersRef = useRef(presentableMembers);
   presentableMembersRef.current = presentableMembers;
+  const presentableActivityMembersRef = useRef(presentableActivityMembers);
+  presentableActivityMembersRef.current = presentableActivityMembers;
   const namedInFightRef = useRef(new Set<string>());
   const inScope = useCallback(
     () => mountedRef.current && activeTokenRef.current === token,
@@ -177,6 +192,7 @@ export function useCombatStoryPacing({
     waitingRef.current = null;
     waiting?.unsubscribe?.();
     queueRef.current = [];
+    seenActivityIdsRef.current.clear();
     drainingRef.current = false;
     turnPresentationActiveRef.current = false;
     announcedActorRef.current = null;
@@ -232,6 +248,50 @@ export function useCombatStoryPacing({
     });
   }, [inScope, token]);
 
+  const settleActivityCue = useCallback(
+    (input: ActivityCueSettlement) => {
+      if (!inScope()) return;
+      setScopedPacing((current) => {
+        if (
+          !inScope() ||
+          current.token !== token ||
+          current.activityCues.get(input.member)?.id !== input.id
+        )
+          return current;
+        const activityCues = new Map(current.activityCues);
+        activityCues.delete(input.member);
+        return { ...current, activityCues };
+      });
+    },
+    [inScope, token]
+  );
+
+  const releaseActivity = useCallback(
+    (beat: QueuedBeat) => {
+      if (!inScope()) return;
+      setScopedPacing((current) => {
+        if (!inScope()) return current;
+        const base =
+          current.token === token ? current : emptyScopedPacing(token);
+        const moving =
+          beat.act.body.case === 'walk' ? beatActor(beat.act) : undefined;
+        const presenting =
+          beat.activityPresentation === 'eligible' &&
+          beat.activity &&
+          presentableActivityMembersRef.current.has(beat.activity.member)
+            ? beat.activity
+            : undefined;
+        if (!presenting && (!moving || !base.activityCues.has(moving)))
+          return current;
+        const activityCues = new Map(base.activityCues);
+        if (moving) activityCues.delete(moving);
+        if (presenting) activityCues.set(presenting.member, presenting.cue);
+        return { ...base, activityCues };
+      });
+    },
+    [inScope, token]
+  );
+
   const scheduleForScope = useCallback(
     (callback: () => void) => {
       if (!inScope()) return;
@@ -267,6 +327,7 @@ export function useCombatStoryPacing({
       }
       queueRef.current.shift();
       const { beat, actor } = step;
+      releaseActivity(beat);
       updateHiddenIdsForScope((current) => {
         const next = new Set(current);
         next.delete(actStoryId(beat.act, beat.index));
@@ -336,6 +397,7 @@ export function useCombatStoryPacing({
       inScope,
       namesNow,
       publishHeldMembers,
+      releaseActivity,
       rest,
       scheduleForScope,
       setNoticeForScope,
@@ -362,10 +424,33 @@ export function useCombatStoryPacing({
                 presentableMembersRef.current.has(actor)
               ? 'eligible'
               : 'discarded';
+        const candidate = sayActivityFromAct({
+          act,
+          id: actStoryId(act, index),
+        });
+        const activity =
+          candidate && !seenActivityIdsRef.current.has(candidate.cue.id)
+            ? candidate
+            : undefined;
+        if (activity) seenActivityIdsRef.current.add(activity.cue.id);
+        const cueFields = activity
+          ? {
+              activity,
+              activityPresentation: presentableActivityMembersRef.current.has(
+                activity.member
+              )
+                ? ('eligible' as const)
+                : ('discarded' as const),
+            }
+          : {};
         if (needsPacing(act, member, fight))
-          return [{ act, index, scope: 'turn', walkPresentation }];
-        if (act.body.case === 'walk' && actor && actor !== member)
-          return [{ act, index, scope: 'world', walkPresentation }];
+          return [
+            { act, index, scope: 'turn', walkPresentation, ...cueFields },
+          ];
+        if ((act.body.case === 'walk' && actor && actor !== member) || activity)
+          return [
+            { act, index, scope: 'world', walkPresentation, ...cueFields },
+          ];
         return [];
       });
       if (paced.length === 0) return;
@@ -390,6 +475,7 @@ export function useCombatStoryPacing({
     setScopedPacing((current) =>
       current.token === token &&
       current.hiddenIds.size === 0 &&
+      current.activityCues.size === 0 &&
       current.heldMovementMembers.size === 0 &&
       current.notice === null
         ? current
@@ -413,10 +499,44 @@ export function useCombatStoryPacing({
         changed = true;
         return { ...beat, walkPresentation: 'discarded' };
       }
+      if (
+        beat.activityPresentation === 'eligible' &&
+        beat.activity &&
+        !presentableActivityMembers.has(beat.activity.member)
+      ) {
+        changed = true;
+        return { ...beat, activityPresentation: 'discarded' };
+      }
       return beat;
     });
+    // Do not dispatch even a no-op layout update on ordinary movement: React
+    // can flush pending refresh work between deliveries when layout sets state.
+    if (
+      scopedPacing.token === token &&
+      [...scopedPacing.activityCues.keys()].some(
+        (who) => !presentableActivityMembers.has(who)
+      )
+    ) {
+      setScopedPacing((current) => {
+        if (!inScope() || current.token !== token) return current;
+        const entries = [...current.activityCues].filter(([who]) =>
+          presentableActivityMembers.has(who)
+        );
+        return entries.length === current.activityCues.size
+          ? current
+          : { ...current, activityCues: new Map(entries) };
+      });
+    }
     if (changed) publishHeldMembers();
-  }, [inScope, presentableMembers, publishHeldMembers]);
+  }, [
+    inScope,
+    presentableMembers,
+    presentableActivityMembers,
+    publishHeldMembers,
+    token,
+    scopedPacing.activityCues,
+    scopedPacing.token,
+  ]);
 
   const currentPacing = scopedPacing.token === token ? scopedPacing : null;
   const visibleStory = useMemo(
@@ -431,6 +551,8 @@ export function useCombatStoryPacing({
       ? result
       : undefined;
   return {
+    activityCues: currentPacing?.activityCues ?? EMPTY_CUES,
+    settleActivityCue,
     story: visibleStory,
     result: visibleResult,
     notice: currentPacing?.notice ?? null,
@@ -440,3 +562,4 @@ export function useCombatStoryPacing({
 }
 
 const EMPTY_MEMBERS: ReadonlySet<string> = new Set();
+const EMPTY_CUES: ReadonlyMap<string, ActivityCueRequest> = new Map();
