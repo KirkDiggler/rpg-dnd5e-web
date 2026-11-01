@@ -1,3 +1,5 @@
+import { getConditionDisplay } from '@/utils/conditionIcons';
+import { parseRef } from '@/utils/refs';
 import {
   AttackOutcome,
   type Roll,
@@ -14,6 +16,33 @@ function isFlatContribution(roll: Roll | undefined): boolean {
   return (
     /^[+-]?\d+$/.test(expression) || (!expression && roll.modifiers.length > 0)
   );
+}
+
+function damageBonusSource(roll: Roll | undefined): string | undefined {
+  const modifier = roll?.modifiers[0];
+  if (!modifier) return undefined;
+  const parsed = parseRef(modifier.sourceRef);
+  const refType = parsed?.type.toLowerCase();
+  const refId = parsed?.id.toLowerCase();
+  if (parsed?.module === 'dnd5e' && refType === 'abilities') {
+    const ability = refId;
+    const short: Record<string, string> = {
+      str: 'STR',
+      dex: 'DEX',
+      con: 'CON',
+      int: 'INT',
+      wis: 'WIS',
+      cha: 'CHA',
+    };
+    if (ability && short[ability]) return short[ability];
+  }
+  if (parsed?.module === 'dnd5e' && refType === 'conditions') {
+    const condition = refId;
+    if (condition) return getConditionDisplay(condition).label;
+  }
+  const name = modifier.source.trim();
+  if (/^(ability|condition)$/i.test(name)) return undefined;
+  return name || undefined;
 }
 
 function RollCard({
@@ -133,9 +162,11 @@ export function RecentEventSummary({
                 kind={flat ? 'bonus' : 'damage'}
                 tone={entry.tone}
                 source={
-                  attack.damageComponents.length > 1
-                    ? part.source || `Component ${index + 1}`
-                    : undefined
+                  flat
+                    ? damageBonusSource(part.roll)
+                    : attack.damageComponents.length > 1
+                      ? part.source || `Component ${index + 1}`
+                      : undefined
                 }
                 multiplier={part.multiplier}
               />

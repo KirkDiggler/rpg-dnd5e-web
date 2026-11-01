@@ -184,6 +184,9 @@ function DialGroupSection({
 
 const CAMERA_SPECS = ALL_DIAL_SPECS.filter((spec) => spec.group === 'camera');
 const DICE_SPECS = ALL_DIAL_SPECS.filter((spec) => spec.group === 'dice');
+const NOTIFICATION_SPECS = ALL_DIAL_SPECS.filter(
+  (spec) => spec.group === 'notifications'
+);
 
 export function FeelDialsDrawer({ open, onClose }: FeelDialsDrawerProps) {
   const values = useDialValues();
@@ -225,6 +228,11 @@ export function FeelDialsDrawer({ open, onClose }: FeelDialsDrawerProps) {
       <div className="flex-1 space-y-6 p-4">
         <DialGroupSection title="Camera" specs={CAMERA_SPECS} values={values} />
         <DialGroupSection title="Dice" specs={DICE_SPECS} values={values} />
+        <DialGroupSection
+          title="Notifications"
+          specs={NOTIFICATION_SPECS}
+          values={values}
+        />
       </div>
 
       <div className="space-y-2 border-t border-gray-700 p-4">

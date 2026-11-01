@@ -1,3 +1,4 @@
+import { useDialValues } from '@/feel/dialStore';
 import { useEffect, useRef, useState } from 'react';
 import { toastDurationMs } from './toastPolicy';
 import type {
@@ -12,8 +13,11 @@ export type StoryNotice = CombatExperienceStoryExchange & {
   readonly notice: {
     /** Its time on screen once it runs a timer (`toastDurationMs`). */
     readonly durationMs: number;
-    /** Held: fired in a fight, it waits for the viewer's next act. */
+    /** Activity never requires acknowledgement; all notices expire. */
     readonly held: boolean;
+    readonly dismiss?: () => void;
+    readonly dismissAll?: () => void;
+    readonly setPaused?: (reason: 'pointer' | 'focus', paused: boolean) => void;
   };
 };
 
@@ -21,9 +25,29 @@ interface ActiveNotice {
   id: string;
   scope: string;
   durationMs: number;
-  /** null while held: no timer runs until it is released. */
   expiresAt: number | null;
+  remainingMs: number;
+  pointer: boolean;
+  focus: boolean;
 }
+function reconcilePause(
+  notices: readonly ActiveNotice[],
+  now = Date.now()
+): readonly ActiveNotice[] {
+  const paused = notices.some((notice) => notice.pointer || notice.focus);
+  return notices.map((notice) => {
+    if (paused && notice.expiresAt !== null)
+      return {
+        ...notice,
+        remainingMs: Math.max(0, notice.expiresAt - now),
+        expiresAt: null,
+      };
+    if (!paused && notice.expiresAt === null)
+      return { ...notice, expiresAt: now + notice.remainingMs };
+    return notice;
+  });
+}
+
 interface Baseline {
   scope: string;
   live: boolean;
@@ -34,8 +58,7 @@ interface Baseline {
  * A temporary view of released story entries, never a second event
  * interpreter. Which rows toast is the toast policy's (`toastPolicy.ts`): a
  * row toasts only when it carries a `toastRule`. Its time on screen scales
- * with its line; a toast fired while a fight is formed holds until the
- * viewer's next act arrives (and runs its timer if the fight ends first). At
+ * with its line. Combat activity expires too; history retains the event. At
  * most `STORY_NOTICE_LIMIT` show; the oldest yields.
  */
 export function useStoryNotices({
@@ -43,15 +66,27 @@ export function useStoryNotices({
   scope,
   enabled,
   streamState,
+  onInteractionChange,
 }: {
   story: readonly CombatExperienceStoryExchange[];
   scope: string;
   enabled: boolean;
   streamState: CombatExperienceStreamState;
+  onInteractionChange?: (interacting: boolean) => void;
 }): readonly StoryNotice[] {
+  const durationScale = Number(useDialValues().notificationDuration);
   const baseline = useRef<Baseline | null>(null);
   const [active, setActive] = useState<readonly ActiveNotice[]>([]);
   const live = enabled && streamState === 'live';
+  const interacting =
+    live &&
+    active.some(
+      (notice) => notice.scope === scope && (notice.pointer || notice.focus)
+    );
+  useEffect(() => {
+    onInteractionChange?.(interacting);
+  }, [interacting, onInteractionChange]);
+  useEffect(() => () => onInteractionChange?.(false), [onInteractionChange]);
   useEffect(() => {
     const previous = baseline.current;
     // Mount, scope changes and resume are snapshots, not announcements.
@@ -75,48 +110,44 @@ export function useStoryNotices({
       setActive((current) =>
         current.every((entry) => currentIds.has(entry.id))
           ? current
-          : current.filter((entry) => currentIds.has(entry.id))
+          : reconcilePause(current.filter((entry) => currentIds.has(entry.id)))
       );
       return;
     }
     const now = Date.now();
     setActive((current) => {
-      let next = current.filter(
+      const next = current.filter(
         (entry) =>
           entry.scope === scope &&
           currentIds.has(entry.id) &&
           (entry.expiresAt === null || entry.expiresAt > now)
       );
-      // In arrival order: the viewer's own act releases what was held before
-      // it, a fight ending starts the held toasts' timers, then the entry
-      // itself toasts if the policy names a case for it.
       for (const entry of fresh) {
-        if (entry.byViewer) {
-          next = next.filter((notice) => notice.expiresAt !== null);
-        }
-        if (entry.fightEdge === 'dissolved') {
-          next = next.map((notice) =>
-            notice.expiresAt === null
-              ? { ...notice, expiresAt: now + notice.durationMs }
-              : notice
-          );
-        }
         if (!entry.toastRule) continue;
-        const durationMs = toastDurationMs(entry.toastText ?? entry.headline);
+        const durationMs =
+          toastDurationMs(entry.toastText ?? entry.headline) * durationScale;
         next.push({
           id: entry.id,
           scope,
           durationMs,
-          expiresAt: entry.toastRule.hold ? null : now + durationMs,
+          expiresAt: now + durationMs,
+          remainingMs: durationMs,
+          pointer: false,
+          focus: false,
         });
       }
-      return next.slice(-STORY_NOTICE_LIMIT);
+      // While reading, preserve the visible stack; extra events remain in history.
+      return reconcilePause(
+        next.some((notice) => notice.pointer || notice.focus)
+          ? next.slice(0, STORY_NOTICE_LIMIT)
+          : next.slice(-STORY_NOTICE_LIMIT),
+        now
+      );
     });
-  }, [story, scope, live]);
+  }, [story, scope, live, durationScale]);
 
   // Store deadlines, not timer-per-arrival cleanup: new activity must not
   // extend an older card. StrictMode cleanup can safely reschedule this timer.
-  // A held card has no deadline and schedules nothing.
   useEffect(() => {
     const deadlines = active
       .map((entry) => entry.expiresAt)
@@ -149,6 +180,33 @@ export function useStoryNotices({
               notice: {
                 durationMs: notice.durationMs,
                 held: notice.expiresAt === null,
+                setPaused: (reason: 'pointer' | 'focus', paused: boolean) => {
+                  const now = Date.now();
+                  setActive((current) =>
+                    reconcilePause(
+                      current.map((item) => {
+                        if (
+                          item.id !== notice.id ||
+                          item.scope !== notice.scope ||
+                          item[reason] === paused
+                        )
+                          return item;
+                        return { ...item, [reason]: paused };
+                      }),
+                      now
+                    )
+                  );
+                },
+                dismissAll: () => setActive([]),
+                dismiss: () =>
+                  setActive((current) =>
+                    reconcilePause(
+                      current.filter(
+                        (item) =>
+                          item.id !== notice.id || item.scope !== notice.scope
+                      )
+                    )
+                  ),
               },
             },
           ]

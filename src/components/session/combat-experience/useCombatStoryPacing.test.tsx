@@ -54,6 +54,38 @@ describe('useCombatStoryPacing scope', () => {
     vi.useRealTimers();
   });
 
+  it('holds local playback while paused, accepts events, and resumes without dropping them', () => {
+    const event = createAttackAuthorityFixture({
+      seq: 23n,
+      attacker: 'skeleton-guard',
+    }).act;
+    const story = [storyEntry(23n)];
+    const view = renderHook(
+      ({ paused }) =>
+        useCombatStoryPacing({
+          session: 'crypt-run',
+          member: 'aldric',
+          participants,
+          story,
+          paused,
+        }),
+      { initialProps: { paused: true } }
+    );
+    act(() => view.result.current.acceptActs([event], { source: 'live' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(view.result.current.story).toEqual([]);
+    expect(view.result.current.notice).toBeNull();
+    view.rerender({ paused: false });
+    expect(view.result.current.notice).toBe("Skeleton Guard's turn.");
+    view.rerender({ paused: true });
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(view.result.current.story).toEqual([]);
+    view.rerender({ paused: false });
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+    expect(view.result.current.story).toEqual(story);
+    view.unmount();
+  });
+
   it('reveals queued Story and fences an old timer and notice when member changes', () => {
     const oldFirst = createAttackAuthorityFixture({
       seq: 23n,

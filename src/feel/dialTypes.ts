@@ -9,7 +9,7 @@
  * is no cycle: dials.ts -> {cameraDials.ts, diceDials.ts} -> dialTypes.ts.
  */
 
-export type DialGroup = 'camera' | 'dice';
+export type DialGroup = 'camera' | 'dice' | 'notifications';
 
 export interface NumberDialSpec {
   readonly key: string;

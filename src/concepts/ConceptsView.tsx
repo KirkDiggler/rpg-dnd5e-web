@@ -15,6 +15,7 @@ import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
+import { NotificationsConcept } from './notifications/NotificationsConcept';
 import { OffHandAttachmentConcept } from './off-hand-attachment/OffHandAttachmentConcept';
 import { OrganizedHudConcept } from './organized-hud/OrganizedHudConcept';
 import { PortraitProviderConcept } from './portrait-provider/PortraitProviderConcept';
@@ -41,6 +42,7 @@ type ConceptPage =
   | 'off-hand-attachment'
   | 'organized-hud'
   | 'portrait-provider'
+  | 'notifications'
   | 'desktop-hotbar'
   | 'dungeon-builder'
   | 'asset-anchor-lab'
@@ -65,6 +67,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'organized-hud', label: 'Organized HUD' },
   { id: 'portrait-provider', label: 'Portrait Provider' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'desktop-hotbar', label: 'Desktop Hotbar' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
@@ -172,6 +175,7 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
         {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {activePage === 'organized-hud' && <OrganizedHudConcept />}
         {activePage === 'portrait-provider' && <PortraitProviderConcept />}
+        {activePage === 'notifications' && <NotificationsConcept />}
         {activePage === 'desktop-hotbar' && <DesktopHotbarConcept />}
         {activePage === 'action-information' && <ActionInformationConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the

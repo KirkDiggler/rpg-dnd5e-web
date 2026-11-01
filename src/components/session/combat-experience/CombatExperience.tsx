@@ -217,6 +217,7 @@ function CombatExperienceContent({
   actionUtilityControls,
   sceneNotice,
   pacingNotice,
+  onNotificationInteractionChange,
   renderMap,
   hoveredTarget,
   onSelectDeclaration,
@@ -324,6 +325,7 @@ function CombatExperienceContent({
   const desktopHotbar = Boolean(actionPresentation?.desktopIcons);
   const noticesEnabled = Boolean(storyFeedback && desktopHotbar);
   const storyNotices = useStoryNotices({
+    onInteractionChange: onNotificationInteractionChange,
     story: revealedStory,
     scope: storyFeedback?.scopeKey ?? '',
     enabled: noticesEnabled,

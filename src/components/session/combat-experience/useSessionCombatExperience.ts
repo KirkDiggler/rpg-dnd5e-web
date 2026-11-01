@@ -10,6 +10,7 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import { useDialValues } from '@/feel/dialStore';
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
@@ -149,6 +150,7 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
+  onNotificationInteractionChange: (interacting: boolean) => void;
   heldMovementMembers: ReadonlySet<string>;
   endTurnBlocked: boolean;
   /** `choice` is supplied only for a VERB_REACT declaration: the answer to
@@ -296,6 +298,8 @@ export function useSessionCombatExperience({
   onPresentWalk,
   presentableMembers,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
+  const [notificationInteraction, setNotificationInteraction] = useState(false);
+  const pauseWhileReading = useDialValues().notificationPausePlayback === 'on';
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
   const [interaction, setInteractionState] =
@@ -460,6 +464,7 @@ export function useSessionCombatExperience({
   }, [member, presentation.state.presentations, receivedRollWindow, session]);
   manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
+    paused: pauseWhileReading && notificationInteraction,
     session,
     member,
     participants,
@@ -2272,6 +2277,7 @@ export function useSessionCombatExperience({
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      onNotificationInteractionChange: setNotificationInteraction,
       heldMovementMembers: pacing.heldMovementMembers,
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,

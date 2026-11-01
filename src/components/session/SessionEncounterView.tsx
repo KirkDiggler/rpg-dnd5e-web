@@ -2038,6 +2038,9 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            onNotificationInteractionChange={
+              combat.onNotificationInteractionChange
+            }
             hoveredTarget={hoveredTarget}
             renderMap={({
               attackableTargets,
