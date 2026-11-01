@@ -253,6 +253,17 @@ describe('describeAct', () => {
     );
   });
 
+  it('a raise cutting beats reads as a quiet clock line', () => {
+    const cut = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.WAKE_CUT, wakeCut: { matched: 20, dropped: 3 } },
+    });
+    expect(describeAct(cut, context)).toMatchObject({
+      headline: 'the raise cut 3 of 20 beats',
+      tone: 'neutral',
+    });
+  });
+
   it('a reaction names what it was taken as', () => {
     const oa = act(Family.REACTION, {
       case: 'attack',
