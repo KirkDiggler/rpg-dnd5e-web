@@ -16,11 +16,11 @@ vi.mock('@react-three/drei', async (importOriginal) => {
   const bodyClips = ['Idle_Relaxed', 'Walk_Forward'].map(
     (name) => new THREE.AnimationClip(name, 1, [])
   );
-  const libraryClips = [
-    'Idle_Thoughtful_Enter',
-    'Idle_Thoughtful',
-    'Idle_Thoughtful_Exit',
-  ].map((name) => new THREE.AnimationClip(name, 1, []));
+  const { NPC_ACTIVITY_PROFILES: profiles } =
+    await import('@/generated/npcAppearanceCatalog');
+  const libraryClips = profiles[0].library.clips.map(
+    (name) => new THREE.AnimationClip(name, 1, [])
+  );
   return {
     ...actual,
     Html: () => <group name="activity-diagnostic" />,

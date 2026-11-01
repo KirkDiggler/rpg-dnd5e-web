@@ -29,28 +29,32 @@ const authored = () =>
   JSON.parse(screen.getByLabelText('authored response').textContent!);
 
 describe('say activity fields through the real answer editor', () => {
-  it('configures and clears a counted cue without changing the line or weight', () => {
-    render(<Editor />);
-    const select = screen.getByLabelText('Activity for success entry');
-    expect(screen.queryByRole('option', { name: 'Walk' })).toBeNull();
-    fireEvent.change(select, { target: { value: thoughtful } });
-    fireEvent.change(
-      screen.getByLabelText('Sustain cycles for success entry'),
-      { target: { value: '2' } }
-    );
-    expect(authored()).toEqual({
-      say: 'Let me think.',
-      weight: 3,
-      activity: { ref: thoughtful, cycles: 2 },
-    });
-    fireEvent.change(
-      screen.getByLabelText('Say (optional) for success entry'),
-      { target: { value: 'I remember now.' } }
-    );
-    expect(authored().activity).toEqual({ ref: thoughtful, cycles: 2 });
-    fireEvent.change(select, { target: { value: '' } });
-    expect(authored()).toEqual({ say: 'I remember now.', weight: 3 });
-  });
+  it.each(['thoughtful', 'arms-folded', 'hands-on-hips', 'standing-prayer'])(
+    'configures and clears %s without changing the line or weight',
+    (name) => {
+      const ref = `dnd5e:activities:${name}`;
+      render(<Editor />);
+      const select = screen.getByLabelText('Activity for success entry');
+      expect(screen.queryByRole('option', { name: 'Walk' })).toBeNull();
+      fireEvent.change(select, { target: { value: ref } });
+      fireEvent.change(
+        screen.getByLabelText('Sustain cycles for success entry'),
+        { target: { value: '2' } }
+      );
+      expect(authored()).toEqual({
+        say: 'Let me think.',
+        weight: 3,
+        activity: { ref, cycles: 2 },
+      });
+      fireEvent.change(
+        screen.getByLabelText('Say (optional) for success entry'),
+        { target: { value: 'I remember now.' } }
+      );
+      expect(authored().activity).toEqual({ ref, cycles: 2 });
+      fireEvent.change(select, { target: { value: '' } });
+      expect(authored()).toEqual({ say: 'I remember now.', weight: 3 });
+    }
+  );
 
   it('does not replace an imported unsupported reference', () => {
     render(
