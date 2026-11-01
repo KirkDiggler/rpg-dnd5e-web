@@ -147,7 +147,7 @@ describe('approved NPC appearance publication', () => {
       ].map((name) => `dnd5e:npcs:goblin:${name}`)
     );
     const profile = NPC_ACTIVITY_PROFILES.find(
-      (p) => p.id === 'warcamp-human-social-v1'
+      (p) => p.id === 'warcamp-human-idles-v1'
     )!;
     expect(profile).toBeDefined();
     const expected = NPC_APPEARANCE_CATALOG.filter(
@@ -160,12 +160,12 @@ describe('approved NPC appearance publication', () => {
       exit: 'Idle_Thoughtful_Exit',
     });
     expect(profile.library.sha256).toBe(
-      '253335bd7f4d0186651152632fe0790712b88db7f1fba53cbabf19126a1a3c41'
+      '86a68a5c78aefd7422d050589a29f977669c46035b61bd22d6f6d48caeee4d69'
     );
   });
   it('exports 13 pack defaults, 66 human palettes and 204 Kingdom looks without provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: 'f7b12f8d08fedbc6681afdd2ff9c90715e56e0ee',
+      commit: '97c7064c899f85c128b5acaff3d5409c9aae091a',
       releases: [
         'goblin-human-palettes-v2',
         'goblin-war-camp-v1',
