@@ -15,7 +15,7 @@ const heard = buildActStory(
       act: create(ActSchema, {
         id: 'heard',
         session: 'fixture',
-        family: Family.ACT,
+        family: Family.PERCEPTION,
         body: {
           case: 'perception',
           value: {

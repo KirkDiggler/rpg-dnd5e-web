@@ -20,9 +20,10 @@ Reuse StoryNotices, useStoryNotices, recentEventIdentity and StoryLog rather tha
 ## Accepted follow-up: stack interaction and controls
 
 - Whole-stack lifetime protection while any notice is hovered or keyboard-focused; click-away dismisses the visible stack, not history.
+- Live `SessionEncounterView` supplies the shared notices and compact Just happened preview on narrow and desktop layouts; Concepts cannot be the only consumer.
 - Add notification duration and pause-while-reading to the existing feel-controls registry/drawer. Default duration 1×, playback pause off. Use existing local preference persistence.
 - Feed the shared hook's interaction signal through CombatExperience to useSessionCombatExperience, then gate useCombatStoryPacing between beats. Keep authority ingestion and in-flight walks untouched.
-- Concepts uses the same drawer, hook and pacing owner; two monster attack fixtures let the operator compare both pause settings. Camera centering and broader monster-event selection remain out of this pass.
+- Concepts uses the same drawer, hook and pacing owner; its attack, speech and hearing fixtures carry the real `toastFor` verdicts. Production policy selects own/targeted speech as primary and observer-only hearing as secondary; discovery remains quiet. Two monster attack fixtures let the operator compare both pause settings. Camera centering and broader monster-event selection remain out of this pass.
 - Verification: hook fake-timer tests for whole-stack protection/dismissal/duration and playback gate, existing session/walk suites, real-browser comparison of both settings.
 
 ## Review focus

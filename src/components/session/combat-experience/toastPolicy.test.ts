@@ -217,6 +217,37 @@ describe('a creature’s answer to your line', () => {
   });
 });
 
+describe('primary speech and secondary heard cues', () => {
+  it('toasts your speech and speech addressed to you, not to bystanders', () => {
+    const line = act(
+      Family.ACT,
+      { case: 'speak', value: { by: alice, to: bob, line: 'Stay back.' } },
+      'speak'
+    );
+    expect(toastFor(line, 'alice', false)?.case).toBe('own-speech');
+    expect(toastFor(line, 'bob', false)?.case).toBe('speech-to-you');
+    expect(toastFor(line, 'captain', false)).toBeNull();
+  });
+
+  it('toasts only a hearing cue delivered to its observer, not a discovery', () => {
+    const heard = act(Family.PERCEPTION, {
+      case: 'perception',
+      value: {
+        observer: alice,
+        sense: Sense.HEARING,
+        heard: { kind: 'footsteps', hops: 3 },
+      },
+    });
+    expect(toastFor(heard, 'alice', false)?.case).toBe('heard-sound');
+    expect(toastFor(heard, 'bob', false)).toBeNull();
+    const discovery = act(Family.PERCEPTION, {
+      case: 'perception',
+      value: { observer: alice, sense: Sense.DISCOVERY },
+    });
+    expect(toastFor(discovery, 'alice', false)).toBeNull();
+  });
+});
+
 describe('never toasts a walk or a table pick', () => {
   it('your own walk does not toast', () => {
     const walk = act(Family.ACT, {
@@ -238,12 +269,12 @@ describe('never toasts a walk or a table pick', () => {
     expect(toastFor(pick, 'alice', false)).toBeNull();
   });
 
-  it('a perception does not toast, even your own', () => {
-    const heard = act(Family.PERCEPTION, {
+  it('a non-hearing perception does not toast', () => {
+    const discovery = act(Family.PERCEPTION, {
       case: 'perception',
-      value: { observer: alice, sense: Sense.HEARING },
+      value: { observer: alice, sense: Sense.DISCOVERY },
     });
-    expect(toastFor(heard, 'alice', false)).toBeNull();
+    expect(toastFor(discovery, 'alice', false)).toBeNull();
   });
 });
 

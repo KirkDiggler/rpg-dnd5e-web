@@ -56,7 +56,7 @@ export function NotificationsConcept() {
         ...sample,
         act: event,
         id: event ? actStoryId(event, 0) : id,
-        toastRule: { case: 'own-outcome' as const, hold: false },
+        toastRule: sample.toastRule,
         deliverySource: 'live' as const,
       };
     });
