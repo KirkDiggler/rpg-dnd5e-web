@@ -233,6 +233,37 @@ describe('describeAct', () => {
     expect(line.roll?.total).toBe(20);
   });
 
+  it("a creature's machine moving reads as one line, named from the party", () => {
+    const moved = (reason: string) =>
+      act(Family.STATE, {
+        case: 'state',
+        value: {
+          party: gate,
+          change: StateKind.MACHINE,
+          machine: { from: 'posted', to: 'alert', reason },
+        },
+      });
+    expect(describeAct(moved('heard something'), context)).toMatchObject({
+      eyebrow: 'State',
+      headline: 'Gate Guard: posted → alert (heard something)',
+      detail: '',
+    });
+    expect(describeAct(moved(''), context)?.headline).toBe(
+      'Gate Guard: posted → alert'
+    );
+  });
+
+  it('a raise cutting beats reads as a quiet clock line', () => {
+    const cut = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.WAKE_CUT, wakeCut: { matched: 20, dropped: 3 } },
+    });
+    expect(describeAct(cut, context)).toMatchObject({
+      headline: 'the raise cut 3 of 20 beats',
+      tone: 'neutral',
+    });
+  });
+
   it('a reaction names what it was taken as', () => {
     const oa = act(Family.REACTION, {
       case: 'attack',
