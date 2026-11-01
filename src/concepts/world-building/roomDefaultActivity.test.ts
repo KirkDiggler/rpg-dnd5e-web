@@ -51,6 +51,9 @@ describe('authored default activity', () => {
       '',
       'dnd5e:activities:relaxed',
       THOUGHTFUL,
+      'dnd5e:activities:arms-folded',
+      'dnd5e:activities:hands-on-hips',
+      'dnd5e:activities:standing-prayer',
     ]);
     const intent = arrangeIntent(selection, {
       defaultActivityRef: THOUGHTFUL,

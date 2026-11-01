@@ -4,11 +4,11 @@ import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation
 import type { NpcActivityProfile } from '../npc-activities/activityTypes';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: 'eed6de18a8f1799b97df175c993b5bb405a12db0',
+  commit: 'f7b12f8d08fedbc6681afdd2ff9c90715e56e0ee',
   manifestSha256:
     'f286568ddc4b16de39002849560b8f1c4a8eff7f81192831a888c24d8c86007d',
   selectionSha256:
-    '4431264751d84f413cd96187bd5996698bcb80becba0b0b1d1e3e539ab556006',
+    '9ce085b644303e8e6ef68bc81f816d2bc8b0de293e288aa9e07c58d6142ea2f6',
   releases: Object.freeze([
     'goblin-human-palettes-v2',
     'goblin-war-camp-v1',
@@ -165,16 +165,25 @@ export const NPC_ACTIVITY_PROFILES: readonly NpcActivityProfile[] =
   Object.freeze([
     {
       schemaVersion: 1,
-      id: 'warcamp-human-thoughtful-v1',
+      id: 'warcamp-human-social-v1',
       jointCount: 50,
       library: {
-        url: '/models/synty/npcs/activities/warcamp-human-thoughtful-v1/clips.glb',
+        url: '/models/synty/npcs/activities/warcamp-human-social-v1/clips.glb',
         sha256:
-          '491729ca7c949cb01c5fff5bc67d095db7a68f07d3944c541c6a7e7be55b9ee6',
+          '253335bd7f4d0186651152632fe0790712b88db7f1fba53cbabf19126a1a3c41',
         clips: [
           'Idle_Thoughtful_Enter',
           'Idle_Thoughtful',
           'Idle_Thoughtful_Exit',
+          'Idle_ArmsFolded_Casual_Enter',
+          'Idle_ArmsFolded_Casual',
+          'Idle_ArmsFolded_Casual_Exit',
+          'Idle_HandsOnHips_Enter',
+          'Idle_HandsOnHips',
+          'Idle_HandsOnHips_Exit',
+          'Idle_PrayerStanding_Enter',
+          'Idle_PrayerStanding',
+          'Idle_PrayerStanding_Exit',
         ],
       },
       defaultActivityRef: 'dnd5e:activities:relaxed',
@@ -197,6 +206,36 @@ export const NPC_ACTIVITY_PROFILES: readonly NpcActivityProfile[] =
           enter: 'Idle_Thoughtful_Enter',
           sustain: 'Idle_Thoughtful',
           exit: 'Idle_Thoughtful_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:arms-folded': {
+          label: 'Arms folded',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_ArmsFolded_Casual_Enter',
+          sustain: 'Idle_ArmsFolded_Casual',
+          exit: 'Idle_ArmsFolded_Casual_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:hands-on-hips': {
+          label: 'Hands on hips',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_HandsOnHips_Enter',
+          sustain: 'Idle_HandsOnHips',
+          exit: 'Idle_HandsOnHips_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:standing-prayer': {
+          label: 'Standing prayer',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_PrayerStanding_Enter',
+          sustain: 'Idle_PrayerStanding',
+          exit: 'Idle_PrayerStanding_Exit',
           leaveAt: 'loop-boundary',
           moving: false,
         },
