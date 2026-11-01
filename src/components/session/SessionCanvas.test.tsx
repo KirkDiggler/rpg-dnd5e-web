@@ -579,6 +579,43 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('raycasts the actual game input plane beyond the former fixed world bounds', async () => {
+    const cells: [number, number, number][] = [
+      [-120, 120, 0],
+      [120, -120, 0],
+      [0, -150, 150],
+      [0, 150, -150],
+    ];
+    const renderer = await renderSession({
+      ...scene(),
+      floorTiles: floorTiles(...cells),
+      wallRuns: [],
+      doorGaps: [],
+    });
+    try {
+      const input = renderer.scene.find(
+        (node) =>
+          node.fiber.type === 'mesh' &&
+          typeof node.props.onPointerMove === 'function' &&
+          typeof node.props.onClick === 'function'
+      ).instance as THREE.Mesh;
+      input.updateWorldMatrix(true, false);
+      for (const [x, y, z] of cells) {
+        const world = cubeToWorld({ x, y, z }, 1);
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(world.x, 10, world.z),
+          new THREE.Vector3(0, -1, 0)
+        );
+        expect(
+          ray.intersectObject(input).length,
+          `input misses floor at ${world.x},${world.z}`
+        ).toBeGreaterThan(0);
+      }
+    } finally {
+      await renderer.unmount();
+    }
+  });
+
   it('forwards known-floor fit requests to the real camera hook without fitting unrelated renders', async () => {
     const rig = new THREE.OrthographicCamera(-480, 480, 240, -240, 0.1, 1000);
     rig.zoom = 137;
@@ -3471,6 +3508,47 @@ describe('SessionScene', () => {
       expect(onEntityClick).not.toHaveBeenCalled();
       expect(onHexClick).not.toHaveBeenCalled();
       await renderer.unmount();
+    });
+
+    it('a live creature the offer does not list is an approach click, a remembered one is not (rpg-project#753 R4)', async () => {
+      const sceneProps = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        myPosition: { x: 0, y: 0, z: 0 },
+        classRefId: undefined,
+        attackableTargets: [] as string[],
+      };
+      const onEntityClick = vi.fn();
+      const onApproachClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember}
+          onEntityClick={onEntityClick}
+          onApproachClick={onApproachClick}
+        />
+      );
+      fireEveryEntityClick(renderer);
+      expect(onApproachClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      await renderer.unmount();
+
+      const remembered = vi.fn();
+      const second = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          onApproachClick={remembered}
+        />
+      );
+      clickAt(findGroundPlaneProps(second), { x: 1, y: -1, z: 0 });
+      expect(remembered).not.toHaveBeenCalled();
+      await second.unmount();
     });
 
     it('an explicitly offered world member selects through targeting instead of opening interaction', async () => {

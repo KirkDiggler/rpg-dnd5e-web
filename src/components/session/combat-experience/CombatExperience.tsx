@@ -237,6 +237,7 @@ function CombatExperienceContent({
   onCancelSelection,
   onTargetClick,
   onChooseSpeakTarget,
+  onApproachTarget,
   onSpeakOption,
   onConfirmTargets,
   onEndTurn,
@@ -533,6 +534,7 @@ function CombatExperienceContent({
             onTargetClick={onTargetClick}
             speakTarget={presentationState.speakTarget}
             onChooseSpeakTarget={onChooseSpeakTarget}
+            onApproachTarget={onApproachTarget}
             onSpeakOption={onSpeakOption}
             onConfirmTargets={onConfirmTargets}
             onCancelSelection={

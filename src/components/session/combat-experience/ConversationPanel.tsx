@@ -76,7 +76,12 @@ export function ConversationPanel({
           <strong>
             {target && lines.length > 0
               ? `What do you say to ${name(target)}?`
-              : 'Choose who to speak to'}
+              : targets.length === 0
+                ? // The offer covers only who is within interaction reach
+                  // (rpg-project#753 R4); an empty one says so, and the map
+                  // is where a far creature or prop is walked toward.
+                  'Nobody within reach'
+                : 'Choose who to speak to'}
           </strong>
         </header>
         {target && lines.length > 0 ? (
@@ -97,7 +102,7 @@ export function ConversationPanel({
               </li>
             ))}
           </ul>
-        ) : (
+        ) : targets.length === 0 ? null : (
           <ul className={styles.choices} aria-label="Speak targets">
             {targets.map((who) => (
               <li key={`${who.case}:${who.value}`}>
