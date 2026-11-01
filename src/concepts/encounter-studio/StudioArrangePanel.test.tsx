@@ -682,7 +682,18 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     ).not.toHaveProperty('appearanceRef');
   });
 
-  it.each(['thoughtful', 'arms-folded', 'hands-on-hips', 'standing-prayer'])(
+  it.each([
+    'thoughtful',
+    'arms-folded',
+    'hands-on-hips',
+    'standing-prayer',
+    'shy',
+    'slumped',
+    'dramatic',
+    'drunken-sway',
+    'arms-folded-grumpy',
+    'hands-on-hips-grumpy',
+  ])(
     'saves provider default %s with undo/redo and preserves it across an unsupported look change',
     (name) => {
       const joined = owner();
