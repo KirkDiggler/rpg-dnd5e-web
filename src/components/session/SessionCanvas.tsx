@@ -849,6 +849,7 @@ export function SessionScene({
         offHandPresentation={offHandPresentation}
         movePath={selfMovement?.route}
         moveSeq={selfMovement?.seq}
+        moveForced={selfMovement?.forced}
         deferPositionReconciliation={
           heldMovementMembers?.has(characterId) ?? false
         }
@@ -884,6 +885,7 @@ export function SessionScene({
           position={member.position}
           movePath={movements?.get(member.subject)?.route}
           moveSeq={movements?.get(member.subject)?.seq}
+          moveForced={movements?.get(member.subject)?.forced}
           deferPositionReconciliation={
             !member.remembered &&
             (heldMovementMembers?.has(member.subject) ?? false)

@@ -42,6 +42,47 @@ function fixture() {
 }
 
 describe('counted response through the real mixer', () => {
+  it.each(['enter', 'sustain', 'exit'])(
+    'immediately discards and holds a forced %s interruption, then returns to default',
+    (phase) => {
+      const { playback, mixer, reach, consumed } = fixture();
+      playback.update({
+        ...base,
+        cue: { ...cue, cycles: phase === 'exit' ? 1 : 20 },
+      });
+      reach(thoughtful, phase);
+      const time = mixer.time;
+      const serial = playback.state.serial;
+      playback.update({ ...base, displaced: true, moveSeq: 4 });
+      expect(playback.state).toMatchObject({
+        phase: 'stopped',
+        cueId: undefined,
+        walkingReady: false,
+      });
+      expect(playback.state.serial).toBeGreaterThan(serial);
+      mixer.update(10);
+      expect(mixer.time).toBe(time);
+      const late = { ...cue, id: 'late', cycles: 20 };
+      playback.update({ ...base, displaced: true, moveSeq: 4, cue: late });
+      expect(consumed).toHaveBeenCalledWith('late');
+      playback.update({
+        ...base,
+        defaultActivityRef: thoughtful,
+        moveSeq: 4,
+        cue: late,
+      });
+      reach(thoughtful, 'sustain');
+      mixer.update(30);
+      expect(playback.state).toMatchObject({
+        activity: thoughtful,
+        phase: 'sustain',
+        cueId: undefined,
+      });
+      playback.update({ ...base, cue: { ...cue, id: 'fresh' } });
+      expect(playback.state.cueId).toBe('fresh');
+      playback.dispose();
+    }
+  );
   it('acknowledges delivery once while keeping the finite budget in the mixer owner', () => {
     const { playback, mixer, reach, consumed } = fixture();
     playback.update({ ...base, cue });

@@ -10,6 +10,7 @@ export interface ActivityPlaybackRequest {
   readonly defaultActivityRef?: string;
   readonly cue?: ActivityCueRequest;
   readonly wantsWalk: boolean;
+  readonly displaced?: boolean;
   readonly moveSeq?: number;
   readonly active: boolean;
   readonly speed: number;
@@ -41,6 +42,7 @@ export function createActivityPlayback(input: {
     transitionSpeed: 1.5,
   };
   let wasActive = false;
+  let wasDisplaced = false;
   let lastCueId: string | undefined;
   let disposed = false;
   let current: THREE.AnimationAction | undefined;
@@ -106,12 +108,34 @@ export function createActivityPlayback(input: {
       if (!next.active) {
         if (wasActive) sequence.stop();
         wasActive = false;
+        wasDisplaced = false;
         if (newCue && next.cue) input.consumed?.(next.cue.id);
         report();
         return;
       }
       const starting = !wasActive;
-      if (starting) sequence.reset(ref);
+      if (next.displaced) {
+        // A late-loaded body still needs one evaluated standing pose. An
+        // existing body keeps its exact pose, including unfinished transitions.
+        if (starting) {
+          sequence.reset(ref);
+          input.mixer.update(0);
+        }
+        if (starting || !wasDisplaced) sequence.stop();
+        wasActive = true;
+        wasDisplaced = true;
+        input.mixer.timeScale = 0;
+        if (newCue && next.cue) input.consumed?.(next.cue.id);
+        report();
+        return;
+      }
+      const resuming = wasDisplaced;
+      wasDisplaced = false;
+      if (starting || resuming)
+        sequence.reset(
+          resuming && next.wantsWalk ? input.profile.walkActivityRef : ref,
+          resuming && !next.wantsWalk
+        );
       wasActive = true;
       if (next.wantsWalk || starting || defaultChanged || !sequence.state.cueId)
         sequence.request(next.wantsWalk ? input.profile.walkActivityRef : ref);

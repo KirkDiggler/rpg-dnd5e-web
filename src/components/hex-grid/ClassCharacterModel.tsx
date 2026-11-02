@@ -109,6 +109,8 @@ export interface ClassCharacterModelProps {
    * instead of idle. Defaults false (idle), matching every pre-#542 caller
    * unchanged. */
   isMoving?: boolean;
+  /** External displacement holds the current pose; it is never a walk. */
+  isDisplaced?: boolean;
   presentationSpeed?: number;
   transitionSpeed?: number;
   activity?: {
@@ -206,6 +208,7 @@ export function ClassCharacterModel({
   remembered = false,
   facingRotation = 0,
   isMoving = false,
+  isDisplaced = false,
   presentationSpeed = 1,
   transitionSpeed = 1.5,
   activity,
@@ -462,6 +465,7 @@ export function ClassCharacterModel({
       cue: activity?.cue,
       moveSeq: activity?.moveSeq,
       wantsWalk: isMoving,
+      displaced: isDisplaced,
       active: !remembered && !isDownedVariant,
       speed: presentationSpeed,
       transitionSpeed,
@@ -473,23 +477,32 @@ export function ClassCharacterModel({
     activity?.cue,
     activity?.moveSeq,
     isMoving,
+    isDisplaced,
     remembered,
     isDownedVariant,
     presentationSpeed,
     transitionSpeed,
   ]);
-  const resolvedClipName =
+  const previousClip = useRef<string | undefined>(undefined);
+  const requestedClipName =
     remembered || profile
       ? undefined
       : isMoving
         ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
         : resolveIdleClipName(names);
+  const resolvedClipName = isDisplaced
+    ? (previousClip.current ?? requestedClipName)
+    : requestedClipName;
+  useLayoutEffect(() => {
+    previousClip.current = resolvedClipName;
+  }, [resolvedClipName]);
   // Other live entities can still drive Canvas frames. Freeze this mixer's
   // clock too, preserving the last evaluated pose and any pending fade rather
   // than allowing a remembered body to animate or fade back to its bind pose.
-  useEffect(() => {
-    if (!profile) mixer.timeScale = remembered ? 0 : presentationSpeed;
-  }, [mixer, remembered, profile, presentationSpeed]);
+  useLayoutEffect(() => {
+    if (!profile)
+      mixer.timeScale = remembered || isDisplaced ? 0 : presentationSpeed;
+  }, [mixer, remembered, isDisplaced, profile, presentationSpeed]);
   useEffect(() => {
     if (!resolvedClipName) return;
     const action = actions[resolvedClipName];
@@ -537,7 +550,7 @@ export function ClassCharacterModel({
   // resolvedClipName, so its active phase owns the same demand-frame request.
   // Memory, downed and stopped playback must not sustain a render loop.
   useFrame((state) => {
-    if (remembered || isDownedVariant) return;
+    if (remembered || isDownedVariant || isDisplaced) return;
     const providerPlaying =
       playbackRef.current && playbackRef.current.state.phase !== 'stopped';
     if (resolvedClipName || providerPlaying) state.invalidate();

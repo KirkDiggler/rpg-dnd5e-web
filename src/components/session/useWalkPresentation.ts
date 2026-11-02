@@ -10,7 +10,8 @@ export interface UseWalkPresentationArgs {
   readonly canPresent: boolean;
   readonly beginRoute: (
     member: string,
-    route: readonly CubeCoord[]
+    route: readonly CubeCoord[],
+    forced?: boolean
   ) => number | undefined;
   readonly forgetRoute: (member: string, seq: number) => void;
 }
@@ -86,7 +87,9 @@ export function useWalkPresentation({
         return () => {};
       }
       if (pendingRef.current) finish(pendingRef.current, 'cancelled');
-      const seq = inputs.beginRoute(route.member, route.cells);
+      const seq = route.forced
+        ? inputs.beginRoute(route.member, route.cells, true)
+        : inputs.beginRoute(route.member, route.cells);
       if (seq === undefined) {
         input.complete('unavailable');
         return () => {};

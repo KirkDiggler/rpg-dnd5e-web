@@ -52,6 +52,8 @@ export interface Movement {
    * drawn, so a route never has to carry its own origin.
    */
   readonly route: readonly CubeCoord[];
+  /** External displacement, supplied by the act; absent means walking. */
+  readonly forced?: boolean;
   /**
    * Bumped once per genuine movement. `useHexMovePath` animates on this
    * CHANGING, so two walks that happen to end on the same cell each still
@@ -113,12 +115,14 @@ export function stepArrived(
 export function beginRoute(
   prev: Movements,
   member: string,
-  route: readonly CubeCoord[]
+  route: readonly CubeCoord[],
+  forced = false
 ): Movements {
   if (route.length === 0) return prev;
   const next = new Map(prev);
   next.set(member, {
     route: [...route],
+    ...(forced ? { forced: true } : {}),
     seq: (prev.get(member)?.seq ?? 0) + 1,
     reached: 0,
   });

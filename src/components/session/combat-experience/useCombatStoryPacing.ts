@@ -447,7 +447,12 @@ export function useCombatStoryPacing({
           return [
             { act, index, scope: 'turn', walkPresentation, ...cueFields },
           ];
-        if ((act.body.case === 'walk' && actor && actor !== member) || activity)
+        if (
+          (act.body.case === 'walk' &&
+            actor &&
+            (actor !== member || act.body.value.forced)) ||
+          activity
+        )
           return [
             { act, index, scope: 'world', walkPresentation, ...cueFields },
           ];
