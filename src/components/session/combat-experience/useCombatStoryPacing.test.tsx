@@ -54,6 +54,39 @@ describe('useCombatStoryPacing scope', () => {
     vi.useRealTimers();
   });
 
+  it('marks monster-turn story IDs without marking player turns or changing history', () => {
+    const event = createAttackAuthorityFixture({
+      seq: 23n,
+      attacker: 'skeleton-guard',
+    }).act;
+    const story = [storyEntry(23n)];
+    const view = renderHook(
+      ({ kind, session }) =>
+        useCombatStoryPacing({
+          session,
+          member: 'aldric',
+          participants: participants.map((p) =>
+            p.member === 'skeleton-guard' ? { ...p, kind } : p
+          ),
+          story,
+        }),
+      { initialProps: { kind: MemberKind.MONSTER, session: 'crypt-run' } }
+    );
+    act(() => view.result.current.acceptActs([event], { source: 'live' }));
+    expect([...view.result.current.monsterTurnIds]).toEqual([
+      actStoryId(event, 0),
+    ]);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(view.result.current.story).toEqual(story);
+    expect([...view.result.current.monsterTurnIds]).toEqual([
+      actStoryId(event, 0),
+    ]);
+    view.rerender({ kind: MemberKind.PLAYER, session: 'next-session' });
+    act(() => view.result.current.acceptActs([event], { source: 'live' }));
+    expect([...view.result.current.monsterTurnIds]).toEqual([]);
+    view.unmount();
+  });
+
   it('holds local playback while paused, accepts events, and resumes without dropping them', () => {
     const event = createAttackAuthorityFixture({
       seq: 23n,

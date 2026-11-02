@@ -4363,13 +4363,12 @@ describe('SessionEncounterView production combat integration', () => {
       });
 
       screen.getByText("Skeleton's turn.");
-      expect(hoisted.lastCanvasProps.current?.monsterTurnFocus).toBeNull();
-      act(() => setDial('followMonsterTurns', 'on'));
       expect(
         hoisted.lastCanvasProps.current?.monsterTurnFocus?.position
       ).toEqual({ x: 1, y: -1, z: 0 });
-      act(() => resetDial('followMonsterTurns'));
+      act(() => setDial('followMonsterTurns', 'off'));
       expect(hoisted.lastCanvasProps.current?.monsterTurnFocus).toBeNull();
+      act(() => resetDial('followMonsterTurns'));
       // Authority reconciliation is immediate, before the 300ms Story cursor.
       expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
 

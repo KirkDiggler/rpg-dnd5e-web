@@ -62,6 +62,7 @@ export function NotificationsConcept() {
     onTurnBeat: monsterCamera.onTurnBeat,
   });
   const notices = useStoryNotices({
+    monsterTurnIds: pacing.monsterTurnIds,
     story: pacing.story,
     onInteractionChange: setInteracting,
     scope: 'notification-concept',

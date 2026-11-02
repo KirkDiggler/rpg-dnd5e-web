@@ -7,7 +7,7 @@ export const NOTIFICATION_DIAL_SPECS: readonly DialSpec[] = [
     label: 'Follow monster turns',
     group: 'notifications',
     kind: 'enum',
-    default: 'off',
+    default: 'on',
     options: ['off', 'on'],
   },
   {

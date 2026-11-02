@@ -217,6 +217,7 @@ function CombatExperienceContent({
   actionUtilityControls,
   sceneNotice,
   pacingNotice,
+  monsterTurnIds,
   onNotificationInteractionChange,
   renderMap,
   hoveredTarget,
@@ -325,6 +326,7 @@ function CombatExperienceContent({
   const desktopHotbar = Boolean(actionPresentation?.desktopIcons);
   const noticesEnabled = Boolean(storyFeedback);
   const storyNotices = useStoryNotices({
+    monsterTurnIds,
     onInteractionChange: onNotificationInteractionChange,
     story: revealedStory,
     scope: storyFeedback?.scopeKey ?? '',

@@ -2048,6 +2048,7 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            monsterTurnIds={combat.monsterTurnIds}
             onNotificationInteractionChange={
               combat.onNotificationInteractionChange
             }

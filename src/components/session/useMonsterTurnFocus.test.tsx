@@ -27,11 +27,13 @@ afterEach(() => {
   cleanup();
   resetDial('followMonsterTurns');
 });
-it('defaults off, and follows the current visible monster when enabled', () => {
+it('defaults on, can be disabled, and follows the current visible monster when enabled', () => {
   const view = renderHook(useMonsterTurnFocus, { initialProps: props });
   act(() =>
     view.result.current.onTurnBeat({ type: 'playing', actor: 'guard' })
   );
+  expect(view.result.current.focus?.position).toEqual(monster.position);
+  act(() => setDial('followMonsterTurns', 'off'));
   expect(view.result.current.focus).toBeNull();
   act(() => setDial('followMonsterTurns', 'on'));
   expect(view.result.current.focus?.position).toEqual(monster.position);

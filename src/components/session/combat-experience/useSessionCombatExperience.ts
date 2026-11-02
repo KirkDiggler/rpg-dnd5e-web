@@ -150,6 +150,7 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
+  monsterTurnIds: ReadonlySet<string>;
   onNotificationInteractionChange: (interacting: boolean) => void;
   heldMovementMembers: ReadonlySet<string>;
   endTurnBlocked: boolean;
@@ -2277,6 +2278,7 @@ export function useSessionCombatExperience({
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      monsterTurnIds: pacing.monsterTurnIds,
       onNotificationInteractionChange: setNotificationInteraction,
       heldMovementMembers: pacing.heldMovementMembers,
       endTurnBlocked: presentation.blocksManualEndTurn,
@@ -2323,6 +2325,7 @@ export function useSessionCombatExperience({
       onSpeakOption,
       onConfirmTargets,
       pacing.notice,
+      pacing.monsterTurnIds,
       pacing.heldMovementMembers,
       pacing.result,
       pacing.story,

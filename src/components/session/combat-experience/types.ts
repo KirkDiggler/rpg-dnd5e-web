@@ -272,6 +272,7 @@ interface CombatExperienceBaseProps {
   sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
+  monsterTurnIds?: ReadonlySet<string>;
   onNotificationInteractionChange?: (interacting: boolean) => void;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
   /**
