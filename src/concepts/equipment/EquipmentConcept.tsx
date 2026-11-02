@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { EquipmentPopover } from '../../components/game/equipment/EquipmentPopover';
 import { EquipmentSlots } from '../../components/game/equipment/EquipmentSlots';
 import { InventoryLight } from '../../components/game/equipment/InventoryLight';
 import type { EquippedMap } from '../../components/game/equipment/equipmentTypes';
@@ -43,6 +44,59 @@ export function EquipmentConcept() {
       [cast.id]: applyIntent(all[cast.id], cast.items, intent),
     }));
   };
+
+  // Isolated visual proof with current-production-shaped empty icon keys.
+  // The ordinary bench retains its explicit fixture sprite choices.
+  const thumbnailPreview =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('thumbnailPreview') === '1';
+  if (thumbnailPreview) {
+    return (
+      <section>
+        <h2>Equipment thumbnail sizing</h2>
+        <p>
+          Real in-game panel, fixture data only. Clicks change this preview, not
+          a saved character.
+        </p>
+        <label>
+          Preview character{' '}
+          <select
+            aria-label="Preview character"
+            value={castId}
+            onChange={(event) => setCastId(event.target.value)}
+          >
+            {EQUIP_CASTS.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name} ({entry.classLabel})
+              </option>
+            ))}
+          </select>
+        </label>
+        <div
+          style={{
+            position: 'fixed',
+            zIndex: 40,
+            left: 0,
+            right: 0,
+            bottom: 174,
+            height: 0,
+          }}
+        >
+          <EquipmentPopover
+            open
+            characterName={cast.name}
+            classLabel={cast.classLabel}
+            slots={cast.slots}
+            equipped={equipped}
+            items={cast.items.map((item) => ({ ...item, iconKey: '' }))}
+            armorClass={{ total: stats.ac, note: stats.acNote }}
+            mainHandDamage={stats.damage}
+            onIntent={onIntent}
+          />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div>

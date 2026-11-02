@@ -9,6 +9,7 @@ import {
   encodeRoomDocument,
   isRoomDocument,
 } from '@/compositions/roomDocument';
+import { armMark, mark } from '@/dev/perfMarks';
 import {
   useCallback,
   useEffect,
@@ -862,7 +863,11 @@ export function WorldBuildingConcept({
     (
       candidate: RoomDocument,
       selection = selectedIds,
-      complete = false
+      complete = false,
+      /** Runs only when the candidate actually became the present document
+       * (not for an accepted no-op, a stale generation, a publish refusal or
+       * a rejected edit). */
+      onCommitted?: () => void
     ): boolean => {
       if (
         !mountedRef.current ||
@@ -920,6 +925,7 @@ export function WorldBuildingConcept({
             : 'World workspace changes are not saved locally'
         );
         setNotice('');
+        onCommitted?.();
         return true;
       } catch (error) {
         return rejectEdit(error);
@@ -2232,6 +2238,11 @@ export function WorldBuildingConcept({
             ? 'Imported canonical YAML kept in memory — local save failed'
             : 'Imported canonical single-room YAML'
         );
+        // Benchmark harness: the editor took the document (state queued);
+        // the regions list and the layout grid mark their commits of it.
+        mark('studio:open:imported');
+        armMark('studio:regions:rendered');
+        armMark('studio:open:first-paint');
         return true;
       } catch (error) {
         setNotice(
@@ -3637,15 +3648,30 @@ export function WorldBuildingConcept({
     regionId?: string
   ): boolean => {
     if (refuseWhilePublishing()) return false;
+    // Benchmark harness: the stroke's time starts here, before the owner's
+    // paint, validation and equality check, so the commit-to-painted row
+    // measures the whole document cost; it is marked only if it commits.
+    const strokeStart = performance.now();
     try {
       const current = roomHistoryRef.current.present;
-      return commitRoomDocument({
-        draft:
-          mode === 'paint'
-            ? paintCells(current.draft, cells, regionId)
-            : eraseCells(current.draft, cells),
-        scope: current.scope,
-      });
+      return commitRoomDocument(
+        {
+          draft:
+            mode === 'paint'
+              ? paintCells(current.draft, cells, regionId)
+              : eraseCells(current.draft, cells),
+          scope: current.scope,
+        },
+        selectedIds,
+        false,
+        // Benchmark harness: only a stroke that changed the document marks
+        // its commit, stamped at the stroke's start; the layout grid marks
+        // the frame after its commit of it.
+        () => {
+          mark('studio:stroke:commit', { startTime: strokeStart });
+          armMark('studio:stroke:painted');
+        }
+      );
     } catch (error) {
       return rejectEdit(error);
     }

@@ -5,6 +5,7 @@ import {
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import {
+  Activity,
   ArrowDownToLine,
   Award,
   Backpack,
@@ -119,6 +120,8 @@ export function recentEventIdentity(
               .filter(Boolean)
               .join(', ') || subject
           );
+        case StateKind.MACHINE:
+          return result('State', Activity, subject);
         default:
           return result('Status', CircleHelp, subject);
       }

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { markIfArmed } from '@/dev/perfMarks';
+import { useLayoutEffect, useState } from 'react';
 import { regionSizeText } from '../world-building/regionSize';
 import type { RoomDraft } from '../world-building/roomDraft';
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
@@ -41,6 +42,10 @@ export function LayoutRoomList({
 }): React.JSX.Element {
   const regions = draft.room.regions;
   const [name, setName] = useState('');
+  // Benchmark harness: the list's commit of an opened document. A layout
+  // effect, so in the commit the grid shares it lands before the grid's
+  // passive first-paint mark.
+  useLayoutEffect(() => markIfArmed('studio:regions:rendered'), [draft]);
   return (
     <aside className="es-room-list wb-panel" aria-label="Rooms">
       <div className="es-room-list-header">

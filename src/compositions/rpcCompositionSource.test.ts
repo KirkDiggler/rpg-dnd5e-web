@@ -179,6 +179,16 @@ describe('createRpcCompositionSource', () => {
     ).toBeUndefined();
   });
 
+  it('gives the Dev player the Dev world in a bench build, the benchmark harness gate', () => {
+    const auth = { kind: 'dev' as const, playerId: 'x' };
+    expect(
+      createRpcCompositionSource(input(auth, { mode: 'bench' }))?.worldId
+    ).toBe('test-world');
+    expect(
+      createRpcCompositionSource(input(auth, { mode: 'test' }))
+    ).toBeUndefined();
+  });
+
   it('reports Unauthenticated with the captured session while preserving the error', async () => {
     const onUnauthenticated = vi.fn();
     const rpc = client({

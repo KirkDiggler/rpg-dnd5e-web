@@ -1,5 +1,5 @@
 import type { MessageInitShape } from '@bufbuild/protobuf';
-import { create } from '@bufbuild/protobuf';
+import { create, toBinary } from '@bufbuild/protobuf';
 import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
@@ -167,6 +167,51 @@ beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
   client.getKnowledge.mockResolvedValue(snapshot());
   client.getView.mockResolvedValue(create(GetViewResponseSchema));
+});
+
+// The benchmark harness's play atlas marks (rpg-project#750): current play's
+// atlas arrives in GetKnowledge, so the marks wrap that read, and the
+// received mark carries the response's wire size.
+describe('play atlas perf marks', () => {
+  it('marks requested then received with the response bytes under bench with ?perfMarks', async () => {
+    vi.stubEnv('MODE', 'bench');
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(spy.mock.calls).toEqual([
+        ['play:atlas:requested'],
+        [
+          'play:atlas:received',
+          {
+            detail: {
+              bytes: toBinary(GetKnowledgeResponseSchema, snapshot())
+                .byteLength,
+            },
+          },
+        ],
+      ]);
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('marks nothing in production', async () => {
+    vi.stubEnv('MODE', 'production');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('supplied prop presentation', () => {

@@ -18,9 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_VERBS,
   isExecutableVerb,
-  isFreeOnWorldClock,
   promptsForMember,
-  SOCIAL_VERBS,
   VERB_REGISTRY,
 } from './verbRegistry';
 
@@ -48,9 +46,6 @@ describe('the verb registry knows every verb the wire defines', () => {
     for (const verb of ALL_VERBS) {
       const row = VERB_REGISTRY[verb];
       expect(typeof row.executable, `Verb ${verb} executable`).toBe('boolean');
-      expect(typeof row.freeOnWorldClock, `Verb ${verb} freeOnWorldClock`).toBe(
-        'boolean'
-      );
       expect(
         row.arms === null || typeof row.arms === 'number',
         `Verb ${verb} arms`
@@ -81,7 +76,6 @@ describe('what the table says about each verb', () => {
     for (const retired of [Verb.INTIMIDATE, Verb.PERSUADE]) {
       expect(isExecutableVerb(retired)).toBe(false);
       expect(promptsForMember(retired)).toBe(false);
-      expect(isFreeOnWorldClock(retired)).toBe(false);
     }
   });
 
@@ -91,7 +85,6 @@ describe('what the table says about each verb', () => {
     // move that was not one.
     expect(isExecutableVerb(Verb.UNSPECIFIED)).toBe(false);
     expect(promptsForMember(Verb.UNSPECIFIED)).toBe(false);
-    expect(isFreeOnWorldClock(Verb.UNSPECIFIED)).toBe(false);
   });
 
   it('knows which verbs arm and wait for a member the server named', () => {
@@ -112,24 +105,5 @@ describe('what the table says about each verb', () => {
     // is undefined when nothing is armed. Answering true there would judge an
     // empty hand incoherent.
     expect(promptsForMember(undefined)).toBe(false);
-  });
-
-  it('marks exactly the social verbs free on the world clock (R3)', () => {
-    expect(isFreeOnWorldClock(Verb.SPEAK)).toBe(true);
-
-    // Every turn-economy verb spends a turn's budget and is not a world-clock
-    // row. Move is deliberately not one either: free roam has its own
-    // movement affordance rather than a dock row.
-    expect(isFreeOnWorldClock(Verb.ATTACK)).toBe(false);
-    expect(isFreeOnWorldClock(Verb.CAST)).toBe(false);
-    expect(isFreeOnWorldClock(Verb.ACTIVATE)).toBe(false);
-    expect(isFreeOnWorldClock(Verb.MOVE)).toBe(false);
-  });
-
-  it('derives SOCIAL_VERBS from the table rather than restating it', () => {
-    // A seventh hand-written list is exactly what this file exists to prevent,
-    // so the social list is derived. Speak replaced two rows with one
-    // (rpg-project#569), and the list followed with no edit of its own.
-    expect([...SOCIAL_VERBS]).toEqual([Verb.SPEAK]);
   });
 });

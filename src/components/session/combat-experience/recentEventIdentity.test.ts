@@ -77,6 +77,22 @@ describe('recent event what/who', () => {
         context
       )
     ).toMatchObject({ what: 'Concentration ended', who: 'Mira' });
+    expect(
+      recentEventIdentity(
+        create(ActSchema, {
+          family: Family.STATE,
+          body: {
+            case: 'state',
+            value: {
+              party: member('mira'),
+              change: StateKind.MACHINE,
+              machine: { from: 'posted', to: 'alert' },
+            },
+          },
+        }),
+        context
+      )
+    ).toMatchObject({ what: 'State', who: 'Mira' });
   });
   it('does not invent an initiator for encounter events or an absent actor', () => {
     expect(

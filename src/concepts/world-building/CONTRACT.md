@@ -992,6 +992,18 @@ nouns persist across rooms.
   **Selection declarations stay contextual** — they appear only while props are
   selected, because they belong to a selection and not to the site.
 
+**Counted spoken activities** — a spoken answer can carry optional
+`activity: {ref, cycles}` beside `say`. The picker offers provider-published
+nonmoving activities; counts are positive uint32 sustain cycles, excluding
+Enter/Exit. Ordinary row edits and the v5 export/reopen path preserve the cue.
+Unknown references remain named diagnostics, not substituted activities. The
+selected response's live act triggers playback through the existing presentation
+cursor, never the question click or a scan of historical story. The cursor holds
+only a pending delivery, retired when the body accepts it; the existing mixer
+owns the finite budget. Completion returns to the configured default. Movement,
+sight/surface loss and newer requests discard remaining cycles rather than
+resuming them after arrival. Catch-up carries data without playing it (#746).
+
 **The Identity panel** is opened from the header and overlays the canvas. It is
 the merge of the old `The site` and `Library` destinations, and nothing from
 the old Library is dropped: the editable site name, the local draft
@@ -1258,10 +1270,12 @@ LibraryEnvelope {
 ```
 
 Standalone prop-composer bounds are deliberately finite: X/Z `[-12, 12]`,
-Y `[0, 8]`, at most 200
+Y `[0, 8]`, at most 4,000
 props and 80 groups per scene/arrangement, at most 40 arrangements, strings up
 to their field-specific limits, rotations within `[-100π, 100π]`, and imported
-JSON up to 500,000 characters. Parsers reject malformed/wrong-version
+JSON up to 2,500,000 characters. The item and character bounds are the
+supported envelope (rpg-project ideas/benchmark-keep/design.md, R4), shared
+with the room editor. Parsers reject malformed/wrong-version
 envelopes, non-finite or out-of-range transforms, duplicate identities,
 unknown asset refs (including arbitrary URLs), missing/invalid relation
 targets, and relation cycles. Editor commits pass through the same scene

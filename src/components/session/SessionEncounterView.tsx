@@ -22,6 +22,7 @@ import { useSessionKnowledge } from '@/api/useSessionKnowledge';
 import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRest } from '@/api/useSessionRest';
+import type { SpeakTarget } from '@/api/useSessionSpeak';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
@@ -34,6 +35,7 @@ import {
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import { mark } from '@/dev/perfMarks';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type {
@@ -53,6 +55,7 @@ import {
 import {
   type Act,
   ClockMark,
+  EndingResult,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -60,7 +63,12 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import { type CubeCoord, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
+import {
+  coordToKey,
+  type CubeCoord,
+  cubeToWorld,
+  HEX_SIZE,
+} from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -68,7 +76,11 @@ import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import type { ActDeliveryMetadata } from './actFeed';
 import { refreshKeysForAct } from './actRefreshKeys';
-import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
+import {
+  type AtlasPathIndex,
+  buildAtlasPathIndex,
+  INTERACTION_REACH,
+} from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   applyCellKnowledge,
@@ -128,13 +140,20 @@ import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldD
 import { isWalking } from './moveController';
 import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
+import {
+  companionsLine,
+  companionsStanding,
+  type PartySide,
+  sideOf,
+  stancesBySubject,
+} from './partySide';
 import { cubeToPosition } from './positionBridge';
 import { isRefusal, refusalMessage } from './refusal';
 import { RestDialog } from './RestDialog';
 import { RunEndedToast } from './RunEndedToast';
 import { SeatKnowledgeProbe } from './SeatKnowledgeProbe';
 import { SessionCanvas } from './SessionCanvas';
-import { sightingsToEntities } from './sightingEntities';
+import { isSightedDowned, sightingsToEntities } from './sightingEntities';
 import { SneakToggle } from './SneakToggle';
 import {
   type SessionRefreshKey,
@@ -144,7 +163,7 @@ import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
-import { useSessionWalk } from './useSessionWalk';
+import { type MoveOutcome, useSessionWalk } from './useSessionWalk';
 import { useTurnOrderFollow } from './useTurnOrderFollow';
 import { useWalkPresentation } from './useWalkPresentation';
 import { VendorPopover } from './vendor/VendorPopover';
@@ -294,6 +313,11 @@ function SessionEncounterScope({
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
+  // The result the ending declares, beside its name (rpg-project#733).
+  // Unspecified for an ending that states none, so the toast shows none.
+  const [runResult, setRunResult] = useState<EndingResult>(
+    EndingResult.UNSPECIFIED
+  );
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [unpackNotice, setUnpackNotice] = useState<string | null>(null);
   /** The one line the loot/hold/leave verbs answer with — a refusal in the
@@ -401,6 +425,10 @@ function SessionEncounterScope({
           )
         ),
       };
+      // Benchmark harness: a scene built (every rebuild marks; the first
+      // is the open). A mark is a timestamp, not state, so this stays a
+      // pure-enough memo: no render reads it.
+      mark('play:scene:built');
       return {
         ok: true as const,
         scene: seatKnowledge
@@ -532,6 +560,17 @@ function SessionEncounterScope({
   const handleMoveAccepted = useCallback(() => {
     moveAcceptedRef.current();
   }, []);
+  // The approach walk (rpg-project#753 R4) needs the walk hook and the
+  // sightings, both declared after the combat hook that asks for it; the
+  // same late-bound ref the Move callbacks above use.
+  const approachRef = useRef<
+    (target: SpeakTarget, outcome: MoveOutcome) => boolean
+  >(() => false);
+  const approachSpeakTarget = useCallback(
+    (target: SpeakTarget, outcome: MoveOutcome) =>
+      approachRef.current(target, outcome),
+    []
+  );
 
   const beginLocalRoute = useCallback(
     (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
@@ -567,6 +606,7 @@ function SessionEncounterScope({
     displayPosition,
     busy: walking,
     walkTo,
+    approach,
     onWalkAnimationComplete,
     moveError,
   } = useSessionWalk(
@@ -609,6 +649,19 @@ function SessionEncounterScope({
   const presentableMembers = useMemo(
     () => (canPresentMovement ? liveSighted : new Set<string>()),
     [canPresentMovement, liveSighted]
+  );
+  const presentableActivityMembers = useMemo(
+    () =>
+      new Set(
+        canPresentMovement
+          ? otherMembers
+              .filter(
+                (body) => !body.remembered && !isSightedDowned(body.standing)
+              )
+              .map((body) => body.subject)
+          : []
+      ),
+    [canPresentMovement, otherMembers]
   );
   const walkPresentation = useWalkPresentation({
     session: sessionId,
@@ -736,6 +789,8 @@ function SessionEncounterScope({
     onTurnBeat: turnOrder.onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
     presentableMembers,
+    presentableActivityMembers,
+    approach: approachSpeakTarget,
   });
   // The same cursor hold protects a queued watcher's floor overlay before
   // its route starts, not just while the route is already interpolating.
@@ -785,11 +840,25 @@ function SessionEncounterScope({
     () => turnOrder.project(visibleParticipants),
     [turnOrder, visibleParticipants]
   );
+  // Which side of the table each participant stands on for this viewer
+  // (rpg-project#733): its kind and the believed stance on its sighting. A
+  // companion stays a monster in initiative order; only its side is drawn.
+  const participantSides = useMemo(() => {
+    const stances = stancesBySubject(sightings);
+    const sides = new Map<string, PartySide>();
+    for (const p of turnOrderParticipants) {
+      const side = sideOf(p.kind, stances.get(p.member));
+      if (side) sides.set(p.member, side);
+    }
+    return sides;
+  }, [sightings, turnOrderParticipants]);
   // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
   // cast owns the next floor click; otherwise a TURN click walks only while
-  // Move is selected. WORLD keeps the established free-roam click behavior.
-  // This makes a missed Attack/member target a no-op rather than an accidental
-  // walk and keeps the canvas ignorant of declaration kinds.
+  // Move is selected. On WORLD the floor click IS the Move, except while an
+  // offer is armed (rpg-project#785): an armed Attack, Cast or Activate owns
+  // the next click exactly as on the turn clock, and cancelling it gives the
+  // floor back. This makes a missed Attack/member target a no-op rather than
+  // an accidental walk and keeps the canvas ignorant of declaration kinds.
   //
   // During CELL aiming, `SessionCanvas` also sends a clicked creature's
   // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
@@ -803,6 +872,10 @@ function SessionEncounterScope({
     coherentDeclarations
   );
 
+  const worldOfferArmed =
+    experienceClock === ClockKind.WORLD &&
+    combat.presentationState.armedDeclarationId !== null &&
+    !combat.presentationState.movementSelected;
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -813,13 +886,13 @@ function SessionEncounterScope({
         return;
       }
       if (
-        experienceClock === ClockKind.WORLD ||
+        (experienceClock === ClockKind.WORLD && !worldOfferArmed) ||
         (experienceClock === ClockKind.TURN && combat.movementEnabled)
       ) {
         walkTo(coord);
       }
     },
-    [combat, experienceClock, walkTo]
+    [combat, experienceClock, walkTo, worldOfferArmed]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -838,6 +911,38 @@ function SessionEncounterScope({
     () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
     [otherMembers, combat.unresolvedAttackTargets]
   );
+  // WHERE A SPEAK TARGET STANDS, as this viewer knows it: a creature's live
+  // sighting (never a remembered one), a prop's atlas cell. The walk toward
+  // it is the ordinary Move composition, stopping within reach.
+  approachRef.current = (target, outcome) => {
+    const cell =
+      target.case === 'memberId'
+        ? revealedMembers.find(
+            (sighted) => sighted.subject === target.value && !sighted.remembered
+          )?.position
+        : atlasPropCell(target.value);
+    return cell ? approach(cell, INTERACTION_REACH, outcome) : false;
+  };
+  const atlasPropCell = (prop: string): CubeCoord | undefined => {
+    const at = atlas?.props.find((candidate) => candidate.id === prop)?.at;
+    return at ? positionToCube(at) : undefined;
+  };
+  // A floor click on a prop's cell, while Speak offers an approach, is a
+  // click on that prop (a prop has no mesh handler of its own). ANY prop
+  // with an id counts, a passable floor prop such as a rug included, so with
+  // Speak armed a click on a rug's cell approaches the rug rather than
+  // walking onto it; two props on one cell resolve to the first in atlas
+  // order. A creature on the cell wins: its click never reaches the floor.
+  const atlasPropAt = (coord: CubeCoord): string | undefined => {
+    const key = coordToKey(coord);
+    return atlas?.props.find(
+      (prop) =>
+        prop.id.length > 0 &&
+        prop.at &&
+        coordToKey(positionToCube(prop.at)) === key
+    )?.id;
+  };
+
   const localWorldDieOpenDoors = useMemo(
     () =>
       new Set(
@@ -1324,6 +1429,7 @@ function SessionEncounterScope({
           // the modal receives focus or can be layered over the panel.
           setEquipmentOpen(false);
           setRunEnded(act.body.value.ending);
+          setRunResult(act.body.value.outcome);
         }
       }
       scheduleRefresh([...keys]);
@@ -1990,6 +2096,7 @@ function SessionEncounterScope({
             clock={experienceClock}
             round={turnOrder.round}
             participants={turnOrderParticipants}
+            participantSides={participantSides}
             declarations={coherentDeclarations}
             characterData={visibleCharacterData}
             privateStatus={privateStatus}
@@ -2042,6 +2149,7 @@ function SessionEncounterScope({
               attackableTargets,
               selectedTargets,
               onTargetClick,
+              onApproachClick,
             }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
@@ -2109,12 +2217,34 @@ function SessionEncounterScope({
                     myPosition={displayPosition ?? lastGoodPositionRef.current!}
                     movements={moves.movements}
                     heldMovementMembers={combat.heldMovementMembers}
+                    activityCues={combat.activityCues}
+                    onActivityCueConsumed={combat.settleActivityCue}
                     onHexClick={
-                      runEnded === null ? handleGroundClick : undefined
+                      runEnded === null
+                        ? (coord: CubeCoord) => {
+                            const prop = onApproachClick
+                              ? atlasPropAt(coord)
+                              : undefined;
+                            if (prop) {
+                              onApproachClick!({ case: 'propId', value: prop });
+                              return;
+                            }
+                            handleGroundClick(coord);
+                          }
+                        : undefined
                     }
                     onCancelSelection={combat.onCancelSelection}
                     onEntityClick={
                       runEnded === null ? onTargetClick : undefined
+                    }
+                    onApproachClick={
+                      runEnded === null && onApproachClick
+                        ? (subject: string) =>
+                            onApproachClick({
+                              case: 'memberId',
+                              value: subject,
+                            })
+                        : undefined
                     }
                     onHoverEntity={setHoveredTarget}
                     cellAimEnabled={
@@ -2139,7 +2269,8 @@ function SessionEncounterScope({
                         : lastGoodPathIndexRef.current
                     }
                     movementPreviewEnabled={
-                      experienceClock === ClockKind.WORLD ||
+                      (experienceClock === ClockKind.WORLD &&
+                        !worldOfferArmed) ||
                       (experienceClock === ClockKind.TURN &&
                         combat.movementEnabled)
                     }
@@ -2171,6 +2302,7 @@ function SessionEncounterScope({
             onCancelSelection={combat.onCancelSelection}
             onTargetClick={combat.onTargetClick}
             onChooseSpeakTarget={combat.onChooseSpeakTarget}
+            onApproachTarget={combat.onApproachTarget}
             onSpeakOption={combat.onSpeakOption}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
@@ -2260,6 +2392,11 @@ function SessionEncounterScope({
         {runEnded !== null && (
           <RunEndedToast
             ending={runEnded}
+            result={runResult}
+            // Who came with the party: allied creatures this viewer last saw
+            // standing (rpg-project#733). Read off the sightings' believed
+            // stance; a companion never joins the roster.
+            companionsLine={companionsLine(companionsStanding(sightings))}
             // Names the carrier when one walked out through an authored exit
             // holding something, and says nothing about one otherwise — a run
             // that ended for any other reason had no carrier, and the toast

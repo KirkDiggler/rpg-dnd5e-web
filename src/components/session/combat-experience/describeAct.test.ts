@@ -5,6 +5,7 @@ import {
   CastOutcome,
   ClockMark,
   DamageType,
+  EndingResult,
   Family,
   InfluenceKind,
   PartyKind,
@@ -230,6 +231,37 @@ describe('describeAct', () => {
       'Alice strikes Gate Guard: Longsword: hit, 1d20+5 = 20 vs 13, 4 slashing damage'
     );
     expect(line.roll?.total).toBe(20);
+  });
+
+  it("a creature's machine moving reads as one line, named from the party", () => {
+    const moved = (reason: string) =>
+      act(Family.STATE, {
+        case: 'state',
+        value: {
+          party: gate,
+          change: StateKind.MACHINE,
+          machine: { from: 'posted', to: 'alert', reason },
+        },
+      });
+    expect(describeAct(moved('heard something'), context)).toMatchObject({
+      eyebrow: 'State',
+      headline: 'Gate Guard: posted → alert (heard something)',
+      detail: '',
+    });
+    expect(describeAct(moved(''), context)?.headline).toBe(
+      'Gate Guard: posted → alert'
+    );
+  });
+
+  it('a raise cutting beats reads as a quiet clock line', () => {
+    const cut = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.WAKE_CUT, wakeCut: { matched: 20, dropped: 3 } },
+    });
+    expect(describeAct(cut, context)).toMatchObject({
+      headline: 'the raise cut 3 of 20 beats',
+      tone: 'neutral',
+    });
   });
 
   it('a reaction names what it was taken as', () => {
@@ -616,6 +648,32 @@ describe('the formula verdict is the server’s', () => {
     });
     expect(formatRollFormula(fear, context)).toBe(
       'wis save 15 vs DC 14 — not beaten'
+    );
+  });
+});
+
+describe('the run ending in the story (rpg-project#733)', () => {
+  const ended = (ending: string, outcome?: EndingResult) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.ENDED, ending, outcome },
+    });
+
+  it('names the ending and the result it declares', () => {
+    expect(
+      describeAct(ended('captain-slain', EndingResult.SUCCESS), context)
+    ).toMatchObject({
+      headline: 'The run ends',
+      detail: 'captain slain — success',
+    });
+    expect(
+      describeAct(ended('captain-lives', EndingResult.FAILURE), context)?.detail
+    ).toBe('captain lives — failure');
+  });
+
+  it('names only the ending when it declares no result, as an old run does', () => {
+    expect(describeAct(ended('captain-slain'), context)?.detail).toBe(
+      'captain slain'
     );
   });
 });

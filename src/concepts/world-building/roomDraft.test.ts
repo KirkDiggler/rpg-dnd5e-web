@@ -37,7 +37,7 @@ import {
   duplicateSelection,
   stampArrangement,
 } from './sceneState';
-import { validateScene } from './serialization';
+import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import type { SiteScope } from './siteScope';
 import type { KeyValueStorage } from './types';
 
@@ -1193,9 +1193,9 @@ describe('room draft structural exactness', () => {
 
   it('refuses oversize writes symmetrically and keeps prior stored bytes', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    draft.name = 'x'.repeat(500_001);
+    draft.name = 'x'.repeat(MAX_JSON_LENGTH + 1);
     expect(() => stringifyRoomDraft(draft)).toThrow(
-      'Room draft is too large (maximum 500000 characters).'
+      `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
     );
 
     const storage = new RecordingStorage();
@@ -1437,12 +1437,12 @@ describe('complete document gate', () => {
       draft: createRoomDraft(createEmptyScene('scene'), 'room'),
       scope: {
         intel: [{ id: 'draft-intel', reveals: { fact: '' } }],
-        scenarios: { test: { custom: 'x'.repeat(500001) } },
+        scenarios: { test: { custom: 'x'.repeat(MAX_JSON_LENGTH + 1) } },
       },
     };
     const before = structuredClone(document);
     expect(() => assertRoomDocumentSize(document)).toThrow(
-      'Room draft is too large (maximum 500000 characters).'
+      `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
     );
     expect(document).toEqual(before);
   });
@@ -1459,7 +1459,9 @@ describe('complete document gate', () => {
       'The floor holds at most 65536 cells (rpg-project#725).'
     );
     expect(draft).toEqual(before);
-    const hugeScope = { scenarios: { test: { custom: 'x'.repeat(500001) } } };
+    const hugeScope = {
+      scenarios: { test: { custom: 'x'.repeat(MAX_JSON_LENGTH + 1) } },
+    };
     expect(() => validateRoomDocument({ draft, scope: hugeScope })).toThrow(
       /too large/
     );
@@ -1615,16 +1617,16 @@ describe('regions are the floor: codec and identity boundary (rpg-project#725)',
       );
     }
   });
-  it('charges a carried construction to the existing 500000-character document budget', () => {
+  it('charges a carried construction to the existing MAX_JSON_LENGTH document budget', () => {
     const draft = regionDraft();
     draft.scene.regionPresentation = {
-      region: { construction: { notes: 'x'.repeat(500001) } },
+      region: { construction: { notes: 'x'.repeat(MAX_JSON_LENGTH + 1) } },
     };
     const storage = new RecordingStorage();
     const prior = stringifyRoomDraft(regionDraft());
     storage.values.set(ROOM_DRAFT_STORAGE_KEY, prior);
     expect(() => validateRoomDocument({ draft, scope: {} })).toThrow(
-      /too large.*500000/
+      new RegExp(`too large.*${MAX_JSON_LENGTH}`)
     );
     expect(saveRoomDraft(storage, draft)).toMatch(/too large/);
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(prior);

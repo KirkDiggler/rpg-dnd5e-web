@@ -46,4 +46,6 @@ public/models/synty/
 public/models/custom-dice/
 # Explicit dev-only material stage; never included by Vite's public copier.
 .local/world-material-preview/
+# Candidate item-art galleries, served only by the dev preview mount.
+.local/item-art-preview/
 evidence/

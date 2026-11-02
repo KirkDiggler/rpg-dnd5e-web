@@ -96,9 +96,16 @@ export interface StepState {
   elapsed: number;
 }
 
+export interface WalkAnimationGate {
+  /** Readiness belongs to this exact outstanding route, not an older walk. */
+  readonly canAdvance: (moveSeq: number) => boolean;
+  /** Shared with the body mixer; changes speed, never route order. */
+  readonly speed: number;
+}
+
 export interface UseHexMovePathResult {
-  /** True while stepping through a real move — pass straight through to
-   * ClassCharacterModel to pick the walk clip over idle. */
+  /** True while a real route is outstanding, including its stance exit.
+   * The body uses this request to reach walking readiness. */
   isMoving: boolean;
 }
 
@@ -229,8 +236,17 @@ export function useHexMovePath(
   onPresentationComplete?: (moveSeq: number) => void,
   /** A queued/active presented walk owns the already drawn location, not a
    * newer authoritative snapshot. Initial mounting still places normally. */
-  deferPositionReconciliation: boolean = false
+  deferPositionReconciliation: boolean = false,
+  presentation?: WalkAnimationGate
 ): UseHexMovePathResult {
+  if (
+    presentation &&
+    (!Number.isFinite(presentation.speed) || presentation.speed <= 0)
+  ) {
+    throw new Error('Presentation speed must be finite and positive.');
+  }
+  const presentationRef = useRef(presentation);
+  presentationRef.current = presentation;
   const [isMoving, setIsMoving] = useState(false);
   const { invalidate } = useThree();
 
@@ -334,9 +350,16 @@ export function useHexMovePath(
   useFrame((_state, delta) => {
     if (!groupRef.current) return;
     const s = stepRef.current;
-    const advanced = advanceFrame(s, delta);
+    const gate = presentationRef.current;
+    const seq = activeMoveSeqRef.current;
+    if (seq !== undefined && gate && !gate.canAdvance(seq)) {
+      invalidate();
+      return;
+    }
+    const scaledDelta = delta * (gate?.speed ?? 1);
+    const advanced = advanceFrame(s, scaledDelta);
     if (!advanced) return;
-    s.elapsed += delta;
+    s.elapsed += scaledDelta;
     groupRef.current.position.x = advanced.position.x;
     groupRef.current.position.z = advanced.position.z;
     invalidate();

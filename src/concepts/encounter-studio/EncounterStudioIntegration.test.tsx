@@ -16,7 +16,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { StrictMode, type ReactElement } from 'react';
+import { StrictMode, type ReactElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
@@ -160,7 +160,7 @@ const services = vi.hoisted(() => ({
 // its Three/model subtree. Callback invocations below exercise the actual owner
 // commands, NOT real raycasts, loaded meshes, or TransformControls gestures.
 vi.mock('@react-three/fiber', async (importOriginal) => {
-  const { useEffect, useRef } = await import('react');
+  const { Children, isValidElement, useEffect, useRef } = await import('react');
   return {
     ...(await importOriginal<typeof import('@react-three/fiber')>()),
     Canvas: ({
@@ -170,13 +170,18 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
       shadows,
       onCreated,
     }: {
-      children: ReactElement<WorldBuildingViewportProps>;
+      children: ReactNode;
       frameloop?: string;
       dpr?: unknown;
       shadows?: unknown;
       onCreated?: (state: { gl: { domElement: HTMLCanvasElement } }) => void;
     }) => {
-      boundary.latest = children.props;
+      // The scene is the Canvas's first element; a sibling (the ?perfProbe
+      // mount) never stands in for it.
+      const scene = Children.toArray(children).find(isValidElement) as
+        | ReactElement<WorldBuildingViewportProps>
+        | undefined;
+      boundary.latest = scene?.props ?? null;
       boundary.frameloop = frameloop;
       boundary.dpr = dpr;
       boundary.shadows = shadows;
@@ -5348,6 +5353,65 @@ describe('S4 the draft as a file through the real owner', () => {
     expect(storage.document()).toEqual(castle);
   });
 
+  // The benchmark harness's studio open marks (rpg-project#750, B11): in a
+  // development-like build with ?perfMarks, opening a file marks decoded,
+  // imported, the regions list's commit and the grid's first paint, in that
+  // order, through the real owner.
+  it('marks the studio open path in order under a bench build with ?perfMarks', async () => {
+    vi.stubEnv('MODE', 'bench');
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      const castle = createCastleS4Document();
+      mount(new MemoryStorage(createPopulatedStudioDocument()));
+      await settled();
+      spy.mockClear();
+      await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      await settled();
+      const names = spy.mock.calls
+        .map(([name]) => name)
+        .filter(
+          (name) =>
+            name.startsWith('studio:open:') ||
+            name === 'studio:regions:rendered'
+        );
+      expect(names).toEqual([
+        'studio:open:decoded',
+        'studio:open:imported',
+        'studio:regions:rendered',
+        'studio:open:first-paint',
+      ]);
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('marks nothing in the test mode, even with ?perfMarks', async () => {
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      mount(new MemoryStorage(createPopulatedStudioDocument()));
+      await settled();
+      await choose(
+        'mad-king.yaml',
+        exportDraftYaml(createCastleS4Document(), 'mad-king')
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+      await settled();
+      expect(
+        spy.mock.calls.filter(([name]) => name.startsWith('studio:'))
+      ).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+    }
+  });
+
   // An import replaces the whole document, so the Layout refits to it
   // (rpg-project#725 R3); before this, the castle opened cropped on the
   // previous room's frame until Show entire was pressed.
@@ -6904,4 +6968,66 @@ it('the castle’s gate tables read as use: lines that resolve in the studio (rp
     'alarm-reactor',
     'patrol · with path a route of 3 waypoints',
   ]);
+});
+
+// The benchmark harness's stroke marks (rpg-project#750, B11): only a stroke
+// that changes the document marks its commit and, a frame after the grid's
+// commit, its paint. A no-op stroke marks neither, and leaves nothing armed
+// for the next unrelated edit to fire.
+describe('stroke perf marks', () => {
+  const url = window.location.href;
+  afterEach(() => {
+    window.history.replaceState(null, '', url);
+    vi.unstubAllEnvs();
+  });
+
+  it('a changing stroke marks commit then painted; a no-op stroke marks neither', async () => {
+    vi.stubEnv('MODE', 'bench');
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    // The clock reads commitFloor takes, by the stack that asked: its first
+    // is the stroke's start, taken before the owner paints and validates.
+    const realNow = performance.now.bind(performance);
+    const strokeStarts: number[] = [];
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      const value = realNow();
+      if (new Error().stack?.includes('commitFloor')) strokeStarts.push(value);
+      return value;
+    });
+    try {
+      mount(new MemoryStorage(seed(true)));
+      await settled();
+      const strokeMarks = () =>
+        spy.mock.calls
+          .map(([name]) => name)
+          .filter((name) => name.startsWith('studio:stroke:'));
+      gesture(zero);
+      await waitFor(() =>
+        expect(strokeMarks()).toEqual([
+          'studio:stroke:commit',
+          'studio:stroke:painted',
+        ])
+      );
+      // The commit mark is stamped at commitFloor's entry, not when the
+      // owner's validation and equality check finished.
+      expect(strokeStarts).toHaveLength(1);
+      expect(
+        spy.mock.calls.find(([name]) => name === 'studio:stroke:commit')?.[1]
+      ).toEqual({ startTime: strokeStarts[0] });
+      spy.mockClear();
+      // Repainting the same cell is an accepted no-op: nothing commits.
+      gesture(zero);
+      await settled();
+      expect(strokeMarks()).toEqual([]);
+      // The next, unrelated document change must not fire a stale paint.
+      fireEvent.click(button('Undo'));
+      await settled();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(cells()).toEqual([]);
+      expect(strokeMarks()).toEqual([]);
+    } finally {
+      now.mockRestore();
+      spy.mockRestore();
+    }
+  });
 });

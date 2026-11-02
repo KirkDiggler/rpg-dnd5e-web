@@ -7,6 +7,7 @@ import {
   isFloorCell,
   moveRoomMonster,
   setRoomMonsterAppearance,
+  setRoomMonsterDefaultActivity,
   setRoomMonsterFacing,
   setRoomPartyStart,
   type RoomDraft,
@@ -191,6 +192,8 @@ export interface StudioActorArrangeEdit {
   readonly mapName?: string | null;
   /** Omitted is unchanged; null clears only the authored visual override. */
   readonly appearanceRef?: string | null;
+  /** Omitted leaves it unchanged; null removes the authored override. */
+  readonly defaultActivityRef?: string | null;
   readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
   readonly location?: RoomHexCell;
   /** Omitted means unchanged; default deletes only the facing key. */
@@ -648,6 +651,13 @@ export function applyStudioActorArrange(
       next,
       monster.id,
       intent.appearanceRef ?? undefined
+    );
+  }
+  if (intent.defaultActivityRef !== undefined) {
+    next = setRoomMonsterDefaultActivity(
+      next,
+      monster.id,
+      intent.defaultActivityRef ?? undefined
     );
   }
   return next;

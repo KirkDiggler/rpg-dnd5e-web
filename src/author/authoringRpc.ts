@@ -16,6 +16,7 @@
  * hand in their own.
  */
 import { authoringClient } from '@/api/client';
+import { mark } from '@/dev/perfMarks';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError, type Client } from '@connectrpc/connect';
 import {
@@ -128,11 +129,16 @@ export function usePutDungeonPreview(
     let live = true;
     const timer = setTimeout(async () => {
       let response: PutDungeonResponse;
+      // Benchmark harness: one validate-only round trip, sent and returned
+      // marked one to one (a superseded response is still a return).
+      mark('studio:preview:sent');
       try {
         response = await client.putDungeon(
           create(PutDungeonRequestSchema, { key, yaml, validateOnly: true })
         );
+        mark('studio:preview:returned');
       } catch (err) {
+        mark('studio:preview:returned');
         if (!live || mine !== generation.current) return;
         setState((s) => ({
           ...s,
