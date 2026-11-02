@@ -21,6 +21,7 @@ import {
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
+  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
@@ -180,6 +181,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  activateFn: vi.fn(),
   castFn: vi.fn(),
   deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
@@ -274,6 +276,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    activate: hoisted.activateFn,
     cast: hoisted.castFn,
     deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
@@ -862,6 +865,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.activateFn,
     hoisted.castFn,
     hoisted.deathSaveFn,
     hoisted.endTurnFn,
@@ -2040,6 +2044,103 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('arms the longsword on the world clock: the floor yields while armed, the skeleton is struck, cancel gives the floor back (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    hoisted.attackFn.mockReturnValue(new Promise(() => {}));
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+
+    const attack = await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(attack);
+
+    // Armed: the row's candidates are the highlighted targets, and the floor
+    // click no longer walks.
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+    // Cancel: the floor click is the Move again.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true)
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: '' })
+    );
+
+    // Armed again: the entity click declares against the armed selector.
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    expect(hoisted.attackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: 'enc-1',
+        attacker: 'char-1',
+        target: 'skeleton-1',
+        declarationId: 'v1.attack.longsword',
+      })
+    );
+  });
+
+  it('declares Dodge from the dock on the world clock, with no target and no turn (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.activateFn.mockReturnValue(new Promise(() => {}));
+    const dodge = create(DeclarationSchema, {
+      id: 'v1.activate.dodge',
+      verb: Verb.ACTIVATE,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:actions:dodge',
+        name: 'Dodge',
+      }),
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [dodge, attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+
+    fireEvent.click(await screen.findByRole('button', { name: /dodge/i }));
+
+    await waitFor(() =>
+      expect(hoisted.activateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session: 'enc-1',
+          member: 'char-1',
+          declarationId: 'v1.activate.dodge',
+          target: '',
+        })
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
   });
 
   it('cancels explicit movement from the dock or Escape without dispatching', async () => {

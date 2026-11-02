@@ -854,9 +854,11 @@ function SessionEncounterScope({
   }, [sightings, turnOrderParticipants]);
   // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
   // cast owns the next floor click; otherwise a TURN click walks only while
-  // Move is selected. WORLD keeps the established free-roam click behavior.
-  // This makes a missed Attack/member target a no-op rather than an accidental
-  // walk and keeps the canvas ignorant of declaration kinds.
+  // Move is selected. On WORLD the floor click IS the Move, except while an
+  // offer is armed (rpg-project#785): an armed Attack, Cast or Activate owns
+  // the next click exactly as on the turn clock, and cancelling it gives the
+  // floor back. This makes a missed Attack/member target a no-op rather than
+  // an accidental walk and keeps the canvas ignorant of declaration kinds.
   //
   // During CELL aiming, `SessionCanvas` also sends a clicked creature's
   // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
@@ -870,6 +872,10 @@ function SessionEncounterScope({
     coherentDeclarations
   );
 
+  const worldOfferArmed =
+    experienceClock === ClockKind.WORLD &&
+    combat.presentationState.armedDeclarationId !== null &&
+    !combat.presentationState.movementSelected;
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -880,13 +886,13 @@ function SessionEncounterScope({
         return;
       }
       if (
-        experienceClock === ClockKind.WORLD ||
+        (experienceClock === ClockKind.WORLD && !worldOfferArmed) ||
         (experienceClock === ClockKind.TURN && combat.movementEnabled)
       ) {
         walkTo(coord);
       }
     },
-    [combat, experienceClock, walkTo]
+    [combat, experienceClock, walkTo, worldOfferArmed]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -2264,7 +2270,8 @@ function SessionEncounterScope({
                         : lastGoodPathIndexRef.current
                     }
                     movementPreviewEnabled={
-                      experienceClock === ClockKind.WORLD ||
+                      (experienceClock === ClockKind.WORLD &&
+                        !worldOfferArmed) ||
                       (experienceClock === ClockKind.TURN &&
                         combat.movementEnabled)
                     }

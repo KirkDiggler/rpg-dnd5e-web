@@ -432,29 +432,3 @@ describe('Speak on the turn clock', () => {
     expect(hoisted.speakFn).not.toHaveBeenCalled();
   });
 });
-
-describe('the turn-economy verbs did not come along', () => {
-  it('an Attack armed on the world clock is not sendable', async () => {
-    const attack = create(DeclarationSchema, {
-      id: 'selector.attack.1',
-      verb: Verb.ATTACK,
-      slot: Slot.ACTION,
-      available: true,
-      targetKind: TargetKind.MEMBER,
-      candidates: [
-        create(TargetCandidateSchema, {
-          member: 'front-goblin',
-          available: true,
-        }),
-      ],
-    });
-    render(<Harness declarations={[attack]} />);
-
-    act(() => latest.onSelectDeclaration(attack));
-    await act(async () => {
-      latest.onTargetClick('front-goblin');
-    });
-
-    expect(hoisted.attackFn).not.toHaveBeenCalled();
-  });
-});
