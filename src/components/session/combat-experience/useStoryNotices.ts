@@ -67,14 +67,19 @@ export function useStoryNotices({
   enabled,
   streamState,
   onInteractionChange,
+  monsterTurnIds,
 }: {
   story: readonly CombatExperienceStoryExchange[];
   scope: string;
   enabled: boolean;
   streamState: CombatExperienceStreamState;
   onInteractionChange?: (interacting: boolean) => void;
+  /** Rows owned by the monster-turn presentation cursor, not inferred from prose. */
+  monsterTurnIds?: ReadonlySet<string>;
 }): readonly StoryNotice[] {
-  const durationScale = Number(useDialValues().notificationDuration);
+  const dials = useDialValues();
+  const durationScale = Number(dials.notificationDuration);
+  const followMonsters = dials.followMonsterTurns === 'on';
   const baseline = useRef<Baseline | null>(null);
   const [active, setActive] = useState<readonly ActiveNotice[]>([]);
   const live = enabled && streamState === 'live';
@@ -105,7 +110,11 @@ export function useStoryNotices({
         fresh.push(entry);
       previous.seen.add(entry.id);
     }
-    const currentIds = new Set(story.map((entry) => entry.id));
+    const currentIds = new Set(
+      story
+        .filter((entry) => followMonsters || !monsterTurnIds?.has(entry.id))
+        .map((entry) => entry.id)
+    );
     if (!fresh.length) {
       setActive((current) =>
         current.every((entry) => currentIds.has(entry.id))
@@ -123,7 +132,7 @@ export function useStoryNotices({
           (entry.expiresAt === null || entry.expiresAt > now)
       );
       for (const entry of fresh) {
-        if (!entry.toastRule) continue;
+        if (!entry.toastRule || !currentIds.has(entry.id)) continue;
         const durationMs =
           toastDurationMs(entry.toastText ?? entry.headline) * durationScale;
         next.push({
@@ -144,7 +153,7 @@ export function useStoryNotices({
         now
       );
     });
-  }, [story, scope, live, durationScale]);
+  }, [story, scope, live, durationScale, followMonsters, monsterTurnIds]);
 
   // Store deadlines, not timer-per-arrival cleanup: new activity must not
   // extend an older card. StrictMode cleanup can safely reschedule this timer.

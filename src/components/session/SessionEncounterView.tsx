@@ -141,11 +141,12 @@ import {
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
 import { useDungeonScene } from './useDungeonScene';
+import { useMonsterTurnFocus } from './useMonsterTurnFocus';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { useSessionWalk } from './useSessionWalk';
-import { useTurnOrderFollow } from './useTurnOrderFollow';
+import { type TurnBeat, useTurnOrderFollow } from './useTurnOrderFollow';
 import { useWalkPresentation } from './useWalkPresentation';
 import { VendorPopover } from './vendor/VendorPopover';
 import { watchZoneCells, zonesBehindWalkers } from './watchZoneCells';
@@ -707,6 +708,10 @@ function SessionEncounterScope({
     () => scheduleRefresh(['turn']),
     [scheduleRefresh]
   );
+  const monsterCamera = useMonsterTurnFocus({
+    scope: `${sessionId}\u0000${member}`,
+    sightings: otherMembers,
+  });
   const turnOrder = useTurnOrderFollow({
     scope: `${sessionId}\u0000${member}`,
     member,
@@ -718,6 +723,15 @@ function SessionEncounterScope({
   // (rpg-project#520). Presentation: it never reaches a command.
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
 
+  const followTurnOrder = turnOrder.onTurnBeat;
+  const focusMonsterTurn = monsterCamera.onTurnBeat;
+  const onTurnBeat = useCallback(
+    (beat: TurnBeat) => {
+      followTurnOrder(beat);
+      focusMonsterTurn(beat);
+    },
+    [followTurnOrder, focusMonsterTurn]
+  );
   const combat = useSessionCombatExperience({
     memberTargetingMode: desktopHotbar ? 'map-first' : 'legacy',
     session: sessionId,
@@ -733,7 +747,7 @@ function SessionEncounterScope({
     scheduleRefresh,
     // A heard sound's bearing is measured from here (rpg-project#569).
     viewerCell: wherePosition,
-    onTurnBeat: turnOrder.onTurnBeat,
+    onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
     presentableMembers,
   });
@@ -2034,6 +2048,7 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            monsterTurnIds={combat.monsterTurnIds}
             onNotificationInteractionChange={
               combat.onNotificationInteractionChange
             }
@@ -2077,6 +2092,7 @@ function SessionEncounterScope({
                     touchPinchEnabled
                     touchRotateEnabled
                     focusRequest={focusRequest}
+                    monsterTurnFocus={monsterCamera.focus}
                     // The dungeon's own starting facing, read from the ATLAS
                     // and nowhere else (rpg-project#374: rpg-api reads it from
                     // the atlas mirror only, and there is no second source

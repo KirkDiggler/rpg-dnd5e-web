@@ -203,6 +203,8 @@ export interface SessionCanvasProps {
   touchRotateEnabled?: boolean;
   /** Changed request counter invokes camera focus without altering zoom/heading. */
   focusRequest?: number;
+  /** Observer-filtered, keyed turn-start focus; never the viewer/orbit target. */
+  monsterTurnFocus?: import('./useMonsterTurnFocus').MonsterTurnFocus | null;
   /** Changed counter requests the shared camera's known-floor fit (Home).
    * A supplied initial value fits on mount; absent leaves framing unchanged. */
   fitRequest?: number;
@@ -320,6 +322,7 @@ export function SessionScene({
   touchPinchEnabled = false,
   touchRotateEnabled = false,
   focusRequest,
+  monsterTurnFocus,
   fitRequest,
   scene,
   characterId,
@@ -422,8 +425,17 @@ export function SessionScene({
       height: maxZ - minZ + hexSize * 2,
     };
   }, [scene.floorTiles, hexSize]);
+  const presentationFocus = useMemo(() => {
+    if (!monsterTurnFocus) return null;
+    const position = cubeToWorld(monsterTurnFocus.position, hexSize);
+    return {
+      key: monsterTurnFocus.key,
+      position: new THREE.Vector3(position.x, 0, position.z),
+    };
+  }, [monsterTurnFocus, hexSize]);
   useCameraControls({
     target: initialTargetRef.current,
+    presentationFocus,
     focusTarget,
     panSpeed: cameraDials.panSpeed,
     rotateSpeed: cameraDials.rotateSpeed,

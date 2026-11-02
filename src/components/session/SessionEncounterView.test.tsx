@@ -1,4 +1,5 @@
 import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
+import { resetDial, setDial } from '@/feel/dialStore';
 import type { PortraitProviderProps } from '@/portraits';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
@@ -4315,6 +4316,17 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
     readyTurn();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'skeleton-1',
+          name: 'Skeleton',
+          kind: MemberKind.MONSTER,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
       active: 'skeleton-1',
@@ -4351,6 +4363,12 @@ describe('SessionEncounterView production combat integration', () => {
       });
 
       screen.getByText("Skeleton's turn.");
+      expect(
+        hoisted.lastCanvasProps.current?.monsterTurnFocus?.position
+      ).toEqual({ x: 1, y: -1, z: 0 });
+      act(() => setDial('followMonsterTurns', 'off'));
+      expect(hoisted.lastCanvasProps.current?.monsterTurnFocus).toBeNull();
+      act(() => resetDial('followMonsterTurns'));
       // Authority reconciliation is immediate, before the 300ms Story cursor.
       expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
 
