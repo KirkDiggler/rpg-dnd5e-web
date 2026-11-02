@@ -19,6 +19,7 @@ const fixture = vi.hoisted(() => ({
   scene: undefined as THREE.Group | undefined,
   animations: [] as THREE.AnimationClip[],
   played: [] as string[],
+  boundRoot: undefined as THREE.Object3D | undefined,
 }));
 vi.mock('@react-three/drei', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@react-three/drei')>();
@@ -26,6 +27,7 @@ vi.mock('@react-three/drei', async (importOriginal) => {
     ...actual,
     useGLTF: () => fixture,
     useAnimations: (clips: THREE.AnimationClip[], root: THREE.Object3D) => {
+      fixture.boundRoot = root;
       const mixer = useMemo(() => new THREE.AnimationMixer(root), [root]);
       const actions = useMemo(
         () =>
@@ -151,6 +153,33 @@ describe('Bard idle/walk playback through ClassCharacterModel', () => {
     expect(motionTarget(renderer).position.x).toBe(1);
     await renderer.unmount();
   });
+  it('does not carry an unavailable old clip into a replacement body loaded during displacement', async () => {
+    fixture.animations = [new THREE.AnimationClip('Walk_Forward', 1, [])];
+    const renderer = await ReactThreeTestRenderer.create(
+      <ClassCharacterModel url="/old.glb" isMoving />
+    );
+    fixture.scene = fixture.scene!.clone();
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_New', 1, [
+        new THREE.NumberKeyframeTrack(
+          'MotionTarget.position[x]',
+          [0, 1],
+          [1, 2]
+        ),
+      ]),
+    ];
+    await renderer.update(<ClassCharacterModel url="/new.glb" isDisplaced />);
+    await renderer.advanceFrames(1, 0.1);
+    expect(fixture.played.at(-1)).toBe('Idle_New');
+    // This test renderer retains the old primitive during object replacement
+    // (its Three class identities differ). Assert the real mixer's new root,
+    // not the stale renderer wrapper; THREE's property binding remains real.
+    expect(fixture.boundRoot?.getObjectByName('MotionTarget')?.position.x).toBe(
+      1
+    );
+    await renderer.unmount();
+  });
+
   it('plays the exact supplied idle clip while stationary and walk clip while moving', async () => {
     fixture.animations = [
       new THREE.AnimationClip('Idle_Relaxed', 1, []),

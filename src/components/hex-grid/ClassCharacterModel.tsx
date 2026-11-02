@@ -492,9 +492,13 @@ export function ClassCharacterModel({
       : isMoving
         ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
         : resolveIdleClipName(names);
-  const resolvedClipName = isDisplaced
-    ? (previousClip.current ?? requestedClipName)
-    : requestedClipName;
+  const heldClip = previousClip.current;
+  const resolvedClipName =
+    remembered || profile
+      ? undefined
+      : isDisplaced && heldClip && names.includes(heldClip)
+        ? heldClip
+        : requestedClipName;
   useLayoutEffect(() => {
     previousClip.current = resolvedClipName;
   }, [resolvedClipName]);
