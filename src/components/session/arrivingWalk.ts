@@ -15,6 +15,8 @@ import { positionToCube } from './positionBridge';
 export interface ArrivingWalk {
   readonly member: string;
   readonly cells: readonly CubeCoord[];
+  /** Only the authoritative wire fact selects displacement. */
+  readonly forced?: boolean;
 }
 
 export function arrivingWalk(
@@ -23,10 +25,12 @@ export function arrivingWalk(
 ): ArrivingWalk | undefined {
   if (act.body.case !== 'walk') return undefined;
   const mover = act.body.value.mover?.id;
-  if (!mover || mover === member) return undefined;
+  const forced = act.body.value.forced;
+  // A pushed local member has no voluntary Move RPC carrying this route.
+  if (!mover || (mover === member && !forced)) return undefined;
   const cells = act.body.value.path.flatMap((step) =>
     step.cell ? [positionToCube(step.cell)] : []
   );
   if (cells.length === 0) return undefined;
-  return { member: mover, cells };
+  return { member: mover, cells, ...(forced ? { forced: true } : {}) };
 }
