@@ -1,3 +1,4 @@
+import { resetDial, setDial } from '@/feel/dialStore';
 import { create } from '@bufbuild/protobuf';
 import {
   MemberKind,
@@ -13,13 +14,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { actStoryId } from './actStory';
+import { actStoryId, buildActStory } from './actStory';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 import type { CombatExperienceStoryExchange } from './types';
 import {
   COMBAT_STORY_PACE_MS,
   useCombatStoryPacing,
 } from './useCombatStoryPacing';
+import { useStoryNotices } from './useStoryNotices';
 
 const participants = [
   create(ParticipantSchema, {
@@ -52,6 +54,143 @@ describe('useCombatStoryPacing scope', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it.each(['cast', 'activate', 'speak'] as const)(
+    'follows the real %s-to-viewer notice policy in both toggle modes',
+    (kind) => {
+      const by = { kind: PartyKind.MEMBER, id: 'skeleton-guard' };
+      const to = { kind: PartyKind.MEMBER, id: 'aldric' };
+      const event = create(ActSchema, {
+        id: 'monster-effect',
+        session: 'crypt-run',
+        family: Family.ACT,
+        body:
+          kind === 'cast'
+            ? {
+                case: 'cast',
+                value: {
+                  by,
+                  spell: { name: 'Monster spell' },
+                  results: [{ target: to }],
+                },
+              }
+            : kind === 'activate'
+              ? {
+                  case: 'activate',
+                  value: {
+                    by,
+                    ability: { name: 'Monster ability' },
+                    results: [{ target: to, kind: 'damaged', amount: 2 }],
+                  },
+                }
+              : { case: 'speak', value: { by, to, line: 'Stand aside.' } },
+      });
+      for (const follow of ['off', 'on']) {
+        setDial('followMonsterTurns', follow);
+        const view = renderHook(
+          ({ story }) => {
+            const pacing = useCombatStoryPacing({
+              session: 'crypt-run',
+              member: 'aldric',
+              participants,
+              story,
+            });
+            const notices = useStoryNotices({
+              story: pacing.story,
+              monsterTurnIds: pacing.monsterTurnIds,
+              scope: 'crypt-run:aldric',
+              enabled: true,
+              streamState: 'live',
+            });
+            return { ...pacing, notices };
+          },
+          {
+            initialProps: {
+              story: [] as readonly CombatExperienceStoryExchange[],
+            },
+          }
+        );
+        try {
+          const ended = create(ActSchema, {
+            id: 'monster-end',
+            session: 'crypt-run',
+            family: Family.CLOCK,
+            body: {
+              case: 'clock',
+              value: {
+                mark: ClockMark.TURN_ENDED,
+                turn: { member: by, next: to },
+              },
+            },
+          });
+          act(() =>
+            view.result.current.acceptActs([event, ended], { source: 'live' })
+          );
+          const story = buildActStory(
+            [{ act: event, index: 0, seq: 1n, source: 'live', visible: true }],
+            {
+              viewerMember: 'aldric',
+              memberNames: {
+                aldric: 'Aldric',
+                'skeleton-guard': 'Skeleton Guard',
+              },
+            }
+          );
+          expect(story[0]?.toastRule?.case).toBe(
+            kind === 'speak' ? 'speech-to-you' : 'done-to-you'
+          );
+          view.rerender({ story });
+          expect(view.result.current.story).toEqual([]);
+          expect([...view.result.current.monsterTurnIds]).toContain(
+            actStoryId(event, 0)
+          );
+          act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+          expect(view.result.current.story).toEqual(story);
+          expect(view.result.current.notices).toHaveLength(
+            follow === 'on' ? 1 : 0
+          );
+          act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+          expect(view.result.current.notice).toBeNull();
+        } finally {
+          view.unmount();
+          resetDial('followMonsterTurns');
+        }
+      }
+    }
+  );
+
+  it('marks monster-turn story IDs without marking player turns or changing history', () => {
+    const event = createAttackAuthorityFixture({
+      seq: 23n,
+      attacker: 'skeleton-guard',
+    }).act;
+    const story = [storyEntry(23n)];
+    const view = renderHook(
+      ({ kind, session }) =>
+        useCombatStoryPacing({
+          session,
+          member: 'aldric',
+          participants: participants.map((p) =>
+            p.member === 'skeleton-guard' ? { ...p, kind } : p
+          ),
+          story,
+        }),
+      { initialProps: { kind: MemberKind.MONSTER, session: 'crypt-run' } }
+    );
+    act(() => view.result.current.acceptActs([event], { source: 'live' }));
+    expect([...view.result.current.monsterTurnIds]).toEqual([
+      actStoryId(event, 0),
+    ]);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(view.result.current.story).toEqual(story);
+    expect([...view.result.current.monsterTurnIds]).toEqual([
+      actStoryId(event, 0),
+    ]);
+    view.rerender({ kind: MemberKind.PLAYER, session: 'next-session' });
+    act(() => view.result.current.acceptActs([event], { source: 'live' }));
+    expect([...view.result.current.monsterTurnIds]).toEqual([]);
+    view.unmount();
   });
 
   it('holds local playback while paused, accepts events, and resumes without dropping them', () => {

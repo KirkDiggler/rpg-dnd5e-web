@@ -3,7 +3,10 @@ import {
   sayActivityFromAct,
   type ActivityCueSettlement,
 } from '@/npc-activities/sayActivityPresentation';
-import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  MemberKind,
+  type Participant,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockMark,
   type Act,
@@ -54,6 +57,7 @@ export interface UseCombatStoryPacingResult {
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
   notice: string | null;
+  monsterTurnIds: ReadonlySet<string>;
   /** Already displayed bodies must not snap to newer snapshots ahead of a walk. */
   heldMovementMembers: ReadonlySet<string>;
   acceptActs: (run: readonly Act[], metadata: ActDeliveryMetadata) => void;
@@ -68,6 +72,7 @@ interface ScopedPacingState {
   readonly activityCues: ReadonlyMap<string, ActivityCueRequest>;
   readonly token: PacingScopeToken;
   readonly hiddenIds: ReadonlySet<string>;
+  readonly monsterTurnIds: ReadonlySet<string>;
   readonly heldMovementMembers: ReadonlySet<string>;
   readonly notice: string | null;
 }
@@ -82,6 +87,7 @@ function emptyScopedPacing(token: PacingScopeToken): ScopedPacingState {
     token,
     activityCues: new Map(),
     hiddenIds: new Set(),
+    monsterTurnIds: new Set(),
     heldMovementMembers: new Set(),
     notice: null,
   };
@@ -221,13 +227,22 @@ export function useCombatStoryPacing({
   );
 
   const updateHiddenIdsForScope = useCallback(
-    (update: (ids: ReadonlySet<string>) => ReadonlySet<string>) => {
+    (
+      update: (ids: ReadonlySet<string>) => ReadonlySet<string>,
+      monsterIds: readonly string[] = []
+    ) => {
       if (!inScope()) return;
       setScopedPacing((current) => {
         if (!inScope()) return current;
         const base =
           current.token === token ? current : emptyScopedPacing(token);
-        return { ...base, hiddenIds: update(base.hiddenIds) };
+        return {
+          ...base,
+          hiddenIds: update(base.hiddenIds),
+          monsterTurnIds: monsterIds.length
+            ? new Set([...base.monsterTurnIds, ...monsterIds])
+            : base.monsterTurnIds,
+        };
       });
     },
     [inScope, token]
@@ -386,7 +401,12 @@ export function useCombatStoryPacing({
         return;
       }
       publishHeldMembers();
-      if (beat.act.body.case === 'attack') {
+      if (
+        beat.act.body.case === 'attack' ||
+        beat.act.body.case === 'cast' ||
+        beat.act.body.case === 'activate' ||
+        beat.act.body.case === 'speak'
+      ) {
         sawBeatRef.current = true;
         setNoticeForScope(null);
       } else if (isTurnEnd(beat.act)) {
@@ -467,11 +487,24 @@ export function useCombatStoryPacing({
       });
       if (paced.length === 0) return;
       queueRef.current.push(...paced);
-      updateHiddenIdsForScope((current) => {
-        const next = new Set(current);
-        for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
-        return next;
-      });
+      updateHiddenIdsForScope(
+        (current) => {
+          const next = new Set(current);
+          for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
+          return next;
+        },
+        paced
+          .filter(
+            (beat) =>
+              beat.scope === 'turn' &&
+              participantsRef.current.some(
+                (participant) =>
+                  participant.member === beatActor(beat.act) &&
+                  participant.kind === MemberKind.MONSTER
+              )
+          )
+          .map((beat) => actStoryId(beat.act, beat.index))
+      );
       publishHeldMembers();
       if (!drainingRef.current) {
         drainingRef.current = true;
@@ -575,6 +608,7 @@ export function useCombatStoryPacing({
     story: visibleStory,
     result: visibleResult,
     notice: currentPacing?.notice ?? null,
+    monsterTurnIds: currentPacing?.monsterTurnIds ?? EMPTY_MEMBERS,
     heldMovementMembers: currentPacing?.heldMovementMembers ?? EMPTY_MEMBERS,
     acceptActs,
   };

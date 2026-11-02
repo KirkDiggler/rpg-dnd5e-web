@@ -39,10 +39,51 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetDial('notificationDuration');
+  resetDial('followMonsterTurns');
   vi.useRealTimers();
 });
 
 describe('useStoryNotices', () => {
+  it('hides monster-turn notices when follow is off but keeps own results, sound and history', () => {
+    setDial('followMonsterTurns', 'off');
+    const monsterTurnIds = new Set(['monster', 'next-monster']);
+    const base = { ...props, monsterTurnIds };
+    const view = renderHook(useStoryNotices, { initialProps: base });
+    const monster = entry('monster');
+    const own = { ...entry('own'), byViewer: true };
+    const sound = {
+      ...entry('sound'),
+      toastRule: { case: 'heard-sound' as const, hold: false },
+    };
+    const story = [old, monster, own, sound];
+    view.rerender({ ...base, story });
+    expect(view.result.current.map((row) => row.id)).toEqual(['own', 'sound']);
+    expect(story).toHaveLength(4);
+    act(() => setDial('followMonsterTurns', 'on'));
+    expect(view.result.current.map((row) => row.id)).toEqual(['own', 'sound']);
+    view.rerender({
+      ...base,
+      story: [...story, { ...monster, id: 'next-monster' }],
+    });
+    expect(view.result.current.map((row) => row.id)).toContain('next-monster');
+  });
+
+  it('turning follow off dismisses current monster notices and releases a reading hold', () => {
+    const onInteractionChange = vi.fn();
+    const base = {
+      ...props,
+      onInteractionChange,
+      monsterTurnIds: new Set(['monster']),
+    };
+    const view = renderHook(useStoryNotices, { initialProps: base });
+    view.rerender({ ...base, story: [old, entry('monster')] });
+    expect(view.result.current).toHaveLength(1);
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', true));
+    act(() => setDial('followMonsterTurns', 'off'));
+    expect(view.result.current).toEqual([]);
+    expect(onInteractionChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('toasts only rows the toast policy named a case for (#1301)', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     view.rerender({
