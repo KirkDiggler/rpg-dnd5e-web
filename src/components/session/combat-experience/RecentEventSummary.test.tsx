@@ -70,12 +70,14 @@ describe('recent result summary', () => {
         roll: {
           expression: '2',
           total: 2,
-          modifiers: [{ source: 'ability', value: 2 }],
+          modifiers: [
+            { source: 'Ability', value: 2, sourceRef: 'dnd5e:abilities:str' },
+          ],
         },
       })
     );
     render(<RecentEventSummary entry={value} />);
-    const bonus = screen.getByRole('group', { name: 'Damage bonus · ability' });
+    const bonus = screen.getByRole('group', { name: 'Damage bonus · STR' });
     expect(bonus).toHaveAttribute('data-kind', 'bonus');
     expect(bonus).toHaveTextContent('+2');
     expect(bonus.querySelector('code')).toBeNull();
@@ -83,6 +85,24 @@ describe('recent result summary', () => {
       screen.getByRole('group', { name: 'Damage roll · weapon' })
     ).toHaveAttribute('data-kind', 'damage');
   });
+  it('names condition bonuses from the sourced modifier instead of the generic component kind', () => {
+    const value = entry();
+    if (value.act?.body.case !== 'attack') throw Error('fixture');
+    const bonus = value.act.body.value.damageComponents[0]!;
+    bonus.source = 'condition';
+    bonus.roll = create(RollSchema, {
+      expression: '2',
+      total: 2,
+      modifiers: [
+        { source: 'Condition', value: 2, sourceRef: 'dnd5e:conditions:raging' },
+      ],
+    });
+    render(<RecentEventSummary entry={value} />);
+    expect(
+      screen.getByRole('group', { name: 'Damage bonus · Raging' })
+    ).toHaveTextContent('+2');
+  });
+
   it('does not classify by the source name or guess from missing dice detail', () => {
     const value = entry();
     if (value.act?.body.case !== 'attack') throw Error('fixture');

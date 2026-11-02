@@ -228,6 +228,7 @@ function CombatExperienceContent({
   actionUtilityControls,
   sceneNotice,
   pacingNotice,
+  onNotificationInteractionChange,
   renderMap,
   hoveredTarget,
   onSelectDeclaration,
@@ -334,8 +335,9 @@ function CombatExperienceContent({
     rollWindowReady ? undefined : rollWindow?.storyId
   );
   const desktopHotbar = Boolean(actionPresentation?.desktopIcons);
-  const noticesEnabled = Boolean(storyFeedback && desktopHotbar);
+  const noticesEnabled = Boolean(storyFeedback);
   const storyNotices = useStoryNotices({
+    onInteractionChange: onNotificationInteractionChange,
     story: revealedStory,
     scope: storyFeedback?.scopeKey ?? '',
     enabled: noticesEnabled,
@@ -648,7 +650,7 @@ function CombatExperienceContent({
           result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
           initialCollapsed={desktopHotbar || Boolean(storyFeedback)}
-          compactPreview={desktopHotbar}
+          compactPreview={desktopHotbar || Boolean(storyFeedback)}
           announceUpdates={!noticesEnabled}
         />
 

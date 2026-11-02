@@ -33,6 +33,8 @@ export const COMBAT_STORY_PACE_MS = 300;
 export interface UseCombatStoryPacingArgs {
   session: string;
   member: string;
+  /** Pauses advancement between beats, not authority or an in-flight walk. */
+  paused?: boolean;
   participants: readonly Participant[];
   memberNames?: ReadonlyMap<string, string>;
   story: readonly CombatExperienceStoryExchange[];
@@ -126,6 +128,7 @@ export function useCombatStoryPacing({
   onTurnBeat,
   onPresentWalk,
   presentableMembers = EMPTY_MEMBERS,
+  paused = false,
   presentableActivityMembers = presentableMembers,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
@@ -138,6 +141,9 @@ export function useCombatStoryPacing({
   const [scopedPacing, setScopedPacing] = useState<ScopedPacingState>(() =>
     emptyScopedPacing(token)
   );
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  const deferredRef = useRef<(() => void) | null>(null);
   const queueRef = useRef<QueuedBeat[]>([]);
   const seenActivityIdsRef = useRef(new Set<string>());
   const waitingRef = useRef<PendingWalk | null>(null);
@@ -186,6 +192,7 @@ export function useCombatStoryPacing({
   }, []);
 
   const resetQueue = useCallback(() => {
+    deferredRef.current = null;
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = null;
     const waiting = waitingRef.current;
@@ -298,7 +305,8 @@ export function useCombatStoryPacing({
       timerRef.current = setTimeout(() => {
         if (!inScope()) return;
         timerRef.current = null;
-        callback();
+        if (pausedRef.current) deferredRef.current = callback;
+        else callback();
       }, COMBAT_STORY_PACE_MS);
     },
     [inScope]
@@ -307,6 +315,10 @@ export function useCombatStoryPacing({
   const drain = useCallback(
     function drainQueue() {
       if (!inScope() || waitingRef.current) return;
+      if (pausedRef.current) {
+        deferredRef.current = drainQueue;
+        return;
+      }
       const step = nextBeatStep(queueRef.current, announcedActorRef.current);
       if (step.type === 'idle') {
         setNoticeForScope(null);
@@ -486,6 +498,13 @@ export function useCombatStoryPacing({
       resetQueue();
     };
   }, [resetQueue, token]);
+
+  useLayoutEffect(() => {
+    if (paused || !inScope()) return;
+    const resume = deferredRef.current;
+    deferredRef.current = null;
+    resume?.();
+  }, [paused, inScope]);
 
   useLayoutEffect(() => {
     if (!inScope()) return;

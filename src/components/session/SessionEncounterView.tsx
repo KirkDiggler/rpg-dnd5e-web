@@ -2118,11 +2118,7 @@ function SessionEncounterScope({
             logMode={combat.logMode}
             streamState={streamState}
             story={combat.story}
-            storyFeedback={
-              desktopHotbar
-                ? { scopeKey: `${sessionId}\u0000${member}` }
-                : undefined
-            }
+            storyFeedback={{ scopeKey: `${sessionId}\u0000${member}` }}
             record={record}
             onRecordShownChange={setRecordShown}
             result={combat.result}
@@ -2145,6 +2141,9 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            onNotificationInteractionChange={
+              combat.onNotificationInteractionChange
+            }
             hoveredTarget={hoveredTarget}
             renderMap={({
               attackableTargets,

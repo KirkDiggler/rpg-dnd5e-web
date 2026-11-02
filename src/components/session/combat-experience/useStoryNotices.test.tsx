@@ -1,3 +1,4 @@
+import { resetDial, setDial } from '@/feel/dialStore';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +38,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetDial('notificationDuration');
   vi.useRealTimers();
 });
 
@@ -54,6 +56,33 @@ describe('useStoryNotices', () => {
     expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
   });
 
+  it('uses the duration control for new notices without restarting existing deadlines', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    view.rerender({ ...props, story: [old, entry('a')] });
+    act(() => setDial('notificationDuration', 2));
+    view.rerender({ ...props, story: [old, entry('a'), entry('b')] });
+    expect(view.result.current.map((n) => n.notice.durationMs)).toEqual([
+      STORY_NOTICE_TTL_MS,
+      STORY_NOTICE_TTL_MS * 2,
+    ]);
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    expect(view.result.current.map((n) => n.id)).toEqual(['b']);
+  });
+
+  it('releases the playback interaction signal on dismiss and unmount', () => {
+    const onInteractionChange = vi.fn();
+    const view = renderHook(useStoryNotices, {
+      initialProps: { ...props, onInteractionChange },
+    });
+    view.rerender({ ...props, onInteractionChange, story: [old, entry('a')] });
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', true));
+    expect(onInteractionChange).toHaveBeenLastCalledWith(true);
+    act(() => view.result.current[0]!.notice.dismissAll!());
+    expect(onInteractionChange).toHaveBeenLastCalledWith(false);
+    view.unmount();
+    expect(onInteractionChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('duration scales with length', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     const short = { ...entry('short'), toastText: 'x'.repeat(20) };
@@ -68,18 +97,20 @@ describe('useStoryNotices', () => {
     expect(view.result.current).toEqual([]);
   });
 
-  it('combat toast holds until your next act', () => {
+  it('combat toast expires even without another action', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     const swing = { ...entry('swing'), toastRule: held };
     view.rerender({ ...props, story: [old, swing] });
-    expect(view.result.current[0]?.notice.held).toBe(true);
-    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.result.current[0]?.notice.held).toBe(false);
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS - 1));
     expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
     // Another creature's act does not release it.
     const other = { ...entry('other'), toastRule: undefined };
     view.rerender({ ...props, story: [old, swing, other] });
     expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
-    // The viewer's own act does, and its own toast takes the place.
+    act(() => vi.advanceTimersByTime(1));
+    expect(view.result.current).toEqual([]);
+    // A later act gets its own finite lifetime.
     const mine = { ...entry('mine'), byViewer: true, toastRule: held };
     view.rerender({ ...props, story: [old, swing, other, mine] });
     expect(view.result.current.map(({ id }) => id)).toEqual(['mine']);
@@ -97,6 +128,75 @@ describe('useStoryNotices', () => {
     view.rerender({ ...props, story: [old, swing, ended] });
     expect(view.result.current[0]?.notice.held).toBe(false);
     act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('dismisses without deleting history or reannouncing the same entry', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const story = [old, entry('dismiss-me')];
+    view.rerender({ ...props, story });
+    act(() => view.result.current[0]!.notice.dismiss!());
+    expect(view.result.current).toEqual([]);
+    expect(story).toHaveLength(2);
+    view.rerender({ ...props, story: [...story] });
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('pauses while hovered and resumes only the remaining lifetime', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    view.rerender({ ...props, story: [old, entry('reading')] });
+    act(() => vi.advanceTimersByTime(1000));
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', true));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.result.current.map(({ id }) => id)).toEqual(['reading']);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', false));
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS - 1001));
+    expect(view.result.current).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(1));
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('keeps focus and hover independent and lets paused notices be dismissed', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    view.rerender({ ...props, story: [old, entry('reading')] });
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', true));
+    act(() => view.result.current[0]!.notice.setPaused!('focus', true));
+    act(() => view.result.current[0]!.notice.setPaused!('pointer', false));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.result.current).toHaveLength(1);
+    act(() => view.result.current[0]!.notice.dismiss!());
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('protects the entire stack from expiry and burst eviction while reading', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const reading = entry('reading');
+    view.rerender({ ...props, story: [old, reading, entry('timed')] });
+    act(() => view.result.current[0]!.notice.setPaused!('focus', true));
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    view.rerender({
+      ...props,
+      story: [old, reading, entry('timed'), ...['a', 'b', 'c', 'd'].map(entry)],
+    });
+    expect(view.result.current.map(({ id }) => id)).toEqual([
+      'reading',
+      'timed',
+      'a',
+    ]);
+    act(() => view.result.current[0]!.notice.setPaused!('focus', false));
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('dismisses the whole stack without losing history', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const story = [old, entry('a'), entry('b')];
+    view.rerender({ ...props, story });
+    act(() => view.result.current[0]!.notice.dismissAll!());
+    expect(view.result.current).toEqual([]);
+    expect(story).toHaveLength(3);
+    view.rerender({ ...props, story: [...story] });
     expect(view.result.current).toEqual([]);
   });
 

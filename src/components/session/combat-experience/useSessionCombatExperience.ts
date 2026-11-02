@@ -10,6 +10,7 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import { useDialValues } from '@/feel/dialStore';
 import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
 import type { ActivityCueSettlement } from '@/npc-activities/sayActivityPresentation';
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -182,6 +183,7 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
+  onNotificationInteractionChange: (interacting: boolean) => void;
   heldMovementMembers: ReadonlySet<string>;
   activityCues: ReadonlyMap<string, ActivityCueRequest>;
   settleActivityCue: (input: ActivityCueSettlement) => void;
@@ -341,6 +343,8 @@ export function useSessionCombatExperience({
   presentableActivityMembers,
   approach,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
+  const [notificationInteraction, setNotificationInteraction] = useState(false);
+  const pauseWhileReading = useDialValues().notificationPausePlayback === 'on';
   const viewerCellRef = useRef(viewerCell);
   viewerCellRef.current = viewerCell;
   const [interaction, setInteractionState] =
@@ -520,6 +524,7 @@ export function useSessionCombatExperience({
   }, [member, presentation.state.presentations, receivedRollWindow, session]);
   manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
+    paused: pauseWhileReading && notificationInteraction,
     session,
     member,
     participants,
@@ -2386,6 +2391,7 @@ export function useSessionCombatExperience({
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      onNotificationInteractionChange: setNotificationInteraction,
       heldMovementMembers: pacing.heldMovementMembers,
       activityCues: pacing.activityCues,
       settleActivityCue: pacing.settleActivityCue,
