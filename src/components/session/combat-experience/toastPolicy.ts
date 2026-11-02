@@ -20,8 +20,9 @@
  * |                       | the operator: a creature's answer to  |
  * |                       | your own line                         |
  *
- * NEVER: a walk, another's miss, a table pick, a perception. Those match no
- * case, so they stay in the log.
+ * `own-speech` and `speech-to-you` keep primary lines in view; `heard-sound`
+ * is a secondary cue for the observer only. A discovery remains log-only.
+ * NEVER: a walk, another's miss, a table pick, or another member's perception.
  *
  * The policy reads the act and who is looking; it decides no rule of the
  * game. A toast is the describer's one line (`describeAct(...).text`).
@@ -29,6 +30,7 @@
 import {
   ClockMark,
   Family,
+  Sense,
   type Act,
   type Party,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -39,7 +41,10 @@ export type ToastCase =
   | 'your-window'
   | 'fight-formed'
   | 'fight-ended'
-  | 'answer-to-your-line';
+  | 'answer-to-your-line'
+  | 'own-speech'
+  | 'speech-to-you'
+  | 'heard-sound';
 
 export interface ToastRule {
   /** The named, vetoable case this toast fired under. */
@@ -197,6 +202,12 @@ function toastCase(
   switch (act.family) {
     case Family.ACT:
     case Family.REACTION:
+      if (act.body.case === 'speak') {
+        if (actorOf(act)?.id === member && carriesOutcome(act))
+          return 'own-outcome';
+        if (actorOf(act)?.id === member) return 'own-speech';
+        if (act.body.value.to?.id === member) return 'speech-to-you';
+      }
       if (actorOf(act)?.id === member && carriesOutcome(act))
         return 'own-outcome';
       if (doneTo(act, member)) return 'done-to-you';
@@ -215,6 +226,12 @@ function toastCase(
         return fightIncludes(act, member) ? 'fight-ended' : null;
       return windowFor(act, member) ? 'your-window' : null;
     }
+    case Family.PERCEPTION:
+      return act.body.case === 'perception' &&
+        act.body.value.sense === Sense.HEARING &&
+        act.body.value.observer?.id === member
+        ? 'heard-sound'
+        : null;
     case Family.TABLE_ANSWER:
       // A table pick never toasts; only a creature's answer to the viewer's
       // own line does (the operator's change to "a line spoken to you").

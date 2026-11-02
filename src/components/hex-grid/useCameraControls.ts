@@ -82,7 +82,14 @@ export interface RevealedBounds {
   readonly height: number;
 }
 
+export interface CameraPresentationFocus {
+  readonly key: string;
+  readonly position: THREE.Vector3;
+}
+
 interface CameraControlsOptions {
+  /** One-shot presentation pan; separate from viewer focus and orbit identity. */
+  presentationFocus?: CameraPresentationFocus | null;
   /** Target point to orbit around */
   target: THREE.Vector3;
   /** Fixed polar angle (tilt from vertical) in radians */
@@ -208,6 +215,7 @@ export function useCameraControls({
   touchPinchEnabled = false,
   touchRotateEnabled = false,
   focusRequest = 0,
+  presentationFocus,
   fitRequest,
   initialAzimuth,
 }: CameraControlsOptions) {
@@ -305,6 +313,25 @@ export function useCameraControls({
 
   // Track lerp target for auto-center
   const lerpTarget = useRef<THREE.Vector3 | null>(null);
+  const lastPresentationKey = useRef<string | null>(null);
+  const presentationPan = useRef<THREE.Vector3 | null>(null);
+  useEffect(() => {
+    if (!presentationFocus) {
+      if (
+        presentationPan.current &&
+        lerpTarget.current === presentationPan.current
+      ) {
+        lerpTarget.current = null;
+      }
+      presentationPan.current = null;
+      return;
+    }
+    if (lastPresentationKey.current === presentationFocus.key) return;
+    lastPresentationKey.current = presentationFocus.key;
+    presentationPan.current = presentationFocus.position.clone();
+    lerpTarget.current = presentationPan.current;
+    invalidate();
+  }, [presentationFocus, invalidate]);
 
   // The last focus position actually acted on. Compared BY VALUE, so the
   // auto-centre decision is made once per real move — not again whenever this

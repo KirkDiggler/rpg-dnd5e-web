@@ -403,6 +403,19 @@ describe('CombatExperience shared production shell', () => {
       `${fresh.characterData.baseSpeedFeet} ft`
     );
   });
+  it('uses shared notices and Just happened for the compact live path without desktop hotbar', () => {
+    const view = render(
+      <CombatExperience
+        {...propsFor()}
+        storyFeedback={{ scopeKey: 'compact-live' }}
+      />
+    );
+    expect(screen.getByTestId('story-notices')).toBeTruthy();
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Just happened' })).toBeTruthy();
+    view.unmount();
+  });
+
   it('holds new notices behind the same roll-window release gate as story history', () => {
     const base = rollWindowExperienceProps({
       actionPresentation: { mode: 'organized-hud', desktopIcons: {} },

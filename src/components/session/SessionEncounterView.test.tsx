@@ -1,4 +1,5 @@
 import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
+import { resetDial, setDial } from '@/feel/dialStore';
 import type { PortraitProviderProps } from '@/portraits';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
@@ -3427,11 +3428,13 @@ describe('SessionEncounterView production combat integration', () => {
 
     await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
+    // Compact live Story opens its Just happened reader before the Debug tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
     // The Debug panel reads the record stream now (rpg-project#628), so it
     // is no probe of the v1 ingest; Story staying concealed is the claim.
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Debug' }));
     await waitFor(() => screen.getByText('The record'));
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
   });
 
@@ -3456,8 +3459,9 @@ describe('SessionEncounterView production combat integration', () => {
       }
     );
     renderView();
-
-    const debugButton = await screen.findByRole('button', { name: 'Debug' });
+    await screen.findByTestId('session-canvas');
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
+    const debugButton = await screen.findByRole('tab', { name: 'Debug' });
     expect(hoisted.streamRecordFn).not.toHaveBeenCalled();
     fireEvent.click(debugButton);
     // The panel lists acts (rpg-dnd5e-web#1345): the walk's row, opened,
@@ -3470,7 +3474,7 @@ describe('SessionEncounterView production combat integration', () => {
     fireEvent.click(screen.getByRole('button', { name: `Act ${walk}` }));
     screen.getByText('moved');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await waitFor(() => expect(signal?.aborted).toBe(true));
   });
 
@@ -4217,7 +4221,11 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
-    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+    await waitFor(() =>
+      within(screen.getByTestId('session-combat-log')).getByText(
+        'Aldric uses Second Wind'
+      )
+    );
   });
 
   it.each([false, true])(
@@ -4282,7 +4290,9 @@ describe('SessionEncounterView production combat integration', () => {
           },
         } as Act['body'])
       );
-      await screen.findByText('cleric uses Spare the Dying');
+      await within(screen.getByTestId('session-combat-log')).findByText(
+        'cleric uses Spare the Dying'
+      );
       await waitFor(() =>
         expect(
           screen.queryByRole('button', { name: /^death save/i })
@@ -4328,14 +4338,17 @@ describe('SessionEncounterView production combat integration', () => {
             },
           } as Act['body'])
         );
-        await screen.findByText('cleric uses Healing Word');
+        await within(screen.getByTestId('session-combat-log')).findByText(
+          'cleric uses Healing Word'
+        );
         await waitFor(() => expect(screen.queryByText('Stable')).toBeNull());
         expect(screen.getByText('10/10')).toBeTruthy();
         expect(
           screen.queryByText('You are stable. Waiting for recovery.')
         ).toBeNull();
         expect(screen.queryByTestId('death-save-progress')).toBeNull();
-        const headlines = screen.getByRole('log').textContent ?? '';
+        const headlines =
+          screen.getByTestId('session-combat-log').textContent ?? '';
         expect(headlines.indexOf('cleric uses Spare the Dying')).toBeLessThan(
           headlines.indexOf('cleric uses Healing Word')
         );
@@ -4389,13 +4402,32 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
     );
-    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+    await waitFor(() =>
+      within(screen.getByTestId('session-combat-log')).getByText(
+        'Aldric uses Second Wind'
+      )
+    );
     // The amount healed is the act's own, shown on the row.
-    expect(screen.getByText('healed on Aldric (2)')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('session-combat-log')).getAllByText(
+        'healed on Aldric (2)'
+      ).length
+    ).toBeGreaterThan(0);
   });
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
     readyTurn();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'skeleton-1',
+          name: 'Skeleton',
+          kind: MemberKind.MONSTER,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
       active: 'skeleton-1',
@@ -4432,6 +4464,12 @@ describe('SessionEncounterView production combat integration', () => {
       });
 
       screen.getByText("Skeleton's turn.");
+      expect(
+        hoisted.lastCanvasProps.current?.monsterTurnFocus?.position
+      ).toEqual({ x: 1, y: -1, z: 0 });
+      act(() => setDial('followMonsterTurns', 'off'));
+      expect(hoisted.lastCanvasProps.current?.monsterTurnFocus).toBeNull();
+      act(() => resetDial('followMonsterTurns'));
       // Authority reconciliation is immediate, before the 300ms Story cursor.
       expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
 
@@ -4440,7 +4478,9 @@ describe('SessionEncounterView production combat integration', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
-      screen.getByText(/Skeleton strikes Aldric/i);
+      within(screen.getByTestId('story-notices')).getByText(
+        /Skeleton strikes Aldric/i
+      );
     } finally {
       unmount();
       vi.clearAllTimers();
