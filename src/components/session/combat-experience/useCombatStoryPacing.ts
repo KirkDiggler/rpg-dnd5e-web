@@ -340,7 +340,12 @@ export function useCombatStoryPacing({
         return;
       }
       publishHeldMembers();
-      if (beat.act.body.case === 'attack') {
+      if (
+        beat.act.body.case === 'attack' ||
+        beat.act.body.case === 'cast' ||
+        beat.act.body.case === 'activate' ||
+        beat.act.body.case === 'speak'
+      ) {
         sawBeatRef.current = true;
         setNoticeForScope(null);
       } else if (isTurnEnd(beat.act)) {

@@ -12,19 +12,17 @@
  * narrates it as a burst: `moved` (one per cell), then `struck`/`missed`,
  * then `turn_ended` — all of which can land within milliseconds of each
  * other. Shown as fast as they arrive, a four-cell approach and a swing
- * would flash by unreadably. `useCombatStoryPacing` queues these four event
- * kinds (walks, swings and turn ends) and replays them at a
- * fixed human-followable pace; every OTHER kind (`downed`, `fightStarted`,
- * `fightEnded`, and anything the local player caused themselves) bypasses
- * the queue entirely and is handled immediately, exactly as before this
- * slice.
+ * would flash by unreadably. `useCombatStoryPacing` sequences walks, swings,
+ * casts, ability uses, speech and turn ends at a human-followable pace.
+ * State/perception/fight-boundary events and the local player's own actions
+ * bypass this cursor; authority processing is never held by presentation.
  *
  * # "Other member," not "monster" specifically
  *
  * Despite the module's name (kept for continuity with the design's own
  * vocabulary — today the only member whose turn the server ever drives is
  * a monster), the actual test here is simply "not the local player": any
- * walks, swings and turn ends whose actor isn't `member` gets
+ * recognized actions and turn ends whose actor isn't `member` get
  * queued. A real second human player's own actions would also flow
  * through this same floor — harmless, since a human's own pace is already
  * far slower than the queue's minimum gap, and this avoids a second,
@@ -58,7 +56,7 @@ import {
 /**
  * One paced story row: an act and its place in its same-id run
  * (rpg-project#630). On the act stream a walk is one act carrying its path,
- * so the paced beats are a walk, a swing, and the turn's end.
+ * so each paced beat retains its full action body and the turn's end.
  */
 export interface QueuedBeat {
   readonly act: Act;
@@ -75,6 +73,9 @@ export function beatActor(act: Act): string | undefined {
     case 'walk':
       return body.value.mover?.id;
     case 'attack':
+    case 'cast':
+    case 'activate':
+    case 'speak':
       return body.value.by?.id;
     case 'clock':
       return body.value.mark === ClockMark.TURN_ENDED
@@ -86,9 +87,9 @@ export function beatActor(act: Act): string | undefined {
 }
 
 /**
- * True for a turn's end by somebody other than `member`, and for a walk or a
- * swing by another member of the viewer's fight (`fight`). A walk or swing by
- * somebody outside it is world pace, not a turn (rpg-project#685). World walks
+ * True for a turn's end by somebody other than `member`, and for movement,
+ * attacks, casts, ability uses or speech by another member of the viewer's
+ * fight (`fight`). Actions outside it do not announce a combat turn. World walks
  * can wait for visible completion without a turn announcement. A turn's end is
  * the fight's own clock, so it is always a turn.
  */
