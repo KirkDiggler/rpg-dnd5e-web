@@ -1,9 +1,13 @@
 import { MONSTER_COLOR, paletteNameForRef } from '@/author/paletteData';
-import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
 import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { resolveNpcMainHandPresentation } from '@/components/hex-grid/npcMainHandPresentation';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import { ActivityCharacterModel } from '@/npc-activities/ActivityCharacterModel';
+import {
+  npcActivityProfile,
+  unsupportedNpcDefault,
+} from '@/npc-activities/activityProfile';
 import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Html } from '@react-three/drei';
@@ -142,6 +146,13 @@ function MonsterMarker({
   const appearance = resolveNpcAppearanceModel({
     appearanceRef: placement.appearanceRef,
   });
+  const activityProfile = npcActivityProfile({
+    appearanceRef: placement.appearanceRef,
+  });
+  const unsupportedActivity = unsupportedNpcDefault({
+    profile: activityProfile,
+    defaultActivityRef: placement.defaultActivityRef,
+  });
   const modelUrl =
     appearance.kind === 'legacy'
       ? resolveMonsterModelUrl(refId, undefined, false, placement.id)
@@ -167,7 +178,12 @@ function MonsterMarker({
         highlighted={highlighted}
         onSelectActor={onSelectActor}
       />
-      {modelUrl ? (
+      {unsupportedActivity ? (
+        <ActorChip
+          tone="unavailable"
+          text={`Activity unavailable: ${placement.defaultActivityRef}`}
+        />
+      ) : modelUrl ? (
         <Suspense fallback={<ActorChip tone="loading" text={`${label}…`} />}>
           <ErrorBoundary
             key={modelUrl}
@@ -175,17 +191,21 @@ function MonsterMarker({
               <ActorChip
                 tone="error"
                 text={
-                  placement.appearanceRef
-                    ? `Appearance unavailable: ${placement.appearanceRef}`
-                    : `${label} — model failed`
+                  activityProfile
+                    ? `Activity unavailable: ${placement.defaultActivityRef || activityProfile.defaultActivityRef}`
+                    : placement.appearanceRef
+                      ? `Appearance unavailable: ${placement.appearanceRef}`
+                      : `${label} — model failed`
                 }
               />
             }
           >
             {/* Reuse the game's skeleton-safe cloning, scale and idle pose.
                 A plain scene.clone leaves skinned bodies at the source origin. */}
-            <ClassCharacterModel
+            <ActivityCharacterModel
               url={modelUrl}
+              profile={activityProfile}
+              defaultActivityRef={placement.defaultActivityRef}
               facingRotation={roomMonsterMarkerYaw(
                 placement.startingCell,
                 appearance.kind === 'resolved'

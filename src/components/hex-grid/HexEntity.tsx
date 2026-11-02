@@ -18,6 +18,14 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import { ActivityCharacterModel } from '@/npc-activities/ActivityCharacterModel';
+import type { WalkingReadiness } from '@/npc-activities/activityPlayback';
+import {
+  npcActivityProfile,
+  unsupportedNpcDefault,
+} from '@/npc-activities/activityProfile';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import { NpcActivityUnavailable } from '@/npc-activities/NpcActivityUnavailable';
 import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
 import { NpcAppearanceUnavailable } from '@/npc-appearances/NpcAppearanceUnavailable';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -31,7 +39,6 @@ import { useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
-import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolvePlayerCharacterModel } from './classCharacterModels';
 import { resolveDemoNpcModelUrl } from './demoNpcModels';
 import { movePathHeadingSink, seedHeading, seenHeading } from './entityHeading';
@@ -106,6 +113,11 @@ export interface HexEntityProps {
   monsterRefId?: string;
   /** Observer-captured visual override, independent of the monster rules ref. */
   appearanceRef?: string;
+  defaultActivityRef?: string;
+  activityCue?: ActivityCueRequest;
+  onActivityCueConsumed?: (member: string, id: string) => void;
+  presentationSpeed?: number;
+  transitionSpeed?: number;
   /** Override hair style (proto doesn't have this field yet) */
   hairStyle?: HairStyle;
   /** Override hair color as hex string (proto doesn't have this field yet) */
@@ -382,6 +394,11 @@ export function HexEntity({
   monster,
   monsterRefId,
   appearanceRef,
+  defaultActivityRef,
+  activityCue,
+  onActivityCueConsumed,
+  presentationSpeed = 1,
+  transitionSpeed = 1.5,
   hairStyle,
   hairColor,
   facialHairStyle,
@@ -441,6 +458,49 @@ export function HexEntity({
   // materials, so its crypt treatment is those colours sourced from the one
   // shared constant — not a second palette.
   const cryptHex = CRYPT_HEX;
+  const activityProfile =
+    type === 'monster' && !isDead
+      ? npcActivityProfile({ appearanceRef })
+      : undefined;
+  const unsupportedActivity =
+    type === 'monster' &&
+    !isDead &&
+    (unsupportedNpcDefault({ profile: activityProfile, defaultActivityRef }) ||
+      Boolean(
+        activityCue &&
+        unsupportedNpcDefault({
+          profile: activityProfile,
+          defaultActivityRef: activityCue.activityRef,
+        })
+      ));
+  const activityScope = `${entityId}|${appearanceRef ?? ''}|${activityProfile?.id ?? ''}`;
+  const currentActivityScope = useRef(activityScope);
+  currentActivityScope.current = activityScope;
+  const walkingReadiness = useRef<WalkingReadiness & { scope: string }>({
+    scope: '',
+    moveSeq: undefined,
+    ready: false,
+  });
+  const [failedActivityScope, setFailedActivityScope] = useState<string>();
+  const bodyLoadFailed = failedActivityScope === activityScope;
+  const activityUnavailable = unsupportedActivity || bodyLoadFailed;
+  useEffect(() => {
+    // Failure is terminal for pending delivery, including a later request to
+    // an already-failed body. Keep the scope's named diagnostic after retiring it.
+    if (
+      activityCue &&
+      (remembered || isDead || type !== 'monster' || bodyLoadFailed)
+    )
+      onActivityCueConsumed?.(entityId, activityCue.id);
+  }, [
+    activityCue,
+    remembered,
+    isDead,
+    type,
+    bodyLoadFailed,
+    onActivityCueConsumed,
+    entityId,
+  ]);
   const { isMoving } = useHexMovePath(
     position,
     remembered ? undefined : movePath,
@@ -451,7 +511,18 @@ export function HexEntity({
     movePathHeadingSink(seenFacingDegrees, requestHeading),
     (completedMoveSeq) =>
       onMovementPresentationComplete?.(entityId, completedMoveSeq),
-    !remembered && deferPositionReconciliation
+    !remembered && deferPositionReconciliation,
+    {
+      speed: presentationSpeed,
+      canAdvance: (seq) =>
+        !activityProfile ||
+        activityUnavailable ||
+        remembered ||
+        isGhost ||
+        (walkingReadiness.current.scope === activityScope &&
+          walkingReadiness.current.moveSeq === seq &&
+          walkingReadiness.current.ready),
+    }
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
@@ -703,11 +774,26 @@ export function HexEntity({
       />
     );
 
-    const modelFallback = hasExplicitAppearance ? (
-      <NpcAppearanceUnavailable appearanceRef={appearanceRef!} />
-    ) : (
-      mediumHumanoidElement
-    );
+    const modelFallback =
+      activityUnavailable || activityProfile ? (
+        <NpcActivityUnavailable
+          activityRef={
+            (unsupportedNpcDefault({
+              profile: activityProfile,
+              defaultActivityRef,
+            })
+              ? defaultActivityRef
+              : activityCue?.activityRef) ||
+            defaultActivityRef ||
+            activityProfile?.defaultActivityRef ||
+            'unspecified'
+          }
+        />
+      ) : hasExplicitAppearance ? (
+        <NpcAppearanceUnavailable appearanceRef={appearanceRef!} />
+      ) : (
+        mediumHumanoidElement
+      );
 
     // rpg-dnd5e-web#542: this group's position is owned entirely by
     // useHexMovePath (via movingGroupRef) — no declarative `position` prop
@@ -778,20 +864,42 @@ export function HexEntity({
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            {hidesBodyWhenDowned ? null : effectiveModelUrl ? (
+            {hidesBodyWhenDowned ? null : activityUnavailable ? (
+              modelFallback
+            ) : effectiveModelUrl ? (
               <ErrorBoundary
-                key={effectiveModelUrl}
+                key={`${effectiveModelUrl}|${activityProfile?.id ?? ''}`}
                 fallback={modelFallback}
-                onError={() =>
+                onError={() => {
+                  if (activityProfile) {
+                    setFailedActivityScope(activityScope);
+                    return;
+                  }
                   setFailedEntityModelUrls((failed) => {
                     const next = new Set(failed);
                     next.add(effectiveModelUrl);
                     return next;
-                  })
-                }
+                  });
+                }}
               >
-                <ClassCharacterModel
+                <ActivityCharacterModel
                   url={effectiveModelUrl}
+                  profile={activityProfile}
+                  defaultActivityRef={defaultActivityRef}
+                  activityCue={remembered || isDead ? undefined : activityCue}
+                  onActivityCueConsumed={(id) =>
+                    onActivityCueConsumed?.(entityId, id)
+                  }
+                  moveSeq={moveSeq}
+                  presentationSpeed={presentationSpeed}
+                  transitionSpeed={transitionSpeed}
+                  onWalkingReadiness={(value) => {
+                    if (currentActivityScope.current === activityScope)
+                      walkingReadiness.current = {
+                        ...value,
+                        scope: activityScope,
+                      };
+                  }}
                   isSelected={!isDead && selected}
                   isGhost={isGhost}
                   remembered={remembered}

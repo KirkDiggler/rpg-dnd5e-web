@@ -52,6 +52,7 @@ import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
+import { floorPickingBounds } from './floorPickingBounds';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
 import {
@@ -330,9 +331,6 @@ export interface HexGridProps {
   children?: React.ReactNode;
 }
 
-// Ground plane size - large enough to cover the entire grid with plenty of margin
-const GROUND_PLANE_SIZE = 200;
-
 /** Prop reference keys that get a computed wall-facing rotationY
  * (rpg-game-assets#36 wave-1, issue #623 increment 5) instead of the
  * default 0 — today just wall-banner. A `Set`, not a single hardcoded
@@ -499,6 +497,10 @@ function Scene({
         [...floorTiles].filter(([key]) => !rememberedFloorHexKeys?.has(key))
       ),
     [floorTiles, rememberedFloorHexKeys]
+  );
+  const pickingBounds = useMemo(
+    () => floorPickingBounds(visibleFloorTiles.values(), HEX_SIZE),
+    [visibleFloorTiles]
   );
   const visibleWalls = useMemo(
     () =>
@@ -987,11 +989,11 @@ function Scene({
 
       {/* Invisible ground plane for hit detection */}
       <mesh
-        position={[0, 0, 0]}
+        position={pickingBounds.position}
         rotation={[-Math.PI / 2, 0, 0]} // Lay flat on XZ plane
         {...groundPlaneProps}
       >
-        <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
+        <planeGeometry args={pickingBounds.size} />
         <meshBasicMaterial visible={false} />
       </mesh>
 

@@ -18,6 +18,7 @@ import {
   LIBRARY_STORAGE_KEY,
   loadLibrary,
   loadScene,
+  MAX_ITEMS,
   MAX_JSON_LENGTH,
   parseLibraryJson,
   parseSceneJson,
@@ -183,8 +184,27 @@ describe('world-building serialization validation', () => {
     expect(() => parseSceneJson(JSON.stringify(value))).toThrow();
   });
 
+  // THE SUPPORTED ENVELOPE (rpg-project ideas/benchmark-keep/design.md, R4):
+  // the bound admits the ceiling fixture and refuses one item past itself.
+  it('refuses a scene one item over MAX_ITEMS, naming the bound', () => {
+    const scene = validScene();
+    const at = (count: number) => ({
+      ...scene,
+      items: Array.from({ length: count }, (_, index) => ({
+        ...scene.items[0]!,
+        id: `prop-${index}`,
+      })),
+    });
+    expect(() => validateScene(at(MAX_ITEMS))).not.toThrow();
+    expect(() => validateScene(at(MAX_ITEMS + 1))).toThrow(
+      `scene.items must contain at most ${MAX_ITEMS} props.`
+    );
+  });
+
   it('rejects oversized JSON before parsing it', () => {
-    expect(() => parseSceneJson(' '.repeat(500_001))).toThrow(/too large/i);
+    expect(() => parseSceneJson(' '.repeat(MAX_JSON_LENGTH + 1))).toThrow(
+      /too large/i
+    );
   });
 
   it('validates, reopens, and stamps grouped and decoration-only arrangements without changing floor-relative heights', () => {
@@ -461,7 +481,7 @@ it('a region wall finish needs scene 6, and its shape is judged without strippin
   ).toThrow();
 });
 
-// rpg-dnd5e-web#1284: the 500,000-character cap refused a full 6,208-hex
+// rpg-dnd5e-web#1284: the then 500,000-character cap refused a full 6,208-hex
 // floor while the floor was one JSON object per hex. As row runs the floor
 // is a few lines per row, and the same floor fits with room to spare.
 it('a 6,208-hex floor envelope fits under MAX_JSON_LENGTH (rpg-dnd5e-web#1284)', () => {

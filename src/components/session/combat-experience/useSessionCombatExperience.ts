@@ -11,6 +11,8 @@ import type {
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
 import { useDialValues } from '@/feel/dialStore';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import type { ActivityCueSettlement } from '@/npc-activities/sayActivityPresentation';
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
@@ -37,6 +39,7 @@ import {
   type SetStateAction,
 } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
+import type { MoveOutcome } from '../useSessionWalk';
 import type { TurnBeat } from '../useTurnOrderFollow';
 import type { PresentWalk } from '../walkPresentation';
 import { wardedCastNotice } from '../wardBeat';
@@ -68,7 +71,28 @@ import {
   useCombatPresentation,
 } from './useCombatPresentation';
 import { useCombatStoryPacing } from './useCombatStoryPacing';
-import { isFreeOnWorldClock, promptsForMember } from './verbRegistry';
+import { promptsForMember } from './verbRegistry';
+
+/**
+ * Whether this member may act on the clock as it stands.
+ *
+ * THE RULE IS THE CLOCK'S, NOT THE VERB'S (rpg-project#785). The turn clock
+ * hands the floor to one member at a time, so only the active member acts.
+ * The world clock has no active member: every row Afford returned on it is
+ * this member's to take, priced in rounds of the world rather than slots of a
+ * turn (R1). Which verbs those are is Afford's answer and never this
+ * client's; a per-verb list here once let Speak through and refused the
+ * Attack, Cast and Activate rows the server had sent.
+ */
+function actsOnThisClock(
+  clock: ClockKind,
+  active: string | null | undefined,
+  member: string
+): boolean {
+  return (
+    clock === ClockKind.WORLD || (clock === ClockKind.TURN && active === member)
+  );
+}
 
 const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   armedDeclarationId: null,
@@ -125,6 +149,15 @@ export interface UseSessionCombatExperienceArgs {
   onTurnBeat?: (beat: TurnBeat) => void;
   onPresentWalk?: PresentWalk;
   presentableMembers?: ReadonlySet<string>;
+  presentableActivityMembers?: ReadonlySet<string>;
+  /**
+   * Walk toward a Speak target that is beyond interaction reach
+   * (rpg-project#753 R4): the caller composes the Move path from the map it
+   * holds and sends it. Returns true when a Move was dispatched, and then
+   * calls exactly one of `outcome`'s two for THAT Move. Absent, a far
+   * target's click means nothing, as before.
+   */
+  approach?: (target: SpeakTarget, outcome: MoveOutcome) => boolean;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -153,6 +186,8 @@ export interface UseSessionCombatExperienceResult {
   monsterTurnIds: ReadonlySet<string>;
   onNotificationInteractionChange: (interacting: boolean) => void;
   heldMovementMembers: ReadonlySet<string>;
+  activityCues: ReadonlyMap<string, ActivityCueRequest>;
+  settleActivityCue: (input: ActivityCueSettlement) => void;
   endTurnBlocked: boolean;
   /** `choice` is supplied only for a VERB_REACT declaration: the answer to
    * an open reaction window. */
@@ -169,6 +204,14 @@ export interface UseSessionCombatExperienceResult {
   onChooseSpeakTarget: (target: SpeakTarget | null) => void;
   /** Speak's second step: say the chosen target's line with this option id. */
   onSpeakOption: (optionId: string) => void;
+  /**
+   * A click on a creature or prop while Speak is armed, from the map. One the
+   * offer already lists is chosen exactly as `onChooseSpeakTarget` would;
+   * one it does not (beyond reach) is walked toward, and Speak re-arms on the
+   * first fresh offer after the walk — with that target's lines open when the
+   * offer now has them (rpg-project#753 R4).
+   */
+  onApproachTarget: (target: SpeakTarget) => void;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -298,6 +341,8 @@ export function useSessionCombatExperience({
   onTurnBeat,
   onPresentWalk,
   presentableMembers,
+  presentableActivityMembers,
+  approach,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const [notificationInteraction, setNotificationInteraction] = useState(false);
   const pauseWhileReading = useDialValues().notificationPausePlayback === 'on';
@@ -369,6 +414,20 @@ export function useSessionCombatExperience({
   const activateInFlightRef = useRef(false);
   const castInFlightRef = useRef(false);
   const speakInFlightRef = useRef(false);
+  /**
+   * THE APPROACH INTENT (rpg-project#753 R4). A far Speak target's click
+   * becomes a Move; the accepted Move revokes every armed offer, Speak
+   * included, so the intent is what carries the click across the walk.
+   * `walked` turns true only when THIS approach's Move is accepted — never
+   * on another verb's revocation — and a refusal drops the intent; the next
+   * fresh offer after acceptance is the one read at the new cell, and it
+   * settles the intent.
+   */
+  const approachRef = useRef<{ target: SpeakTarget; walked: boolean } | null>(
+    null
+  );
+  const approachArgRef = useRef(approach);
+  approachArgRef.current = approach;
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -395,6 +454,7 @@ export function useSessionCombatExperience({
     // A deliberate cancellation also consumes any not-yet-materialized WORLD
     // carry. A later routine TURN refresh must not silently bring Move back.
     carryWorldMovementRef.current = false;
+    approachRef.current = null;
     setInteraction(EMPTY_INTERACTION);
     setTargeting(false);
   }, [setInteraction]);
@@ -475,6 +535,7 @@ export function useSessionCombatExperience({
     onTurnBeat,
     onPresentWalk,
     presentableMembers,
+    presentableActivityMembers,
   });
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
@@ -659,19 +720,14 @@ export function useSessionCombatExperience({
     // comment above records for Bardic Inspiration.
     const promptsForCell =
       armedVerb === Verb.CAST && armedKind === TargetKind.CELL;
-    // THE CLOCK AND THE TURN ARE PER-VERB (R3, rpg-project#457). An armed
-    // social verb on the world clock is COHERENT: there is no turn to be out
-    // of and no economy to have spent, and the server sent the row. Judged by
-    // the old blanket rule, it armed and was torn down one render later as
-    // "that option changed" — the exact symptom rpg-dnd5e-web#1104 catalogues,
-    // arriving this time from the clock rather than from a missing verb.
-    const armedIsFreeHere =
-      clock === ClockKind.WORLD &&
-      armedVerb !== undefined &&
-      isFreeOnWorldClock(armedVerb);
+    // AN ARMED OFFER ON THE WORLD CLOCK IS COHERENT (rpg-project#785): there
+    // is no turn to be out of, and the server sent the row. Judged by the
+    // turn rule, it armed and was torn down one render later as "that option
+    // changed", the exact symptom rpg-dnd5e-web#1104 catalogues, arriving
+    // from the clock rather than from a missing verb.
     const current =
       authorityFresh &&
-      (armedIsFreeHere || (clock === ClockKind.TURN && active === member)) &&
+      actsOnThisClock(clock, active, member) &&
       armedMatches.length === 1 &&
       (promptsForMemberNow || promptsForCell) &&
       armedMatches[0]?.available &&
@@ -751,8 +807,11 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         activeInteractionScope.current !== interactionScope ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member ||
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        ) ||
         castInFlightRef.current
       )
         return;
@@ -854,26 +913,19 @@ export function useSessionCombatExperience({
       // a stale selector, and the server refuses it — and so does the TURN
       // clock, because no window is posed on the world clock.
       const answeringWindow = candidate.verb === Verb.REACT;
-      // A SOCIAL VERB IS OFFERED ON THE WORLD CLOCK TOO (rpg-project#457 R3),
-      // which is the first time any verb has been. The front room has no
-      // fight, so it has no turn to be out of and no economy to spend: the
-      // server prices these at nothing there and refuses nobody for whose
-      // turn it is. Gated on the turn clock here, the row Afford sent would
-      // arm and be refused by this client before the request was ever made —
-      // the panel would offer the goblin and the dock would do nothing.
-      //
-      // WHETHER A VERB IS ONE IS THE REGISTRY'S ANSWER, not a list here
-      // (rpg-dnd5e-web#1104), so a third social verb needs no edit.
-      const freeOnThisClock =
-        authorityRef.current.clock === ClockKind.WORLD &&
-        isFreeOnWorldClock(candidate.verb);
+      // EVERY ROW AFFORD SENDS ON THE WORLD CLOCK IS OFFERED TO THIS MEMBER
+      // (rpg-project#785). The world clock has no turn to be out of; the
+      // server prices each action as a round of the world. Gated on the turn
+      // here, the row Afford sent would arm and be refused by this client
+      // before the request was ever made: the longsword was drawn and the
+      // click did nothing.
+      const clockNow = authorityRef.current.clock;
       if (
         !mountedRef.current ||
         !authorityRef.current.fresh ||
-        (!freeOnThisClock && authorityRef.current.clock !== ClockKind.TURN) ||
-        (!answeringWindow &&
-          !freeOnThisClock &&
-          authorityRef.current.active !== member)
+        (answeringWindow
+          ? clockNow !== ClockKind.TURN
+          : !actsOnThisClock(clockNow, authorityRef.current.active, member))
       ) {
         return;
       }
@@ -1252,15 +1304,14 @@ export function useSessionCombatExperience({
     if (declaration?.verb !== Verb.SPEAK || !declaration.available) {
       return undefined;
     }
-    // Free on the world clock; on the turn clock, only on the actor's turn —
-    // the same per-verb gate the target click applies.
-    const freeOnThisClock =
-      authorityRef.current.clock === ClockKind.WORLD &&
-      isFreeOnWorldClock(Verb.SPEAK);
+    // Any time on the world clock; on the turn clock, only on the actor's
+    // turn: the same clock rule the target click applies.
     if (
-      !freeOnThisClock &&
-      (authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member)
+      !actsOnThisClock(
+        authorityRef.current.clock,
+        authorityRef.current.active,
+        member
+      )
     ) {
       return undefined;
     }
@@ -1290,6 +1341,64 @@ export function useSessionCombatExperience({
     },
     [armedSpeak, setInteraction]
   );
+
+  const onApproachTarget = useCallback(
+    (target: SpeakTarget): void => {
+      const declaration = armedSpeak();
+      if (!declaration) return;
+      if (speakLinesFor(declaration, target).length > 0) {
+        approachRef.current = null;
+        chooseSpeakTarget(target);
+        return;
+      }
+      // THE WEB DOES NOT COMPUTE REACH. Not offered is the server's answer;
+      // the walk toward it is the only thing a far click can mean.
+      const intent = { target, walked: false };
+      approachRef.current = intent;
+      const dispatched = approachArgRef.current?.(target, {
+        accepted: () => {
+          if (approachRef.current === intent) intent.walked = true;
+        },
+        refused: () => {
+          if (approachRef.current === intent) approachRef.current = null;
+        },
+      });
+      if (!dispatched && approachRef.current === intent) {
+        approachRef.current = null;
+      }
+    },
+    [armedSpeak, chooseSpeakTarget]
+  );
+
+  // Settle the approach on the first fresh offer after the walk: re-arm the
+  // one Speak offer, opening the target's lines when it now has some, or the
+  // target list when it does not (the walk fell short; the next click goes
+  // on). Nothing is decided here that the offer did not already say.
+  useEffect(() => {
+    const intent = approachRef.current;
+    if (!intent?.walked || !authorityFresh) return;
+    approachRef.current = null;
+    if (interactionRef.current.armedDeclarationId !== null) return;
+    const speaks = declarations.filter(
+      (declaration) =>
+        declaration.verb === Verb.SPEAK &&
+        declaration.targetKind === TargetKind.MEMBER &&
+        declaration.available &&
+        declaration.id.length > 0
+    );
+    const declaration = speaks.length === 1 ? speaks[0]! : undefined;
+    if (!declaration) return;
+    if (!actsOnThisClock(clock, active, member)) return;
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      armedDeclarationId: declaration.id,
+      speakTarget:
+        speakLinesFor(declaration, intent.target).length > 0
+          ? intent.target
+          : null,
+    });
+    setTargeting(true);
+  }, [active, authorityFresh, clock, declarations, member, setInteraction]);
 
   /**
    * Speak's second step: say one line. Sends the target and the option id
@@ -1360,23 +1469,16 @@ export function useSessionCombatExperience({
       // also handles multiple target clicks batched before the next render.
       const presentationState = interactionRef.current;
       if (!presentationState.armedDeclarationId) return;
-      // THE CLOCK GATE IS PER-VERB NOW (R3). Everything that spends a turn's
-      // economy still needs the turn clock and the actor's own turn; the two
-      // social verbs need neither, because the world clock has no turns and
-      // no economy. Read off the ARMED declaration rather than off the clock
-      // alone, so a turn-economy verb is never let through by standing in a
-      // room with no fight in it.
-      const armedVerb = declarationsRef.current.find(
-        (declaration) => declaration.id === presentationState.armedDeclarationId
-      )?.verb;
-      const freeOnThisClock =
-        authorityRef.current.clock === ClockKind.WORLD &&
-        armedVerb !== undefined &&
-        isFreeOnWorldClock(armedVerb);
+      // THE CLOCK RULE, NOT A VERB LIST (rpg-project#785). On the turn clock
+      // only the actor's own turn; on the world clock any row Afford sent,
+      // because the world clock has no turns and the server prices the deed
+      // as a round of the world.
       if (
-        !freeOnThisClock &&
-        (authorityRef.current.clock !== ClockKind.TURN ||
-          authorityRef.current.active !== member)
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        )
       ) {
         return;
       }
@@ -1642,8 +1744,11 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         activateInFlightRef.current ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        )
       ) {
         return;
       }
@@ -1727,8 +1832,11 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         castInFlightRef.current ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        )
       ) {
         return;
       }
@@ -1849,8 +1957,11 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         castInFlightRef.current ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        )
       ) {
         return;
       }
@@ -2005,8 +2116,11 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         castInFlightRef.current ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        !actsOnThisClock(
+          authorityRef.current.clock,
+          authorityRef.current.active,
+          member
+        )
       ) {
         return;
       }
@@ -2281,6 +2395,8 @@ export function useSessionCombatExperience({
       monsterTurnIds: pacing.monsterTurnIds,
       onNotificationInteractionChange: setNotificationInteraction,
       heldMovementMembers: pacing.heldMovementMembers,
+      activityCues: pacing.activityCues,
+      settleActivityCue: pacing.settleActivityCue,
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onSelectCastOption,
@@ -2289,6 +2405,7 @@ export function useSessionCombatExperience({
       onTargetClick,
       onChooseSpeakTarget: chooseSpeakTarget,
       onSpeakOption,
+      onApproachTarget,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2323,10 +2440,13 @@ export function useSessionCombatExperience({
       onTargetClick,
       chooseSpeakTarget,
       onSpeakOption,
+      onApproachTarget,
       onConfirmTargets,
       pacing.notice,
       pacing.monsterTurnIds,
       pacing.heldMovementMembers,
+      pacing.activityCues,
+      pacing.settleActivityCue,
       pacing.result,
       pacing.story,
       pendingDeathSaveResponse,

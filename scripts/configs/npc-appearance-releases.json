@@ -2286,6 +2286,12 @@
     }
   ],
   "schemaVersion": 1,
+  "activityProfiles": [
+    {
+      "file": "npcs/activities/warcamp-human-social-v1/profile.json",
+      "sha256": "d677206b3447898948afd2d25e3e7c180365f6bcdeed3b06c25dfd114cea2ca2"
+    }
+  ],
   "weaponSets": [
     {
       "assetRef": "dnd5e:npcs:goblin:warrior-male-01",

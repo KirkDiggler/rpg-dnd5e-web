@@ -21,6 +21,7 @@ function fixture() {
     ['npcAppearanceCatalog.ts', 'commit', 'b'],
     ['worldAssetCatalog.ts', 'commit', 'c'],
     ['worldMaterialCatalog.ts', 'commit', 'c'],
+    ['itemThumbnailCatalog.ts', 'commit', 'd'],
   ])
     writeFileSync(
       join(generated, file),
@@ -34,12 +35,13 @@ afterEach(() =>
     .forEach((root) => rmSync(root, { recursive: true, force: true }))
 );
 describe('packaging provider pins', () => {
-  it('deduplicates the four explicit owners without choosing provider HEAD', () => {
+  it('includes the item owner and deduplicates explicit pins without choosing provider HEAD', () => {
     const f = fixture();
     expect(assetProviderPins(f.root)).toEqual([
       'a'.repeat(40),
       'b'.repeat(40),
       'c'.repeat(40),
+      'd'.repeat(40),
     ]);
   });
   it.each(['missing', 'short', 'duplicate'])(

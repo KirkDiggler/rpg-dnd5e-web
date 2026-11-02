@@ -186,6 +186,25 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     ['characterData'],
   ],
   [
+    'wake cut',
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.WAKE_CUT, wakeCut: { matched: 20, dropped: 3 } },
+    }),
+    [],
+  ],
+  [
+    'machine moved',
+    act(Family.STATE, {
+      case: 'state',
+      value: {
+        change: StateKind.MACHINE,
+        machine: { from: 'posted', to: 'alert', reason: 'heard something' },
+      },
+    }),
+    [],
+  ],
+  [
     'sighted',
     act(Family.PERCEPTION, {
       case: 'perception',

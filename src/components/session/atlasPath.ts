@@ -193,14 +193,109 @@ export function findAtlasPath(
   const goalKey = coordToKey(goal);
   if (!index.floor.has(startKey) || !index.floor.has(goalKey)) return [];
   if (startKey === goalKey || index.passThroughCells.has(goalKey)) return [];
+  return searchAtlas(
+    index,
+    start,
+    (_coord, key) => key === goalKey,
+    (coord) => hexDistance(coord, goal)
+  ).path;
+}
 
+/**
+ * The encounter's interaction reach in hexes (rpg-project#753 design,
+ * "Interaction reach"): how near a member stands before a creature's lines
+ * or a prop's options are offered. The server bounds the offer by its own
+ * copy; this one only shapes where an approach walk stops. If they ever
+ * disagree, the walk stops one cell early or late and the next click (or
+ * the server's rows) settles it.
+ */
+export const INTERACTION_REACH = 3;
+
+/**
+ * THE APPROACH (rpg-project#753 R4, G9): a path toward a target the member
+ * cannot stand on — a creature's cell, a prop's — that stops at the FIRST
+ * cell within `reach` of it by the game's hex distance. The same A* as
+ * `findAtlasPath`, over the same graph, with the goal widened from one cell
+ * to "any cell a member may stop on within reach"; the heuristic is the
+ * distance still to close, `max(0, d - reach)`, which stays admissible.
+ *
+ * What it does NOT decide is whether the target will be offered on arrival:
+ * reach is distance only, and the server's rows (sight now, a wall between)
+ * are the answer the panel reads. This only shapes the request.
+ *
+ * Returns the path INCLUDING the start cell, as `findAtlasPath` does, and
+ * `[]` when there is nothing to walk: already within reach, or no known
+ * cell is closer to the target than the start.
+ *
+ * WHEN THE KNOWN FLOOR DOES NOT REACH IT, the walk goes as far toward the
+ * target as the known floor allows: the path ends at the reachable cell
+ * nearest the target, and the next click continues from there. The server
+ * shortens any walk past this turn's movement the same way (a short walk is
+ * not an error), so both limits read as "walk as far as you can, click
+ * again".
+ */
+export function findAtlasApproach(
+  index: AtlasPathIndex,
+  start: CubeCoord,
+  target: CubeCoord,
+  reach: number
+): CubeCoord[] {
+  const startKey = coordToKey(start);
+  if (!index.floor.has(startKey)) return [];
+  const startDistance = hexDistance(start, target);
+  if (startDistance <= reach) return [];
+  const stoppable = (key: string): boolean => !index.passThroughCells.has(key);
+  const found = searchAtlas(
+    index,
+    start,
+    (coord, key) => hexDistance(coord, target) <= reach && stoppable(key),
+    (coord) => Math.max(0, hexDistance(coord, target) - reach),
+    (coord, key) => (stoppable(key) ? hexDistance(coord, target) : Infinity)
+  );
+  if (found.path.length > 0) return found.path;
+  // Nothing within reach is reachable: the nearest reachable cell, when it
+  // is any closer than where the member already stands.
+  if (found.nearest && found.nearestDistance < startDistance) {
+    return found.nearest;
+  }
+  return [];
+}
+
+interface AtlasSearch {
+  /** The path to the first goal cell, start included, or `[]`. */
+  path: CubeCoord[];
+  /** When no goal was reached and a `closeness` was given: the path to the
+   * expanded cell with the smallest closeness (fewest steps on a tie). */
+  nearest?: CubeCoord[];
+  nearestDistance: number;
+}
+
+/** The one A* both searches above run: per-edge passability from
+ * `edgePassable`, unit step cost, and the caller's goal test and heuristic. */
+function searchAtlas(
+  index: AtlasPathIndex,
+  start: CubeCoord,
+  isGoal: (coord: CubeCoord, key: string) => boolean,
+  heuristic: (coord: CubeCoord) => number,
+  closeness?: (coord: CubeCoord, key: string) => number
+): AtlasSearch {
+  const startKey = coordToKey(start);
   const nodes = new Map<string, CubeCoord>([[startKey, start]]);
   const open = new Set<string>([startKey]);
   const cameFrom = new Map<string, string>();
   const gScore = new Map<string, number>([[startKey, 0]]);
-  const fScore = new Map<string, number>([
-    [startKey, hexDistance(start, goal)],
-  ]);
+  const fScore = new Map<string, number>([[startKey, heuristic(start)]]);
+  const pathTo = (end: string): CubeCoord[] => {
+    const path: CubeCoord[] = [nodes.get(end)!];
+    let key = end;
+    while (cameFrom.has(key)) {
+      key = cameFrom.get(key)!;
+      path.unshift(nodes.get(key)!);
+    }
+    return path;
+  };
+  let nearestKey: string | null = null;
+  let nearestDistance = Infinity;
 
   while (open.size > 0) {
     let current: string | null = null;
@@ -214,18 +309,25 @@ export function findAtlasPath(
     }
     if (current === null) break;
 
-    if (current === goalKey) {
-      const path: CubeCoord[] = [nodes.get(current)!];
-      let key = current;
-      while (cameFrom.has(key)) {
-        key = cameFrom.get(key)!;
-        path.unshift(nodes.get(key)!);
+    const currentCoord = nodes.get(current)!;
+    if (current !== startKey && isGoal(currentCoord, current)) {
+      return { path: pathTo(current), nearestDistance };
+    }
+    if (closeness && current !== startKey) {
+      const distance = closeness(currentCoord, current);
+      if (
+        distance < nearestDistance ||
+        (distance === nearestDistance &&
+          nearestKey !== null &&
+          (gScore.get(current) ?? Infinity) <
+            (gScore.get(nearestKey) ?? Infinity))
+      ) {
+        nearestDistance = distance;
+        nearestKey = current;
       }
-      return path;
     }
 
     open.delete(current);
-    const currentCoord = nodes.get(current)!;
     for (const neighbor of getHexNeighbors(currentCoord)) {
       if (!edgePassable(index, currentCoord, neighbor)) continue;
       const neighborKey = coordToKey(neighbor);
@@ -234,11 +336,15 @@ export function findAtlasPath(
       if (tentativeG < (gScore.get(neighborKey) ?? Infinity)) {
         cameFrom.set(neighborKey, current);
         gScore.set(neighborKey, tentativeG);
-        fScore.set(neighborKey, tentativeG + hexDistance(neighbor, goal));
+        fScore.set(neighborKey, tentativeG + heuristic(neighbor));
         open.add(neighborKey);
       }
     }
   }
 
-  return [];
+  return {
+    path: [],
+    nearest: nearestKey === null ? undefined : pathTo(nearestKey),
+    nearestDistance,
+  };
 }

@@ -34,6 +34,7 @@ import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { isPropCalibrationRoute } from './dev/prop-calibration/route';
 import { ThumbHarness } from './dev/ThumbHarness';
+import { isDevLike } from './devMode';
 import { useDiscord } from './discord';
 import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
 import { FEEL_LAB_LAYER_Z } from './feel/layer';
@@ -220,8 +221,11 @@ function AppContent() {
 
   const draft = useCharacterDraft();
 
-  // In production, require Discord auth. In dev, allow test player
-  const isDevelopment = import.meta.env.MODE === 'development';
+  // In production, require Discord auth. In a development-like build
+  // (development, or the benchmark harness's bench build), allow the test
+  // player and the ?playerId override. isDevLike() is the harness's one
+  // predicate; every other dev gate in this file stays development-only.
+  const isDevelopment = isDevLike();
   // #906 batch 2: shouldRenderGlobalDevTools is dev-mode-and-not-concepts
   // only, so it is always false in a production build. The Discord dev
   // deployment still runs a production build, so it opts back in with

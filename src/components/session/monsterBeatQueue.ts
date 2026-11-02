@@ -59,6 +59,9 @@ import {
  * so each paced beat retains its full action body and the turn's end.
  */
 export interface QueuedBeat {
+  /** Captured response intent; visibility loss is terminal, just like motion. */
+  readonly activity?: import('@/npc-activities/sayActivityPresentation').PresentedSayActivity;
+  readonly activityPresentation?: 'eligible' | 'discarded';
   readonly act: Act;
   readonly index: number;
   /** World walks share completion order but never announce a combat turn. */

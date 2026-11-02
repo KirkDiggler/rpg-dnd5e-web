@@ -148,6 +148,7 @@ import { RouteEditor, WaypointChips } from './RouteEditor';
 import { isRouteValue, waypointOf } from './routeEdits';
 import { RowRefusalLines } from './RowRefusalLines';
 import { rowPathLabel, useRowRefusalsAt } from './rowRefusals';
+import { SayActivityFields } from './SayActivityFields';
 import { SelectorTarget } from './SelectorTarget';
 import {
   addSiteAnswerEntry,
@@ -1443,6 +1444,7 @@ function WordEntryRow({
           Remove
         </button>
       </div>
+      <SayActivityFields entry={entry} label={label} onCommit={onCommit} />
       <p className="wb-help wb-entry-weight-help">
         Weight changes relative chance among eligible entries, not execution
         order.

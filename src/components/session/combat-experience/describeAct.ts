@@ -32,6 +32,7 @@ import {
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
+import { endingResultLine } from '../runEnding';
 
 /**
  * The cause a creature's `dash` pick writes on every step of its run
@@ -526,6 +527,19 @@ function describeWith(
             detail: authoredWords(s.condition?.reason ?? ''),
             tone: 'neutral',
           };
+        // A creature's machine moved: "Gate guard: posted → alert (heard
+        // something)". No reason, no parenthetical.
+        case StateKind.MACHINE: {
+          const from = authoredWords(s.machine?.from ?? '');
+          const to = authoredWords(s.machine?.to ?? '');
+          const reason = authoredWords(s.machine?.reason ?? '');
+          return {
+            eyebrow: 'State',
+            headline: `${name(s.party)}: ${from} → ${to}${reason ? ` (${reason})` : ''}`,
+            detail: '',
+            tone: 'neutral',
+          };
+        }
         case StateKind.EXPERIENCE:
           return {
             eyebrow: 'Experience',
@@ -632,7 +646,10 @@ function describeWith(
           return {
             eyebrow: 'End',
             headline: 'The run ends',
-            detail: authoredWords(c.ending),
+            // "captain slain — success" when the ending declares a result
+            // (rpg-project#733); the ending's words alone when it does not.
+            detail:
+              endingResultLine(c.ending, c.outcome) ?? authoredWords(c.ending),
             tone: 'turn',
           };
         case ClockMark.WINDOW_OPENED:
@@ -653,6 +670,15 @@ function describeWith(
               rw.named(c.rollWindow?.roll) || rw.short(c.rollWindow?.roll),
             tone: 'neutral',
             roll: c.rollWindow?.roll,
+          };
+        // The raise matched more beats than its bound and cut the rest: a
+        // quiet line, "the raise cut 3 of 20 beats".
+        case ClockMark.WAKE_CUT:
+          return {
+            eyebrow: 'Clock',
+            headline: `the raise cut ${c.wakeCut?.dropped ?? 0} of ${c.wakeCut?.matched ?? 0} beats`,
+            detail: '',
+            tone: 'neutral',
           };
         default:
           return null; // a tick and the scene opening: bookkeeping

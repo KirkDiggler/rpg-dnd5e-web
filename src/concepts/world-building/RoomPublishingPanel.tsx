@@ -19,6 +19,7 @@
  * YAML — the request identity — is a function of it (rpg-dnd5e-web#1157).
  */
 import { useEffect, useRef, useState } from 'react';
+import { MAX_JSON_LENGTH } from './serialization';
 import type {
   RoomPublishingCapability,
   UseRoomPublishingInput,
@@ -279,7 +280,9 @@ export function RoomPublishingPanel({
         <textarea
           aria-label="Canonical YAML"
           value={yamlDraft ?? yaml ?? ''}
-          maxLength={500_000}
+          // A pasted file is truncated past this, so it follows the
+          // supported envelope's character bound (rpg-project#749).
+          maxLength={MAX_JSON_LENGTH}
           disabled={busy}
           onChange={(event) => setYamlDraft(event.target.value)}
           placeholder="Export appears here, or paste a canonical single-room YAML to import it."

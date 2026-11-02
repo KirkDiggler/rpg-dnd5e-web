@@ -48,6 +48,8 @@
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCameraDials } from '@/feel/useFeelDials';
+import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
+import type { ActivityCueSettlement } from '@/npc-activities/sayActivityPresentation';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import { refId } from '@/utils/refs';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -72,6 +74,10 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
+import { DevPerfProbe } from '../../dev/DevPerfProbe';
+import { PerfMarkFirstFrame } from '../../dev/PerfMarkFirstFrame';
+import { readPerfProbeQuery } from '../../dev/perfProbeQuery';
+import { floorPickingBounds } from '../hex-grid/floorPickingBounds';
 import { HexEntity, type HexEntityProps } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
@@ -99,11 +105,6 @@ import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
 const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
-
-/** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
- * cover any dungeon this route draws; only its raycast target, never
- * rendered. */
-const GROUND_PLANE_SIZE = 200;
 
 /** The passive, persistent in-reach ring — the SAME hue `MoveIndicator`'s
  * own `'target'` kind uses for the hover state, at a much quieter
@@ -188,6 +189,8 @@ export interface SessionCanvasProps {
   movements?: Movements;
   /** Live bodies with queued/active presentation must not jump to newer snapshots. */
   heldMovementMembers?: ReadonlySet<string>;
+  activityCues?: ReadonlyMap<string, ActivityCueRequest>;
+  onActivityCueConsumed?: (input: ActivityCueSettlement) => void;
   /** Fires when a floor hex is clicked (and it isn't an attack — see this
    * component's own doc comment) — the request-shaping/pathfinding and
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
@@ -216,6 +219,12 @@ export interface SessionCanvasProps {
    * called in that case unless `cellAimEnabled` gives the occupied cell to
    * CELL aiming instead. */
   onEntityClick?: (subject: string) => void;
+  /** Fires when a click lands on a live, sighted creature that is NOT in
+   * `attackableTargets`, while the caller offers an approach (an armed
+   * Speak choosing who to talk to — rpg-project#753 R4). The walk toward
+   * it is the caller's; this component only owns the click. Absent, such a
+   * click means nothing, as before. */
+  onApproachClick?: (subject: string) => void;
   /** An armed CELL cast owns creature clicks as cell placement. The creature's
    * observed `otherMembers` position routes through the same `onHexClick` seam
    * as exposed floor; MEMBER selection remains unchanged when false. */
@@ -338,9 +347,12 @@ export function SessionScene({
   startFacing,
   movements,
   heldMovementMembers,
+  activityCues,
+  onActivityCueConsumed,
   onHexClick,
   onCancelSelection,
   onEntityClick,
+  onApproachClick,
   cellAimEnabled = false,
   onHoverEntity,
   onMovementPainted,
@@ -364,6 +376,10 @@ export function SessionScene({
   presentationLayer,
   compositionSource,
 }: SessionCanvasProps) {
+  const pickingBounds = useMemo(
+    () => floorPickingBounds(scene.floorTiles.values(), hexSize),
+    [scene.floorTiles, hexSize]
+  );
   // One swatch per declared faction on the roster, by first appearance
   // (`factionColor.ts`) — the same table the sides legend reads, so the
   // map and the key agree. Empty for a dungeon that declares none.
@@ -520,7 +536,13 @@ export function SessionScene({
         onInteractClick?.(subject);
         return;
       }
-      if (attackableSet.has(subject)) onEntityClick?.(subject);
+      if (attackableSet.has(subject)) {
+        onEntityClick?.(subject);
+        return;
+      }
+      // A remembered sighting is where the creature WAS; walking toward a
+      // memory is not an approach to anyone.
+      if (observed && !observed.remembered) onApproachClick?.(subject);
     },
     [
       membersBySubject,
@@ -530,6 +552,7 @@ export function SessionScene({
       onHexClick,
       attackableSet,
       onEntityClick,
+      onApproachClick,
       onInteractClick,
     ]
   );
@@ -737,8 +760,16 @@ export function SessionScene({
     [otherMembers, attackableSet]
   );
 
+  // Benchmark harness (rpg-project#750): ?perfProbe samples frame time and
+  // draw calls in current play; read once, development-like builds only.
+  const perfProbe = useMemo(() => readPerfProbeQuery(), []);
+
   return (
     <>
+      {perfProbe && (
+        <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
+      )}
+      <PerfMarkFirstFrame name="play:first-frame" />
       <DungeonEnvironment
         scene={scene}
         focus={{ x: target.x, z: target.z }}
@@ -753,14 +784,13 @@ export function SessionScene({
           map never said where the exit was). Drawing only — Leave stays
           offered wherever the member stands. */}
       <SessionExitMarkers exits={scene.exits} hexSize={hexSize} />
-      {/* Invisible ground plane for hit detection — HexGrid.tsx's own
-          convention, unchanged. */}
+      {/* Invisible input plane follows the actual known floor bounds. */}
       <mesh
-        position={[0, 0, 0]}
+        position={pickingBounds.position}
         rotation={[-Math.PI / 2, 0, 0]}
         {...groundPlaneProps}
       >
-        <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
+        <planeGeometry args={pickingBounds.size} />
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
@@ -911,6 +941,15 @@ export function SessionScene({
           appearanceRef={
             member.kind === MemberKind.MONSTER
               ? roster?.get(member.subject)?.appearanceRef || undefined
+              : undefined
+          }
+          activityCue={activityCues?.get(member.subject)}
+          onActivityCueConsumed={(target, id) =>
+            onActivityCueConsumed?.({ member: target, id })
+          }
+          defaultActivityRef={
+            member.kind === MemberKind.MONSTER
+              ? roster?.get(member.subject)?.defaultActivityRef || undefined
               : undefined
           }
           // THE RING IS WHAT THIS PLAYER BELIEVES, falling back to what the

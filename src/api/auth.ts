@@ -1,3 +1,5 @@
+import { isDevLike } from '../devMode';
+
 /**
  * In-memory authentication state shared by the Discord provider and Connect
  * transport. Credentials never leave this module except through the private
@@ -59,7 +61,7 @@ export function getAuthDecision(mode = import.meta.env.MODE): AuthDecision {
     };
   }
 
-  if (mode === 'development') {
+  if (isDevLike(mode)) {
     const playerId = authState.playerId || import.meta.env.VITE_DEV_PLAYER_ID;
     if (playerId) return { kind: 'dev', playerId };
   }
@@ -67,7 +69,7 @@ export function getAuthDecision(mode = import.meta.env.MODE): AuthDecision {
   return { kind: 'unauthenticated' };
 }
 
-/** Current UI player identity; Dev fallback remains development-only. */
+/** Current UI player identity; Dev fallback is development-like only (development, bench). */
 export function getPlayerId(): string | null {
   const decision = getAuthDecision();
   return decision.kind === 'unauthenticated' ? null : decision.playerId;

@@ -96,6 +96,9 @@ export function refreshKeysForAct(
           return COMBAT;
         case StateKind.EXPERIENCE:
           return ['characterData'];
+        // A creature's machine moving moves no geometry and changes no sheet.
+        case StateKind.MACHINE:
+          return [];
         default:
           return [];
       }
@@ -132,6 +135,9 @@ export function refreshKeysForAct(
           return ['afford', 'view'];
         case ClockMark.ROLL_WINDOW_OPENED:
           return ['afford'];
+        // A raise cutting beats moves nothing on the page.
+        case ClockMark.WAKE_CUT:
+          return [];
         default:
           return [];
       }

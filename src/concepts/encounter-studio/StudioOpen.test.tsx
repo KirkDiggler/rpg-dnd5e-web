@@ -241,6 +241,37 @@ describe('StudioOpen', () => {
     );
   });
 
+  // The benchmark harness's open start (rpg-project#750): choosing a row
+  // marks start before the server read, and the read's decode follows it.
+  it('an Open row marks studio:open:start before decoded under bench with ?perfMarks', async () => {
+    vi.stubEnv('MODE', 'bench');
+    const url = window.location.href;
+    window.history.replaceState(null, '', '/?perfMarks');
+    const spy = vi.spyOn(performance, 'mark');
+    try {
+      const { answerGets } = await renderReady([[...WORLD, ...REFERENCES]]);
+      spy.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Open the-cells' }));
+      await answerGets();
+      await screen.findByRole('alertdialog', {
+        name: 'Replace with the-cells',
+      });
+      // The fake server builds its file by decoding a fixture during the
+      // read, so a decoded mark may precede the open's own; start is first
+      // and the open's decode is last.
+      const names = spy.mock.calls.map(([name]) => name);
+      expect(names[0]).toBe('studio:open:start');
+      expect(names.at(-1)).toBe('studio:open:decoded');
+      expect(new Set(names)).toEqual(
+        new Set(['studio:open:start', 'studio:open:decoded'])
+      );
+    } finally {
+      spy.mockRestore();
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('rename sends key and new_key and shows the AlreadyExists sentence on refusal', async () => {
     const { sink, handlers } = await renderReady([
       [...WORLD],

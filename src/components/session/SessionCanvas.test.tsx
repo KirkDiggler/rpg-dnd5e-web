@@ -232,6 +232,14 @@ vi.mock('@react-three/drei', () => {
   };
 });
 
+// The probe's own sampling needs a real GPU; here it is a marker group so the
+// mount itself is what the test reads.
+vi.mock('../../dev/DevPerfProbe', () => ({
+  DevPerfProbe: ({ label }: { label?: string }) => (
+    <group name="dev-perf-probe" userData={{ label }} />
+  ),
+}));
+
 vi.mock('../hex-grid/MediumHumanoid', () => ({
   MediumHumanoid: ({ variant }: { variant?: string }) => (
     <mesh
@@ -571,6 +579,43 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('raycasts the actual game input plane beyond the former fixed world bounds', async () => {
+    const cells: [number, number, number][] = [
+      [-120, 120, 0],
+      [120, -120, 0],
+      [0, -150, 150],
+      [0, 150, -150],
+    ];
+    const renderer = await renderSession({
+      ...scene(),
+      floorTiles: floorTiles(...cells),
+      wallRuns: [],
+      doorGaps: [],
+    });
+    try {
+      const input = renderer.scene.find(
+        (node) =>
+          node.fiber.type === 'mesh' &&
+          typeof node.props.onPointerMove === 'function' &&
+          typeof node.props.onClick === 'function'
+      ).instance as THREE.Mesh;
+      input.updateWorldMatrix(true, false);
+      for (const [x, y, z] of cells) {
+        const world = cubeToWorld({ x, y, z }, 1);
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(world.x, 10, world.z),
+          new THREE.Vector3(0, -1, 0)
+        );
+        expect(
+          ray.intersectObject(input).length,
+          `input misses floor at ${world.x},${world.z}`
+        ).toBeGreaterThan(0);
+      }
+    } finally {
+      await renderer.unmount();
+    }
+  });
+
   it('forwards known-floor fit requests to the real camera hook without fitting unrelated renders', async () => {
     const rig = new THREE.OrthographicCamera(-480, 480, 240, -240, 0.1, 1000);
     rig.zoom = 137;
@@ -758,6 +803,29 @@ describe('SessionScene', () => {
           'PointLight'
       )
     ).toHaveLength(1);
+  });
+
+  it('mounts the perf probe in the session scene only under a development-like build with ?perfProbe', async () => {
+    const url = window.location.href;
+    const probes = async () =>
+      (await renderSession()).scene.findAll(
+        (node) => node.instance.name === 'dev-perf-probe'
+      );
+    try {
+      window.history.replaceState(null, '', '/?perfProbe&perfProbeLabel=play');
+      vi.stubEnv('MODE', 'bench');
+      const mounted = await probes();
+      expect(mounted).toHaveLength(1);
+      expect(mounted[0].instance.userData.label).toBe('play');
+      vi.stubEnv('MODE', 'production');
+      expect(await probes()).toHaveLength(0);
+      vi.stubEnv('MODE', 'bench');
+      window.history.replaceState(null, '', '/');
+      expect(await probes()).toHaveLength(0);
+    } finally {
+      window.history.replaceState(null, '', url);
+      vi.unstubAllEnvs();
+    }
   });
 
   it('mounts the floor, walls, doors, and the local player without throwing', async () => {
@@ -2306,6 +2374,47 @@ describe('SessionScene', () => {
       expect(mediumHumanoidMarkers(renderer)).toHaveLength(2);
     });
 
+    it('carries the observed default activity instead of silently playing a different idle', async () => {
+      const identity = create(PublicMemberInfoSchema, {
+        id: 'merchant',
+        kind: MemberKind.MONSTER,
+        name: 'Merchant',
+        monsterRef: 'dnd5e:monsters:skeleton',
+        appearanceRef: 'dnd5e:npcs:kingdom:merchant-01',
+        defaultActivityRef: 'other:activities:unsupported',
+      });
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'merchant',
+              name: 'Merchant',
+              kind: MemberKind.MONSTER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+              stance: '',
+              equipment: undefined,
+              monsterRefId: 'skeleton',
+            },
+          ]}
+          roster={new Map([['merchant', identity]])}
+        />
+      );
+      expect(
+        gltfMockState.requests.some((url) =>
+          url.includes('castle-merchant-01.glb')
+        )
+      ).toBe(false);
+      await renderer.unmount();
+    });
+
     it('renders the observed appearance ref for current and remembered NPCs without changing their rules ref', async () => {
       for (const remembered of [false, true]) {
         const identity = create(PublicMemberInfoSchema, {
@@ -3399,6 +3508,47 @@ describe('SessionScene', () => {
       expect(onEntityClick).not.toHaveBeenCalled();
       expect(onHexClick).not.toHaveBeenCalled();
       await renderer.unmount();
+    });
+
+    it('a live creature the offer does not list is an approach click, a remembered one is not (rpg-project#753 R4)', async () => {
+      const sceneProps = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        myPosition: { x: 0, y: 0, z: 0 },
+        classRefId: undefined,
+        attackableTargets: [] as string[],
+      };
+      const onEntityClick = vi.fn();
+      const onApproachClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember}
+          onEntityClick={onEntityClick}
+          onApproachClick={onApproachClick}
+        />
+      );
+      fireEveryEntityClick(renderer);
+      expect(onApproachClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      await renderer.unmount();
+
+      const remembered = vi.fn();
+      const second = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          onApproachClick={remembered}
+        />
+      );
+      clickAt(findGroundPlaneProps(second), { x: 1, y: -1, z: 0 });
+      expect(remembered).not.toHaveBeenCalled();
+      await second.unmount();
     });
 
     it('an explicitly offered world member selects through targeting instead of opening interaction', async () => {

@@ -1,5 +1,6 @@
 import { paletteNameForRef } from '@/author/paletteData';
 import { resolveWorldAsset } from '@/generated/worldAssetCatalog';
+import { npcActivityProfile } from '@/npc-activities/activityProfile';
 import {
   NPC_APPEARANCE_FAMILIES,
   npcAppearanceOptions,
@@ -29,6 +30,7 @@ export type ArrangeFieldKey =
   | 'text'
   | 'facing'
   | 'appearanceRef'
+  | 'defaultActivityRef'
   | 'mapName'
   | 'appearanceFamily'
   | 'appearanceStyle'
@@ -195,6 +197,14 @@ export function arrangeFields(
       ];
     case 'actor': {
       const ref = draft.appearanceRef ?? selection.monster.appearanceRef ?? '';
+      const profile = npcActivityProfile({ appearanceRef: ref });
+      const activityRef =
+        draft.defaultActivityRef ?? selection.monster.defaultActivityRef ?? '';
+      const activityChoices = Object.entries(profile?.activities ?? {})
+        .filter(([, activity]) => !activity.moving)
+        .map(([value, activity]) => ({ value, label: activity.label }));
+      const unavailableActivity =
+        activityRef && !activityChoices.some((c) => c.value === activityRef);
       const { current, family, styles, skinPalettes } =
         npcAppearanceOptions(ref);
       const choices = (
@@ -254,6 +264,21 @@ export function arrangeFields(
           value: current?.look?.skinPalette ?? '',
           choices: choices('skinPalette'),
           disabled: !current?.look,
+        },
+        {
+          key: 'defaultActivityRef',
+          label: 'Default activity',
+          applyOnChange: true,
+          value: activityRef,
+          disabled: !profile && !activityRef,
+          help: 'The configured rest activity. It resumes after walking; it does not change orders or rules.',
+          choices: [
+            { value: '', label: 'Use appearance default activity' },
+            ...(unavailableActivity
+              ? [{ value: activityRef, label: `Unavailable: ${activityRef}` }]
+              : []),
+            ...activityChoices,
+          ],
         },
         numeric('q', 'Starting hex q', selection.startingCell.location.q),
         numeric('r', 'Starting hex r', selection.startingCell.location.r),
@@ -451,6 +476,9 @@ export function arrangeIntent(
           : {}),
         ...(draft.appearanceRef !== undefined
           ? { appearanceRef: draft.appearanceRef || null }
+          : {}),
+        ...(draft.defaultActivityRef !== undefined
+          ? { defaultActivityRef: draft.defaultActivityRef || null }
           : {}),
         ...(draft.q !== undefined || draft.r !== undefined
           ? { location: cell(selection.startingCell.location) }

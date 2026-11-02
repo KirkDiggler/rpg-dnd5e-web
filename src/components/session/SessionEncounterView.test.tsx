@@ -22,6 +22,7 @@ import {
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
+  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
@@ -181,6 +182,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  activateFn: vi.fn(),
   castFn: vi.fn(),
   deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
@@ -275,6 +277,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    activate: hoisted.activateFn,
     cast: hoisted.castFn,
     deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
@@ -863,6 +866,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.activateFn,
     hoisted.castFn,
     hoisted.deathSaveFn,
     hoisted.endTurnFn,
@@ -2041,6 +2045,103 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('arms the longsword on the world clock: the floor yields while armed, the skeleton is struck, cancel gives the floor back (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    hoisted.attackFn.mockReturnValue(new Promise(() => {}));
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+
+    const attack = await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(attack);
+
+    // Armed: the row's candidates are the highlighted targets, and the floor
+    // click no longer walks.
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+    // Cancel: the floor click is the Move again.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true)
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: '' })
+    );
+
+    // Armed again: the entity click declares against the armed selector.
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    expect(hoisted.attackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: 'enc-1',
+        attacker: 'char-1',
+        target: 'skeleton-1',
+        declarationId: 'v1.attack.longsword',
+      })
+    );
+  });
+
+  it('declares Dodge from the dock on the world clock, with no target and no turn (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.activateFn.mockReturnValue(new Promise(() => {}));
+    const dodge = create(DeclarationSchema, {
+      id: 'v1.activate.dodge',
+      verb: Verb.ACTIVATE,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:actions:dodge',
+        name: 'Dodge',
+      }),
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [dodge, attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+
+    fireEvent.click(await screen.findByRole('button', { name: /dodge/i }));
+
+    await waitFor(() =>
+      expect(hoisted.activateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session: 'enc-1',
+          member: 'char-1',
+          declarationId: 'v1.activate.dodge',
+          target: '',
+        })
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
   });
 
   it('cancels explicit movement from the dock or Escape without dispatching', async () => {
@@ -4408,6 +4509,109 @@ describe('SessionEncounterView production combat integration', () => {
     renderView();
 
     await waitFor(() => screen.getByText(/Skeleton strikes Aldric/i));
+  });
+
+  it('discards a queued response when its visible body goes down before a later revival', async () => {
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        { id: 'char-1', kind: MemberKind.PLAYER, name: 'Aldric' },
+        {
+          id: 'pedlar',
+          kind: MemberKind.MONSTER,
+          name: 'Pedlar',
+          monsterRef: 'dnd5e:monsters:goblin',
+          appearanceRef: 'dnd5e:npcs:goblin:knight-01',
+        },
+      ],
+    });
+    let standing = Standing.UP;
+    const sightings = () =>
+      ['commoner', 'pedlar'].map((subject, index) => ({
+        subject,
+        name: subject,
+        kind: MemberKind.MONSTER,
+        seen: {
+          position: { x: index * 3, y: 0 },
+          standing: subject === 'pedlar' ? standing : Standing.UP,
+        },
+        passage: Passage.PASS_THROUGH,
+        currentVia: ['sight'],
+      }));
+    const originalKnowledge = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await originalKnowledge(
+        ...args
+      )) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.sightings =
+        sightings() as unknown as typeof snapshot.view.sightings;
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: sightings(),
+    }));
+    const stream = liveActs();
+    const { unmount } = renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(2)
+    );
+    stream.push(
+      walkAct('commoner', [{ x: 1, y: 0 }]),
+      makeAct(Family.ACT, {
+        case: 'speak',
+        value: {
+          by: { kind: PartyKind.MEMBER, id: 'char-1' },
+          answer: {
+            who: { kind: PartyKind.MEMBER, id: 'pedlar' },
+            say: 'Let me think.',
+            activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
+          },
+        },
+      } as Act['body'])
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
+        true
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.activityCues?.size).toBe(0);
+    standing = Standing.DOWNED;
+    stream.push(stateAct(StateKind.DOWNED, 'pedlar'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.find(
+          (m) => m.subject === 'pedlar'
+        )?.standing
+      ).toBe(Standing.DOWNED)
+    );
+    standing = Standing.UP;
+    stream.push(stateAct(StateKind.STANCE, 'pedlar'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.find(
+          (m) => m.subject === 'pedlar'
+        )?.standing
+      ).toBe(Standing.UP)
+    );
+    const seq =
+      hoisted.lastCanvasProps.current!.movements!.get('commoner')!.seq;
+    vi.useFakeTimers();
+    try {
+      act(() =>
+        hoisted.lastCanvasProps.current?.onMovementPainted?.('commoner', seq, 1)
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(
+        hoisted.lastCanvasProps.current?.activityCues?.get('pedlar')
+      ).toBeUndefined();
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('refreshes Where for self-MOVED and View for another member MOVED', async () => {

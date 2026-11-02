@@ -37,7 +37,7 @@ import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
-import { findAtlasPath } from './atlasPath';
+import { findAtlasApproach, findAtlasPath } from './atlasPath';
 import { isStaleDeclarationRefusal } from './combat-experience/selection';
 import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
@@ -45,6 +45,12 @@ import { cubeToPosition, positionToCube } from './positionBridge';
 function sameCube(a: CubeCoord | null, b: CubeCoord | null): boolean {
   if (a === null || b === null) return a === b;
   return a.x === b.x && a.y === b.y && a.z === b.z;
+}
+
+/** What became of one dispatched Move: exactly one of the two is called. */
+export interface MoveOutcome {
+  accepted: () => void;
+  refused: () => void;
 }
 
 export interface UseSessionWalkResult {
@@ -60,6 +66,17 @@ export interface UseSessionWalkResult {
   /** Call with a clicked floor hex. No-ops (does not dispatch anything)
    * when already there, unreachable, or a walk is already in flight. */
   walkTo: (target: CubeCoord) => void;
+  /** Walk TOWARD a cell the member does not mean to stand on — a creature's
+   * or a prop's — stopping at the first cell within `reach` of it
+   * (`findAtlasApproach`). Returns true when a Move was dispatched; false
+   * for the same silent no-ops as `walkTo`, and when already within reach.
+   * `outcome` hears what became of THIS Move, and only this one: accepted,
+   * or refused (stale selector or any other error). */
+  approach: (
+    target: CubeCoord,
+    reach: number,
+    outcome?: MoveOutcome
+  ) => boolean;
   /** Call when the local player's walk animation has finished painting.
    * Takes no sequence: `busy` already admits exactly one walk at a time,
    * so a completion arriving while busy IS this walk. The sequence itself
@@ -129,8 +146,13 @@ export function useSessionWalk(
     setDisplayPosition((prev) => (sameCube(prev, next) ? prev : next));
   }, [wherePosition, busy]);
 
-  const walkTo = useCallback(
-    (target: CubeCoord) => {
+  // ONE dispatch for every walk: a click on a floor hex and an approach
+  // toward a target differ only in the path they compose.
+  const dispatch = useCallback(
+    (
+      compose: (index: AtlasPathIndex, from: CubeCoord) => CubeCoord[],
+      outcome?: MoveOutcome
+    ) => {
       if (
         !pathIndex ||
         !displayPosition ||
@@ -139,13 +161,13 @@ export function useSessionWalk(
         declarationId === undefined ||
         !isAuthorityFresh()
       )
-        return;
-      const path = findAtlasPath(pathIndex, displayPosition, target);
+        return false;
+      const path = compose(pathIndex, displayPosition);
       // Empty means "nothing to walk" either way: already there, or no
       // route exists (blocked/unreachable) — both are silent no-ops, per
       // this slice's done criteria ("click an unreachable/blocked cell:
       // nothing moves, no crash").
-      if (path.length === 0) return;
+      if (path.length === 0) return false;
       // path[0] is the current cell itself (findAtlasPath's own
       // convention, matching hexMath.findPath) — MoveRequest.path wants
       // only the cells to walk THROUGH, not the starting cell.
@@ -155,6 +177,7 @@ export function useSessionWalk(
       setMoveError(null);
       setNotYourTurn(false);
 
+      let accepted = false;
       void (async () => {
         try {
           const response = await sessionClient.move({
@@ -167,7 +190,9 @@ export function useSessionWalk(
           // A successful unary response is itself command acceptance. Revoke
           // old declarations before publishing any animation state and without
           // waiting for a redundant MOVED delivery.
+          accepted = true;
           onMoveAccepted?.();
+          outcome?.accepted();
           if (response.stopReason) setMoveError(response.stopReason);
           const steps = response.steps
             .filter((step) => step.position !== undefined)
@@ -197,9 +222,12 @@ export function useSessionWalk(
           } else {
             setMoveError(formatMoveError(err));
           }
+          // A throw after acceptance is not a refusal: the server walked.
+          if (!accepted) outcome?.refused();
           setBusy(false);
         }
       })();
+      return true;
     },
     [
       pathIndex,
@@ -212,6 +240,22 @@ export function useSessionWalk(
       isAuthorityFresh,
       onMoveAccepted,
     ]
+  );
+
+  const walkTo = useCallback(
+    (target: CubeCoord) => {
+      dispatch((index, from) => findAtlasPath(index, from, target));
+    },
+    [dispatch]
+  );
+
+  const approach = useCallback(
+    (target: CubeCoord, reach: number, outcome?: MoveOutcome): boolean =>
+      dispatch(
+        (index, from) => findAtlasApproach(index, from, target, reach),
+        outcome
+      ),
+    [dispatch]
   );
 
   const onWalkAnimationComplete = useCallback(() => {
@@ -229,6 +273,7 @@ export function useSessionWalk(
     displayPosition,
     busy,
     walkTo,
+    approach,
     onWalkAnimationComplete,
     moveError,
     notYourTurn,

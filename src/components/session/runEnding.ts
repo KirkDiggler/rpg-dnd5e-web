@@ -6,6 +6,9 @@
  * toast we won or we lost is sufficient". This is the "won or we lost" half.
  */
 
+import { EndingResult } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import { authoredWords } from './holdingBeat';
+
 /** How long the ending toast stands before it fades out of the way. */
 export const RUN_ENDED_TOAST_MS = 12000;
 
@@ -16,14 +19,25 @@ export const RUN_ENDED_TOAST_MS = 12000;
  * has never heard of decides less: those keep a plain sentence rather than
  * being called a loss because they were not a win.
  */
-export function runOutcome(ending: string): 'won' | 'lost' | undefined {
+export function runOutcome(
+  ending: string,
+  result: EndingResult = EndingResult.UNSPECIFIED
+): 'won' | 'lost' | undefined {
+  // The result the ending itself declares (rpg-project#733) is the answer
+  // whenever the server sends one; the name table below is only for the
+  // endings that predate declared results.
+  if (result === EndingResult.SUCCESS) return 'won';
+  if (result === EndingResult.FAILURE) return 'lost';
   if (ending === 'boss-down') return 'won';
   if (ending === 'party_defeated') return 'lost';
   return undefined;
 }
 
-export function runEndedHeadline(ending: string): string {
-  const outcome = runOutcome(ending);
+export function runEndedHeadline(
+  ending: string,
+  result: EndingResult = EndingResult.UNSPECIFIED
+): string {
+  const outcome = runOutcome(ending, result);
   if (outcome === 'won') return 'You won';
   if (outcome === 'lost') return 'You lost';
   return 'The run has ended';
@@ -48,4 +62,28 @@ export function endingDetail(ending: string): string {
     default:
       return 'The encounter is over — the outcome is recorded.';
   }
+}
+
+/** The declared result's own word, or nothing when the ending states none. */
+export function endingResultWord(
+  result: EndingResult
+): 'success' | 'failure' | undefined {
+  if (result === EndingResult.SUCCESS) return 'success';
+  if (result === EndingResult.FAILURE) return 'failure';
+  return undefined;
+}
+
+/**
+ * "captain slain — success": which ending fired and what it meant, both read
+ * off the ended entry (rpg-project#733). NOTHING when the ending declares no
+ * result: a run recorded before results existed shows no result rather than
+ * a guessed one.
+ */
+export function endingResultLine(
+  ending: string,
+  result: EndingResult
+): string | undefined {
+  const word = endingResultWord(result);
+  if (!word || !ending) return undefined;
+  return `${authoredWords(ending)} — ${word}`;
 }
