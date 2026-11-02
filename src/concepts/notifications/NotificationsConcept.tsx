@@ -7,6 +7,7 @@ import type {
 } from '@/components/session/combat-experience/types';
 import { useCombatStoryPacing } from '@/components/session/combat-experience/useCombatStoryPacing';
 import { useStoryNotices } from '@/components/session/combat-experience/useStoryNotices';
+import { useMonsterTurnFocus } from '@/components/session/useMonsterTurnFocus';
 import { FeelDialsDrawer } from '@/feel/FeelDialsDrawer';
 import { useDialValues } from '@/feel/dialStore';
 import { create } from '@bufbuild/protobuf';
@@ -14,8 +15,10 @@ import {
   MemberKind,
   ParticipantSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useRef, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
 import { RECENT_IDENTITY_SAMPLES } from '../desktop-hotbar/recentStoryFixtures';
+import { SessionCombatMap } from '../session-combat/SessionCombatMap';
+import { SESSION_COMBAT_MAP_FIXTURE } from '../session-combat/sessionCombatMapFixture';
 import { NOTIFICATION_SAMPLES } from './fixtures';
 
 const monsters = ['skeleton-guard', 'zombie'].map((member) =>
@@ -30,6 +33,23 @@ export function NotificationsConcept() {
   const [story, setStory] = useState<CombatExperienceStoryExchange[]>([]);
   const [mode, setMode] = useState<CombatExperienceLogMode>('story');
   const sequence = useRef(0);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const [remembered, setRemembered] = useState(false);
+  const sightings = SESSION_COMBAT_MAP_FIXTURE.members.map((item) =>
+    item.subject === 'skeleton-archer'
+      ? {
+          ...item,
+          subject: 'zombie',
+          name: 'Zombie',
+          monsterRefId: 'zombie',
+          remembered,
+        }
+      : item
+  );
+  const monsterCamera = useMonsterTurnFocus({
+    scope: 'notification-concept',
+    sightings,
+  });
   const [controlsOpen, setControlsOpen] = useState(false);
   const [interacting, setInteracting] = useState(false);
   const pausePlayback = useDialValues().notificationPausePlayback === 'on';
@@ -39,6 +59,7 @@ export function NotificationsConcept() {
     participants: monsters,
     story,
     paused: interacting && pausePlayback,
+    onTurnBeat: monsterCamera.onTurnBeat,
   });
   const notices = useStoryNotices({
     story: pacing.story,
@@ -115,6 +136,22 @@ export function NotificationsConcept() {
           Controls
         </button>
       </div>
+      <div className="flex gap-3 items-center my-2">
+        <button
+          className="rounded border border-slate-500 px-3 py-2"
+          onClick={() => setFocusRequest((value) => value + 1)}
+        >
+          Center on me
+        </button>
+        <label>
+          <input
+            type="checkbox"
+            checked={remembered}
+            onChange={(event) => setRemembered(event.target.checked)}
+          />{' '}
+          Zombie remembered, not visible
+        </label>
+      </div>
       <p className="text-xs text-slate-400">
         Bonus names are rendered from sourced roll facts, not client-side game
         calculations.
@@ -138,6 +175,13 @@ export function NotificationsConcept() {
           borderRadius: 12,
         }}
       >
+        <Suspense fallback={<p>Loading map…</p>}>
+          <SessionCombatMap
+            focusRequest={focusRequest}
+            monsterTurnFocus={monsterCamera.focus}
+            members={sightings}
+          />
+        </Suspense>
         <StoryNotices entries={notices} />
         <StoryLog
           story={pacing.story}

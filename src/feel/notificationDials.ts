@@ -3,6 +3,14 @@ import type { DialSpec } from './dialTypes';
 /** Local presentation only; no turn authority or server timing. */
 export const NOTIFICATION_DIAL_SPECS: readonly DialSpec[] = [
   {
+    key: 'followMonsterTurns',
+    label: 'Follow monster turns',
+    group: 'notifications',
+    kind: 'enum',
+    default: 'off',
+    options: ['off', 'on'],
+  },
+  {
     key: 'notificationDuration',
     label: 'Notification duration',
     group: 'notifications',
