@@ -107,6 +107,50 @@ function motionTarget(
 }
 
 describe('Bard idle/walk playback through ClassCharacterModel', () => {
+  it('holds an unprofiled moving pose during displacement instead of starting an idle or another walk', async () => {
+    fixture.animations.push(
+      new THREE.AnimationClip('Walk_Forward', 1, [
+        new THREE.NumberKeyframeTrack(
+          'MotionTarget.position[x]',
+          [0, 1],
+          [1, 2]
+        ),
+      ])
+    );
+    const model = (pushed = false) => (
+      <ClassCharacterModel
+        url="/body.glb"
+        isMoving={!pushed}
+        isDisplaced={pushed}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(model());
+    await renderer.advanceFrames(3, 0.1);
+    const mesh = motionTarget(renderer);
+    const x = mesh.position.x;
+    await renderer.update(model(true));
+    await renderer.advanceFrames(20, 0.1);
+    expect(mesh.position.x).toBe(x);
+    expect(fixture.played).toEqual(['Walk_Forward']);
+    await renderer.unmount();
+  });
+  it('initializes an unprofiled late-loaded displaced body to idle rather than bind pose', async () => {
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_Relaxed', 1, [
+        new THREE.NumberKeyframeTrack(
+          'MotionTarget.position[x]',
+          [0, 1],
+          [1, 2]
+        ),
+      ]),
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <ClassCharacterModel url="/body.glb" isDisplaced />
+    );
+    await renderer.advanceFrames(2, 0.1);
+    expect(motionTarget(renderer).position.x).toBe(1);
+    await renderer.unmount();
+  });
   it('plays the exact supplied idle clip while stationary and walk clip while moving', async () => {
     fixture.animations = [
       new THREE.AnimationClip('Idle_Relaxed', 1, []),

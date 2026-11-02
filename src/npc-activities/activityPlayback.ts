@@ -66,7 +66,11 @@ export function createActivityPlayback(input: {
       next.setEffectiveTimeScale(
         phase === 'sustain' ? 1 : request.transitionSpeed
       );
-      next.fadeIn(0.15).play();
+      // There is no outgoing pose on first load: evaluate the standing clip
+      // at full weight, particularly when displacement freezes it immediately.
+      if (current) next.fadeIn(0.15);
+      else next.setEffectiveWeight(1);
+      next.play();
       serials.set(next, serial);
       current = next;
     },

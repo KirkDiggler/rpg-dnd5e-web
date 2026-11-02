@@ -484,6 +484,8 @@ export function ClassCharacterModel({
     transitionSpeed,
   ]);
   const previousClip = useRef<string | undefined>(undefined);
+  const displacedRef = useRef(isDisplaced);
+  displacedRef.current = isDisplaced;
   const requestedClipName =
     remembered || profile
       ? undefined
@@ -506,11 +508,15 @@ export function ClassCharacterModel({
   useEffect(() => {
     if (!resolvedClipName) return;
     const action = actions[resolvedClipName];
-    action?.reset().fadeIn(0.2).play();
+    if (displacedRef.current) {
+      // A body first loaded mid-push has no evaluated pose to hold yet.
+      action?.reset().setEffectiveWeight(1).play();
+      mixer.update(0);
+    } else action?.reset().fadeIn(0.2).play();
     return () => {
       action?.fadeOut(0.2);
     };
-  }, [actions, resolvedClipName]);
+  }, [actions, resolvedClipName, mixer]);
 
   // Dev-mode-only zero-clip warning (rpg-dnd5e-web#559 review). A standing
   // model with NO baked clip at all renders at its raw bind pose, which

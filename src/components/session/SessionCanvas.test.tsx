@@ -3350,6 +3350,45 @@ describe('SessionScene', () => {
       }
     }
 
+    it('carries forced routes into actual self and peer positional writers', async () => {
+      const painted = vi.fn();
+      const props = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        classRefId: undefined,
+        myPosition: { x: 0, y: 0, z: 0 },
+        otherMembers: oneMember,
+        attackableTargets: ['char-1', 'skeleton-1'],
+        selectedTargets: ['char-1', 'skeleton-1'],
+        onMovementPainted: painted,
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene {...props} />
+      );
+      const destination = { x: 2, y: -2, z: 0 };
+      const movements = new Map(
+        ['char-1', 'skeleton-1'].map((id) => [
+          id,
+          { seq: 1, route: [destination], reached: 0, forced: true },
+        ])
+      );
+      await renderer.update(<SessionScene {...props} movements={movements} />);
+      await renderer.advanceFrames(1, 0.18);
+      for (const id of ['char-1', 'skeleton-1']) {
+        const marker = renderer.scene.findByProps({
+          name: `member-target-marker-${id}`,
+        });
+        expect(marker.instance.parent!.position.x).toBeCloseTo(
+          cubeToWorld(destination, 1).x
+        );
+        expect(painted).toHaveBeenCalledWith(id, 1, 1);
+      }
+      expect(painted).toHaveBeenCalledTimes(2);
+      await renderer.unmount();
+    });
+
     it('holds a live queued walker against snapshots but releases the hold for remembered bodies', async () => {
       const props = {
         scene: scene(),
