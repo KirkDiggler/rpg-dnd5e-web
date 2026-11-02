@@ -14,6 +14,7 @@
 import { create } from '@bufbuild/protobuf';
 import {
   AbilityRefSchema,
+  CastOptionSchema,
   ClockKind,
   DeclarationSchema,
   MemberKind,
@@ -279,6 +280,99 @@ describe('the other targeted verbs Afford offers on the world clock', () => {
         member: 'fighter-1',
         declarationId: 'selector.activate.shove',
         target: 'gate-1',
+      })
+    );
+  });
+});
+
+/** Thunderwave: aimed at a cell, sent from the cell click. */
+function thunderwave(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.thunderwave',
+    verb: Verb.CAST,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.CELL,
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderwave',
+      name: 'Thunderwave',
+    }),
+  });
+}
+
+/** An area cast: the server works out who is in it; fires on the row click. */
+function thunderclap(options: readonly string[] = []): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.thunderclap',
+    verb: Verb.CAST,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.AREA,
+    options: options.map((id) => create(CastOptionSchema, { id, label: id })),
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderclap',
+      name: 'Thunderclap',
+    }),
+  });
+}
+
+describe('every cast path opens on the world clock', () => {
+  it('a cell cast arms, and the cell click sends the cell', async () => {
+    const cast = thunderwave();
+    render(<Harness declarations={[cast]} />);
+
+    act(() => latest.onSelectDeclaration(cast));
+    expect(latest.cellCastArmed).toBe(true);
+    await act(async () => {
+      latest.onCellClick({ x: 2, y: -1 });
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        declarationId: 'selector.cast.thunderwave',
+        cell: { x: 2, y: -1 },
+        targets: [],
+      })
+    );
+  });
+
+  it('a cast with options opens the tray, and the chosen option sends', async () => {
+    const cast = thunderclap(['loud', 'louder']);
+    render(<Harness declarations={[cast]} />);
+
+    act(() => latest.onSelectDeclaration(cast));
+    expect(latest.presentationState.optionDeclarationId).toBe(cast.id);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    await act(async () => {
+      latest.onSelectCastOption('louder');
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        declarationId: 'selector.cast.thunderclap',
+        option: 'louder',
+      })
+    );
+  });
+
+  it('an area cast with no options sends on the row click', async () => {
+    const cast = thunderclap();
+    render(<Harness declarations={[cast]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(cast);
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        declarationId: 'selector.cast.thunderclap',
+        targets: [],
       })
     );
   });
