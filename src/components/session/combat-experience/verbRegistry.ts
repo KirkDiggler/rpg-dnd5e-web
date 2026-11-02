@@ -75,18 +75,6 @@ export interface VerbBehavior {
    * button.
    */
   arms: TargetKind | null;
-
-  /**
-   * Whether this verb's row draws on the WORLD clock as well as the turn clock
-   * (rpg-project#457 R3).
-   *
-   * Afford is the authority and this client decides nothing: the server sends
-   * the rows it sends. What this flag records is the consequence for
-   * PRESENTATION — a world-clock row has no turn economy behind it, so it
-   * shows no cost badge, because a price of nothing rendered as a price is a
-   * claim about an economy that does not exist on that clock.
-   */
-  freeOnWorldClock: boolean;
 }
 
 /**
@@ -103,7 +91,6 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     [Verb.UNSPECIFIED]: {
       executable: false,
       arms: null,
-      freeOnWorldClock: false,
     },
 
     // The swing. Arms, waits for a candidate Afford ruled, echoes its selector
@@ -111,28 +98,24 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     [Verb.ATTACK]: {
       executable: true,
       arms: TargetKind.MEMBER,
-      freeOnWorldClock: false,
     },
 
     // Move is drawn, and it does NOT arm: the path is picked on the map
-    // through its own surface rather than from a candidate list. It is also
-    // deliberately not a world-clock ROW even though moving on the world clock
-    // is free — free roam has its own movement affordance.
-    [Verb.MOVE]: { executable: true, arms: null, freeOnWorldClock: false },
+    // through its own surface rather than from a candidate list. On the world
+    // clock it is the floor click, never a dock row (`ActionDock`).
+    [Verb.MOVE]: { executable: true, arms: null },
 
     // End Turn has its own separate control in the dock and is never a priced
     // row. Listing it as executable would draw it twice.
     [Verb.END_TURN]: {
       executable: false,
       arms: null,
-      freeOnWorldClock: false,
     },
 
     // An ability. Arms and waits for a member, like a swing.
     [Verb.ACTIVATE]: {
       executable: true,
       arms: TargetKind.MEMBER,
-      freeOnWorldClock: false,
     },
 
     // A death save is drawn but never armed: there is nobody to point it at,
@@ -142,13 +125,12 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     [Verb.DEATH_SAVE]: {
       executable: true,
       arms: null,
-      freeOnWorldClock: false,
     },
 
     // The D&D reaction — the interrupt window. Answered through its own
     // window, never as a dock row, which is exactly why the answer table one
     // slice over is called an ANSWER and not a reaction.
-    [Verb.REACT]: { executable: false, arms: null, freeOnWorldClock: false },
+    [Verb.REACT]: { executable: false, arms: null },
 
     // A spell. Arms, and what it waits for depends on the spell: a cast aimed
     // at a creature carries MEMBER, one aimed at a place carries CELL. The
@@ -157,7 +139,6 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     [Verb.CAST]: {
       executable: true,
       arms: TargetKind.MEMBER,
-      freeOnWorldClock: false,
     },
 
     // THE ONE SOCIAL VERB (rpg-project#569, R2). Intimidate and Persuade are
@@ -166,13 +147,12 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     // swing: the player picks who to talk to, then which line, and the line
     // step is drawn from the declaration's own option rows, never invented.
     //
-    // FREE ON THE WORLD CLOCK, as the two verbs it replaces were (R3 of
-    // rpg-project#457): the front room has no fight, so it has no economy to
-    // fall short of.
+    // Offered on the world clock as every row Afford sends there is
+    // (rpg-project#457 R3, rpg-project#785): which clock a member may act on
+    // is the clock's rule in the hook, never a flag on the verb.
     [Verb.SPEAK]: {
       executable: true,
       arms: TargetKind.MEMBER,
-      freeOnWorldClock: true,
     },
 
     // RETIRED (rpg-project#569). The proto keeps both values, deprecated, so
@@ -183,12 +163,10 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
     [Verb.INTIMIDATE]: {
       executable: false,
       arms: null,
-      freeOnWorldClock: false,
     },
     [Verb.PERSUADE]: {
       executable: false,
       arms: null,
-      freeOnWorldClock: false,
     },
   });
 
@@ -222,26 +200,3 @@ export function promptsForMember(verb: Verb | undefined): boolean {
     ? false
     : VERB_REGISTRY[verb]?.arms === TargetKind.MEMBER;
 }
-
-/**
- * Whether this verb is offered free on the world clock (R3).
- *
- * PRESENTATION ONLY. Afford decides what rows exist and what they cost; this
- * says a row that arrived on the world clock has no price to draw, because the
- * world clock has no economy — which is Move's own rule and not a discount.
- */
-export function isFreeOnWorldClock(verb: Verb): boolean {
-  return VERB_REGISTRY[verb]?.freeOnWorldClock ?? false;
-}
-
-/**
- * The social verbs, as one list, for the sites that genuinely mean "a
- * social verb" rather than "a verb that arms for a member".
- *
- * A DERIVED LIST RATHER THAN A SEVENTH HAND-WRITTEN ONE: it reads the table's
- * own `freeOnWorldClock` flag, so another social verb joins it by adding its
- * row above and nothing else.
- */
-export const SOCIAL_VERBS: readonly Verb[] = Object.freeze(
-  ALL_VERBS.filter((verb) => VERB_REGISTRY[verb].freeOnWorldClock)
-);
