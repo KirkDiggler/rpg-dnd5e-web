@@ -262,7 +262,7 @@ describe('the other targeted verbs Afford offers on the world clock', () => {
     );
   });
 
-  it('an Activate with a member target arms and sends against its selector', async () => {
+  it('an Activate with a member target (Help, a heal) arms and sends against its selector', async () => {
     const activation = shove();
     render(<Harness declarations={[activation]} />);
 
@@ -281,6 +281,50 @@ describe('the other targeted verbs Afford offers on the world clock', () => {
         target: 'gate-1',
       })
     );
+  });
+});
+
+describe('an untargeted Activate on the world clock declares on click', () => {
+  it('Dodge sends at once, arms nothing and asks for no target', async () => {
+    const dodge = create(DeclarationSchema, {
+      id: 'selector.activate.dodge',
+      verb: Verb.ACTIVATE,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:actions:dodge',
+        name: 'Dodge',
+      }),
+    });
+    render(<Harness declarations={[dodge, longsword()]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(dodge);
+    });
+
+    expect(hoisted.activateFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.activateFn.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        session: 'castle',
+        member: 'fighter-1',
+        declarationId: 'selector.activate.dodge',
+        target: '',
+      })
+    );
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+    expect(screen.getByTestId('highlighted').textContent).toBe('none');
+  });
+
+  it('beside it, the Attack row still arms targeting', () => {
+    const attack = longsword();
+    render(<Harness declarations={[attack]} />);
+
+    act(() => latest.onSelectDeclaration(attack));
+
+    expect(latest.phase).toBe('targeting');
+    expect(screen.getByTestId('armed').textContent).toBe(attack.id);
+    expect(hoisted.activateFn).not.toHaveBeenCalled();
   });
 });
 
