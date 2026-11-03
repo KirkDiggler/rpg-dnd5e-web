@@ -75,6 +75,11 @@ export interface AtlasPathIndex {
   occupiedCells: ReadonlySet<string>;
   /** Traversable cells that cannot be a voluntary destination. */
   passThroughCells: ReadonlySet<string>;
+  /** The occupied cells a seen, non-hostile blocking body holds
+   * (rpg-project#841, P1): blocked on the first plan, walked into on the
+   * second, which `findAtlasPath` runs only when he is the goal or the first
+   * plan finds no route round. Always a subset of `occupiedCells`. */
+  walkIntoCells: ReadonlySet<string>;
 }
 
 export function buildAtlasPathIndex(
@@ -92,7 +97,10 @@ export function buildAtlasPathIndex(
    * confirmed still there) must never appear here — the caller filters
    * that out before building this set. */
   occupiedCells?: ReadonlySet<string>,
-  passThroughCells?: ReadonlySet<string>
+  passThroughCells?: ReadonlySet<string>,
+  /** `indexOccupantPassages`'s `walkInto`. A cell not also in
+   * `occupiedCells` is dropped: only a seen blocking body is walked into. */
+  walkIntoCells?: ReadonlySet<string>
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
@@ -142,14 +150,18 @@ export function buildAtlasPathIndex(
     }
   }
 
+  const occupied = occupiedCells ?? new Set<string>();
   return {
     floor,
     blockedEdges,
     doorwayEdges,
     shutDoorEdges,
     blockedCells,
-    occupiedCells: occupiedCells ?? new Set(),
+    occupiedCells: occupied,
     passThroughCells: passThroughCells ?? new Set(),
+    walkIntoCells: new Set(
+      [...(walkIntoCells ?? [])].filter((key) => occupied.has(key))
+    ),
   };
 }
 
@@ -193,12 +205,25 @@ export function findAtlasPath(
   const goalKey = coordToKey(goal);
   if (!index.floor.has(startKey) || !index.floor.has(goalKey)) return [];
   if (startKey === goalKey || index.passThroughCells.has(goalKey)) return [];
-  return searchAtlas(
-    index,
-    start,
-    (_coord, key) => key === goalKey,
-    (coord) => hexDistance(coord, goal)
-  ).path;
+  const plan = (graph: AtlasPathIndex) =>
+    searchAtlas(
+      graph,
+      start,
+      (_coord, key) => key === goalKey,
+      (coord) => hexDistance(coord, goal)
+    ).path;
+  // THE WAY ROUND FIRST (rpg-project#841, P1): every seen blocking body is
+  // blocked, so a body with a route round him is walked round, never bumped.
+  const round = plan(index);
+  if (round.length > 0 || index.walkIntoCells.size === 0) return round;
+  // The first plan found nothing: he is the goal (his cell is occupied, so
+  // the first plan cannot end there) or no route round exists. The second
+  // plan walks into a non-hostile blocking body; the server owns the step,
+  // stops the walk at his cell and says why. A hostile body, a prop and a
+  // shut door stay shut.
+  const occupied = new Set(index.occupiedCells);
+  for (const key of index.walkIntoCells) occupied.delete(key);
+  return plan({ ...index, occupiedCells: occupied });
 }
 
 /**
