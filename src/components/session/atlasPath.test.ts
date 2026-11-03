@@ -630,6 +630,53 @@ describe('walking into a posted body (rpg-project#841)', () => {
     ).toEqual([]);
   });
 
+  it('the castle gate: beneath the gate, him on it, the door open, the courtyard is planned through him; shut, nothing is', () => {
+    // (0,0) the gatehouse, (1,0) beneath the gate where he is posted, (2,0)
+    // the courtyard past the gate door. The door is the only crossing.
+    const gate = (state: DoorState) =>
+      buildAtlasPathIndex(
+        {
+          cells: [pos(0, 0), pos(1, 0), pos(2, 0)],
+          boundaries: [
+            {
+              from: pos(1, 0),
+              to: pos(2, 0),
+              blocksMovement: true,
+              blocksLineOfSight: true,
+            },
+          ],
+          doorways: [{ from: pos(1, 0), to: pos(2, 0), connection: 'gate' }],
+          props: [],
+        } as never,
+        new Map([['gate', { state } as DoorInfo]]),
+        new Set([key(1, 0)]),
+        undefined,
+        new Set([key(1, 0)])
+      );
+    const courtyard = (state: DoorState) =>
+      keysOf(
+        findAtlasPath(
+          gate(state),
+          positionToCube(pos(0, 0)),
+          positionToCube(pos(2, 0))
+        )
+      );
+    expect(courtyard(DoorState.OPEN)).toEqual([
+      key(0, 0),
+      key(1, 0),
+      key(2, 0),
+    ]);
+    expect(courtyard(DoorState.CLOSED)).toEqual([]);
+    // His cell stays the approach, door open or not.
+    expect(
+      findAtlasPath(
+        gate(DoorState.OPEN),
+        positionToCube(pos(0, 0)),
+        positionToCube(pos(1, 0))
+      )
+    ).toEqual([]);
+  });
+
   it('a walk-into cell outside the blocked set opens nothing: only a seen blocking body is walked into', () => {
     const index = buildAtlasPathIndex(
       rhombus,

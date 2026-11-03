@@ -21,7 +21,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 - **An unreachable hover can now cost two full searches.** On a 30,276-cell open floor, the search for an unreachable goal took a median of 198 ms with one search and 390 ms with two, timed in vitest on the planner alone. The second search runs only when the first was refused an edge into a walk-into cell, so a site with no posted body, or a search that never reaches him, still costs one. A search that does reach him, such as a hover on a walled-off cell anywhere in the gate's component, pays twice. The single-search cost itself comes from `searchAtlas`'s linear scan of the open set. Both are filed against rpg-project#841 as findings, not fixed here.
 
-- **On the castle, no click walks into `gate-1`.** His post is the cell beneath the gate, a dead end of the gatehouse whose only way on is the shut gate door. A player's walk refuses a shut door, his cell as the goal has no plan, and a click on him is the approach. So plan.md's walk row "walk into the guard on the crossing" cannot be walked from the web in this slice. Reaching it needs the goal leg back when no approach is offered, an explicit walk-into gesture, or a post with floor past it. That is filed for rpg-project#841.
+- **On the castle, the walk into `gate-1` comes after the gate door opens.** His post is the cell beneath the gate, and the only way on from it is the gate door. While the door is shut, a click on the courtyard plans nothing. The party opens the door from beside the crossing, the walk skill's step 5 (rpg-project#843). Then the courtyard is reachable only through him, and the second plan walks into him. A test models the open and the shut door. No planner change was needed.
 
 ## Mistaken
 
