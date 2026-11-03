@@ -2290,6 +2290,10 @@
     {
       "file": "npcs/activities/warcamp-human-idles-v1/profile.json",
       "sha256": "72f8af5709a89294410dc6d5c5982bb182e996be257dd9d1cc65cc90d4d87edd"
+    },
+    {
+      "file": "npcs/activities/kingdom-human-idles-v1/profile.json",
+      "sha256": "2cdbdd71f3cc8bc4bb354840a2077d34af95d297d6347425664cf6653c8d3b06"
     }
   ],
   "weaponSets": [
