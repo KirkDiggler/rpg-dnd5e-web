@@ -15,6 +15,12 @@ import {
   type OptionShape,
 } from './answerTableShape';
 import { setActorName } from './creaturePalette';
+import {
+  documentStatePicks,
+  requireCreatureStateKeys,
+  validateStates,
+  type CreatureStates,
+} from './creatureStates';
 import { requiresRead } from './predicateNot';
 import { fromRows, rowCellCount, toRows, type RoomCellRow } from './regionRuns';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
@@ -214,6 +220,7 @@ export interface RoomMonsterInteraction {
  * `round | down | fact | stance` shape the shared `PredicateEditor` already
  * authors for a disposition's `until` (v2 `PlaceSpec.Arrives`). */
 export interface RoomMonsterBinding extends RoomMonsterInteraction {
+  states?: CreatureStates;
   /** Site faction reference. A faction-only binding is meaningful. */
   faction?: string;
   /** A root answer table this creature answers with, by id
@@ -1080,6 +1087,7 @@ const STARTING_CELL_KEYS = ['location', 'facing'] as const;
 /** What a monster binding may carry. `options` replaced `intimidate` and
  * `persuade` (rpg-project#569 R2) — see `RoomMonsterInteraction`. */
 const BINDING_KEYS = [
+  'states',
   'faction',
   'table',
   'on',
@@ -1186,7 +1194,8 @@ function validateBindingTemper(value: unknown, path: string): string {
  * `propDeclarations` already keeps ("Declaration owner does not exist"). */
 function validateMonsterBindings(
   value: unknown,
-  monsters: readonly RoomMonsterPlacement[]
+  monsters: readonly RoomMonsterPlacement[],
+  picked: readonly string[]
 ): Record<string, RoomMonsterBinding> {
   const source = objectShape(value, 'Monster bindings');
   const ids = new Set(monsters.map((monster) => monster.id));
@@ -1226,8 +1235,17 @@ function validateMonsterBindings(
         );
       parsed.table = table;
     }
+    if (Object.hasOwn(block, 'states'))
+      parsed.states = validateStates(
+        block.states,
+        `Monster binding for ${id}.states`
+      );
     if (Object.hasOwn(block, 'on'))
-      parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
+      parsed.on = validateAnswerTable(
+        block.on,
+        `Monster binding for ${id} on`,
+        picked
+      );
     if (Object.hasOwn(block, 'temper'))
       parsed.temper = validateBindingTemper(
         block.temper,
@@ -1495,7 +1513,7 @@ function validateRegions(value: unknown): RoomRegion[] {
   });
 }
 
-function validateDraft(value: unknown): RoomDraft {
+function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
   if (!value || typeof value !== 'object')
     throw new Error('Room draft must be an object.');
   const input = value as Partial<RoomDraft>;
@@ -1607,7 +1625,7 @@ function validateDraft(value: unknown): RoomDraft {
   // The bindings are validated AFTER the monsters, because a binding names a
   // creature: an orphan can only be detected once the roster is known.
   const monsterBindings = Object.hasOwn(room, 'monsterBindings')
-    ? validateMonsterBindings(room.monsterBindings, monsters)
+    ? validateMonsterBindings(room.monsterBindings, monsters, picked)
     : undefined;
   // CARRIED, NOT GRADED. The engine judges `doorBindings` at `PutDungeon` and
   // answers with a path and a sentence; the web's whole job is to not lose it.
@@ -1742,8 +1760,17 @@ function normalizeRoomDocument(
   document: RoomDraftDocument,
   gate: RoomDocumentGate = {}
 ): RoomDraftDocument {
-  const draft = validateDraft(document.draft);
-  const scope = validateSiteScope(document.scope, gate);
+  const picked = documentStatePicks(
+    document.scope?.factions,
+    document.draft?.room?.monsterBindings
+  );
+  const draft = validateDraft(document.draft, picked);
+  const scope = validateSiteScope(document.scope, gate, picked);
+  requireCreatureStateKeys(
+    scope,
+    draft.room.monsterBindings,
+    draft.room.monsterDeclarations
+  );
   return { draft, scope };
 }
 
@@ -1848,7 +1875,7 @@ export function parseRoomDocumentJson(
   return validateRoomDocument(
     {
       draft: envelope.draft as unknown as RoomDraft,
-      scope: validateSiteScope(envelope.scope ?? {}, gate),
+      scope: (envelope.scope ?? {}) as SiteScope,
     },
     gate
   );

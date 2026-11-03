@@ -1770,10 +1770,10 @@ describe('options on a binding (rpg-project#569)', () => {
     expect(refusal((d) => (goblin(d)[0].check = []))).toThrow(
       'options[0].check: this option needs at least one way to make its check — an ability and a DC'
     );
-    expect(refusal((d) => (goblin(d)[0].check[0].ability = ''))).toThrow(
+    expect(refusal((d) => (goblin(d)[0].check![0].ability = ''))).toThrow(
       'options[0].check[0].ability: the approach does not say which ability it rolls'
     );
-    expect(refusal((d) => (goblin(d)[0].check[0].dc = 0))).toThrow(
+    expect(refusal((d) => (goblin(d)[0].check![0].dc = 0))).toThrow(
       'options[0].check[0].dc: an approach with dc 0 has nothing to beat'
     );
     expect(

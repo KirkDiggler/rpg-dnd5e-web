@@ -2362,9 +2362,10 @@ function optionLines(options: OptionShape[], indent: string): string[] {
   for (const option of options) {
     lines.push(`${indent}  - id: ${scalar(option.id)}`);
     lines.push(`${indent}    say: ${JSON.stringify(option.say)}`);
-    lines.push(
-      `${indent}    check: [${option.check.map(fmtApproach).join(', ')}]`
-    );
+    if (option.check !== undefined)
+      lines.push(
+        `${indent}    check: [${option.check.map(fmtApproach).join(', ')}]`
+      );
     if (option.requires !== undefined) {
       const [form, id] = Object.entries(option.requires)[0] as [string, string];
       lines.push(`${indent}    requires: { ${form}: ${scalar(id)} }`);

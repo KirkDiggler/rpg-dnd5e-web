@@ -16,7 +16,6 @@
  * phrases with the subject "it" — the row editor's own words about the
  * creature it describes.
  */
-import { ANSWER_TRIGGER_KEYS } from '@/author/answerVocabulary';
 import { actionAugmentSentences } from './actionAugments';
 import type { AnswerEntryShape, OptionShape } from './answerTableShape';
 import {
@@ -179,7 +178,7 @@ function ordersParagraph(
 ): ReadBackParagraph {
   const layers = layeredOrders(document, placementId);
   const sentences: ReadBackSentence[] = [];
-  for (const trigger of ANSWER_TRIGGER_KEYS) {
+  for (const trigger of Object.keys(layers)) {
     const layer = layers[trigger];
     sentences.push(sourceSentence(trigger, layer));
     if (layer.source.kind === 'kind-default') continue;
@@ -397,9 +396,11 @@ function optionSentence(
     if ('fact' in gate) facts.push(gate.fact);
   }
   parts.push(
-    `${option.check
-      .map((a) => `${abilityPhrase(a.ability)} DC ${a.dc}`)
-      .join(' or ')}.`
+    option.check === undefined
+      ? 'No check.'
+      : `${option.check
+          .map((a) => `${abilityPhrase(a.ability)} DC ${a.dc}`)
+          .join(' or ')}.`
   );
   for (const verdict of ['success', 'failure'] as const) {
     const rows = option[verdict];
@@ -522,7 +523,7 @@ export function readBackOf(
   if (selection.kind === 'creature') {
     const binding = document.draft.room.monsterBindings?.[selection.id];
     const layers = layeredOrders(document, selection.id);
-    for (const trigger of ANSWER_TRIGGER_KEYS)
+    for (const trigger of Object.keys(layers))
       for (const row of layers[trigger].rows) {
         walkFacts(row.when, (fact) => reads.add(fact));
         if (row.fact !== undefined) writes.add(row.fact);

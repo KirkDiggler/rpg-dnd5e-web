@@ -31,6 +31,7 @@ import {
   ANSWER_TEMPER,
   ANSWER_TRIGGERS,
   ANSWER_WHEN,
+  answerRowKind,
   answerTrigger,
   answerWhenLegalOn,
   answerWord,
@@ -92,6 +93,7 @@ import {
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
 import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
+import { documentStatePicks } from './creatureStates';
 import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
@@ -101,6 +103,7 @@ import {
   addMonsterHold,
   addMonsterOption,
   moveMonsterAction,
+  normalizeBinding,
   removeMonsterAction,
   removeMonsterHold,
   removeMonsterOption,
@@ -179,6 +182,7 @@ import {
   type SiteUntil,
   type SiteUntilStep,
 } from './siteScope';
+import { StatesEditor } from './StatesEditor';
 import { useRowKeys } from './useRowKeys';
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
@@ -254,7 +258,7 @@ export function FactionInherits({
   const declared =
     faction.table !== undefined && scope.tables?.[faction.table] !== undefined;
   const layers = factionLayers(scope, faction);
-  const triggers = ANSWER_TRIGGERS.map((t) => t.key).filter(
+  const triggers = Object.keys(layers).filter(
     (key) => layers[key] !== undefined
   );
   return (
@@ -1105,14 +1109,14 @@ function WordEntryRow({
   useEffect(() => {
     if (focused) setOpen(true);
   }, [focused]);
-  const words = answerWordsForTrigger(trigger).filter(
+  const words = answerWordsForTrigger(answerRowKind(trigger)).filter(
     (candidate) => !excludeWords.includes(candidate.key)
   );
   const word = entryWord(entry) ?? (allowNoWord ? '' : (words[0]?.key ?? ''));
   const spec = answerWord(word);
   const value = (entry as Record<string, unknown>)[word];
   /** `when` is legal on `time` alone; a social key IS the condition. */
-  const whenLegal = answerWhenLegalOn(trigger);
+  const whenLegal = answerWhenLegalOn(answerRowKind(trigger));
   /** `actor` needs a deed to have been the actor of. Offered only when this
    * entry's `when` names one, so the list never offers an illegal choice —
    * and the engine's own sentence stays the backstop for a hand-written file. */
@@ -1538,19 +1542,22 @@ export function TableNameSelect({
 function FactionTableEditor({
   scope,
   faction,
+  room,
   onChange,
 }: {
   scope: SiteScope;
   faction: SiteFaction;
+  room?: RoomGameplayData;
   onChange: (next: SiteScope) => void;
 }) {
   const table = faction.on ?? {};
-  const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] !== undefined
-  );
-  const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] === undefined
-  );
+  const authored = Object.keys(table);
+  const available = [
+    ...new Set([
+      ...ANSWER_TRIGGERS.map((t) => t.key),
+      ...documentStatePicks(scope.factions, room?.monsterBindings),
+    ]),
+  ].filter((key) => !Object.hasOwn(table, key));
   /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
    * trigger a behavior table is mostly about, and the only one the `when`
    * editor is legal on. (The social keys that once came first retired to
@@ -1558,9 +1565,10 @@ function FactionTableEditor({
    * stays for the next trigger the engine adds.)
    * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
    * the faction's was not. */
-  const [newTrigger, setNewTrigger] = useState(
-    available.includes('time') ? 'time' : (available[0] ?? '')
-  );
+  const [triggerChoice, setNewTrigger] = useState('time');
+  const newTrigger = available.includes(triggerChoice)
+    ? triggerChoice
+    : (available[0] ?? '');
   return (
     <div className="wb-policy-table-editor">
       <p className="wb-help">Shared table its members inherit.</p>
@@ -1568,7 +1576,7 @@ function FactionTableEditor({
         <div key={trigger} className="wb-policy-trigger-block">
           <p className="wb-policy-trigger">
             <code>{trigger}</code>{' '}
-            {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
+            {answerTrigger(trigger)?.label ?? 'Picked by states'}
           </p>
           <EntryList rows={table[trigger] ?? []}>
             {(entry, index, key) => (
@@ -1822,6 +1830,13 @@ function FactionRow({
             placement in the faction is the server’s to check.
           </p>
 
+          <StatesEditor
+            owner={faction.id}
+            value={faction.states}
+            onChange={(states) =>
+              onChange(patchSiteFaction(scope, faction.id, { states }))
+            }
+          />
           <FactionTemperEditor
             temper={faction.temper}
             onCommit={(temper) =>
@@ -1855,6 +1870,7 @@ function FactionRow({
           <FactionTableEditor
             scope={scope}
             faction={faction}
+            room={room}
             onChange={onChange}
           />
 
@@ -2723,6 +2739,18 @@ export function CreatureOrders({
         )}
       </StudioSection>
 
+      <StatesEditor
+        owner={monster.id}
+        value={binding?.states}
+        inherited={faction?.states}
+        onChange={
+          onOrdersChange
+            ? (states) =>
+                onOrdersChange(normalizeBinding({ ...binding, states }))
+            : undefined
+        }
+      />
+
       <StudioSection
         title="Overrides"
         level="subsection"
@@ -3079,7 +3107,7 @@ export function OptionsEditor({
               <span>Check — any one of these</span>
               <CheckApproachRows
                 id={of}
-                rows={option.check}
+                rows={option.check ?? []}
                 onPatch={(approach, patch) =>
                   commit(patchOptionApproach(option, approach, patch))
                 }
@@ -3238,7 +3266,7 @@ export function OptionsEditor({
 
 /** A line as one sentence, for the read-only readout. */
 function optionText(option: OptionShape): string {
-  const check = option.check
+  const check = (option.check ?? [])
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');
   const gate = requiresGate(option.requires);

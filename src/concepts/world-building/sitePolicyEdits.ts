@@ -19,12 +19,14 @@
  */
 import {
   ANSWER_SELECTOR_WORDS,
+  answerRowKind,
   answerWord,
   answerWordsForTrigger,
   type AnswerWordSpec,
 } from '@/author/answerVocabulary';
 import { MONSTERS, PARTY } from '@/author/factionVocabulary';
 import {
+  answerRows,
   heaviestFirst,
   type AnswerEntryShape,
   type AnswerTableShape,
@@ -91,6 +93,7 @@ export function patchSiteFaction(
       const next: SiteFaction = { ...faction, ...patch };
       if (next.mind === undefined || next.mind === '') delete next.mind;
       if (next.temper === undefined) delete next.temper;
+      if (next.states === undefined) delete next.states;
       // A TABLE NAME IS A REFERENCE WITH NO EMPTY STATE: cleared means absent,
       // never written as an empty string the encoder would refuse.
       if (next.table === undefined || next.table === '') delete next.table;
@@ -189,7 +192,7 @@ export function entryWord(entry: AnswerEntryShape): string | undefined {
  * (`flee` on a social key, `hold` on `time`). A `fact` needs an id and there
  * is none to invent; the author writes it. */
 export function defaultAnswerEntry(trigger: string): AnswerEntryShape {
-  const words = answerWordsForTrigger(trigger);
+  const words = answerWordsForTrigger(answerRowKind(trigger));
   const word =
     words.find((spec: AnswerWordSpec) => spec.value === 'none') ?? words[0];
   const entry = {} as Record<string, unknown>;
@@ -231,7 +234,10 @@ export function addSiteAnswerEntry(
   return patchSiteFaction(scope, factionId, {
     on: {
       ...table,
-      [trigger]: [...(table[trigger] ?? []), defaultAnswerEntry(trigger)],
+      [trigger]: [
+        ...(answerRows(table, trigger) ?? []),
+        defaultAnswerEntry(trigger),
+      ],
     },
   });
 }
@@ -250,7 +256,7 @@ export function patchSiteAnswerEntry(
 ): SiteScope {
   const faction = (scope.factions ?? []).find((item) => item.id === factionId);
   const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = [...(table[trigger] ?? [])];
+  const entries = [...(answerRows(table, trigger) ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
   table[trigger] = heaviestFirst(entries);
@@ -265,7 +271,9 @@ export function removeSiteAnswerEntry(
 ): SiteScope {
   const faction = (scope.factions ?? []).find((item) => item.id === factionId);
   const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = (table[trigger] ?? []).filter((_, i) => i !== index);
+  const entries = (answerRows(table, trigger) ?? []).filter(
+    (_, i) => i !== index
+  );
   if (entries.length === 0) delete table[trigger];
   else table[trigger] = entries;
   return patchSiteFaction(scope, factionId, { on: table });
@@ -362,7 +370,10 @@ export function addSiteTableAnswerEntry(
   if (table === undefined) return scope;
   return patchSiteTable(scope, id, {
     ...table,
-    [trigger]: [...(table[trigger] ?? []), defaultAnswerEntry(trigger)],
+    [trigger]: [
+      ...(answerRows(table, trigger) ?? []),
+      defaultAnswerEntry(trigger),
+    ],
   });
 }
 
@@ -377,7 +388,7 @@ export function patchSiteTableAnswerEntry(
 ): SiteScope {
   const table = scope.tables?.[id];
   if (table === undefined) return scope;
-  const entries = [...(table[trigger] ?? [])];
+  const entries = [...(answerRows(table, trigger) ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
   return patchSiteTable(scope, id, {
@@ -399,7 +410,9 @@ export function removeSiteTableAnswerEntry(
   const table = scope.tables?.[id];
   if (table === undefined) return scope;
   const next: AnswerTableShape = { ...table };
-  const entries = (next[trigger] ?? []).filter((_, i) => i !== index);
+  const entries = (answerRows(next, trigger) ?? []).filter(
+    (_, i) => i !== index
+  );
   if (entries.length === 0) delete next[trigger];
   else next[trigger] = entries;
   return patchSiteTable(scope, id, next);

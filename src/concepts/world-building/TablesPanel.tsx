@@ -35,6 +35,7 @@
 import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
 import { useEffect, useRef, useState } from 'react';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
+import { documentStatePicks } from './creatureStates';
 import type { RoomGameplayData } from './roomDraft';
 import { tableRowPaths, useRowRefusals } from './rowRefusals';
 import { AnswerEntryRow, EntryList } from './SitePolicies';
@@ -87,12 +88,14 @@ function TableRow({
   placementNames?: ReadonlyMap<string, string>;
   collapsedEntries: boolean;
 }) {
-  const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] !== undefined
-  );
-  const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] === undefined
-  );
+  const authored = Object.keys(table);
+  const keys = [
+    ...new Set([
+      ...ANSWER_TRIGGERS.map((t) => t.key),
+      ...documentStatePicks(scope.factions, room?.monsterBindings),
+    ]),
+  ];
+  const available = keys.filter((key) => !Object.hasOwn(table, key));
   /** `time` FIRST when it is offered, for `FactionTableEditor`'s reason: it is
    * the trigger a behavior table is mostly about and the only one the `when`
    * editor is legal on. (The social keys that once came first retired to
@@ -222,7 +225,7 @@ function TableRow({
               <div key={trigger} className="wb-policy-trigger-block">
                 <p className="wb-policy-trigger">
                   <code>{trigger}</code>{' '}
-                  {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
+                  {answerTrigger(trigger)?.label ?? 'Picked by states'}
                 </p>
                 <EntryList rows={table[trigger] ?? []}>
                   {(entry, index, key) => (
