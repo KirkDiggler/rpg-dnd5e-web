@@ -2288,8 +2288,8 @@
   "schemaVersion": 1,
   "activityProfiles": [
     {
-      "file": "npcs/activities/warcamp-human-social-v1/profile.json",
-      "sha256": "d677206b3447898948afd2d25e3e7c180365f6bcdeed3b06c25dfd114cea2ca2"
+      "file": "npcs/activities/warcamp-human-idles-v1/profile.json",
+      "sha256": "72f8af5709a89294410dc6d5c5982bb182e996be257dd9d1cc65cc90d4d87edd"
     }
   ],
   "weaponSets": [
