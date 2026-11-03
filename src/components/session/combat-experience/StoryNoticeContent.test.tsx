@@ -18,14 +18,21 @@ const hit = () => ({
 afterEach(cleanup);
 describe('damage-first toast', () => {
   it('puts applied damage ahead of separate accuracy and bonus details', () => {
-    render(<StoryNoticeContent entry={hit()} />);
+    const entry = hit();
+    if (entry.act?.body.case === 'attack') {
+      entry.act.body.value.damageComponents[1]!.roll!.modifiers[0]!.source =
+        'Ability';
+      entry.act.body.value.damageComponents[1]!.roll!.modifiers[0]!.sourceRef =
+        'dnd5e:abilities:str';
+    }
+    render(<StoryNoticeContent entry={entry} />);
     expect(screen.getByRole('heading', { name: '9 Damage' })).toBeVisible();
     expect(screen.getByText(/piercing · Critical hit/)).toBeVisible();
     expect(
       screen.getByRole('group', { name: 'Attack roll' })
     ).toHaveTextContent('24');
     expect(
-      screen.getByRole('group', { name: 'Damage bonus · ability' })
+      screen.getByRole('group', { name: 'Damage bonus · STR' })
     ).toHaveTextContent('+2');
   });
   it.each([0, 12])(
@@ -73,7 +80,10 @@ describe('damage-first toast', () => {
     const heading = screen.getByRole('heading', { name: '3 Damage' });
     expect(heading.closest('article')).toHaveAttribute('data-tone', 'danger');
     expect(container.querySelector('article')).toContainElement(heading);
-    expect(heading.closest('article')).toHaveAttribute('data-held', 'true');
+    expect(heading.closest('article')).toHaveAttribute(
+      'data-priority',
+      'primary'
+    );
   });
   it('labels a ward without inventing a source or attack roll', () => {
     const entry = hit();

@@ -45,12 +45,12 @@ export class ActivitySequencer {
     };
   }
 
-  reset(activity: string): void {
+  reset(activity: string, enter = false): void {
     this.require(activity);
     this.cue = undefined;
     this.activity = activity;
     this.requested = activity;
-    this.begin('sustain');
+    this.begin(enter && this.require(activity).enter ? 'enter' : 'sustain');
   }
 
   stop(): void {

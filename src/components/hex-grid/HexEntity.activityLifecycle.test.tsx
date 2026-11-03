@@ -7,7 +7,11 @@ import * as THREE from 'three';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { HexEntity } from './HexEntity';
 
-const fixture = vi.hoisted(() => ({ failBody: false, played: [] as string[] }));
+const fixture = vi.hoisted(() => ({
+  failBody: false,
+  played: [] as string[],
+  mixers: [] as THREE.AnimationMixer[],
+}));
 // Substitute asset I/O and drei's lazy root binding only. The entity, boundary,
 // activity model, sequencer and frame-driven native mixer remain real.
 vi.mock('@react-three/drei', async (importOriginal) => {
@@ -33,7 +37,11 @@ vi.mock('@react-three/drei', async (importOriginal) => {
       };
     },
     useAnimations: (clips: THREE.AnimationClip[], root: THREE.Object3D) => {
-      const mixer = useMemo(() => new THREE.AnimationMixer(root), [root]);
+      const mixer = useMemo(() => {
+        const value = new THREE.AnimationMixer(root);
+        fixture.mixers.push(value);
+        return value;
+      }, [root]);
       const actions = useMemo(
         () =>
           Object.fromEntries(
@@ -61,6 +69,71 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 afterEach(() => vi.restoreAllMocks());
+it.each(['enter', 'sustain', 'exit'])(
+  'moves immediately from %s without exit or walking and freezes the native mixer',
+  async (phase) => {
+    fixture.failBody = false;
+    fixture.played = [];
+    fixture.mixers = [];
+    const complete = vi.fn();
+    const appearance = NPC_ACTIVITY_PROFILES[0].appearances[0].assetRef;
+    const request = {
+      id: 'forced-cue',
+      activityRef: 'dnd5e:activities:thoughtful',
+      cycles: phase === 'exit' ? 1 : 20,
+    };
+    const model = (moving = false) => (
+      <HexEntity
+        entityId="npc"
+        name="NPC"
+        position={{ x: 0, y: 0, z: 0 }}
+        hexSize={1}
+        type="monster"
+        appearanceRef={appearance}
+        activityCue={request}
+        moveSeq={moving ? 1 : undefined}
+        movePath={
+          moving
+            ? [
+                { x: 1, y: -1, z: 0 },
+                { x: 1, y: -2, z: 1 },
+              ]
+            : undefined
+        }
+        moveKind={moving ? 'displaced' : 'own'}
+        onMovementPresentationComplete={complete}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(model());
+    await renderer.advanceFrames(
+      phase === 'enter' ? 2 : phase === 'sustain' ? 10 : 20,
+      0.1
+    );
+    expect(fixture.played.at(-1)).toBe(
+      phase === 'enter'
+        ? 'Idle_Thoughtful_Enter'
+        : phase === 'exit'
+          ? 'Idle_Thoughtful_Exit'
+          : 'Idle_Thoughtful'
+    );
+    const playedBefore = [...fixture.played];
+    const time = fixture.mixers[0].time;
+    const group = renderer.scene.children[0].instance as THREE.Group;
+    const start = group.position.clone();
+    await renderer.update(model(true));
+    await renderer.advanceFrames(1, 0.03);
+    expect(group.position.distanceTo(start)).toBeGreaterThan(0);
+    expect(fixture.mixers[0].time).toBe(time);
+    expect(fixture.played).toEqual(playedBefore);
+    await renderer.advanceFrames(1, 0.15);
+    await renderer.update(model(true));
+    expect(complete).toHaveBeenCalledExactlyOnceWith('npc', 1);
+    await renderer.advanceFrames(60, 0.1);
+    expect(fixture.played.slice(playedBefore.length)).toEqual(['Idle_Relaxed']);
+    await renderer.unmount();
+  }
+);
+
 const cue = {
   id: 'reply',
   activityRef: 'dnd5e:activities:thoughtful',

@@ -84,6 +84,8 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
  * to the clip's own duration. Flagged as a judgment call / playtest-tuning
  * knob in the PR body. */
 export const SECONDS_PER_HEX_STEP = 0.45;
+/** Presentation tuning, not a game rule. Follow the supplied route, quickly. */
+export const SECONDS_PER_DISPLACEMENT = 0.18;
 
 export interface WorldPoint {
   x: number;
@@ -97,6 +99,8 @@ export interface StepState {
 }
 
 export interface WalkAnimationGate {
+  /** A body moved without its legs: slides, keeps facing, ignores the gate. */
+  readonly displaced?: boolean;
   /** Readiness belongs to this exact outstanding route, not an older walk. */
   readonly canAdvance: (moveSeq: number) => boolean;
   /** Shared with the body mixer; changes speed, never route order. */
@@ -219,6 +223,32 @@ export function segmentHeading(step: StepState): number | undefined {
   return headingFromDelta(b.x - a.x, b.z - a.z);
 }
 
+/** A short displacement follows every supplied leg, including corners. Large
+ * frames consume all crossed legs rather than introducing a per-frame wait. */
+export function advanceDisplacementFrame(
+  step: StepState,
+  delta: number
+):
+  | {
+      position: WorldPoint;
+      index: number;
+      elapsed: number;
+    }
+  | undefined {
+  const last = step.points.length - 1;
+  if (step.index >= last) return undefined;
+  const perLeg = SECONDS_PER_DISPLACEMENT / last;
+  const total = Math.min(
+    SECONDS_PER_DISPLACEMENT,
+    step.index * perLeg + step.elapsed + delta
+  );
+  const index = Math.min(last, Math.floor((total + Number.EPSILON) / perLeg));
+  if (index === last) return { position: step.points[last], index, elapsed: 0 };
+  const elapsed = total - index * perLeg;
+  const advanced = advanceFrame({ ...step, index, elapsed }, 0, perLeg)!;
+  return { position: advanced.position, index, elapsed };
+}
+
 export function useHexMovePath(
   entityPosition: CubeCoord,
   movePath: readonly CubeCoord[] | undefined,
@@ -266,6 +296,7 @@ export function useHexMovePath(
   const positionedGroupRef = useRef<THREE.Group | null>(null);
   const seenSeqRef = useRef<number | undefined>(undefined);
   const activeMoveSeqRef = useRef<number | undefined>(undefined);
+  const displacedMoveRef = useRef(false);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
 
   const destination = cubeToWorld(entityPosition, hexSize);
@@ -316,6 +347,7 @@ export function useHexMovePath(
       // pre-#542 behavior exactly. Also clears any in-flight step so a stale
       // useFrame tick from a reset can't keep nudging the position.
       activeMoveSeqRef.current = undefined;
+      displacedMoveRef.current = false;
       stepRef.current = { points: [], index: 0, elapsed: 0 };
       groupRef.current.position.set(destination.x, yOffset, destination.z);
       setIsMoving(false);
@@ -324,6 +356,7 @@ export function useHexMovePath(
 
     stepRef.current = { points: result.points, index: 0, elapsed: 0 };
     activeMoveSeqRef.current = moveSeq;
+    displacedMoveRef.current = presentationRef.current?.displaced === true;
     setIsMoving(result.points.length > 1);
     if (result.points.length <= 1 && moveSeq !== undefined) {
       onPresentationCompleteRef.current?.(moveSeq);
@@ -332,7 +365,8 @@ export function useHexMovePath(
     // #656 same-hex move) means "no opinion" — the entity holds whatever it
     // was already facing rather than snapping to due north.
     const startHeading = segmentHeading(stepRef.current);
-    if (startHeading !== undefined) onHeadingRef.current?.(startHeading);
+    if (!displacedMoveRef.current && startHeading !== undefined)
+      onHeadingRef.current?.(startHeading);
     invalidate();
   }, [
     moveSeq,
@@ -352,11 +386,31 @@ export function useHexMovePath(
     const s = stepRef.current;
     const gate = presentationRef.current;
     const seq = activeMoveSeqRef.current;
-    if (seq !== undefined && gate && !gate.canAdvance(seq)) {
+    if (
+      !displacedMoveRef.current &&
+      seq !== undefined &&
+      gate &&
+      !gate.canAdvance(seq)
+    ) {
       invalidate();
       return;
     }
     const scaledDelta = delta * (gate?.speed ?? 1);
+    if (displacedMoveRef.current) {
+      const displaced = advanceDisplacementFrame(s, scaledDelta);
+      if (!displaced) return;
+      s.index = displaced.index;
+      s.elapsed = displaced.elapsed;
+      groupRef.current.position.x = displaced.position.x;
+      groupRef.current.position.z = displaced.position.z;
+      invalidate();
+      if (s.index >= s.points.length - 1) {
+        setIsMoving(false);
+        activeMoveSeqRef.current = undefined;
+        if (seq !== undefined) onPresentationCompleteRef.current?.(seq);
+      }
+      return;
+    }
     const advanced = advanceFrame(s, scaledDelta);
     if (!advanced) return;
     s.elapsed += scaledDelta;

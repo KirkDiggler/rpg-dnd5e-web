@@ -9,11 +9,12 @@ const cue = { id: 'answer-1', activityRef: thoughtful, cycles: 2 };
 const base = { active: true, wantsWalk: false, speed: 1, transitionSpeed: 1.5 };
 
 function fixture() {
-  const mixer = new THREE.AnimationMixer(new THREE.Object3D());
+  const root = new THREE.Object3D();
+  const mixer = new THREE.AnimationMixer(root);
   const clips = ['Idle_Relaxed', 'Walk_Forward', ...profile.library.clips].map(
     (name) =>
       new THREE.AnimationClip(name, 1, [
-        new THREE.NumberKeyframeTrack('.rotation[x]', [0, 1], [0, 0.1]),
+        new THREE.NumberKeyframeTrack('.rotation[x]', [0, 1], [0.4, 0.5]),
       ])
   );
   const ready = vi.fn();
@@ -38,10 +39,75 @@ function fixture() {
       `Never reached ${activity}/${phase}: ${JSON.stringify(playback.state)}`
     );
   };
-  return { mixer, playback, ready, reach, consumed };
+  return { root, mixer, playback, ready, reach, consumed };
 }
 
 describe('counted response through the real mixer', () => {
+  it('evaluates a late-loaded displaced body before freezing, rather than freezing its bind pose', () => {
+    const { root, mixer, playback } = fixture();
+    playback.update({ ...base, displaced: true, cue });
+    expect(root.rotation.x).toBeCloseTo(0.4);
+    mixer.update(10);
+    expect(root.rotation.x).toBeCloseTo(0.4);
+    playback.update({ ...base, cue });
+    mixer.update(10);
+    expect(playback.state.cueId).toBeUndefined();
+    playback.dispose();
+  });
+  it('does not revive discarded cues after displacement loses the active body', () => {
+    const { playback, mixer } = fixture();
+    playback.update({ ...base, cue });
+    playback.update({ ...base, displaced: true, cue });
+    playback.update({ ...base, active: false, cue });
+    playback.update({ ...base, cue });
+    mixer.update(20);
+    expect(playback.state).toMatchObject({
+      activity: profile.defaultActivityRef,
+      cueId: undefined,
+    });
+    playback.dispose();
+  });
+  it.each(['enter', 'sustain', 'exit'])(
+    'immediately discards and holds a forced %s interruption, then returns to default',
+    (phase) => {
+      const { playback, mixer, reach, consumed } = fixture();
+      playback.update({
+        ...base,
+        cue: { ...cue, cycles: phase === 'exit' ? 1 : 20 },
+      });
+      reach(thoughtful, phase);
+      const time = mixer.time;
+      const serial = playback.state.serial;
+      playback.update({ ...base, displaced: true, moveSeq: 4 });
+      expect(playback.state).toMatchObject({
+        phase: 'stopped',
+        cueId: undefined,
+        walkingReady: false,
+      });
+      expect(playback.state.serial).toBeGreaterThan(serial);
+      mixer.update(10);
+      expect(mixer.time).toBe(time);
+      const late = { ...cue, id: 'late', cycles: 20 };
+      playback.update({ ...base, displaced: true, moveSeq: 4, cue: late });
+      expect(consumed).toHaveBeenCalledWith('late');
+      playback.update({
+        ...base,
+        defaultActivityRef: thoughtful,
+        moveSeq: 4,
+        cue: late,
+      });
+      reach(thoughtful, 'sustain');
+      mixer.update(30);
+      expect(playback.state).toMatchObject({
+        activity: thoughtful,
+        phase: 'sustain',
+        cueId: undefined,
+      });
+      playback.update({ ...base, cue: { ...cue, id: 'fresh' } });
+      expect(playback.state.cueId).toBe('fresh');
+      playback.dispose();
+    }
+  );
   it('acknowledges delivery once while keeping the finite budget in the mixer owner', () => {
     const { playback, mixer, reach, consumed } = fixture();
     playback.update({ ...base, cue });

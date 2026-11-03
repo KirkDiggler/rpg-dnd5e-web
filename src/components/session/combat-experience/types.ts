@@ -284,6 +284,8 @@ interface CombatExperienceBaseProps {
   sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
+  monsterTurnIds?: ReadonlySet<string>;
+  onNotificationInteractionChange?: (interacting: boolean) => void;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
   /**
    * The member under the pointer on the canvas (`SessionCanvas.onHoverEntity`),

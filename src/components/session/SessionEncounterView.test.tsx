@@ -1,4 +1,5 @@
 import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
+import { resetDial, setDial } from '@/feel/dialStore';
 import type { PortraitProviderProps } from '@/portraits';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
@@ -21,6 +22,7 @@ import {
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
+  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
@@ -180,6 +182,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  activateFn: vi.fn(),
   castFn: vi.fn(),
   deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
@@ -274,6 +277,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    activate: hoisted.activateFn,
     cast: hoisted.castFn,
     deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
@@ -862,6 +866,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.activateFn,
     hoisted.castFn,
     hoisted.deathSaveFn,
     hoisted.endTurnFn,
@@ -2040,6 +2045,103 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('arms the longsword on the world clock: the floor yields while armed, the skeleton is struck, cancel gives the floor back (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    hoisted.attackFn.mockReturnValue(new Promise(() => {}));
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+
+    const attack = await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(attack);
+
+    // Armed: the row's candidates are the highlighted targets, and the floor
+    // click no longer walks.
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+    // Cancel: the floor click is the Move again.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true)
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: '' })
+    );
+
+    // Armed again: the entity click declares against the armed selector.
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    expect(hoisted.attackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: 'enc-1',
+        attacker: 'char-1',
+        target: 'skeleton-1',
+        declarationId: 'v1.attack.longsword',
+      })
+    );
+  });
+
+  it('declares Dodge from the dock on the world clock, with no target and no turn (rpg-project#785)', async () => {
+    readyScene();
+    hoisted.activateFn.mockReturnValue(new Promise(() => {}));
+    const dodge = create(DeclarationSchema, {
+      id: 'v1.activate.dodge',
+      verb: Verb.ACTIVATE,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:actions:dodge',
+        name: 'Dodge',
+      }),
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [dodge, attackDeclaration()],
+    });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+
+    fireEvent.click(await screen.findByRole('button', { name: /dodge/i }));
+
+    await waitFor(() =>
+      expect(hoisted.activateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session: 'enc-1',
+          member: 'char-1',
+          declarationId: 'v1.activate.dodge',
+          target: '',
+        })
+      )
+    );
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
   });
 
   it('cancels explicit movement from the dock or Escape without dispatching', async () => {
@@ -3326,11 +3428,13 @@ describe('SessionEncounterView production combat integration', () => {
 
     await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
+    // Compact live Story opens its Just happened reader before the Debug tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
     // The Debug panel reads the record stream now (rpg-project#628), so it
     // is no probe of the v1 ingest; Story staying concealed is the claim.
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Debug' }));
     await waitFor(() => screen.getByText('The record'));
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
   });
 
@@ -3355,8 +3459,9 @@ describe('SessionEncounterView production combat integration', () => {
       }
     );
     renderView();
-
-    const debugButton = await screen.findByRole('button', { name: 'Debug' });
+    await screen.findByTestId('session-canvas');
+    fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));
+    const debugButton = await screen.findByRole('tab', { name: 'Debug' });
     expect(hoisted.streamRecordFn).not.toHaveBeenCalled();
     fireEvent.click(debugButton);
     // The panel lists acts (rpg-dnd5e-web#1345): the walk's row, opened,
@@ -3369,7 +3474,7 @@ describe('SessionEncounterView production combat integration', () => {
     fireEvent.click(screen.getByRole('button', { name: `Act ${walk}` }));
     screen.getByText('moved');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await waitFor(() => expect(signal?.aborted).toBe(true));
   });
 
@@ -4116,7 +4221,11 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
-    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+    await waitFor(() =>
+      within(screen.getByTestId('session-combat-log')).getByText(
+        'Aldric uses Second Wind'
+      )
+    );
   });
 
   it.each([false, true])(
@@ -4181,7 +4290,9 @@ describe('SessionEncounterView production combat integration', () => {
           },
         } as Act['body'])
       );
-      await screen.findByText('cleric uses Spare the Dying');
+      await within(screen.getByTestId('session-combat-log')).findByText(
+        'cleric uses Spare the Dying'
+      );
       await waitFor(() =>
         expect(
           screen.queryByRole('button', { name: /^death save/i })
@@ -4227,14 +4338,17 @@ describe('SessionEncounterView production combat integration', () => {
             },
           } as Act['body'])
         );
-        await screen.findByText('cleric uses Healing Word');
+        await within(screen.getByTestId('session-combat-log')).findByText(
+          'cleric uses Healing Word'
+        );
         await waitFor(() => expect(screen.queryByText('Stable')).toBeNull());
         expect(screen.getByText('10/10')).toBeTruthy();
         expect(
           screen.queryByText('You are stable. Waiting for recovery.')
         ).toBeNull();
         expect(screen.queryByTestId('death-save-progress')).toBeNull();
-        const headlines = screen.getByRole('log').textContent ?? '';
+        const headlines =
+          screen.getByTestId('session-combat-log').textContent ?? '';
         expect(headlines.indexOf('cleric uses Spare the Dying')).toBeLessThan(
           headlines.indexOf('cleric uses Healing Word')
         );
@@ -4288,13 +4402,32 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
     );
-    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+    await waitFor(() =>
+      within(screen.getByTestId('session-combat-log')).getByText(
+        'Aldric uses Second Wind'
+      )
+    );
     // The amount healed is the act's own, shown on the row.
-    expect(screen.getByText('healed on Aldric (2)')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('session-combat-log')).getAllByText(
+        'healed on Aldric (2)'
+      ).length
+    ).toBeGreaterThan(0);
   });
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
     readyTurn();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'skeleton-1',
+          name: 'Skeleton',
+          kind: MemberKind.MONSTER,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
       active: 'skeleton-1',
@@ -4331,6 +4464,12 @@ describe('SessionEncounterView production combat integration', () => {
       });
 
       screen.getByText("Skeleton's turn.");
+      expect(
+        hoisted.lastCanvasProps.current?.monsterTurnFocus?.position
+      ).toEqual({ x: 1, y: -1, z: 0 });
+      act(() => setDial('followMonsterTurns', 'off'));
+      expect(hoisted.lastCanvasProps.current?.monsterTurnFocus).toBeNull();
+      act(() => resetDial('followMonsterTurns'));
       // Authority reconciliation is immediate, before the 300ms Story cursor.
       expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
 
@@ -4339,7 +4478,9 @@ describe('SessionEncounterView production combat integration', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
-      screen.getByText(/Skeleton strikes Aldric/i);
+      within(screen.getByTestId('story-notices')).getByText(
+        /Skeleton strikes Aldric/i
+      );
     } finally {
       unmount();
       vi.clearAllTimers();

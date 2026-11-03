@@ -160,11 +160,12 @@ import {
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
 import { useDungeonScene } from './useDungeonScene';
+import { useMonsterTurnFocus } from './useMonsterTurnFocus';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { type MoveOutcome, useSessionWalk } from './useSessionWalk';
-import { useTurnOrderFollow } from './useTurnOrderFollow';
+import { type TurnBeat, useTurnOrderFollow } from './useTurnOrderFollow';
 import { useWalkPresentation } from './useWalkPresentation';
 import { VendorPopover } from './vendor/VendorPopover';
 import { watchZoneCells, zonesBehindWalkers } from './watchZoneCells';
@@ -760,6 +761,10 @@ function SessionEncounterScope({
     () => scheduleRefresh(['turn']),
     [scheduleRefresh]
   );
+  const monsterCamera = useMonsterTurnFocus({
+    scope: `${sessionId}\u0000${member}`,
+    sightings: otherMembers,
+  });
   const turnOrder = useTurnOrderFollow({
     scope: `${sessionId}\u0000${member}`,
     member,
@@ -771,6 +776,15 @@ function SessionEncounterScope({
   // (rpg-project#520). Presentation: it never reaches a command.
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
 
+  const followTurnOrder = turnOrder.onTurnBeat;
+  const focusMonsterTurn = monsterCamera.onTurnBeat;
+  const onTurnBeat = useCallback(
+    (beat: TurnBeat) => {
+      followTurnOrder(beat);
+      focusMonsterTurn(beat);
+    },
+    [followTurnOrder, focusMonsterTurn]
+  );
   const combat = useSessionCombatExperience({
     memberTargetingMode: desktopHotbar ? 'map-first' : 'legacy',
     session: sessionId,
@@ -786,7 +800,7 @@ function SessionEncounterScope({
     scheduleRefresh,
     // A heard sound's bearing is measured from here (rpg-project#569).
     viewerCell: wherePosition,
-    onTurnBeat: turnOrder.onTurnBeat,
+    onTurnBeat,
     onPresentWalk: walkPresentation.presentWalk,
     presentableMembers,
     presentableActivityMembers,
@@ -854,9 +868,11 @@ function SessionEncounterScope({
   }, [sightings, turnOrderParticipants]);
   // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
   // cast owns the next floor click; otherwise a TURN click walks only while
-  // Move is selected. WORLD keeps the established free-roam click behavior.
-  // This makes a missed Attack/member target a no-op rather than an accidental
-  // walk and keeps the canvas ignorant of declaration kinds.
+  // Move is selected. On WORLD the floor click IS the Move, except while an
+  // offer is armed (rpg-project#785): an armed Attack, Cast or Activate owns
+  // the next click exactly as on the turn clock, and cancelling it gives the
+  // floor back. This makes a missed Attack/member target a no-op rather than
+  // an accidental walk and keeps the canvas ignorant of declaration kinds.
   //
   // During CELL aiming, `SessionCanvas` also sends a clicked creature's
   // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
@@ -870,6 +886,10 @@ function SessionEncounterScope({
     coherentDeclarations
   );
 
+  const worldOfferArmed =
+    experienceClock === ClockKind.WORLD &&
+    combat.presentationState.armedDeclarationId !== null &&
+    !combat.presentationState.movementSelected;
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -880,13 +900,13 @@ function SessionEncounterScope({
         return;
       }
       if (
-        experienceClock === ClockKind.WORLD ||
+        (experienceClock === ClockKind.WORLD && !worldOfferArmed) ||
         (experienceClock === ClockKind.TURN && combat.movementEnabled)
       ) {
         walkTo(coord);
       }
     },
-    [combat, experienceClock, walkTo]
+    [combat, experienceClock, walkTo, worldOfferArmed]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -2112,11 +2132,7 @@ function SessionEncounterScope({
             logMode={combat.logMode}
             streamState={streamState}
             story={combat.story}
-            storyFeedback={
-              desktopHotbar
-                ? { scopeKey: `${sessionId}\u0000${member}` }
-                : undefined
-            }
+            storyFeedback={{ scopeKey: `${sessionId}\u0000${member}` }}
             record={record}
             onRecordShownChange={setRecordShown}
             result={combat.result}
@@ -2139,6 +2155,10 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            monsterTurnIds={combat.monsterTurnIds}
+            onNotificationInteractionChange={
+              combat.onNotificationInteractionChange
+            }
             hoveredTarget={hoveredTarget}
             renderMap={({
               attackableTargets,
@@ -2180,6 +2200,7 @@ function SessionEncounterScope({
                     touchPinchEnabled
                     touchRotateEnabled
                     focusRequest={focusRequest}
+                    monsterTurnFocus={monsterCamera.focus}
                     // The dungeon's own starting facing, read from the ATLAS
                     // and nowhere else (rpg-project#374: rpg-api reads it from
                     // the atlas mirror only, and there is no second source
@@ -2264,7 +2285,8 @@ function SessionEncounterScope({
                         : lastGoodPathIndexRef.current
                     }
                     movementPreviewEnabled={
-                      experienceClock === ClockKind.WORLD ||
+                      (experienceClock === ClockKind.WORLD &&
+                        !worldOfferArmed) ||
                       (experienceClock === ClockKind.TURN &&
                         combat.movementEnabled)
                     }

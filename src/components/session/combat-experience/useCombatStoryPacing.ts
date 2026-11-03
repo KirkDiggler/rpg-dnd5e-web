@@ -3,13 +3,17 @@ import {
   sayActivityFromAct,
   type ActivityCueSettlement,
 } from '@/npc-activities/sayActivityPresentation';
-import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  MemberKind,
+  type Participant,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockMark,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
+import { walkMoveKind } from '../arrivingWalk';
 import {
   beatActor,
   isTurnEnd,
@@ -33,6 +37,8 @@ export const COMBAT_STORY_PACE_MS = 300;
 export interface UseCombatStoryPacingArgs {
   session: string;
   member: string;
+  /** Pauses advancement between beats, not authority or an in-flight walk. */
+  paused?: boolean;
   participants: readonly Participant[];
   memberNames?: ReadonlyMap<string, string>;
   story: readonly CombatExperienceStoryExchange[];
@@ -52,6 +58,7 @@ export interface UseCombatStoryPacingResult {
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
   notice: string | null;
+  monsterTurnIds: ReadonlySet<string>;
   /** Already displayed bodies must not snap to newer snapshots ahead of a walk. */
   heldMovementMembers: ReadonlySet<string>;
   acceptActs: (run: readonly Act[], metadata: ActDeliveryMetadata) => void;
@@ -66,6 +73,7 @@ interface ScopedPacingState {
   readonly activityCues: ReadonlyMap<string, ActivityCueRequest>;
   readonly token: PacingScopeToken;
   readonly hiddenIds: ReadonlySet<string>;
+  readonly monsterTurnIds: ReadonlySet<string>;
   readonly heldMovementMembers: ReadonlySet<string>;
   readonly notice: string | null;
 }
@@ -80,6 +88,7 @@ function emptyScopedPacing(token: PacingScopeToken): ScopedPacingState {
     token,
     activityCues: new Map(),
     hiddenIds: new Set(),
+    monsterTurnIds: new Set(),
     heldMovementMembers: new Set(),
     notice: null,
   };
@@ -126,6 +135,7 @@ export function useCombatStoryPacing({
   onTurnBeat,
   onPresentWalk,
   presentableMembers = EMPTY_MEMBERS,
+  paused = false,
   presentableActivityMembers = presentableMembers,
 }: UseCombatStoryPacingArgs): UseCombatStoryPacingResult {
   const token = useMemo<PacingScopeToken>(
@@ -138,6 +148,9 @@ export function useCombatStoryPacing({
   const [scopedPacing, setScopedPacing] = useState<ScopedPacingState>(() =>
     emptyScopedPacing(token)
   );
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  const deferredRef = useRef<(() => void) | null>(null);
   const queueRef = useRef<QueuedBeat[]>([]);
   const seenActivityIdsRef = useRef(new Set<string>());
   const waitingRef = useRef<PendingWalk | null>(null);
@@ -186,6 +199,7 @@ export function useCombatStoryPacing({
   }, []);
 
   const resetQueue = useCallback(() => {
+    deferredRef.current = null;
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = null;
     const waiting = waitingRef.current;
@@ -214,13 +228,22 @@ export function useCombatStoryPacing({
   );
 
   const updateHiddenIdsForScope = useCallback(
-    (update: (ids: ReadonlySet<string>) => ReadonlySet<string>) => {
+    (
+      update: (ids: ReadonlySet<string>) => ReadonlySet<string>,
+      monsterIds: readonly string[] = []
+    ) => {
       if (!inScope()) return;
       setScopedPacing((current) => {
         if (!inScope()) return current;
         const base =
           current.token === token ? current : emptyScopedPacing(token);
-        return { ...base, hiddenIds: update(base.hiddenIds) };
+        return {
+          ...base,
+          hiddenIds: update(base.hiddenIds),
+          monsterTurnIds: monsterIds.length
+            ? new Set([...base.monsterTurnIds, ...monsterIds])
+            : base.monsterTurnIds,
+        };
       });
     },
     [inScope, token]
@@ -298,7 +321,8 @@ export function useCombatStoryPacing({
       timerRef.current = setTimeout(() => {
         if (!inScope()) return;
         timerRef.current = null;
-        callback();
+        if (pausedRef.current) deferredRef.current = callback;
+        else callback();
       }, COMBAT_STORY_PACE_MS);
     },
     [inScope]
@@ -307,6 +331,10 @@ export function useCombatStoryPacing({
   const drain = useCallback(
     function drainQueue() {
       if (!inScope() || waitingRef.current) return;
+      if (pausedRef.current) {
+        deferredRef.current = drainQueue;
+        return;
+      }
       const step = nextBeatStep(queueRef.current, announcedActorRef.current);
       if (step.type === 'idle') {
         setNoticeForScope(null);
@@ -374,7 +402,12 @@ export function useCombatStoryPacing({
         return;
       }
       publishHeldMembers();
-      if (beat.act.body.case === 'attack') {
+      if (
+        beat.act.body.case === 'attack' ||
+        beat.act.body.case === 'cast' ||
+        beat.act.body.case === 'activate' ||
+        beat.act.body.case === 'speak'
+      ) {
         sawBeatRef.current = true;
         setNoticeForScope(null);
       } else if (isTurnEnd(beat.act)) {
@@ -447,7 +480,12 @@ export function useCombatStoryPacing({
           return [
             { act, index, scope: 'turn', walkPresentation, ...cueFields },
           ];
-        if ((act.body.case === 'walk' && actor && actor !== member) || activity)
+        if (
+          (act.body.case === 'walk' &&
+            actor &&
+            (actor !== member || walkMoveKind(act.body.value) !== 'own')) ||
+          activity
+        )
           return [
             { act, index, scope: 'world', walkPresentation, ...cueFields },
           ];
@@ -455,11 +493,24 @@ export function useCombatStoryPacing({
       });
       if (paced.length === 0) return;
       queueRef.current.push(...paced);
-      updateHiddenIdsForScope((current) => {
-        const next = new Set(current);
-        for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
-        return next;
-      });
+      updateHiddenIdsForScope(
+        (current) => {
+          const next = new Set(current);
+          for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
+          return next;
+        },
+        paced
+          .filter(
+            (beat) =>
+              beat.scope === 'turn' &&
+              participantsRef.current.some(
+                (participant) =>
+                  participant.member === beatActor(beat.act) &&
+                  participant.kind === MemberKind.MONSTER
+              )
+          )
+          .map((beat) => actStoryId(beat.act, beat.index))
+      );
       publishHeldMembers();
       if (!drainingRef.current) {
         drainingRef.current = true;
@@ -486,6 +537,13 @@ export function useCombatStoryPacing({
       resetQueue();
     };
   }, [resetQueue, token]);
+
+  useLayoutEffect(() => {
+    if (paused || !inScope()) return;
+    const resume = deferredRef.current;
+    deferredRef.current = null;
+    resume?.();
+  }, [paused, inScope]);
 
   useLayoutEffect(() => {
     if (!inScope()) return;
@@ -556,6 +614,7 @@ export function useCombatStoryPacing({
     story: visibleStory,
     result: visibleResult,
     notice: currentPacing?.notice ?? null,
+    monsterTurnIds: currentPacing?.monsterTurnIds ?? EMPTY_MEMBERS,
     heldMovementMembers: currentPacing?.heldMovementMembers ?? EMPTY_MEMBERS,
     acceptActs,
   };

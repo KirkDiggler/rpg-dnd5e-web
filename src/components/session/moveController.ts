@@ -42,6 +42,7 @@
  * plain functions.
  */
 import type { CubeCoord } from '../hex-grid/hexMath';
+import type { MoveKind } from '../hex-grid/moveKind';
 
 /** One actor's movement-in-progress. */
 export interface Movement {
@@ -52,6 +53,8 @@ export interface Movement {
    * drawn, so a route never has to carry its own origin.
    */
   readonly route: readonly CubeCoord[];
+  /** How the body moves, supplied by the act; absent means its own walk. */
+  readonly kind?: MoveKind;
   /**
    * Bumped once per genuine movement. `useHexMovePath` animates on this
    * CHANGING, so two walks that happen to end on the same cell each still
@@ -113,12 +116,14 @@ export function stepArrived(
 export function beginRoute(
   prev: Movements,
   member: string,
-  route: readonly CubeCoord[]
+  route: readonly CubeCoord[],
+  kind: MoveKind = 'own'
 ): Movements {
   if (route.length === 0) return prev;
   const next = new Map(prev);
   next.set(member, {
     route: [...route],
+    ...(kind !== 'own' ? { kind } : {}),
     seq: (prev.get(member)?.seq ?? 0) + 1,
     reached: 0,
   });

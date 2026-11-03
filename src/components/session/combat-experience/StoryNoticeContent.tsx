@@ -8,12 +8,16 @@ import type { CombatExperienceStoryExchange } from './types';
 /** Applied amounts and roll components are distinct provider facts, never a client sum. */
 export function StoryNoticeContent({
   entry,
+  showDescription = true,
 }: {
   entry: CombatExperienceStoryExchange;
+  showDescription?: boolean;
 }): ReactElement {
   const { act, describeContext: context } = entry;
   if (!act || !context || act.refused)
-    return <RecentEventSummary entry={entry} />;
+    return (
+      <RecentEventSummary entry={entry} showDescription={showDescription} />
+    );
   if (act.body.case === 'attack') {
     const attack = act.body.value;
     const hit = attack.outcome === AttackOutcome.HIT;
@@ -90,7 +94,7 @@ export function StoryNoticeContent({
           </p>
         </div>
       ))}
-      <RecentEventSummary entry={entry} />
+      <RecentEventSummary entry={entry} showDescription={showDescription} />
     </div>
   );
 }

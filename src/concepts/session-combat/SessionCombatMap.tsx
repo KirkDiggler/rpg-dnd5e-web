@@ -12,6 +12,10 @@ export interface SessionCombatMapProps {
   touchPinchEnabled?: boolean;
   touchRotateEnabled?: boolean;
   focusRequest?: number;
+  monsterTurnFocus?:
+    | import('@/components/session/useMonsterTurnFocus').MonsterTurnFocus
+    | null;
+  members?: readonly import('@/components/session/sightingEntities').SightedMember[];
 }
 
 /**
@@ -29,6 +33,8 @@ export function SessionCombatMap({
   touchPinchEnabled,
   touchRotateEnabled,
   focusRequest,
+  monsterTurnFocus,
+  members = SESSION_COMBAT_MAP_FIXTURE.members,
 }: SessionCombatMapProps) {
   return (
     <SessionCanvas
@@ -38,7 +44,7 @@ export function SessionCombatMap({
       characterName="Aldric Vale"
       classRefId="fighter"
       myPosition={SESSION_COMBAT_MAP_FIXTURE.playerPosition}
-      otherMembers={[...SESSION_COMBAT_MAP_FIXTURE.members]}
+      otherMembers={members}
       attackableTargets={attackableTargets ? [...attackableTargets] : undefined}
       selectedTargets={selectedTargets}
       movementPreviewEnabled={selectedTargets === undefined}
@@ -50,6 +56,7 @@ export function SessionCombatMap({
       touchPinchEnabled={touchPinchEnabled}
       touchRotateEnabled={touchRotateEnabled}
       focusRequest={focusRequest}
+      monsterTurnFocus={monsterTurnFocus}
     />
   );
 }

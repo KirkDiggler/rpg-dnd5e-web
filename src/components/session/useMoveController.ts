@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { CubeCoord } from '../hex-grid/hexMath';
+import type { MoveKind } from '../hex-grid/moveKind';
 import {
   beginRoute,
   emptyMovements,
@@ -15,7 +16,8 @@ export interface UseMoveControllerResult {
   /** Returns the exact allocated sequence, even within a batched React event. */
   readonly beginRoute: (
     member: string,
-    route: readonly CubeCoord[]
+    route: readonly CubeCoord[],
+    kind?: MoveKind
   ) => number | undefined;
   readonly stepArrived: (member: string, to: CubeCoord) => void;
   readonly movementPainted: (
@@ -85,9 +87,11 @@ export function useMoveController(
     [update]
   );
   const begin = useCallback(
-    (actor: string, route: readonly CubeCoord[]) => {
+    (actor: string, route: readonly CubeCoord[], kind: MoveKind = 'own') => {
       if (route.length === 0) return undefined;
-      return allocate(actor, (previous) => beginRoute(previous, actor, route));
+      return allocate(actor, (previous) =>
+        beginRoute(previous, actor, route, kind)
+      );
     },
     [allocate]
   );

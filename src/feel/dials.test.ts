@@ -10,14 +10,23 @@ import {
 } from './dials';
 
 describe('ALL_DIAL_SPECS', () => {
-  it('aggregates camera and dice specs, camera first', () => {
+  it('aggregates camera, dice, then notification specs', () => {
     const groups = ALL_DIAL_SPECS.map((spec) => spec.group);
     const firstDiceIndex = groups.indexOf('dice');
     expect(firstDiceIndex).toBeGreaterThan(0);
     expect(groups.slice(0, firstDiceIndex).every((g) => g === 'camera')).toBe(
       true
     );
-    expect(groups.slice(firstDiceIndex).every((g) => g === 'dice')).toBe(true);
+    const firstNotificationIndex = groups.indexOf('notifications');
+    expect(firstNotificationIndex).toBeGreaterThan(firstDiceIndex);
+    expect(
+      groups
+        .slice(firstDiceIndex, firstNotificationIndex)
+        .every((g) => g === 'dice')
+    ).toBe(true);
+    expect(
+      groups.slice(firstNotificationIndex).every((g) => g === 'notifications')
+    ).toBe(true);
   });
 
   it('has no duplicate keys', () => {
