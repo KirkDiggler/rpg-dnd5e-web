@@ -45,7 +45,9 @@ describe('option list mechanics (rpg-project#569)', () => {
     expect(gated.requires).toEqual({ fact: 'feast-tonight' });
     expect(patchOption(gated, { requires: undefined })).toEqual(line);
     // An emptied tool is no tool.
-    expect(patchOptionApproach(line, 0, { tool: undefined }).check[0]).toEqual({
+    expect(
+      patchOptionApproach(line, 0, { tool: undefined }).check?.[0]
+    ).toEqual({
       ability: 'persuasion',
       dc: 10,
     });

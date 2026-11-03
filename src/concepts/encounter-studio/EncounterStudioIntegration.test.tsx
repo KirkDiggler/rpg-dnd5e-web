@@ -113,6 +113,7 @@ import {
   LIGHTING_REGIONS,
 } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import statesCastleYaml from './fixtures/the-mad-king-states.yaml?raw';
 import referenceCastleYaml from './fixtures/the-mad-king.yaml?raw';
 import {
   clientToWorld,
@@ -5388,6 +5389,29 @@ describe('S4 the draft as a file through the real owner', () => {
       window.history.replaceState(null, '', url);
       vi.unstubAllEnvs();
     }
+  });
+
+  it('imports the current server castle with recipes, persists it, and undoes/redoes the whole import', async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    const before = storage.document();
+    mount(storage);
+    await settled();
+    await choose('the-mad-king.yaml', statesCastleYaml);
+    fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+    await settled();
+    const after = storage.document();
+    expect(
+      after.draft.room.monsterBindings?.['reserve-1'].states?.initial
+    ).toBe('waiting');
+    expect(after.scope.tables?.['answer-the-gate'].march).toHaveLength(2);
+    const exported = readDraftYaml(exportDraftYaml(after, 'the-mad-king'));
+    expect(exported.ok).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /^Undo/ }));
+    await settled();
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(screen.getByRole('button', { name: /^Redo/ }));
+    await settled();
+    expect(storage.document()).toEqual(after);
   });
 
   it('marks nothing in the test mode, even with ?perfMarks', async () => {
