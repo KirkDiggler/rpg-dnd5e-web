@@ -27,7 +27,7 @@
  */
 import { ANSWER_TRIGGER_KEYS } from '@/author/answerVocabulary';
 import { MONSTERS } from '@/author/factionVocabulary';
-import type { AnswerEntryShape } from './answerTableShape';
+import { answerRows, type AnswerEntryShape } from './answerTableShape';
 import { documentPlacementNames } from './placementNames';
 import type { RoomDraftDocument } from './roomDraft';
 import type { SiteFaction, SiteScope } from './siteScope';
@@ -80,19 +80,19 @@ function resolve(
   const faction = factionOf(document, placementId);
   const layers: { source: OrdersSource; rows: readonly AnswerEntryShape[] }[] =
     [];
-  const own = binding?.on?.[trigger];
+  const own = answerRows(binding?.on, trigger);
   if (own !== undefined) layers.push({ source: { kind: 'own' }, rows: own });
   if (binding?.table !== undefined) {
-    const rows = tables[binding.table]?.[trigger];
+    const rows = answerRows(tables[binding.table], trigger);
     if (rows !== undefined)
       layers.push({ source: { kind: 'table', id: binding.table }, rows });
   }
   if (faction !== undefined) {
-    const rows = faction.on?.[trigger];
+    const rows = answerRows(faction.on, trigger);
     if (rows !== undefined)
       layers.push({ source: { kind: 'faction', id: faction.id }, rows });
     if (faction.table !== undefined) {
-      const named = tables[faction.table]?.[trigger];
+      const named = answerRows(tables[faction.table], trigger);
       if (named !== undefined)
         layers.push({
           source: {
@@ -152,7 +152,7 @@ export function layeredOrders(
     ),
     ...Object.keys(factionLayers(document.scope, faction ?? { id: '' })),
   ]);
-  const out: Record<string, OrdersLayer> = {};
+  const out = Object.create(null) as Record<string, OrdersLayer>;
   for (const trigger of keys) {
     const { source, rows, shadowed } = resolve(document, placementId, trigger);
     const sharedWith = others
@@ -182,14 +182,14 @@ export function factionLayers(
 ): Record<string, FactionLayer | undefined> {
   const named =
     faction.table !== undefined ? scope.tables?.[faction.table] : undefined;
-  const out: Record<string, FactionLayer | undefined> = {};
+  const out = Object.create(null) as Record<string, FactionLayer | undefined>;
   for (const trigger of new Set([
     ...ANSWER_TRIGGER_KEYS,
     ...Object.keys(named ?? {}),
     ...Object.keys(faction.on ?? {}),
   ])) {
-    const own = faction.on?.[trigger];
-    const fromTable = named?.[trigger];
+    const own = answerRows(faction.on, trigger);
+    const fromTable = answerRows(named, trigger);
     if (own !== undefined)
       out[trigger] = {
         source: { kind: 'faction', id: faction.id },

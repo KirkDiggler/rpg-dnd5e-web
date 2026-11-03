@@ -23,6 +23,35 @@ const goblin = fixture.draft.room.monsterDeclarations.find(
 )!;
 
 describe('S6b recipe authoring', () => {
+  it.each(['march', '__proto__'])(
+    'offers placement-picked %s on the faction table, even without a faction recipe',
+    (key) => {
+      const commit = vi.fn();
+      const states = {
+        initial: 'awake',
+        awake: { transitions: [{ on: 'time', do: [{ pick: key }] }] },
+      };
+      render(
+        <FactionsPanel
+          scope={{ factions: [{ id: 'garrison' }] }}
+          room={{
+            ...fixture.draft.room,
+            monsterBindings: { 'goblin-1': { faction: 'garrison', states } },
+          }}
+          onChange={commit}
+        />
+      );
+      fireEvent.change(screen.getByLabelText('Add trigger to garrison'), {
+        target: { value: key },
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: `Add entry on ${key} to garrison` })
+      );
+      expect(commit.mock.lastCall?.[0].factions[0].on[key]).toEqual([
+        { hold: {} },
+      ]);
+    }
+  );
   it('applies atomically, cancels uncommitted text, and clears an override to inherit', () => {
     const commit = vi.fn();
     function Harness() {

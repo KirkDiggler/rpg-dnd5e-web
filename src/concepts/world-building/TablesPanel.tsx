@@ -95,7 +95,7 @@ function TableRow({
       ...documentStatePicks(scope.factions, room?.monsterBindings),
     ]),
   ];
-  const available = keys.filter((key) => table[key] === undefined);
+  const available = keys.filter((key) => !Object.hasOwn(table, key));
   /** `time` FIRST when it is offered, for `FactionTableEditor`'s reason: it is
    * the trigger a behavior table is mostly about and the only one the `when`
    * editor is legal on. (The social keys that once came first retired to

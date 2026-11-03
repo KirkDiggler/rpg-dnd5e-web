@@ -341,6 +341,14 @@ export interface AnswerSearchShape {
  * is never valid (`placeOn`), so a trigger either has entries or is absent. */
 export type AnswerTableShape = Record<string, AnswerEntryShape[]>;
 
+/** Authored keys may name Object.prototype properties. Only own rows count. */
+export function answerRows(
+  table: AnswerTableShape | undefined,
+  key: string
+): AnswerEntryShape[] | undefined {
+  return table && Object.hasOwn(table, key) ? table[key] : undefined;
+}
+
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -385,30 +393,33 @@ export function validateAnswerTable(
       path,
       `expected a map of trigger to entries (${ANSWER_TRIGGER_KEYS.join(', ')})`
     );
-  const table: AnswerTableShape = {};
-  for (const [trigger, rawEntries] of Object.entries(value)) {
-    if (RETIRED_TRIGGER_KEYS.includes(trigger))
-      fail(`${path}.${trigger}`, retiredTriggerRefusal(trigger));
-    if (!ANSWER_TRIGGER_KEYS.includes(trigger) && !picked.includes(trigger)) {
-      const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
-      fail(
-        path,
-        `${unknownTriggerRefusal(trigger)}${meant ? ` — did you mean "${meant}"?` : ''}`
-      );
-    }
-    if (!Array.isArray(rawEntries))
-      fail(`${path}.${trigger}`, 'expected a list of entries');
-    if (rawEntries.length === 0)
-      fail(`${path}.${trigger}`, EMPTY_TRIGGER_REFUSAL);
-    // Judged in the AUTHORED order, so a refusal names the row the author
-    // wrote; carried HEAVIEST FIRST (R12).
-    table[trigger] = heaviestFirst(
-      rawEntries.map((entry, index) =>
-        validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, 'time')
-      )
-    );
-  }
-  return table;
+  return Object.fromEntries(
+    Object.entries(value).map(([trigger, rawEntries]) => {
+      if (RETIRED_TRIGGER_KEYS.includes(trigger))
+        fail(`${path}.${trigger}`, retiredTriggerRefusal(trigger));
+      if (!ANSWER_TRIGGER_KEYS.includes(trigger) && !picked.includes(trigger)) {
+        const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
+        fail(
+          path,
+          `${unknownTriggerRefusal(trigger)}${meant ? ` — did you mean "${meant}"?` : ''}`
+        );
+      }
+      if (!Array.isArray(rawEntries))
+        fail(`${path}.${trigger}`, 'expected a list of entries');
+      if (rawEntries.length === 0)
+        fail(`${path}.${trigger}`, EMPTY_TRIGGER_REFUSAL);
+      // Judged in the AUTHORED order, so a refusal names the row the author
+      // wrote; carried HEAVIEST FIRST (R12).
+      return [
+        trigger,
+        heaviestFirst(
+          rawEntries.map((entry, index) =>
+            validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, 'time')
+          )
+        ),
+      ];
+    })
+  );
 }
 
 /**

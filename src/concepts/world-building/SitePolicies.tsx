@@ -93,7 +93,7 @@ import {
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
 import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
-import { statePicks } from './creatureStates';
+import { documentStatePicks } from './creatureStates';
 import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
@@ -1542,10 +1542,12 @@ export function TableNameSelect({
 function FactionTableEditor({
   scope,
   faction,
+  room,
   onChange,
 }: {
   scope: SiteScope;
   faction: SiteFaction;
+  room?: RoomGameplayData;
   onChange: (next: SiteScope) => void;
 }) {
   const table = faction.on ?? {};
@@ -1553,9 +1555,9 @@ function FactionTableEditor({
   const available = [
     ...new Set([
       ...ANSWER_TRIGGERS.map((t) => t.key),
-      ...statePicks(faction.states),
+      ...documentStatePicks(scope.factions, room?.monsterBindings),
     ]),
-  ].filter((key) => table[key] === undefined);
+  ].filter((key) => !Object.hasOwn(table, key));
   /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
    * trigger a behavior table is mostly about, and the only one the `when`
    * editor is legal on. (The social keys that once came first retired to
@@ -1868,6 +1870,7 @@ function FactionRow({
           <FactionTableEditor
             scope={scope}
             faction={faction}
+            room={room}
             onChange={onChange}
           />
 

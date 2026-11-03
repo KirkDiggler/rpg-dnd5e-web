@@ -26,6 +26,7 @@ import {
 } from '@/author/answerVocabulary';
 import { MONSTERS, PARTY } from '@/author/factionVocabulary';
 import {
+  answerRows,
   heaviestFirst,
   type AnswerEntryShape,
   type AnswerTableShape,
@@ -233,7 +234,10 @@ export function addSiteAnswerEntry(
   return patchSiteFaction(scope, factionId, {
     on: {
       ...table,
-      [trigger]: [...(table[trigger] ?? []), defaultAnswerEntry(trigger)],
+      [trigger]: [
+        ...(answerRows(table, trigger) ?? []),
+        defaultAnswerEntry(trigger),
+      ],
     },
   });
 }
@@ -252,7 +256,7 @@ export function patchSiteAnswerEntry(
 ): SiteScope {
   const faction = (scope.factions ?? []).find((item) => item.id === factionId);
   const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = [...(table[trigger] ?? [])];
+  const entries = [...(answerRows(table, trigger) ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
   table[trigger] = heaviestFirst(entries);
@@ -267,7 +271,9 @@ export function removeSiteAnswerEntry(
 ): SiteScope {
   const faction = (scope.factions ?? []).find((item) => item.id === factionId);
   const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = (table[trigger] ?? []).filter((_, i) => i !== index);
+  const entries = (answerRows(table, trigger) ?? []).filter(
+    (_, i) => i !== index
+  );
   if (entries.length === 0) delete table[trigger];
   else table[trigger] = entries;
   return patchSiteFaction(scope, factionId, { on: table });
@@ -364,7 +370,10 @@ export function addSiteTableAnswerEntry(
   if (table === undefined) return scope;
   return patchSiteTable(scope, id, {
     ...table,
-    [trigger]: [...(table[trigger] ?? []), defaultAnswerEntry(trigger)],
+    [trigger]: [
+      ...(answerRows(table, trigger) ?? []),
+      defaultAnswerEntry(trigger),
+    ],
   });
 }
 
@@ -379,7 +388,7 @@ export function patchSiteTableAnswerEntry(
 ): SiteScope {
   const table = scope.tables?.[id];
   if (table === undefined) return scope;
-  const entries = [...(table[trigger] ?? [])];
+  const entries = [...(answerRows(table, trigger) ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
   return patchSiteTable(scope, id, {
@@ -401,7 +410,9 @@ export function removeSiteTableAnswerEntry(
   const table = scope.tables?.[id];
   if (table === undefined) return scope;
   const next: AnswerTableShape = { ...table };
-  const entries = (next[trigger] ?? []).filter((_, i) => i !== index);
+  const entries = (answerRows(next, trigger) ?? []).filter(
+    (_, i) => i !== index
+  );
   if (entries.length === 0) delete next[trigger];
   else next[trigger] = entries;
   return patchSiteTable(scope, id, next);

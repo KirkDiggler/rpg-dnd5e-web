@@ -45,6 +45,7 @@
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
 import {
+  answerRows,
   heaviestFirst,
   type AnswerEntryShape,
   type AnswerTableShape,
@@ -224,7 +225,10 @@ export function addMonsterAnswerEntry(
     ...next,
     on: {
       ...table,
-      [trigger]: [...(table[trigger] ?? []), defaultAnswerEntry(trigger)],
+      [trigger]: [
+        ...(answerRows(table, trigger) ?? []),
+        defaultAnswerEntry(trigger),
+      ],
     },
   });
 }
@@ -239,7 +243,7 @@ export function patchMonsterAnswerEntry(
 ): RoomMonsterBinding | undefined {
   const next = working(binding);
   const table: AnswerTableShape = { ...(next.on ?? {}) };
-  const entries = [...(table[trigger] ?? [])];
+  const entries = [...(answerRows(table, trigger) ?? [])];
   if (index < 0 || index >= entries.length) return binding;
   entries[index] = entry;
   table[trigger] = heaviestFirst(entries);
@@ -256,7 +260,9 @@ export function removeMonsterAnswerEntry(
 ): RoomMonsterBinding | undefined {
   const next = working(binding);
   const table: AnswerTableShape = { ...(next.on ?? {}) };
-  const entries = (table[trigger] ?? []).filter((_, i) => i !== index);
+  const entries = (answerRows(table, trigger) ?? []).filter(
+    (_, i) => i !== index
+  );
   if (entries.length === 0) delete table[trigger];
   else table[trigger] = entries;
   return normalizeBinding({ ...next, on: table });

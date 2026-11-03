@@ -19,5 +19,8 @@ Slice [rpg-project#776](https://github.com/KirkDiggler/rpg-project/issues/776) o
 
 ## Mistaken
 
+- Review exposed prototype-named custom keys being treated as JavaScript object properties rather than authored data; regression tests now cover `__proto__`, `constructor` and `toString` through codec, read-back and editing — [review finding](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1384#discussion_r4460453882).
+- The faction picker initially gathered only its own recipe's picks, excluding valid placement-picked keys in shared faction rows; it now uses the same document-wide collector as root tables — [review finding](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1384#discussion_r4460453897).
+
 - The initial investigation checked dev before the running :3030 checkout; inspecting its reflog distinguished the shipped state-log presentation from still-unbuilt Studio recipe support — [S6 record](https://github.com/KirkDiggler/rpg-project/issues/776).
 - The first per-creature key check visited only bindings, omitting placements inheriting the default monsters faction; a no-binding import test exposed it and validation now visits every placement — [S6b](https://github.com/KirkDiggler/rpg-project/issues/776).
