@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CubeCoord } from '../hex-grid/hexMath';
+import type { MoveKind } from '../hex-grid/moveKind';
 import { arrivingWalk } from './arrivingWalk';
 import type { PresentWalk, WalkPresentationOutcome } from './walkPresentation';
 
@@ -11,7 +12,7 @@ export interface UseWalkPresentationArgs {
   readonly beginRoute: (
     member: string,
     route: readonly CubeCoord[],
-    forced?: boolean
+    kind?: MoveKind
   ) => number | undefined;
   readonly forgetRoute: (member: string, seq: number) => void;
 }
@@ -87,9 +88,10 @@ export function useWalkPresentation({
         return () => {};
       }
       if (pendingRef.current) finish(pendingRef.current, 'cancelled');
-      const seq = route.forced
-        ? inputs.beginRoute(route.member, route.cells, true)
-        : inputs.beginRoute(route.member, route.cells);
+      const seq =
+        route.kind !== 'own'
+          ? inputs.beginRoute(route.member, route.cells, route.kind)
+          : inputs.beginRoute(route.member, route.cells);
       if (seq === undefined) {
         input.complete('unavailable');
         return () => {};

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { CubeCoord } from '../hex-grid/hexMath';
+import type { MoveKind } from '../hex-grid/moveKind';
 import {
   beginRoute,
   emptyMovements,
@@ -16,7 +17,7 @@ export interface UseMoveControllerResult {
   readonly beginRoute: (
     member: string,
     route: readonly CubeCoord[],
-    forced?: boolean
+    kind?: MoveKind
   ) => number | undefined;
   readonly stepArrived: (member: string, to: CubeCoord) => void;
   readonly movementPainted: (
@@ -86,10 +87,10 @@ export function useMoveController(
     [update]
   );
   const begin = useCallback(
-    (actor: string, route: readonly CubeCoord[], forced = false) => {
+    (actor: string, route: readonly CubeCoord[], kind: MoveKind = 'own') => {
       if (route.length === 0) return undefined;
       return allocate(actor, (previous) =>
-        beginRoute(previous, actor, route, forced)
+        beginRoute(previous, actor, route, kind)
       );
     },
     [allocate]

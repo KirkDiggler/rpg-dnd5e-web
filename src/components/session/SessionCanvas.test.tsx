@@ -3350,7 +3350,7 @@ describe('SessionScene', () => {
       }
     }
 
-    it('carries forced routes into actual self and peer positional writers', async () => {
+    it('carries displaced routes into actual self and peer positional writers', async () => {
       const painted = vi.fn();
       const props = {
         scene: scene(),
@@ -3371,7 +3371,12 @@ describe('SessionScene', () => {
       const movements = new Map(
         ['char-1', 'skeleton-1'].map((id) => [
           id,
-          { seq: 1, route: [destination], reached: 0, forced: true },
+          {
+            seq: 1,
+            route: [destination],
+            reached: 0,
+            kind: 'displaced' as const,
+          },
         ])
       );
       await renderer.update(<SessionScene {...props} movements={movements} />);

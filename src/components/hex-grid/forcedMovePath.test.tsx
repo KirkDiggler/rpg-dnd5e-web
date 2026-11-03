@@ -13,7 +13,7 @@ beforeAll(() => {
 const origin = { x: 0, y: 0, z: 0 };
 const a = { x: 1, y: -1, z: 0 };
 const b = { x: 1, y: -2, z: 1 };
-describe('forced movement in the one positional writer', () => {
+describe('displaced movement in the one positional writer', () => {
   it('follows corners over180ms and carries large-frame overshoot', () => {
     const points = [
       { x: 0, z: 0 },
@@ -41,24 +41,24 @@ describe('forced movement in the one positional writer', () => {
       advanceDisplacementFrame({ points: [points[0]], index: 0, elapsed: 0 }, 1)
     ).toBeUndefined();
   });
-  it('bypasses a closed idle gate only for forced movement, holds facing, and fences superseded completion', async () => {
+  it('bypasses a closed idle gate only for displaced movement, holds facing, and fences superseded completion', async () => {
     const heading = vi.fn();
     const complete = vi.fn();
     const gate = vi.fn(() => false);
     function Token({
       seq,
-      forced = false,
+      displaced = false,
       path = [a],
     }: {
       seq?: number;
-      forced?: boolean;
+      displaced?: boolean;
       path?: CubeCoord[];
     }) {
       const ref = useRef<THREE.Group>(null);
       useHexMovePath(origin, path, seq, 1, 0, ref, heading, complete, false, {
         canAdvance: gate,
         speed: 1,
-        forced,
+        displaced,
       });
       return <group ref={ref} />;
     }
@@ -70,18 +70,18 @@ describe('forced movement in the one positional writer', () => {
     expect(gate).toHaveBeenCalledWith(1);
     heading.mockClear();
     gate.mockClear();
-    await renderer.update(<Token seq={2} forced path={[a, b]} />);
+    await renderer.update(<Token seq={2} displaced path={[a, b]} />);
     await renderer.advanceFrames(1, 0.03);
     expect(group.position.x).toBeGreaterThan(0);
     expect(heading).not.toHaveBeenCalled();
     expect(gate).not.toHaveBeenCalled();
-    await renderer.update(<Token seq={3} forced path={[origin]} />);
+    await renderer.update(<Token seq={3} displaced path={[origin]} />);
     await renderer.advanceFrames(1, 0.18);
     expect(complete.mock.calls).toEqual([[3]]);
     expect(group.position.x).toBe(0);
     await renderer.advanceFrames(5, 1);
     expect(complete).toHaveBeenCalledOnce();
-    await renderer.update(<Token seq={4} forced path={[a, b]} />);
+    await renderer.update(<Token seq={4} displaced path={[a, b]} />);
     await renderer.advanceFrames(1, 0.18);
     expect(group.position.x).toBe(cubeToWorld(b, 1).x);
     expect(group.position.z).toBe(cubeToWorld(b, 1).z);
