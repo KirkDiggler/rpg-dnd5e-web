@@ -4,13 +4,13 @@ Slice [web#1373](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1373) of [p
 
 ## Shipped
 
-- Candidate only, not merged: six additional choices in the existing default/count-response pickers through generated provider data; all six native Studio and two-client cases pass — [consumer PR](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1374).
+- Six additional choices in the existing default/count-response pickers through generated provider data; all six native Studio and two-client cases pass — [consumer PR](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1374).
 
 ## Decided
 
 - Kirk approved all six auditioned idles and authorized the existing Studio path, not combat or new locomotion, because the current use case is NPC presentation — [goal](https://github.com/KirkDiggler/rpg-project/issues/797).
 - Replace the selected profile with one expanded hash-bound profile while preserving283 appearance entries, because duplicate profile owners and per-animation controller branches are unnecessary — [checked plan](https://github.com/KirkDiggler/rpg-project/blob/docs/npc-idle-expansion/ideas/npc-activities/idle-expansion-plan.md).
-- Keep candidate pins explicit until private provider publication; released-SHA re-pin and new-wave merge approval remain required — [provider PR](https://github.com/KirkDiggler/rpg-game-assets/pull/338).
+- Keep candidate pins explicit until private provider publication; after Kirk authorized publication, repin the consumer to merged provider `3e705d207f93def9a2deb73ae209caf48c54f166`, preserving accepted runtime bytes — [provider PR](https://github.com/KirkDiggler/rpg-game-assets/pull/338).
 
 ## Found
 
