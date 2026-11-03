@@ -75,7 +75,7 @@ export interface AtlasPathIndex {
   occupiedCells: ReadonlySet<string>;
   /** Traversable cells that cannot be a voluntary destination. */
   passThroughCells: ReadonlySet<string>;
-  /** The occupied cells a seen, non-hostile blocking body holds
+  /** The occupied cells a seen blocking body believed neutral or allied holds
    * (rpg-project#841, P1): blocked on the first plan, walked into on the
    * second, which `findAtlasPath` runs only when he is the goal or the first
    * plan finds no route round. Always a subset of `occupiedCells`. */
@@ -218,9 +218,9 @@ export function findAtlasPath(
   if (round.length > 0 || index.walkIntoCells.size === 0) return round;
   // The first plan found nothing: he is the goal (his cell is occupied, so
   // the first plan cannot end there) or no route round exists. The second
-  // plan walks into a non-hostile blocking body; the server owns the step,
-  // stops the walk at his cell and says why. A hostile body, a prop and a
-  // shut door stay shut.
+  // plan walks into a blocking body believed neutral or allied; the server
+  // owns the step, stops the walk at his cell and says why. A hostile body,
+  // a body with no stance word, a prop and a shut door stay shut.
   const occupied = new Set(index.occupiedCells);
   for (const key of index.walkIntoCells) occupied.delete(key);
   return plan({ ...index, occupiedCells: occupied });

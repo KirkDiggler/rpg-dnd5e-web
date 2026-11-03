@@ -134,4 +134,22 @@ describe('provider-owned occupant passage', () => {
     const memory = index(Passage.BLOCKED, true, MemberKind.MONSTER, 'neutral');
     expect(memory.walkInto.size).toBe(0);
   });
+  it('a body with no stance word fails closed: never walked into', () => {
+    const stranger = index(Passage.BLOCKED, false, MemberKind.MONSTER, '');
+    expect(stranger.blocked.has(coordToKey(cubes[1]))).toBe(true);
+    expect(stranger.walkInto.size).toBe(0);
+    const graph = buildAtlasPathIndex(
+      atlas,
+      undefined,
+      stranger.blocked,
+      stranger.passThrough,
+      stranger.walkInto
+    );
+    expect(findAtlasPath(graph, cubes[0], cubes[2])).toEqual([]);
+    expect(findAtlasPath(graph, cubes[0], cubes[1])).toEqual([]);
+  });
+  it('an allied blocking body is walked into as a neutral one is', () => {
+    const friend = index(Passage.BLOCKED, false, MemberKind.MONSTER, 'allied');
+    expect(friend.walkInto.has(coordToKey(cubes[1]))).toBe(true);
+  });
 });
