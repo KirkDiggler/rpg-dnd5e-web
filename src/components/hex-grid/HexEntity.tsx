@@ -59,6 +59,7 @@ import {
   monsterHidesWhenDowned,
   resolveMonsterModelUrl,
 } from './monsterModels';
+import type { MoveKind } from './moveKind';
 import { resolveNpcMainHandPresentation } from './npcMainHandPresentation';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import {
@@ -198,8 +199,8 @@ export interface HexEntityProps {
    * `useHexMovePath` watches this, not `position` itself, to distinguish a
    * real move from initial placement or a ghost/revive reconciliation. */
   moveSeq?: number;
-  /** Authoritative external displacement; never inferred from the path. */
-  moveForced?: boolean;
+  /** How the body moves — authoritative, never inferred from the path. */
+  moveKind?: MoveKind;
   /** Presentation-only completion for this entity's exact move sequence. */
   onMovementPresentationComplete?: (entityId: string, moveSeq: number) => void;
   deferPositionReconciliation?: boolean;
@@ -421,7 +422,7 @@ export function HexEntity({
   propRotationY,
   movePath,
   moveSeq,
-  moveForced = false,
+  moveKind = 'own',
   onMovementPresentationComplete,
   deferPositionReconciliation = false,
   seenFacingDegrees,
@@ -517,7 +518,7 @@ export function HexEntity({
     !remembered && deferPositionReconciliation,
     {
       speed: presentationSpeed,
-      forced: moveForced,
+      displaced: moveKind === 'displaced',
       canAdvance: (seq) =>
         !activityProfile ||
         activityUnavailable ||
@@ -913,10 +914,14 @@ export function HexEntity({
                     !isGhost &&
                     !remembered &&
                     isMoving &&
-                    !moveForced
+                    moveKind !== 'displaced'
                   }
                   isDisplaced={
-                    !isDead && !isGhost && !remembered && isMoving && moveForced
+                    !isDead &&
+                    !isGhost &&
+                    !remembered &&
+                    isMoving &&
+                    moveKind === 'displaced'
                   }
                   isDownedVariant={isDownedModelVariant}
                   mainHandPresentation={

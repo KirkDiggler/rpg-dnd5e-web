@@ -100,7 +100,7 @@ it.each(['enter', 'sustain', 'exit'])(
               ]
             : undefined
         }
-        moveForced={moving}
+        moveKind={moving ? 'displaced' : 'own'}
         onMovementPresentationComplete={complete}
       />
     );

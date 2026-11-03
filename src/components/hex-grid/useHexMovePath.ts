@@ -99,7 +99,8 @@ export interface StepState {
 }
 
 export interface WalkAnimationGate {
-  readonly forced?: boolean;
+  /** A body moved without its legs: slides, keeps facing, ignores the gate. */
+  readonly displaced?: boolean;
   /** Readiness belongs to this exact outstanding route, not an older walk. */
   readonly canAdvance: (moveSeq: number) => boolean;
   /** Shared with the body mixer; changes speed, never route order. */
@@ -295,7 +296,7 @@ export function useHexMovePath(
   const positionedGroupRef = useRef<THREE.Group | null>(null);
   const seenSeqRef = useRef<number | undefined>(undefined);
   const activeMoveSeqRef = useRef<number | undefined>(undefined);
-  const forcedMoveRef = useRef(false);
+  const displacedMoveRef = useRef(false);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
 
   const destination = cubeToWorld(entityPosition, hexSize);
@@ -346,7 +347,7 @@ export function useHexMovePath(
       // pre-#542 behavior exactly. Also clears any in-flight step so a stale
       // useFrame tick from a reset can't keep nudging the position.
       activeMoveSeqRef.current = undefined;
-      forcedMoveRef.current = false;
+      displacedMoveRef.current = false;
       stepRef.current = { points: [], index: 0, elapsed: 0 };
       groupRef.current.position.set(destination.x, yOffset, destination.z);
       setIsMoving(false);
@@ -355,7 +356,7 @@ export function useHexMovePath(
 
     stepRef.current = { points: result.points, index: 0, elapsed: 0 };
     activeMoveSeqRef.current = moveSeq;
-    forcedMoveRef.current = presentationRef.current?.forced === true;
+    displacedMoveRef.current = presentationRef.current?.displaced === true;
     setIsMoving(result.points.length > 1);
     if (result.points.length <= 1 && moveSeq !== undefined) {
       onPresentationCompleteRef.current?.(moveSeq);
@@ -364,7 +365,7 @@ export function useHexMovePath(
     // #656 same-hex move) means "no opinion" — the entity holds whatever it
     // was already facing rather than snapping to due north.
     const startHeading = segmentHeading(stepRef.current);
-    if (!forcedMoveRef.current && startHeading !== undefined)
+    if (!displacedMoveRef.current && startHeading !== undefined)
       onHeadingRef.current?.(startHeading);
     invalidate();
   }, [
@@ -386,7 +387,7 @@ export function useHexMovePath(
     const gate = presentationRef.current;
     const seq = activeMoveSeqRef.current;
     if (
-      !forcedMoveRef.current &&
+      !displacedMoveRef.current &&
       seq !== undefined &&
       gate &&
       !gate.canAdvance(seq)
@@ -395,7 +396,7 @@ export function useHexMovePath(
       return;
     }
     const scaledDelta = delta * (gate?.speed ?? 1);
-    if (forcedMoveRef.current) {
+    if (displacedMoveRef.current) {
       const displaced = advanceDisplacementFrame(s, scaledDelta);
       if (!displaced) return;
       s.index = displaced.index;

@@ -1,5 +1,8 @@
 import { create } from '@bufbuild/protobuf';
-import { ActSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import {
+  ActSchema,
+  MoveKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { arrivingWalk } from './arrivingWalk';
@@ -7,7 +10,8 @@ import { useCombatStoryPacing } from './combat-experience/useCombatStoryPacing';
 import { useMoveController } from './useMoveController';
 import { useWalkPresentation } from './useWalkPresentation';
 
-const move = (actor: string, forced = false, id = 'push') =>
+// A walk as the server sends it: the kind, and `forced` as its mirror.
+const move = (actor: string, displaced = false, id = 'push') =>
   create(ActSchema, {
     id,
     session: 's',
@@ -15,7 +19,8 @@ const move = (actor: string, forced = false, id = 'push') =>
       case: 'walk',
       value: {
         mover: { id: actor },
-        forced,
+        kind: displaced ? MoveKind.DISPLACED : MoveKind.OWN,
+        forced: displaced,
         cause: 'same-cause',
         path: [{ cell: { x: 1, y: 0 } }, { cell: { x: 2, y: 0 } }],
       },
@@ -43,9 +48,9 @@ function harness(sighted = new Set(['npc', 'viewer'])) {
     return { moves, bridge, pacing };
   });
 }
-describe('authoritative forced movement through the presentation owners', () => {
+describe('authoritative displacement through the presentation owners', () => {
   it.each(['npc', 'viewer'])(
-    'carries forced to the real movement owner for %s',
+    'carries displaced to the real movement owner for %s',
     (actor) => {
       const { result, unmount } = harness();
       act(() =>
@@ -54,7 +59,7 @@ describe('authoritative forced movement through the presentation owners', () => 
         })
       );
       expect(result.current.moves.movements.get(actor)).toMatchObject({
-        forced: true,
+        kind: 'displaced',
         seq: 1,
         reached: 0,
       });
@@ -64,9 +69,33 @@ describe('authoritative forced movement through the presentation owners', () => 
       unmount();
     }
   );
+  it("feeds the viewer's own compelled walk, which no Move answer carries", () => {
+    const { result, unmount } = harness();
+    const compelled = create(ActSchema, {
+      id: 'flee',
+      session: 's',
+      body: {
+        case: 'walk',
+        value: {
+          mover: { id: 'viewer' },
+          kind: MoveKind.COMPELLED,
+          cause: 'dnd5e:spells:dissonant-whispers',
+          path: [{ cell: { x: 1, y: 0 } }, { cell: { x: 2, y: 0 } }],
+        },
+      },
+    });
+    act(() =>
+      result.current.pacing.acceptActs([compelled], { source: 'live' })
+    );
+    expect(result.current.moves.movements.get('viewer')).toMatchObject({
+      kind: 'compelled',
+      seq: 1,
+    });
+    unmount();
+  });
   it('never infers displacement from a cause and still suppresses the own voluntary RPC duplicate', () => {
     expect(arrivingWalk(move('viewer'), 'viewer')).toBeUndefined();
-    expect(arrivingWalk(move('npc'), 'viewer')?.forced).not.toBe(true);
+    expect(arrivingWalk(move('npc'), 'viewer')?.kind).toBe('own');
   });
   it.each(['catch-up', 'hidden'] as const)(
     'does not replay %s displacement',
@@ -83,7 +112,7 @@ describe('authoritative forced movement through the presentation owners', () => 
       unmount();
     }
   );
-  it('does not let a superseded completion settle the newer forced route', () => {
+  it('does not let a superseded completion settle the newer displaced route', () => {
     const { result, unmount } = harness();
     const old = vi.fn();
     const fresh = vi.fn();
@@ -103,7 +132,7 @@ describe('authoritative forced movement through the presentation owners', () => 
     act(() => result.current.bridge.movementPainted('npc', 1, 2));
     expect(fresh).not.toHaveBeenCalled();
     expect(result.current.moves.movements.get('npc')).toMatchObject({
-      forced: true,
+      kind: 'displaced',
       seq: 2,
     });
     act(() => result.current.bridge.movementPainted('npc', 2, 2));

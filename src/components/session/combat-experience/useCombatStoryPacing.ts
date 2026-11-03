@@ -13,6 +13,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
+import { walkMoveKind } from '../arrivingWalk';
 import {
   beatActor,
   isTurnEnd,
@@ -482,7 +483,7 @@ export function useCombatStoryPacing({
         if (
           (act.body.case === 'walk' &&
             actor &&
-            (actor !== member || act.body.value.forced)) ||
+            (actor !== member || walkMoveKind(act.body.value) !== 'own')) ||
           activity
         )
           return [
