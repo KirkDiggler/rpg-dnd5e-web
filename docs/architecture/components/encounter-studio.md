@@ -28,6 +28,23 @@ toolkit can derive templates from every monster offered in a UI list. The
 rulebook template-base registry is distinct from its monster constructors. Do not
 repair a rejected template by silently changing its base.
 
+## Creature state recipes
+
+Creature Behaviour and Factions share `StatesEditor`: the canonical `states:`
+YAML, with explicit Apply/Cancel. A placement's recipe replaces its faction's
+whole recipe; clearing it restores inheritance, then the engine's default.
+The editor carries initial state, ordered transitions, scoped beats, guards,
+acts and reasons. It does not execute a machine or infer what an NPC will do.
+
+The document codec gathers recipe `pick` keys before reading tables. Custom
+keys such as `march` use the same row vocabulary as `time`; unknown keys are
+not globally enabled. Complete saves validate each creature's resolved recipe
+against its layered table. Table controls and read-back include custom keys.
+JSON recovery, YAML import/export and unrelated binding edits preserve recipes.
+
+An option without `check` is a plain line, not an empty check. Its success rows
+are carried without inventing a roll; a failure on a plain line is refused.
+
 ## Appearance and lifetime
 
 `scene.creaturePalette` is editor metadata, not rulebook content. `ref` is monster

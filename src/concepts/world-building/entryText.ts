@@ -3,7 +3,7 @@
  * table (SitePolicies, TablesPanel, BundlesPanel). Its own module so the
  * component files export components only.
  */
-import { answerWhenLegalOn } from '@/author/answerVocabulary';
+import { answerRowKind, answerWhenLegalOn } from '@/author/answerVocabulary';
 import { isUseEntry, type AnswerEntryShape } from './answerTableShape';
 import { whenShorthand, wordShorthand } from './answerVocabulary';
 import { groupLineText } from './bundles';
@@ -32,7 +32,7 @@ export function entryText(entry: AnswerEntryShape, trigger: string): string {
       ? groupLineText(entry)
       : `${groupLineText(entry)} · when ${whenShorthand(entry.when)}`;
   const parts: string[] = [];
-  if (answerWhenLegalOn(trigger)) {
+  if (answerWhenLegalOn(answerRowKind(trigger))) {
     parts.push(
       entry.when === undefined
         ? 'any time'

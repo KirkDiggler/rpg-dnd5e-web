@@ -230,6 +230,8 @@ export type SingleRoomDungeonRead =
   | ({ dialect: 'single-room' } & DecodeSingleRoomDungeonResult)
   | { dialect: 'other'; version: number };
 
+import { documentStatePicks } from './creatureStates';
+
 export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
   const root = parseSingleRoomSource(source);
   const version = root.version;
@@ -344,11 +346,16 @@ function decodeSingleRoomRoot(
   const bundles = Object.hasOwn(root, 'bundles')
     ? validateSiteBundles(root.bundles)
     : {};
+  const rawRoom =
+    isPlainObject(root.room) && isPlainObject(root.room.room)
+      ? root.room.room
+      : {};
+  const picked = documentStatePicks(root.factions, rawRoom.monsterBindings);
   const tables = Object.hasOwn(root, 'tables')
-    ? validateSiteTables(root.tables)
+    ? validateSiteTables(root.tables, picked)
     : {};
   const factions = Object.hasOwn(root, 'factions')
-    ? validateSiteFactions(root.factions)
+    ? validateSiteFactions(root.factions, picked)
     : [];
   const dispositions = Object.hasOwn(root, 'dispositions')
     ? validateSiteDispositions(root.dispositions)

@@ -48,6 +48,11 @@ import {
   type OptionShape,
 } from './answerTableShape';
 import {
+  documentStatePicks,
+  validateStates,
+  type CreatureStates,
+} from './creatureStates';
+import {
   validateMonsterTemplates,
   type SiteTemplates,
 } from './monsterTemplates';
@@ -74,6 +79,7 @@ export type SiteTemper = string | Record<string, number>;
  * whole orders stack uses. So a side may share one drill and still add a row. */
 export interface SiteFaction {
   id: string;
+  states?: CreatureStates;
   mind?: string;
   table?: string;
   on?: AnswerTableShape;
@@ -325,6 +331,7 @@ export interface SiteConcealmentSpec {
 export type SiteConcealments = Record<string, SiteConcealmentSpec>;
 
 const FACTION_KEYS = [
+  'states',
   'id',
   'mind',
   'table',
@@ -380,7 +387,10 @@ function factionIdRefusal(
 
 /** The site's `factions:`, or an empty list when the key carried none. An
  * empty list is the authored state "no factions", not an error. */
-export function validateSiteFactions(value: unknown): SiteFaction[] {
+export function validateSiteFactions(
+  value: unknown,
+  picked: readonly string[] = documentStatePicks(value)
+): SiteFaction[] {
   if (!Array.isArray(value)) fail('Site factions', 'must be a list');
   const factions: SiteFaction[] = [];
   const ids = new Set<string>();
@@ -407,8 +417,10 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
         fail(`${path} mind`, 'must name a placement id');
       faction.mind = raw.mind;
     }
+    if (Object.hasOwn(raw, 'states'))
+      faction.states = validateStates(raw.states, `${path}.states`);
     if (Object.hasOwn(raw, 'on'))
-      faction.on = validateAnswerTable(raw.on, `${path} on`);
+      faction.on = validateAnswerTable(raw.on, `${path} on`, picked);
     if (Object.hasOwn(raw, 'temper'))
       faction.temper = validateFactionTemper(raw.temper, `${path} temper`);
     // THE ONE OPTION GRAMMAR a creature's own lines get (`grammar.options`
@@ -802,13 +814,16 @@ export function validateSiteBundles(value: unknown): SiteBundles {
   return bundles;
 }
 
-export function validateSiteTables(value: unknown): SiteTables {
+export function validateSiteTables(
+  value: unknown,
+  picked: readonly string[] = []
+): SiteTables {
   if (!isMapping(value)) fail('Site tables', 'must be a map');
   const tables: SiteTables = {};
   for (const [id, body] of Object.entries(value)) {
     const path = `Site table ${id}`;
     if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as goblin-mind');
-    tables[id] = validateAnswerTable(body, path);
+    tables[id] = validateAnswerTable(body, path, picked);
   }
   return tables;
 }
@@ -938,10 +953,12 @@ function validateSiteCell(value: unknown, path: string): SiteRoomCell {
  * it. Saving, exporting and importing keep the default. */
 export function validateSiteScope(
   value: unknown,
-  { requireMembers = true }: { requireMembers?: boolean } = {}
+  { requireMembers = true }: { requireMembers?: boolean } = {},
+  picked?: readonly string[]
 ): SiteScope {
   const raw = objectShape(value, 'Site scope');
   rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
+  const tableKeys = picked ?? documentStatePicks(raw.factions);
   const scope: SiteScope = {};
   if (Object.hasOwn(raw, 'templates')) {
     const templates = validateMonsterTemplates(raw.templates);
@@ -955,11 +972,11 @@ export function validateSiteScope(
   // one, and a name cannot be judged before the universe it names exists — the
   // same ordering reason `intel` comes before a `holds` that names a record.
   if (Object.hasOwn(raw, 'tables')) {
-    const tables = validateSiteTables(raw.tables);
+    const tables = validateSiteTables(raw.tables, tableKeys);
     if (Object.keys(tables).length > 0) scope.tables = tables;
   }
   if (Object.hasOwn(raw, 'factions')) {
-    const factions = validateSiteFactions(raw.factions);
+    const factions = validateSiteFactions(raw.factions, tableKeys);
     if (factions.length > 0) scope.factions = factions;
   }
   if (Object.hasOwn(raw, 'dispositions')) {

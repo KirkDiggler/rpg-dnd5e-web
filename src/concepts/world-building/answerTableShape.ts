@@ -48,6 +48,7 @@ import {
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
   ANSWER_WORD_KEYS,
+  answerRowKind,
   answerWhenRefusal,
   answerWord,
   answerWordRefusal,
@@ -376,7 +377,8 @@ function fail(path: string, message: string): never {
  * points at the entry, exactly as the v2 parser's paths do. */
 export function validateAnswerTable(
   value: unknown,
-  path: string
+  path: string,
+  picked: readonly string[] = []
 ): AnswerTableShape {
   if (!isMapping(value))
     fail(
@@ -387,7 +389,7 @@ export function validateAnswerTable(
   for (const [trigger, rawEntries] of Object.entries(value)) {
     if (RETIRED_TRIGGER_KEYS.includes(trigger))
       fail(`${path}.${trigger}`, retiredTriggerRefusal(trigger));
-    if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
+    if (!ANSWER_TRIGGER_KEYS.includes(trigger) && !picked.includes(trigger)) {
       const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
       fail(
         path,
@@ -402,7 +404,7 @@ export function validateAnswerTable(
     // wrote; carried HEAVIEST FIRST (R12).
     table[trigger] = heaviestFirst(
       rawEntries.map((entry, index) =>
-        validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, trigger)
+        validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, 'time')
       )
     );
   }
@@ -675,7 +677,7 @@ export function validateAnswerRows(
   trigger: string
 ): AnswerEntryShape[] {
   return rows.map((row, index) =>
-    validateAnswerEntry(row, `${path}[${index}]`, trigger)
+    validateAnswerEntry(row, `${path}[${index}]`, answerRowKind(trigger))
   );
 }
 
@@ -1140,7 +1142,7 @@ export type OptionRequiresShape = OptionRequires;
 export interface OptionShape {
   id: string;
   say: string;
-  check: AnswerApproachShape[];
+  check?: AnswerApproachShape[];
   requires?: OptionRequiresShape;
   success?: AnswerEntryShape[];
   failure?: AnswerEntryShape[];
@@ -1268,11 +1270,14 @@ export function validateOptions(
     const say = typeof raw.say === 'string' ? raw.say : '';
     if (say === '') fail(`${at}.say`, OPTION_NO_SAY_REFUSAL);
 
-    const option: OptionShape = {
-      id,
-      say,
-      check: validateApproaches(raw.check, `${at}.check`),
-    };
+    const option: OptionShape = { id, say };
+    if (Object.hasOwn(raw, 'check'))
+      option.check = validateApproaches(raw.check, `${at}.check`);
+    else if (raw.failure !== undefined && raw.failure !== null)
+      fail(
+        `${at}.failure`,
+        'this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`'
+      );
 
     if (raw.requires !== undefined && raw.requires !== null)
       option.requires = validateOptionRequires(raw.requires, `${at}.requires`);

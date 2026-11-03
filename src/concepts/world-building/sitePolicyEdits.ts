@@ -19,6 +19,7 @@
  */
 import {
   ANSWER_SELECTOR_WORDS,
+  answerRowKind,
   answerWord,
   answerWordsForTrigger,
   type AnswerWordSpec,
@@ -91,6 +92,7 @@ export function patchSiteFaction(
       const next: SiteFaction = { ...faction, ...patch };
       if (next.mind === undefined || next.mind === '') delete next.mind;
       if (next.temper === undefined) delete next.temper;
+      if (next.states === undefined) delete next.states;
       // A TABLE NAME IS A REFERENCE WITH NO EMPTY STATE: cleared means absent,
       // never written as an empty string the encoder would refuse.
       if (next.table === undefined || next.table === '') delete next.table;
@@ -189,7 +191,7 @@ export function entryWord(entry: AnswerEntryShape): string | undefined {
  * (`flee` on a social key, `hold` on `time`). A `fact` needs an id and there
  * is none to invent; the author writes it. */
 export function defaultAnswerEntry(trigger: string): AnswerEntryShape {
-  const words = answerWordsForTrigger(trigger);
+  const words = answerWordsForTrigger(answerRowKind(trigger));
   const word =
     words.find((spec: AnswerWordSpec) => spec.value === 'none') ?? words[0];
   const entry = {} as Record<string, unknown>;

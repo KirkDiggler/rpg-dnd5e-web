@@ -51,22 +51,22 @@ export function nextOptionId(options: Options): string {
   }
 }
 
-/** One option with its refused-empty keys dropped. The check is kept even
- * when empty, because an option without one is refused by name and the author
- * should see that sentence rather than lose the key silently. */
+/** Preserve absence (a plain line) separately from an authored empty check,
+ * which remains invalid until the author supplies an approach. */
 export function normalizeOption(option: OptionShape): OptionShape {
   const next: OptionShape = {
     id: option.id,
     say: option.say,
-    check: option.check.map((approach) => {
+  };
+  if (option.check !== undefined)
+    next.check = option.check.map((approach) => {
       const row: AnswerApproachShape = {
         ability: approach.ability,
         dc: approach.dc,
       };
       if (approach.tool) row.tool = approach.tool;
       return row;
-    }),
-  };
+    });
   if (option.requires !== undefined) next.requires = option.requires;
   if (option.success !== undefined && option.success.length > 0)
     next.success = option.success;
@@ -130,7 +130,7 @@ export function patchOption(
 export function addOptionApproach(option: OptionShape): OptionShape {
   return normalizeOption({
     ...option,
-    check: [...option.check, { ...DEFAULT_OPTION_APPROACH }],
+    check: [...(option.check ?? []), { ...DEFAULT_OPTION_APPROACH }],
   });
 }
 
@@ -139,7 +139,7 @@ export function patchOptionApproach(
   index: number,
   patch: Partial<AnswerApproachShape>
 ): OptionShape {
-  if (index < 0 || index >= option.check.length) return option;
+  if (!option.check || index < 0 || index >= option.check.length) return option;
   return normalizeOption({
     ...option,
     check: option.check.map((approach, i) =>
@@ -154,7 +154,9 @@ export function removeOptionApproach(
 ): OptionShape {
   return normalizeOption({
     ...option,
-    check: option.check.filter((_, i) => i !== index),
+    ...(option.check !== undefined
+      ? { check: option.check.filter((_, i) => i !== index) }
+      : {}),
   });
 }
 

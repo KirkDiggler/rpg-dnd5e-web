@@ -574,6 +574,13 @@ export function answerWord(key: string): AnswerWordSpec | undefined {
   return ANSWER_WORDS.find((w) => w.key === key);
 }
 
+/** A validated recipe-picked table key has the same row vocabulary as time.
+ * This classifies rows only; the document codec still checks which keys its
+ * recipes actually pick. Option verdicts retain their own vocabulary. */
+export function answerRowKind(key: string): string {
+  return key === 'success' || key === 'failure' ? key : 'time';
+}
+
 export function answerTrigger(key: string): AnswerTriggerSpec | undefined {
   return ANSWER_TRIGGERS.find((t) => t.key === key);
 }

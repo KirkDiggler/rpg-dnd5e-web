@@ -69,6 +69,7 @@ export function normalizeBinding(
   next: RoomMonsterBinding
 ): RoomMonsterBinding | undefined {
   const normalized: RoomMonsterBinding = {};
+  if (next.states !== undefined) normalized.states = next.states;
   if (next.faction !== undefined && next.faction !== '')
     normalized.faction = next.faction;
   // A NAMED ROOT TABLE IS A REFERENCE, SO IT IS KEPT VERBATIM (rpg-toolkit#1897).

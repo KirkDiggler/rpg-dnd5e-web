@@ -142,8 +142,18 @@ export function layeredOrders(
   const others = document.draft.room.monsterDeclarations.filter(
     (m) => m.id !== placementId
   );
+  const binding = document.draft.room.monsterBindings?.[placementId];
+  const faction = factionOf(document, placementId);
+  const keys = new Set([
+    ...ANSWER_TRIGGER_KEYS,
+    ...Object.keys(binding?.on ?? {}),
+    ...Object.keys(
+      binding?.table ? (document.scope.tables?.[binding.table] ?? {}) : {}
+    ),
+    ...Object.keys(factionLayers(document.scope, faction ?? { id: '' })),
+  ]);
   const out: Record<string, OrdersLayer> = {};
-  for (const trigger of ANSWER_TRIGGER_KEYS) {
+  for (const trigger of keys) {
     const { source, rows, shadowed } = resolve(document, placementId, trigger);
     const sharedWith = others
       .filter((m) => sameRows(source, resolve(document, m.id, trigger).source))
@@ -173,7 +183,11 @@ export function factionLayers(
   const named =
     faction.table !== undefined ? scope.tables?.[faction.table] : undefined;
   const out: Record<string, FactionLayer | undefined> = {};
-  for (const trigger of ANSWER_TRIGGER_KEYS) {
+  for (const trigger of new Set([
+    ...ANSWER_TRIGGER_KEYS,
+    ...Object.keys(named ?? {}),
+    ...Object.keys(faction.on ?? {}),
+  ])) {
     const own = faction.on?.[trigger];
     const fromTable = named?.[trigger];
     if (own !== undefined)
