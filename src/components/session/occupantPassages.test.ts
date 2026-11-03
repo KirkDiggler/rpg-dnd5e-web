@@ -97,7 +97,7 @@ describe('provider-owned occupant passage', () => {
     expect(index(Passage.BLOCKED, true).blocked.size).toBe(0);
     expect(index(Passage.UNSPECIFIED).error).toBeTruthy();
   });
-  it('a seen, non-hostile blocking body is walked into only when he is the goal or the only way', () => {
+  it('a seen, neutral blocking body is walked into only when he is the only way', () => {
     const guard = index(Passage.BLOCKED, false, MemberKind.MONSTER, 'neutral');
     expect(guard.blocked.has(coordToKey(cubes[1]))).toBe(true);
     expect(guard.walkInto.has(coordToKey(cubes[1]))).toBe(true);
@@ -112,9 +112,8 @@ describe('provider-owned occupant passage', () => {
     expect(findAtlasPath(graph, cubes[0], cubes[2]).map(coordToKey)).toEqual(
       cubes.map(coordToKey)
     );
-    expect(findAtlasPath(graph, cubes[0], cubes[1]).map(coordToKey)).toEqual(
-      cubes.slice(0, 2).map(coordToKey)
-    );
+    // His cell as the goal is the approach gesture, not a walk into him.
+    expect(findAtlasPath(graph, cubes[0], cubes[1])).toEqual([]);
   });
   it('a body believed hostile is never walked into', () => {
     const foe = index(Passage.BLOCKED, false, MemberKind.MONSTER, 'hostile');
@@ -151,5 +150,31 @@ describe('provider-owned occupant passage', () => {
   it('an allied blocking body is walked into as a neutral one is', () => {
     const friend = index(Passage.BLOCKED, false, MemberKind.MONSTER, 'allied');
     expect(friend.walkInto.has(coordToKey(cubes[1]))).toBe(true);
+  });
+  it('a cell a neutral body shares with a hostile one is never walked into', () => {
+    const members = sightingsToEntities(
+      ['neutral', 'hostile'].map((stance) =>
+        create(SightingSchema, {
+          subject: `occupant-${stance}`,
+          kind: MemberKind.MONSTER,
+          passage: Passage.BLOCKED,
+          stance,
+          currentVia: ['sight'],
+          seen: { position: positions[1] },
+        })
+      ),
+      'walker'
+    );
+    const occupancy = indexOccupantPassages(members);
+    expect(occupancy.blocked.has(coordToKey(cubes[1]))).toBe(true);
+    expect(occupancy.walkInto.size).toBe(0);
+    const graph = buildAtlasPathIndex(
+      atlas,
+      undefined,
+      occupancy.blocked,
+      occupancy.passThrough,
+      occupancy.walkInto
+    );
+    expect(findAtlasPath(graph, cubes[0], cubes[2])).toEqual([]);
   });
 });

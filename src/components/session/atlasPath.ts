@@ -77,8 +77,9 @@ export interface AtlasPathIndex {
   passThroughCells: ReadonlySet<string>;
   /** The occupied cells a seen blocking body believed neutral or allied holds
    * (rpg-project#841, P1): blocked on the first plan, walked into on the
-   * second, which `findAtlasPath` runs only when he is the goal or the first
-   * plan finds no route round. Always a subset of `occupiedCells`. */
+   * second, which `findAtlasPath` runs only when the first plan finds no
+   * route round and the goal is not a body's cell. Always a subset of
+   * `occupiedCells`. */
   walkIntoCells: ReadonlySet<string>;
 }
 
@@ -205,25 +206,30 @@ export function findAtlasPath(
   const goalKey = coordToKey(goal);
   if (!index.floor.has(startKey) || !index.floor.has(goalKey)) return [];
   if (startKey === goalKey || index.passThroughCells.has(goalKey)) return [];
-  const plan = (graph: AtlasPathIndex) =>
+  const search = (graph: AtlasPathIndex) =>
     searchAtlas(
       graph,
       start,
       (_coord, key) => key === goalKey,
       (coord) => hexDistance(coord, goal)
-    ).path;
+    );
   // THE WAY ROUND FIRST (rpg-project#841, P1): every seen blocking body is
   // blocked, so a body with a route round him is walked round, never bumped.
-  const round = plan(index);
-  if (round.length > 0 || index.walkIntoCells.size === 0) return round;
-  // The first plan found nothing: he is the goal (his cell is occupied, so
-  // the first plan cannot end there) or no route round exists. The second
-  // plan walks into a blocking body believed neutral or allied; the server
-  // owns the step, stops the walk at his cell and says why. A hostile body,
-  // a body with no stance word, a prop and a shut door stay shut.
+  const round = search(index);
+  if (round.path.length > 0) return round.path;
+  // The second plan walks into a blocking body believed neutral or allied,
+  // and only when no route round exists: he fills the only way (a one-cell
+  // corridor, the gate crossing). It never runs with his cell as the goal: a
+  // click on a body's cell is the approach gesture (`findAtlasApproach`), so
+  // hover and click agree that there is no walk into him. Nor does it run
+  // when the first search never met a walk-into cell, so an unreachable goal
+  // far from any posted body costs one search, as before. The server owns
+  // the step, stops the walk at his cell and says why. A hostile body, a body
+  // with no stance word, a prop and a shut door stay shut.
+  if (index.occupiedCells.has(goalKey) || !round.metWalkInto) return [];
   const occupied = new Set(index.occupiedCells);
   for (const key of index.walkIntoCells) occupied.delete(key);
-  return plan({ ...index, occupiedCells: occupied });
+  return search({ ...index, occupiedCells: occupied }).path;
 }
 
 /**
@@ -293,6 +299,9 @@ interface AtlasSearch {
    * expanded cell with the smallest closeness (fewest steps on a tie). */
   nearest?: CubeCoord[];
   nearestDistance: number;
+  /** Whether the search was refused an edge into a `walkIntoCells` cell:
+   * the only case in which `findAtlasPath`'s second plan can find more. */
+  metWalkInto: boolean;
 }
 
 /** The one A* both searches above run: per-edge passability from
@@ -321,6 +330,7 @@ function searchAtlas(
   };
   let nearestKey: string | null = null;
   let nearestDistance = Infinity;
+  let metWalkInto = false;
 
   while (open.size > 0) {
     let current: string | null = null;
@@ -336,7 +346,7 @@ function searchAtlas(
 
     const currentCoord = nodes.get(current)!;
     if (current !== startKey && isGoal(currentCoord, current)) {
-      return { path: pathTo(current), nearestDistance };
+      return { path: pathTo(current), nearestDistance, metWalkInto };
     }
     if (closeness && current !== startKey) {
       const distance = closeness(currentCoord, current);
@@ -354,8 +364,11 @@ function searchAtlas(
 
     open.delete(current);
     for (const neighbor of getHexNeighbors(currentCoord)) {
-      if (!edgePassable(index, currentCoord, neighbor)) continue;
       const neighborKey = coordToKey(neighbor);
+      if (!edgePassable(index, currentCoord, neighbor)) {
+        if (index.walkIntoCells.has(neighborKey)) metWalkInto = true;
+        continue;
+      }
       nodes.set(neighborKey, neighbor);
       const tentativeG = (gScore.get(current) ?? Infinity) + 1;
       if (tentativeG < (gScore.get(neighborKey) ?? Infinity)) {
@@ -371,5 +384,6 @@ function searchAtlas(
     path: [],
     nearest: nearestKey === null ? undefined : pathTo(nearestKey),
     nearestDistance,
+    metWalkInto,
   };
 }

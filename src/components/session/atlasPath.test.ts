@@ -561,18 +561,18 @@ describe('walking into a posted body (rpg-project#841)', () => {
     ).toEqual([key(0, 0), key(1, 0), key(2, 0)]);
   });
 
-  it('his cell as the goal is reachable, even with open floor round him', () => {
+  it('his cell as the goal has no plan: a click on a body is the approach, so hover and click agree', () => {
     const him = new Set([key(1, 0)]);
-    const index = buildAtlasPathIndex(rhombus, undefined, him, undefined, him);
-    expect(
-      keysOf(
+    for (const atlas of [rhombus, corridor]) {
+      const index = buildAtlasPathIndex(atlas, undefined, him, undefined, him);
+      expect(
         findAtlasPath(
           index,
           positionToCube(pos(0, 0)),
           positionToCube(pos(1, 0))
         )
-      )
-    ).toEqual([key(0, 0), key(1, 0)]);
+      ).toEqual([]);
+    }
   });
 
   it('a hostile blocking body is never planned through: not as the goal, not as the only way', () => {

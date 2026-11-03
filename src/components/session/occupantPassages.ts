@@ -11,10 +11,10 @@ import { STANCE_ALLIED, STANCE_NEUTRAL } from './stanceRing';
  * stance is neutral or allied, such as a guard posted in a crossing. It
  * fails closed: a body believed hostile, or one the server gives no stance
  * word for, stays blocked on both plans. The second plan is an exception,
- * and the web never steers the player into a body it cannot name. The planner
- * keeps it blocked on its first plan and opens it only on a second one, when
- * he is the goal or no route round exists; the server then stops the walk at
- * his cell. Both facts are the server's (passage, `Sighting.stance`); nothing
+ * and the web never steers the player into a body it cannot name. The
+ * planner keeps it blocked on its first plan and opens it only on a second
+ * one, when no route round exists and his cell is not the goal; the server
+ * then stops the walk at his cell. Both facts are the server's (passage, `Sighting.stance`); nothing
  * here computes who can see whom. A cell any other blocking body also holds
  * is never in `walkInto`.
  */
@@ -22,7 +22,7 @@ export function indexOccupantPassages(members: readonly SightedMember[]) {
   const blocked = new Set<string>();
   const passThrough = new Set<string>();
   const walkInto = new Set<string>();
-  const unnamed = new Set<string>();
+  const refused = new Set<string>();
   let error: string | null = null;
   for (const member of members) {
     if (member.remembered) continue;
@@ -32,7 +32,7 @@ export function indexOccupantPassages(members: readonly SightedMember[]) {
         blocked.add(cell);
         if (member.stance === STANCE_NEUTRAL || member.stance === STANCE_ALLIED)
           walkInto.add(cell);
-        else unnamed.add(cell);
+        else refused.add(cell);
         break;
       case Passage.PASS_THROUGH:
         passThrough.add(cell);
@@ -44,6 +44,6 @@ export function indexOccupantPassages(members: readonly SightedMember[]) {
           'Movement permissions are unavailable. Refresh the encounter to retry.';
     }
   }
-  for (const cell of unnamed) walkInto.delete(cell);
+  for (const cell of refused) walkInto.delete(cell);
   return { blocked, passThrough, walkInto, error };
 }
