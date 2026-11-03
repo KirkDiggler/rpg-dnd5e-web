@@ -41,7 +41,6 @@ export function walkMoveKind(walk: WalkAct): MoveKind {
       return 'displaced';
     default:
       // The fallback is the one reader the deprecated mirror exists for.
-       
       return walk.forced ? 'displaced' : 'own';
   }
 }
