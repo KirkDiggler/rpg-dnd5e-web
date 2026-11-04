@@ -971,8 +971,21 @@ describe('a held opening plans shut (rpg-project#852, R5)', () => {
       occupancy.heldDoors,
       occupancy.walkIntoHeldDoors
     );
-    expect(index.heldDoorEdges.size).toBe(2);
-    expect(index.shutDoorEdges.size).toBe(0);
-    expect(index.blockedEdges.size).toBe(wall.length - 3);
+    // The pair key `atlasPath.ts` builds: an unordered pair of cell keys.
+    const pair = (a: never, b: never) =>
+      [coordToKey(positionToCube(a)), coordToKey(positionToCube(b))]
+        .sort()
+        .join('|');
+    const gatePairs = [pair(pos(0, 0), pos(0, 1)), pair(pos(1, 0), pos(1, 1))];
+    const doorwayPairs = [...gatePairs, pair(pos(3, 0), pos(3, 1))];
+    expect(index.heldDoorEdges).toEqual(new Set(gatePairs));
+    expect(index.shutDoorEdges).toEqual(new Set());
+    expect(index.blockedEdges).toEqual(
+      new Set(
+        wall
+          .map((w) => pair(w.from, w.to))
+          .filter((k) => !doorwayPairs.includes(k))
+      )
+    );
   });
 });

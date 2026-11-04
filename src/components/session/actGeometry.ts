@@ -143,7 +143,9 @@ const SECRET_FIELDS = [
 ] as const;
 
 /** SecretRevealed as the patch `applyConcealmentRevealed` takes. The door
- * rows are left to GetDoors; their doorways patch the atlas. */
+ * rows are left to GetDoors, and their doorways reach the atlas through the
+ * GetAtlas refresh: `applyConcealmentRevealed` merges only the structural
+ * rows. The doorways are kept here, `crossing` included. */
 export function secretPatchOf(revealed: SecretRevealed): SecretPatch {
   return secretPatchFromJson(
     toJson(SecretRevealedSchema, revealed) as JsonObject
