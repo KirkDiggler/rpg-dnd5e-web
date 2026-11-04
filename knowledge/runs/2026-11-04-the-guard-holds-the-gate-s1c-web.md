@@ -19,10 +19,10 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 - **A crossing walked twice needs a third region in the fixture.** The S1b gate fixture has one courtyard, so no walk crosses the opening twice. The S1c fixture walls the cell inside the first crossing off from the rest of the courtyard. The only walk from that cell to the other inside cell goes out by one crossing and back in by the other — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
 - **The preview is only as live as the sighting.** A viewer with the pass gets no `holds_door` from the server, so the gate plans open for that viewer. The web computes nothing about the pass — [design R6](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md).
+- **The direction tests catch mutants.** Swapping the `entering` and `leaving` branches fails seven tests. Opening an unoriented crossing fails eight — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
 
 ## Mistaken
 
 - **Two first-draft assertions aimed at the guard's own cell.** A goal on a blocking body has no plan, so those expected paths were empty for the wrong reason, and one assertion would have passed whatever the direction. They now aim at a free courtyard cell — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
-- **Mutants checked.** Swapping the `entering` and `leaving` branches fails seven tests. Opening an unoriented crossing fails eight — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
 
 — cross-team agent, on behalf of KirkDiggler
