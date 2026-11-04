@@ -67,6 +67,11 @@ export interface SightedMember {
   kind: MemberKind;
   /** Provider-owned occupancy permission; never inferred from render metadata. */
   passage?: Passage;
+  /** `Sighting.holds_door`, verbatim: the qualified door id whose opening
+   * this body's post bars against the viewer (rpg-project#852, R5), or empty
+   * when it holds nothing. The server's answer, read as given; only a live
+   * sighting's hold is planned shut (`indexOccupantPassages`). */
+  holdsDoor?: string;
   /** The toolkit monster ref id derived from `subject` (strips the
    * trailing `-<ordinal>`) — feeds `resolveMonsterModelUrl` via
    * `HexEntity.monsterRefId`. Undefined for a PLAYER-kind subject: a
@@ -173,6 +178,7 @@ export function sightingsToEntities(
       name: sighting.name || sighting.subject,
       kind: sighting.kind,
       passage: sighting.passage,
+      holdsDoor: sighting.holdsDoor,
       monsterRefId: isPlayer
         ? undefined
         : monsterRefIdFromSubject(sighting.subject),

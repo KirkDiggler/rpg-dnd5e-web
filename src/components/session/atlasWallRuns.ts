@@ -226,6 +226,12 @@ export function segmentsToWallRuns(
   const ON_LINE_EPS = 1e-6 * Math.max(hexSize, 1);
   atlas.doorways.forEach((doorway, doorIndex) => {
     if (!doorway.from || !doorway.to) return;
+    // A footprint door's crossing (rpg-project#852) is a doorway for the
+    // planner and fog only: the door is already drawn, and targeted, as its
+    // placed asset, so it cuts no wall and hangs no leaf here. That also
+    // keeps it out of `doorGaps`, which `AtlasWalls` and the door targets
+    // read.
+    if (doorway.crossing) return;
     const from = positionToCube(doorway.from);
     const to = positionToCube(doorway.to);
     const point = doorwayPoint(from, to, hexSize);

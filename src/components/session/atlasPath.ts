@@ -81,6 +81,16 @@ export interface AtlasPathIndex {
    * route round and the goal is not a body's cell. Always a subset of
    * `occupiedCells`. */
   walkIntoCells: ReadonlySet<string>;
+  /** Doorway pairs of a door a live sighting's `holdsDoor` names
+   * (rpg-project#852, R5): a posted body bars the opening, open or shut,
+   * so the first plan treats them as a shut door's. LIVE, like
+   * `shutDoorEdges`; a subset of `doorwayEdges`. */
+  heldDoorEdges: ReadonlySet<string>;
+  /** The held pairs the second plan may cross: every holder is believed
+   * neutral or allied (`indexOccupantPassages`'s `walkIntoHeldDoors`). The
+   * second plan runs only when no route round exists; the server stops the
+   * walk at the opening. A subset of `heldDoorEdges`. */
+  walkIntoHeldEdges: ReadonlySet<string>;
 }
 
 export function buildAtlasPathIndex(
@@ -101,7 +111,14 @@ export function buildAtlasPathIndex(
   passThroughCells?: ReadonlySet<string>,
   /** `indexOccupantPassages`'s `walkInto`. A cell not also in
    * `occupiedCells` is dropped: only a seen blocking body is walked into. */
-  walkIntoCells?: ReadonlySet<string>
+  walkIntoCells?: ReadonlySet<string>,
+  /** `indexOccupantPassages`'s `heldDoors`: door ids held against the
+   * viewer by a live sighting. Every doorway of such a door, an edge door's
+   * edge or a footprint door's crossing, is planned shut. */
+  heldDoors?: ReadonlySet<string>,
+  /** `indexOccupantPassages`'s `walkIntoHeldDoors`. A door not also in
+   * `heldDoors` is dropped. */
+  walkIntoHeldDoors?: ReadonlySet<string>
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
@@ -109,6 +126,11 @@ export function buildAtlasPathIndex(
 
   const doorwayEdges = new Set<string>();
   const shutDoorEdges = new Set<string>();
+  const heldDoorEdges = new Set<string>();
+  const walkIntoHeldEdges = new Set<string>();
+  // Both kinds of doorway are read here: an edge door's edge and a
+  // footprint door's crossing (`crossing`, rpg-project#852). Only the
+  // renderers tell them apart, so a shut footprint door now plans shut.
   for (const doorway of atlas.doorways as AtlasDoorway[]) {
     if (!doorway.from || !doorway.to) continue;
     const key = pairKey(
@@ -116,6 +138,11 @@ export function buildAtlasPathIndex(
       positionToCube(doorway.to)
     );
     doorwayEdges.add(key);
+    if (heldDoors?.has(doorway.connection)) {
+      heldDoorEdges.add(key);
+      if (walkIntoHeldDoors?.has(doorway.connection))
+        walkIntoHeldEdges.add(key);
+    }
     // With a live door map in hand, only a door KNOWN OPEN passes — an
     // entry that is missing or shut refuses, exactly matching the leaf
     // `AtlasWalls` renders for the same state (Copilot round, #812: the
@@ -163,6 +190,8 @@ export function buildAtlasPathIndex(
     walkIntoCells: new Set(
       [...(walkIntoCells ?? [])].filter((key) => occupied.has(key))
     ),
+    heldDoorEdges,
+    walkIntoHeldEdges,
   };
 }
 
@@ -183,7 +212,8 @@ export function edgePassable(
   if (!index.floor.has(ka) || !index.floor.has(kb)) return false;
   if (index.blockedCells.has(kb) || index.occupiedCells.has(kb)) return false;
   const key = pairKey(a, b);
-  if (index.doorwayEdges.has(key)) return !index.shutDoorEdges.has(key);
+  if (index.doorwayEdges.has(key))
+    return !index.shutDoorEdges.has(key) && !index.heldDoorEdges.has(key);
   return !index.blockedEdges.has(key);
 }
 
@@ -226,10 +256,18 @@ export function findAtlasPath(
   // far from any posted body costs one search, as before. The server owns
   // the step, stops the walk at his cell and says why. A hostile body, a body
   // with no stance word, a prop and a shut door stay shut.
+  //
+  // A HELD OPENING (rpg-project#852) is read the same way: the first plan
+  // keeps it shut, the second crosses it when a neutral or allied post holds
+  // it and nothing goes round, and the server stops the walk at the opening
+  // by his name. A door shut by its own state stays shut on both.
   if (index.occupiedCells.has(goalKey) || !round.metWalkInto) return [];
   const occupied = new Set(index.occupiedCells);
   for (const key of index.walkIntoCells) occupied.delete(key);
-  return search({ ...index, occupiedCells: occupied }).path;
+  const held = new Set(index.heldDoorEdges);
+  for (const key of index.walkIntoHeldEdges) held.delete(key);
+  return search({ ...index, occupiedCells: occupied, heldDoorEdges: held })
+    .path;
 }
 
 /**
@@ -299,8 +337,9 @@ interface AtlasSearch {
    * expanded cell with the smallest closeness (fewest steps on a tie). */
   nearest?: CubeCoord[];
   nearestDistance: number;
-  /** Whether the search was refused an edge into a `walkIntoCells` cell:
-   * the only case in which `findAtlasPath`'s second plan can find more. */
+  /** Whether the search was refused an edge into a `walkIntoCells` cell or
+   * across a `walkIntoHeldEdges` pair: the only cases in which
+   * `findAtlasPath`'s second plan can find more. */
   metWalkInto: boolean;
 }
 
@@ -366,7 +405,11 @@ function searchAtlas(
     for (const neighbor of getHexNeighbors(currentCoord)) {
       const neighborKey = coordToKey(neighbor);
       if (!edgePassable(index, currentCoord, neighbor)) {
-        if (index.walkIntoCells.has(neighborKey)) metWalkInto = true;
+        if (
+          index.walkIntoCells.has(neighborKey) ||
+          index.walkIntoHeldEdges.has(pairKey(currentCoord, neighbor))
+        )
+          metWalkInto = true;
         continue;
       }
       nodes.set(neighborKey, neighbor);

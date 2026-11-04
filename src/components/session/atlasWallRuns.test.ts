@@ -24,7 +24,13 @@ import { cubeToWorld, type WorldPos } from '@/components/hex-grid/hexMath';
 import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import { create } from '@bufbuild/protobuf';
 import { GetAtlasResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  CellsLearnedSchema,
+  SecretRevealedSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
+import { cellsPatchOf, secretPatchOf } from './actGeometry';
+import { applyCellsRevealed } from './applyReveal';
 import { segmentsToWallRuns } from './atlasWallRuns';
 import { worldPositionOf } from './positionBridge';
 
@@ -330,5 +336,111 @@ describe('segmentsToWallRuns — height passes through unchanged', () => {
       // AuthoredWallRun downstream.
       expect(scene.wallRuns[0]!.height).toBe(height);
     }
+  });
+});
+
+describe('segmentsToWallRuns — a footprint door’s crossings are not drawn (rpg-project#852)', () => {
+  // The segment and cell pairs of 'a door standing on a segment' above:
+  // every E-adjacent pair (q,0)-(q+1,0) straddles world z=0.
+  const segment = { from: { q: -5, r: 0 }, to: { q: 5, r: 0 }, height: 0 };
+  const gatePairs: [number, number][] = [
+    [-3, -2],
+    [-2, -1],
+  ];
+  const gateCrossings = gatePairs.map(([a, b]) => ({
+    connection: 'gate',
+    from: pos(a, 0),
+    to: pos(b, 0),
+    crossing: true,
+  }));
+  /** The same crossings as the act stream's rows (v1alpha2 names `door`). */
+  const actCrossings = gatePairs.map(([a, b]) => ({
+    door: 'gate',
+    from: { x: a, y: 0 },
+    to: { x: b, y: 0 },
+    crossing: true,
+  }));
+  const posternEdge = { connection: 'postern', from: pos(1, 0), to: pos(2, 0) };
+
+  it('a footprint door’s crossings make no wall gap, no door leaf and no cut', () => {
+    const scene = segmentsToWallRuns(
+      create(GetAtlasResponseSchema, {
+        segments: [segment],
+        doorways: gateCrossings,
+      }),
+      1
+    );
+    expect(scene.doorGaps).toEqual([]);
+    expect(scene.wallRuns).toHaveLength(1);
+  });
+
+  it('an edge door beside it still cuts its gap and hangs its leaf', () => {
+    const scene = segmentsToWallRuns(
+      create(GetAtlasResponseSchema, {
+        segments: [segment],
+        doorways: [...gateCrossings, posternEdge],
+      }),
+      1
+    );
+    expect(scene.doorGaps.map((g) => g.connection)).toEqual(['postern']);
+    expect(scene.wallRuns).toHaveLength(2);
+  });
+
+  it('a crossing on no segment draws no frame either', () => {
+    const scene = segmentsToWallRuns(
+      create(GetAtlasResponseSchema, { doorways: gateCrossings }),
+      1
+    );
+    expect(scene.doorGaps).toEqual([]);
+  });
+
+  it('a room reveal’s crossings, merged into the cached atlas, make no door gap', () => {
+    const known = create(GetAtlasResponseSchema, { segments: [segment] });
+    const patch = cellsPatchOf(
+      create(CellsLearnedSchema, {
+        regions: [{ id: 'gatehouse', cells: [{ x: -3, y: 0 }] }],
+        doorways: [
+          ...actCrossings,
+          { door: 'postern', from: { x: 1, y: 0 }, to: { x: 2, y: 0 } },
+        ],
+      })
+    );
+    const atlas = applyCellsRevealed(known, patch);
+    // The planner and fog still read the crossings: they are in the atlas.
+    expect(atlas.doorways.filter((d) => d.crossing)).toHaveLength(2);
+    const scene = segmentsToWallRuns(atlas, 1);
+    expect(scene.doorGaps.map((g) => g.connection)).toEqual(['postern']);
+    expect(scene.wallRuns).toHaveLength(2);
+  });
+
+  it('a revealed door’s crossings keep their mark across the act bridge, so they draw no gap either', () => {
+    // A revealed door's doorways reach the atlas by the GetAtlas refresh
+    // (`applyConcealmentRevealed` merges structure only); the act's rows
+    // must still say `crossing`, and an atlas holding them draws no gap.
+    const patch = secretPatchOf(
+      create(SecretRevealedSchema, {
+        concealment: 'secret',
+        doors: [
+          {
+            door: 'gate',
+            state: 'closed',
+            doorways: actCrossings,
+          },
+        ],
+      })
+    );
+    expect(patch.doorways.map((d) => [d.connection, d.crossing])).toEqual([
+      ['gate', true],
+      ['gate', true],
+    ]);
+    const scene = segmentsToWallRuns(
+      create(GetAtlasResponseSchema, {
+        segments: [segment],
+        doorways: [...patch.doorways],
+      }),
+      1
+    );
+    expect(scene.doorGaps).toEqual([]);
+    expect(scene.wallRuns).toHaveLength(1);
   });
 });
