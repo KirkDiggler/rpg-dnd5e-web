@@ -4,11 +4,11 @@ import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation
 import type { NpcActivityProfile } from '../npc-activities/activityTypes';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: '3e705d207f93def9a2deb73ae209caf48c54f166',
+  commit: 'fe6b5ee22c43f4ab01d2c295c3fd09cb5e587241',
   manifestSha256:
     'f286568ddc4b16de39002849560b8f1c4a8eff7f81192831a888c24d8c86007d',
   selectionSha256:
-    'f4377466a8397b02da44a52f7ace1a32baea4bd873ddb86cc54130556d61822e',
+    '8b92da21886dabaf9b5d91c274de1b1307858a00c10c7aa9361a07553ff114b5',
   releases: Object.freeze([
     'goblin-human-palettes-v2',
     'goblin-war-camp-v1',
@@ -689,6 +689,1195 @@ export const NPC_ACTIVITY_PROFILES: readonly NpcActivityProfile[] =
           assetRef: 'dnd5e:npcs:goblin:wizard-01-style-04-c',
           standingSha256:
             'f88cb3aaf401c3d5ce9794c698af12f823914b2e79b8b73f60bf2577de834330',
+        },
+      ],
+    },
+    {
+      schemaVersion: 1,
+      id: 'kingdom-human-idles-v1',
+      jointCount: 55,
+      library: {
+        url: '/models/synty/npcs/activities/kingdom-human-idles-v1/clips.glb',
+        sha256:
+          'd06eb99087eb5c344d6befdd0632a92c4b42b6976e4ab6e863ba4e2ac52b37fc',
+        clips: [
+          'Idle_ArmsFolded_Casual',
+          'Idle_ArmsFolded_Casual_Enter',
+          'Idle_ArmsFolded_Casual_Exit',
+          'Idle_HandsOnHips',
+          'Idle_HandsOnHips_Enter',
+          'Idle_HandsOnHips_Exit',
+          'Idle_PrayerStanding',
+          'Idle_PrayerStanding_Enter',
+          'Idle_PrayerStanding_Exit',
+          'Idle_Thoughtful',
+          'Idle_Thoughtful_Enter',
+          'Idle_Thoughtful_Exit',
+          'Idle_Dramatic',
+          'Idle_Dramatic_Enter',
+          'Idle_Dramatic_Exit',
+          'Idle_DrunkSway',
+          'Idle_DrunkSway_Enter',
+          'Idle_DrunkSway_Exit',
+          'Idle_FoldedGrumpy',
+          'Idle_FoldedGrumpy_Enter',
+          'Idle_FoldedGrumpy_Exit',
+          'Idle_HipsGrumpy',
+          'Idle_HipsGrumpy_Enter',
+          'Idle_HipsGrumpy_Exit',
+          'Idle_Shy',
+          'Idle_Shy_Enter',
+          'Idle_Shy_Exit',
+          'Idle_Slumped',
+          'Idle_Slumped_Enter',
+          'Idle_Slumped_Exit',
+        ],
+      },
+      defaultActivityRef: 'dnd5e:activities:relaxed',
+      walkActivityRef: 'dnd5e:activities:walk',
+      activities: {
+        'dnd5e:activities:relaxed': {
+          label: 'Relaxed',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: null,
+          sustain: 'Idle_Relaxed',
+          exit: null,
+          leaveAt: 'any-time',
+          moving: false,
+        },
+        'dnd5e:activities:thoughtful': {
+          label: 'Thoughtful',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_Thoughtful_Enter',
+          sustain: 'Idle_Thoughtful',
+          exit: 'Idle_Thoughtful_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:arms-folded': {
+          label: 'Arms folded',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_ArmsFolded_Casual_Enter',
+          sustain: 'Idle_ArmsFolded_Casual',
+          exit: 'Idle_ArmsFolded_Casual_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:hands-on-hips': {
+          label: 'Hands on hips',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_HandsOnHips_Enter',
+          sustain: 'Idle_HandsOnHips',
+          exit: 'Idle_HandsOnHips_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:standing-prayer': {
+          label: 'Standing prayer',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_PrayerStanding_Enter',
+          sustain: 'Idle_PrayerStanding',
+          exit: 'Idle_PrayerStanding_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:shy': {
+          label: 'Shy',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_Shy_Enter',
+          sustain: 'Idle_Shy',
+          exit: 'Idle_Shy_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:slumped': {
+          label: 'Slumped',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_Slumped_Enter',
+          sustain: 'Idle_Slumped',
+          exit: 'Idle_Slumped_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:dramatic': {
+          label: 'Dramatic',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_Dramatic_Enter',
+          sustain: 'Idle_Dramatic',
+          exit: 'Idle_Dramatic_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:drunken-sway': {
+          label: 'Drunken sway',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_DrunkSway_Enter',
+          sustain: 'Idle_DrunkSway',
+          exit: 'Idle_DrunkSway_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:arms-folded-grumpy': {
+          label: 'Grumpy arms folded',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_FoldedGrumpy_Enter',
+          sustain: 'Idle_FoldedGrumpy',
+          exit: 'Idle_FoldedGrumpy_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:hands-on-hips-grumpy': {
+          label: 'Grumpy hands on hips',
+          entryPose: 'relaxed',
+          exitPose: 'relaxed',
+          enter: 'Idle_HipsGrumpy_Enter',
+          sustain: 'Idle_HipsGrumpy',
+          exit: 'Idle_HipsGrumpy_Exit',
+          leaveAt: 'loop-boundary',
+          moving: false,
+        },
+        'dnd5e:activities:walk': {
+          label: 'Walking',
+          entryPose: 'locomotion',
+          exitPose: 'locomotion',
+          enter: null,
+          sustain: 'Walk_Forward',
+          exit: null,
+          leaveAt: 'loop-boundary',
+          moving: true,
+        },
+      },
+      poseBridges: ['relaxed→locomotion', 'locomotion→relaxed'],
+      appearances: [
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01',
+          standingSha256:
+            '165dbed302cf840e486b301b5013750c27e40b044e0130c600171571b22a83cd',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-01-b',
+          standingSha256:
+            'd85ce417d5aab1011f8028491895ada87ade283cb7b486e488db3c393b69bab1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-01-c',
+          standingSha256:
+            'a87eea49a3fac0e864438aac49ad477225b6046594f6878f21b64d8423cf72e7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-02-a',
+          standingSha256:
+            '623bdc51a1db0b2afdcaa71846ecdfad927be72bed084332efbdb08398054a2a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-02-b',
+          standingSha256:
+            '665d6e5ecd578c7aae1d2e8ce98b71db1c4968f1ec209e2a06f83b1093a09220',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-02-c',
+          standingSha256:
+            '23b2dfd4ffb1accde7801e6807196063bb92d8cb2b814bbff62cfc374d256bc7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-03-a',
+          standingSha256:
+            '867caedc882c4c72132ae9e941ec1450149acc2cd61f8a76ebee4787bcc56501',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-03-b',
+          standingSha256:
+            '3789bf6dbb41ca42663f79945a91b40312b68a12e43a185f7bfc9eea7a3c1fc9',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-03-c',
+          standingSha256:
+            'c2a6fc3b0bdd58ed7e436a152f8e4adf384e77545b0e0ee703b073ee9dd9c044',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-04-a',
+          standingSha256:
+            'a906ca4b5f67eee5b532c32acc0b46dabec49b51dc11037e9a73df5313421f58',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-04-b',
+          standingSha256:
+            'b08fbfb014afa1c4ab69f63dcc43effa0ba408c3622692fe699570a8db4f25df',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01-style-04-c',
+          standingSha256:
+            '3a7479deb9645b589041ceed3a678e1b9e6b8bd912631dce7234e32234c22e52',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01',
+          standingSha256:
+            '2499519f220a989e11857e8bcb8d0ad022e3c82a4984ccd83694afb839c518cf',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-01-b',
+          standingSha256:
+            '811044776cc3c915037c7f4659451a25718a3276923db6de75c227467724cc63',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-01-c',
+          standingSha256:
+            '7d3f69bed6b28ac346687ec66bce1b8ee98a3e00b25a0a2b018f188582740f6f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-02-a',
+          standingSha256:
+            'afa2f6fb96a30353d042f5759a561db40008d50c11627f22929e8929802b62a9',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-02-b',
+          standingSha256:
+            'e718bea3e4122b4d8838ac072d12ae19918e9400f07812f5489aa3a557cb7b7e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-02-c',
+          standingSha256:
+            'e3e35fe285c5fc13a5638599306adaf6a5a32b1a50f83a2a45ab8a53535ced0a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-03-a',
+          standingSha256:
+            '7867ab6da2b7afad19a84e2ea8792757b95ce3ed096683153021d21d70a104f5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-03-b',
+          standingSha256:
+            '19784f6e218b5563cef281608724213887c0e2cc573c6d51f0cc279c7913695b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-03-c',
+          standingSha256:
+            '2da664152afea3190ee55a5b65d067ff1c91221e97bf05475aa8e7d8c98a2887',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-04-a',
+          standingSha256:
+            '0c4ece8c0fa99a9db18a051ed71a7c0a8595a94b6d32de24d448fa42f6097e44',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-04-b',
+          standingSha256:
+            '44ac0d4dcef269db56382928f1e80e9a806a58919957899ec3bc089fd5eb3974',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01-style-04-c',
+          standingSha256:
+            'c2242b1760ee6c07123989d32368a895803ec28669a29a9f219701446110a991',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01',
+          standingSha256:
+            '61907dd32b263c5da01116e5d6eca8d0fad34b96e5b151d8115482ef9363b5ba',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-01-b',
+          standingSha256:
+            '09daedaefe13d19ea70aee4fc3c9a407ec1cede091686434081fc4ae56077d09',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-01-c',
+          standingSha256:
+            '4e8e960fa401353ef09a43caa273d33e1b3639986dd8f6bbf118a159bf110a7c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-02-a',
+          standingSha256:
+            '44d873804c9faa483a5e91866cd8befc0d3c85bbd2aef773ee0480f5e58e4833',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-02-b',
+          standingSha256:
+            '7588e51d924df8015556cbde7b2f26070ad74f855c09e8330585b9e30cd178cb',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-02-c',
+          standingSha256:
+            '4faa350685efc72982b440c209fe0f2e875b43c28058cf9f0a3236341941ef53',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-03-a',
+          standingSha256:
+            '0ee844e80303409d2a35d854e1c06bc005676f72982c4a435d2aaa211f314ca7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-03-b',
+          standingSha256:
+            '100625087f06501daa2bd58217b100e40e544f7ce41bfa93e7ec52c9ace0a6bf',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-03-c',
+          standingSha256:
+            '36d1a58b96f5ad4e3334386d26963bfa95fd0057a19b971920ab119c8b9582aa',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-04-a',
+          standingSha256:
+            'a4f63d0b54fe54a9da0e2a303b0d99868caf5cef877c9bd58fbd464bc828e1b6',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-04-b',
+          standingSha256:
+            '3f623ae719d5505faae145ad67617bb82ba608eb90a5b729b687f4926eb73bcf',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:hermit-01-style-04-c',
+          standingSha256:
+            'e142c2afc5bba6e82e463a1bb195d29314a08c15349c9cee4bc9d74fbeb12873',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01',
+          standingSha256:
+            '0b35980128ac6e34f47ba4d44593a3bcfe3f478707903f2350338c3f3bde8246',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-01-b',
+          standingSha256:
+            '3ae050f81875cbbd6145435d9830bc2eeaae23b60555cf9ce791569a28e0ef0e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-01-c',
+          standingSha256:
+            '818c25abdd54423c5421eba23729bc4bd158f9336ab4559ff3a58921c7ffc708',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-02-a',
+          standingSha256:
+            'a18e74b6ab29e04c1de9c3ffd97c2fa4dc5304ba0c5f78ee8278156b8f5c91db',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-02-b',
+          standingSha256:
+            '817c5efe192505ebd1fe746aa43830d5ddc93ff3e2d5a49f11411eed80e47f3f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-02-c',
+          standingSha256:
+            '04755cf5d99973051310fa5a8debff15d8845cb15cf1310a990063ce6f437b2d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-03-a',
+          standingSha256:
+            '1c44da87a1ce2a8aca5c0abd2d1692a46ece735d995387064adc3db48de2e79b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-03-b',
+          standingSha256:
+            '42e225beec48bbb89f912101e5a8a20b27846dedc233d9ce65e151c3c3146463',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-03-c',
+          standingSha256:
+            '66c48b72eb55837919874849764a49ad9ad77f83df95fd4343901f62e850e8e2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-04-a',
+          standingSha256:
+            'c53cc0b04c43f424b6247510820e35fc1c2153151089aaf989870b9756452b90',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-04-b',
+          standingSha256:
+            'd5f75dd58d1fb2830ab3d2b28924bdffca90f4fdca7393dec98ea94eb5bd17d7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:jester-01-style-04-c',
+          standingSha256:
+            '1d5cc4ac8ee02c19e3b53e6de25e11b49429540f1422e4a75cdef7c6a8753859',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01',
+          standingSha256:
+            '37aefaf6dac890f6e8c9822f8321e3f5de8b1998a78a6093ff8427b7ddbd91b1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-01-b',
+          standingSha256:
+            '92e4479358d7b9772baa39afd0f12c8cb3709b6c7564e8f3dbd00509555c663e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-01-c',
+          standingSha256:
+            '1cae89f640f656f832005cc3d47bfd342d352b4ae83e17218c0e770dd3b9980e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-02-a',
+          standingSha256:
+            '39b0980521848759095dc54551da1226fd68f9b5a1b4c077d053db2fce8b45b0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-02-b',
+          standingSha256:
+            '7becfd823cb5add275746fa912df7d047574e816e5088dac38bf255e231c3552',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-02-c',
+          standingSha256:
+            '4a279d890c9dc9d2b248f739aae1e59d1a1486351c2fd9fc58384ae5736dace8',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-03-a',
+          standingSha256:
+            '7428f7bcc3ee794438be2a85e2a8e6a3bf4ccc2a09847df31c205540cfe9c5aa',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-03-b',
+          standingSha256:
+            '4128a8d7f5af38c1231f9b9869a72e2939118c865c4f6cf16242757cd0568512',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-03-c',
+          standingSha256:
+            '2f33574d153fe7a04bd01344f7c2503a91a30d233293614d0ee1ce62bd3c88ca',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-04-a',
+          standingSha256:
+            '6a05987d75929d53dcdd20707840ab35d504a06a4119f39583dfe66ce76d9cd5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-04-b',
+          standingSha256:
+            'efa02f040a116b0a6c8db7e173e196d6526d8a6024bbcfb0c4864d66c35e9bd5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:king-01-style-04-c',
+          standingSha256:
+            'f337ad8fc3c260c2c23afa8df5f704b58b31d3cda9d07d39cee1b1eea9b87aeb',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01',
+          standingSha256:
+            '5e084ae4bcdf4df4ac814da4dde5f8bfcb8669adca9aa0cb5832d4354aa82312',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-01-b',
+          standingSha256:
+            '0d894cf970b437a2f3994cdc33aeaaf0cc3020d591a28ef91b41f8ae1d6c6dc7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-01-c',
+          standingSha256:
+            'e6461ede72a086042f9a3a937d7886f540671116f16006e7726ac3868946afbd',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-02-a',
+          standingSha256:
+            '8dd6fbb17f02da994d110c8669d82087c6c8e0788e41c29844ab21d791b5ed6a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-02-b',
+          standingSha256:
+            'a50b888ef4ff40a8b20cc1a3292f521c43b26c155f8e5d90b7b2bb424df4a54f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-02-c',
+          standingSha256:
+            '49cdfbbd878ac1f2cec0b186ca64f4624f5a6ed95e8d6cf876d5c8ef82c032c5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-03-a',
+          standingSha256:
+            'ba5d26f7bb0938384d3a5ff4853de657ca3d9566cecebdfafddfa2ad0d2e5e5f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-03-b',
+          standingSha256:
+            '783be66494c4129b97c310452a783192cc18b0416e581064c51637a6f41e4333',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-03-c',
+          standingSha256:
+            '48f6c9bfdfca6adb98830bb2759758d3347c2a4ce2fcfe0dd7479b64526a171b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-04-a',
+          standingSha256:
+            'b77ae892ccf5db722894f839fb09c5087721198f4aebe35abbf357fccf51f39c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-04-b',
+          standingSha256:
+            'cf55ca22ad5216077da05b8b3af5de2c433920c640ba4946d6d3a359a3a5d76d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:mage-cape-01-style-04-c',
+          standingSha256:
+            'cee720b68d710eefd1adc87b74fa914b0a59acb0b6b1e98af39327dc6001b25c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01',
+          standingSha256:
+            'ea45de3e8dcaa4b6d2f52a76fdcf3c914f2e435243c04452a9102719c5f7a3d0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-01-b',
+          standingSha256:
+            'f87dc3b121f60690601ceded8c04ef6dc8048432540afeeab1c7ef16e388b238',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-01-c',
+          standingSha256:
+            'f5329097dfb4fde275edf74bb85cde11f182393e9bb5ed45baa0a056668f36d2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-02-a',
+          standingSha256:
+            '68f8dccee53c789f604bdf55c2dcdcc9171ee722bc55cf5d20eb9f60239f7439',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-02-b',
+          standingSha256:
+            'cb58601ecfca16278e6d0f65c166d8a53c2909800d2e80e5dda61368c7c70eb1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-02-c',
+          standingSha256:
+            '40f0094d56ba9327d8602fd2d3d5d663e9485bba432abdaf9fb9856c7921a84b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-03-a',
+          standingSha256:
+            '4ebd8ad49916edae784fe652fed0f900244d54efc664c1c69fb3acb903d880f4',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-03-b',
+          standingSha256:
+            '2dc758158069e04dd5aaaa6067ec78f016a29a60070147c0187243ba6bf47a3e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-03-c',
+          standingSha256:
+            '6626581aed2dfa5a75f1fc3b3f8996a7a83c3de63ec7076c9d70a23b996f5dd9',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-04-a',
+          standingSha256:
+            'd33f08007a9b3993b6d53ea193c547c0b132b882116bdf2180bfdc5c85635206',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-04-b',
+          standingSha256:
+            '155be3d2ff5ab76e42a7f46261a92fc833909896b04fc39aeef3e3f17720ea49',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:merchant-01-style-04-c',
+          standingSha256:
+            '14b040bf8f5630bc1011145ee4aa9b53aba5c110c0ef07fd84c93ad43367dba1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01',
+          standingSha256:
+            '4e882890361178ddcc0e7092ef1a8630524e29a8fc35bbb08d9ea1dcc9e1b793',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-01-b',
+          standingSha256:
+            'c013d05aac0c0355d8c2b5b4d7e8ffe4701667783272f6e00638a71b92bf3cdc',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-01-c',
+          standingSha256:
+            '620f1b2a48320fd8ca0179b1e0f3b8391c22a1750a45099a39b30bf8e0346ed0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-02-a',
+          standingSha256:
+            'e880817a97dd5a8d042e0ac0a04a6cd948c267be383c87ed3204738aff8b61f4',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-02-b',
+          standingSha256:
+            '5ede5bbf514ef35f91bb066669fe62757e455bab206e0a4547d7eae502bf74b2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-02-c',
+          standingSha256:
+            '08f5816ecb0a707fc0bae5141f051cd3274e84084028be0d5cd95b934ce83463',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-03-a',
+          standingSha256:
+            '967ae233c7c565bd86690ec1785e0bb543b13db7a58a509d53d52546a1f38bb9',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-03-b',
+          standingSha256:
+            'c0ddd22e579c3eeb6f99deb7e2113d498f868f6eaf3bad403a1122c8c66b5548',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-03-c',
+          standingSha256:
+            'c7f9585c1eac4be1f9d0b7a89567a3206a01bfede8297756f3c855c019cbc293',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-04-a',
+          standingSha256:
+            'd633c9c060938156fb6df4cf829b80f2779895a4904539f95111473440dedfb0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-04-b',
+          standingSha256:
+            '73f694a126e7f3c8533ed73fc955cfca627efec4440d792764e05a702b8e3d2a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:monk-01-style-04-c',
+          standingSha256:
+            'ce0af96bc732e3af06b271ee206f7da4a109ce16e096f62d42c8b29c799b1245',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01',
+          standingSha256:
+            'dfd70c1e0423f5a8c52602c20e77c10a26e834f4b0af2fe3e89c4ddcf325c64a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-01-b',
+          standingSha256:
+            '06f736e1fdd178b16aa9c0a1662db8316d48069734d7d9d6ea5613134e10c98e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-01-c',
+          standingSha256:
+            'e039a7916a72fbc52cb29f908e9659ba6496f22f1c9bdf21ea822cffd94921d1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-02-a',
+          standingSha256:
+            '729f3a4451b0356ff12b775fbff935a7804fea420eaed7b682d21f3c3d07c9e3',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-02-b',
+          standingSha256:
+            '6f18baaa109fffb1f025f6adb867d94376091fc6c47847fa382014a8eb0542ea',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-02-c',
+          standingSha256:
+            '04d55bf34a87b0d88a6152444e252acf56aaca012e39796eef3b4c9a591c9efc',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-03-a',
+          standingSha256:
+            '4b069d99f9f184e9daf22f0779bea1854eb49f7481e14eb45302f317d95d7290',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-03-b',
+          standingSha256:
+            'cf08c466dcf7996961ec7d195d5149417b6a9a378a9f09d3263983ef7a87302a',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-03-c',
+          standingSha256:
+            '57315944a4bee36a9ab5bd5503770956b88933fa9a1da07d3e54632ba7c04c23',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-04-a',
+          standingSha256:
+            'c00d61f92f01913865cc7ab15626587e02ab35bda95cd714ad4b4c9d553699da',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-04-b',
+          standingSha256:
+            'f7564a0c1166599ad689d53c4ca99bfe95175888d01473ba481ca9427fdc18d4',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:nun-01-style-04-c',
+          standingSha256:
+            'eaf4c2023c5a9d8907d9420f3373f79607d2e1c11f87e457e64dcdfa07f92736',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01',
+          standingSha256:
+            'aabb7b13da3dee6d2eaf490a0555c294c1c088bc13361ae4c0fe226291c5159b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-01-b',
+          standingSha256:
+            '3b07648481e4859400bf651ee5d3b5f8eb2475c895c7a5c1d5152b5dc087b74b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-01-c',
+          standingSha256:
+            'dad94255cd7e8f2ebca3fd4fa10a869d74823b5aa586df1391f0a75fcb9de26c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-02-a',
+          standingSha256:
+            '280a70e411e121868fcf3437d893dd1098f53423ee37d0b7d35cdf1d8c1f7301',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-02-b',
+          standingSha256:
+            'd0676a4f8487a468e947bd10c387ed696004b4b7ce3fb5315446eeb6e145d85b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-02-c',
+          standingSha256:
+            '4f080887b20230c7c337a9d7359d2dd643eb3e6e658428f63d857c9c19a50d8b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-03-a',
+          standingSha256:
+            '73685e606f04298b7803d4b68f543b17211da97a5923af947e02ad289bf6d78f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-03-b',
+          standingSha256:
+            '7ab6c08e05343050948cbd48db6ce050c359a55317161f4605040d26d36d8c9f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-03-c',
+          standingSha256:
+            'f8ea10c6c1cd2f0cb4e75391e84728e86c0e48916b6d276a2e232c196819806d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-04-a',
+          standingSha256:
+            'bc2c92bdf84e3d8556282a30706e392bfffc64734663230b3cd116d0fbe708fd',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-04-b',
+          standingSha256:
+            '4973aabd1988bc56d9876e9960dc258cbc632c46070faf9c5d42d1f0357e3ab5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-female-01-style-04-c',
+          standingSha256:
+            'ffe56e558b36f90c158f2d8a85f1aca6d1b0694d574d5ec54da4397da5acbb22',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01',
+          standingSha256:
+            '674a59cfdd8e14390b09d177f96bd1084a307e32d776a466cc24a8d5385313ed',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-01-b',
+          standingSha256:
+            '897f91db36000c632b398e5f6ac9563b503bd52bfd20615a6038e1ccd9401e51',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-01-c',
+          standingSha256:
+            'e563467273f1d0f7991afb20e39f89ee98fccc46f0a3362498307aa18bfb6a92',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-02-a',
+          standingSha256:
+            '1a6489fed264ff28f0a7f4dbdb9f7a388d6a3e1451198a96c77b2f9f82decc57',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-02-b',
+          standingSha256:
+            '6d215d5a4adbe25d7be47d1dcea8cb854e6203d0a6fa74620de744d51b38cb39',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-02-c',
+          standingSha256:
+            '965bad5fa24d1b0ad85b68b19568851081897a6ef8650698ca605e6fcfefa5e3',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-03-a',
+          standingSha256:
+            'd832f896614486e06dac60421aa0d2ff00814b330c06d8c0a654dbcbee82bdbf',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-03-b',
+          standingSha256:
+            '72b81f64a0c1af6721e5bd59a669550a492eaccc8307b7da29f038bd0cb6cfb7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-03-c',
+          standingSha256:
+            '97fcbee6ddf51736919c9eb387a98cfb5c3706d3b0bd4924d46603b242c9c217',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-04-a',
+          standingSha256:
+            '097bf9b1e54665f0b60de3dada4d2ed9b462a89e6c09ba6b1fc58d08d1be4600',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-04-b',
+          standingSha256:
+            'b09b59b08342a7caafa409b02c7c7eb5887b99b1acc727b37b5c15a638eb1825',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:peasant-male-01-style-04-c',
+          standingSha256:
+            'a7337dbebf936951008e8749bd17ffc58c51336a8a98ae37cfa01e3334a82901',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01',
+          standingSha256:
+            '2c809521e5b9e9001c1cc23f7768e3e459366a7fc2ca34573317c05c17cef082',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-01-b',
+          standingSha256:
+            '090dfa391d9d7320c298505a73ebbb786c8fb54d55bb3e2c02c06c6ed0ff71f1',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-01-c',
+          standingSha256:
+            '63cee8c15591e41a98ad22e82b80d96f0127efd3efdb1f0a3930040673c84516',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-02-a',
+          standingSha256:
+            '507815058bdfdeb285b5860514b502031068f9ba809e28bb0f44e4fa18fd9af5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-02-b',
+          standingSha256:
+            '5064c884349a60b6e9940c80666ba0e13458540bcca31c396538055daf3e83ec',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-02-c',
+          standingSha256:
+            '73da065edc588e9d938b55f21f916ee386e29acce7927448618ca223732ddd30',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-03-a',
+          standingSha256:
+            '802fd627e09af2ab42dbd52161452e7c04b600d5ccd901cb2bc431bc79820241',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-03-b',
+          standingSha256:
+            '8dc617c30c2123f148888616aef2049f943119cf0a873350bc7a175185ba3f11',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-03-c',
+          standingSha256:
+            'd238e1384c722c0476e5f2bdbfa9f129e703423fc77e9da9d13a295ee4bb19c8',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-04-a',
+          standingSha256:
+            'a051d869272095e0d9bfd6aad876157f6fc3da29d2c07e1fd3fee324db94a939',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-04-b',
+          standingSha256:
+            '55b4da6f6ec3b7911ff98b63543b46cc623ebb5398b601a2e848e9c8c8a2f8b3',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:priest-01-style-04-c',
+          standingSha256:
+            '5ffd35fa4ddbe5eef5eb4e5e42af0d14c6bc4a9d2da7a6c83bfcd5e52ba1a128',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01',
+          standingSha256:
+            '9539d892a2efa4ce745a2c5e99a0d556a367ca5673d46cd7ebf3203432e70d2b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-01-b',
+          standingSha256:
+            '997442293a05f371128a867c85e2f1dcc135583d27addd69975f6345c04b33f0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-01-c',
+          standingSha256:
+            'a809aa03d432f0841d3e43ca095b815a2d9b7303fbf344485107deadc99e8ec2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-02-a',
+          standingSha256:
+            '9226259f7a1d6073407c58b3301194977e1a092e16b7d336d96e779826ea9388',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-02-b',
+          standingSha256:
+            'bbe7524c6703d1f873cee96aaaeb00a3c154d19d518f19ff54cf61602d232326',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-02-c',
+          standingSha256:
+            '02bcaf398e6d4f16567242a4d0708ff105f2111c3876d553b64390ce90b74a49',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-03-a',
+          standingSha256:
+            '5c018bda929bcda2162710d8b89cc139c14f3858c497a52b67b2d903693d5fb4',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-03-b',
+          standingSha256:
+            'd072501d2b6d16473f5a1f245d3c5e97a0d8a047d9ed2cd43b62e788a77e83ae',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-03-c',
+          standingSha256:
+            '3e6389484930636c5217463fc01e143afb4b8b9e5251a018f0dcbd1260dd1f78',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-04-a',
+          standingSha256:
+            '77903be84ae3256e88e0fcb1d3a44eebf8fb2ddcd34329cc491245eec2f1fbed',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-04-b',
+          standingSha256:
+            '0e0dd59a3bffa5c1d3d7c3467b8b8f09af13ea2a7e36188da30028ae4bb7b9d8',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:prince-01-style-04-c',
+          standingSha256:
+            '304bce1a286d666ecb5fa8d2e8a667752210c9350024ae315a542f9678acfbe2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01',
+          standingSha256:
+            '36bf79f3e995e7dabeaa7d4c1ce8cf25f155ec262bb6c744b78ef072067b463e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-01-b',
+          standingSha256:
+            'c855310ac57e2990f1663eeb7f6e85e122930abee5903fbd2d991fd2b87106f0',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-01-c',
+          standingSha256:
+            'fdc37ebfd97560f835058902244ffa33212fa18e51f6981b239893e772839073',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-02-a',
+          standingSha256:
+            'b3042a0798d6eef334de98dbbdacf3fa5681b6e43163f8bf6c0f599fcd2f2243',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-02-b',
+          standingSha256:
+            'f0c3d94b6e0d3757ed4a73e92f9b6fad0eb30cd0ce930c1eb87425f5291f6d23',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-02-c',
+          standingSha256:
+            'bd08d6cd7709bc02929cfc9284f08ebb5141533ce2fb224eb82645174342f76f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-03-a',
+          standingSha256:
+            'a2d9ffdd89c784e696772067ed27adcd3b5475fec3ca23efcab72e72de31c2d3',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-03-b',
+          standingSha256:
+            'e8f5ba91eb3c1ee876a990899a9b0c15490a612a51580f003f6ca01e9103c4c7',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-03-c',
+          standingSha256:
+            '3a2fea8b555e7d8635dd731ff2384e7afe6e57a3757aa09df9f4d702ad21a64c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-04-a',
+          standingSha256:
+            '446f12df13a0078850af93f0d6e1e1a12a57b6749ead2266ab2e677c773cff48',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-04-b',
+          standingSha256:
+            '8723c81b9b66c690cc5dc072f43bd64ca63dcd3907e180e1d1387e50e13f0c86',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:princess-01-style-04-c',
+          standingSha256:
+            'aaebf99ab54810de4724f0e57e802b99933ff3fa596cc3694df21effa7f6ae3f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01',
+          standingSha256:
+            'efc5fc8cb12f3cfd5cf0a694c1c33cdd4ab47663e3be415a5d70caef47a0f7ee',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-01-b',
+          standingSha256:
+            'b9e153b94acd502c4d131c8b9d907ab69ad118bcef532eb93f1e26f44d04bbdf',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-01-c',
+          standingSha256:
+            'd352bc7b0fb9c4af6ca0db6ebe0d94c0b8bceda62b5ae7cd6150df652c7ffd9b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-02-a',
+          standingSha256:
+            'ca5c6d88ca7eddd2a3af440245418db8f20b875e03378ab9b9b24e8fbb179fba',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-02-b',
+          standingSha256:
+            'a31881f40233af240e47012ccff40a1ee38aa36ffa0f39750da483f234cac4c2',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-02-c',
+          standingSha256:
+            '7d5fcd36f8170387c74652b1fd04106f18a8ec77a6a9507287baec94eb54c3ce',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-03-a',
+          standingSha256:
+            'd3246a9ed3c28a229e975e5744302e2d580f48863e70750f71c79f645ce9f1a5',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-03-b',
+          standingSha256:
+            'a7e74eea5225a3f3db1356839951324d2a2e7954f9b1096a365da31d1844f40d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-03-c',
+          standingSha256:
+            'b20cf34e023737ad1908813aab423ad71e620c314bc8b879af0c701aa5152a15',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-04-a',
+          standingSha256:
+            '504ec4e6ffd2eafc97324822a1cfd651d33c8a4b2ca555c080ecb6811c956e0e',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-04-b',
+          standingSha256:
+            '844106327fc1cda2ca0cd9555d1e868d6d751a77d061628bf79b655c333129f3',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:rider-01-style-04-c',
+          standingSha256:
+            '5958e6a7776e9651dcec540835c072da7d465fc5ad12637487d022466bbd3929',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01',
+          standingSha256:
+            '2eea56922f2e5853517ff1a1e45107feaa8bf395ec775ad748102396e1575b73',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-01-b',
+          standingSha256:
+            '6a7db0bf65dc29ad2ea5729ef85785d2499d698fd9963a060872887149e1e966',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-01-c',
+          standingSha256:
+            'c7245750f27e3b472036e6462419790df9f3c0d240900ff9c107c0c0f567470c',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-02-a',
+          standingSha256:
+            'b563e8ecddc56d5594434b2ca9e17ba1c0c699c4f842a7637d940d4a155e669d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-02-b',
+          standingSha256:
+            '42f32e00d4b487000ee83cf1c4ce69314efb641d32e657b82e6786aff8eec642',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-02-c',
+          standingSha256:
+            '9c57a88b6d0440fb64135f8445d4ba1a676454f847181a02312deef402249be4',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-03-a',
+          standingSha256:
+            '7fc0b23f42944e3ede40e664f8bb359d998fda05ba42433d7b02cd405039c579',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-03-b',
+          standingSha256:
+            '32b1561450059200306de439911cd3f902705454d4a098f2e45b19d4826bb547',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-03-c',
+          standingSha256:
+            '77d71075f114366236e71bb65ddf6553941cb33e820710e3d9a7c3921519af59',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-04-a',
+          standingSha256:
+            '513d8e6a50373729c5dd6bcc39c5abdb81ee34b978a917e650f3b872ba3f9a55',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-04-b',
+          standingSha256:
+            'b61b286e85c25819cda8b245ba01ad343a300d743b8a5888e70edcca18325ee9',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-female-01-style-04-c',
+          standingSha256:
+            '97b973c8c8bd6f979f9738b8141473d397b77d26bb618a5fdc84dfffbfe8735d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+          standingSha256:
+            'd7803ccd2553537d494d296a74199e751c04532661cd41d96df94c43ef868a8b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-01-b',
+          standingSha256:
+            '023b6fd020c8a619c703a058071c5ba94a169b7646f530354b219b00c0ceb07f',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-01-c',
+          standingSha256:
+            'f4d9ab91bf3544f52c70593b470086b6bdfc6c0f005325965f34be243d4cc2af',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-02-a',
+          standingSha256:
+            'c40111381c30ab2d201c1edcaac21f06790b763a7879860cfb6e46a5d24b8524',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
+          standingSha256:
+            '296f441b22d3f2fce7402df8ca68a9f97892f223d87e4b8a84aae0f7be8b0ecd',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-02-c',
+          standingSha256:
+            'b5c6ae35a2e79190ee5012baff78f09287e2656ff2dce1b82f5f4414171f922d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-03-a',
+          standingSha256:
+            '2ad4ac11fabba9107882ba449887b292ae8783a94bb62831e527e9e11f88c817',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-03-b',
+          standingSha256:
+            'b287c201f43e6f347fb62b835827f656a0d1d1a1cef55b50b5b206d9d9433a74',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-03-c',
+          standingSha256:
+            '90f87693f5eb6f7196dd21cc3d3c52dc7b084632f6971dabdd476510c761ac4d',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-04-a',
+          standingSha256:
+            '99183cf2a14fa1603424ee40140e34d27007217ae55c6371280135b7f5a578de',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-04-b',
+          standingSha256:
+            'aa2e0be662400ba9135dd598593e9948d6d2d270a2b5c72fa7cbe1f5a10bc11b',
+        },
+        {
+          assetRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-04-c',
+          standingSha256:
+            '2300f9374369fefd896d7a24e57c88270fe96eb34c3f210a3b246a17976dea5f',
         },
       ],
     },

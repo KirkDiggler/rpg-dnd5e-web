@@ -27,6 +27,7 @@
  * decision.
  */
 
+import { NPC_ACTIVITY_PROFILES } from '@/generated/npcAppearanceCatalog';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,8 +36,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // below (which is hoisted above imports) AND from the test bodies.
 const hoisted = vi.hoisted(() => ({
   useGLTFSpy: vi.fn<
-    (url: string) => { scene: THREE.Group; animations: never[] }
-  >(() => {
+    (url: string) => { scene: THREE.Group; animations: THREE.AnimationClip[] }
+  >((url) => {
     const scene = new THREE.Group();
     scene.add(
       new THREE.Mesh(
@@ -44,7 +45,12 @@ const hoisted = vi.hoisted(() => ({
         new THREE.MeshStandardMaterial({ color: 0xffffff })
       )
     );
-    return { scene, animations: [] };
+    const profile = NPC_ACTIVITY_PROFILES.find((p) => p.library.url === url);
+    const names = profile?.library.clips ?? ['Idle_Relaxed', 'Walk_Forward'];
+    return {
+      scene,
+      animations: names.map((name) => new THREE.AnimationClip(name, 1, [])),
+    };
   }),
 }));
 
@@ -215,6 +221,7 @@ describe('HexEntity zombie rendering (one look, real render path)', () => {
       />
     );
     expect(uniqueCalledUrls()).toEqual([
+      '/models/synty/npcs/activities/kingdom-human-idles-v1/clips.glb',
       '/models/synty/npcs/castle-merchant-01.glb',
     ]);
     hoisted.useGLTFSpy.mockClear();
@@ -250,8 +257,10 @@ describe('HexEntity zombie rendering (one look, real render path)', () => {
 
   it('keeps a failed explicit model on the diagnostic path instead of silently drawing another body', async () => {
     const original = hoisted.useGLTFSpy.getMockImplementation()!;
-    hoisted.useGLTFSpy.mockImplementation(() => {
-      throw new Error('missing appearance fixture');
+    hoisted.useGLTFSpy.mockImplementation((url) => {
+      if (url === '/models/synty/npcs/castle-merchant-01.glb')
+        throw new Error('missing appearance fixture');
+      return original(url);
     });
     try {
       const renderer = await ReactThreeTestRenderer.create(
@@ -262,7 +271,10 @@ describe('HexEntity zombie rendering (one look, real render path)', () => {
         />
       );
       expect(new Set(uniqueCalledUrls())).toEqual(
-        new Set(['/models/synty/npcs/castle-merchant-01.glb'])
+        new Set([
+          '/models/synty/npcs/activities/kingdom-human-idles-v1/clips.glb',
+          '/models/synty/npcs/castle-merchant-01.glb',
+        ])
       );
       expect(
         renderer.scene.findAllByProps({ name: 'appearance-diagnostic' })
