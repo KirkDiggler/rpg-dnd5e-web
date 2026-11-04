@@ -16,7 +16,9 @@ describe('published social activities on unchanged human looks', () => {
     'binds %s once per supported look with all three native phases',
     (name, clip) => {
       const ref = `dnd5e:activities:${name}`;
-      const profiles = NPC_ACTIVITY_PROFILES.filter((p) => p.activities[ref]);
+      const profiles = NPC_ACTIVITY_PROFILES.filter(
+        (p) => p.id === 'warcamp-human-idles-v1' && p.activities[ref]
+      );
       expect(profiles).toHaveLength(1);
       const profile = profiles[0];
       expect(profile.appearances).toHaveLength(72);

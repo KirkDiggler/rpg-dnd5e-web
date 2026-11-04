@@ -732,7 +732,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       expect(joined.session.document).toEqual(before);
       act(() => joined.session.redo());
       expect(token('Default activity')).toBe(activity);
-      change('NPC appearance', 'dnd5e:npcs:kingdom:merchant-01');
+      change('NPC appearance', 'dnd5e:npcs:goblin:warrior-male-01');
       expect(token('Default activity')).toBe(activity);
       expect(
         screen.getByRole('option', { name: `Unavailable: ${activity}` })
@@ -745,6 +745,49 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       ).not.toHaveProperty('defaultActivityRef');
     }
   );
+
+  it.each([
+    'soldier-male-01',
+    'soldier-female-01',
+    'peasant-male-01',
+    'peasant-female-01',
+    'blacksmith-female-01',
+    'blacksmith-male-01',
+    'hermit-01',
+    'jester-01',
+    'king-01',
+    'mage-cape-01',
+    'merchant-01',
+    'monk-01',
+    'nun-01',
+    'priest-01',
+    'prince-01',
+    'princess-01',
+    'rider-01',
+  ])('authors and persists a default activity for kingdom %s', (body) => {
+    const joined = owner();
+    joined.selectActor();
+    change('NPC appearance', `dnd5e:npcs:kingdom:${body}`);
+    const select = screen.getByLabelText(
+      'Default activity'
+    ) as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+    expect(Array.from(select.options).filter((o) => o.value)).toHaveLength(11);
+    change('Default activity', 'dnd5e:activities:arms-folded');
+    const saved = parseRoomDocumentJson(
+      joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)!
+    );
+    expect(
+      saved.draft.room.monsterDeclarations.find((a) => a.id === 'goblin-1')
+    ).toMatchObject({
+      appearanceRef: `dnd5e:npcs:kingdom:${body}`,
+      defaultActivityRef: 'dnd5e:activities:arms-folded',
+    });
+    act(() => joined.session.undo());
+    expect(token('Default activity')).toBe('');
+    act(() => joined.session.redo());
+    expect(token('Default activity')).toBe('dnd5e:activities:arms-folded');
+  });
 
   it('each apply-on-change picker edit is its own history entry', () => {
     const joined = owner();

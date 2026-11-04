@@ -64,6 +64,17 @@ describe('say activity fields through the real answer editor', () => {
     expect(authored()).toEqual({ say: 'I remember now.', weight: 3 });
   });
 
+  it('offers shared vocabulary once when multiple rigs publish the same activities', () => {
+    render(<Editor />);
+    const select = screen.getByLabelText(
+      'Activity for success entry'
+    ) as HTMLSelectElement;
+    const refs = Array.from(select.options).map((option) => option.value);
+    expect(refs).toHaveLength(12);
+    expect(new Set(refs).size).toBe(refs.length);
+    expect(refs).not.toContain('dnd5e:activities:walk');
+  });
+
   it('does not replace an imported unsupported reference', () => {
     render(
       <Editor
