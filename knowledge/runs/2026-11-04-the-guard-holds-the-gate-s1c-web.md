@@ -1,0 +1,28 @@
+# 2026-11-04 · The guard holds the gate S1c · A held crossing plans shut only in the barred direction
+
+Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#857](https://github.com/KirkDiggler/rpg-project/issues/857), [plan Task 22](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/plan.md#task-22-s1c-the-web-previews-a-one-way-hold), [ruling R6](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md) and its laws "A post holds both ways unless its setting says a direction" and "A pass fact walks through a hold". Protos pinned at [rpg-api-protos v0.1.255](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.255), generated commit `0bd33650`: `Sighting.holds_against` and `Sighting.holds_side`. Built against the protos while the server tasks (encounter T17, session T18, api T19) were built in parallel.
+
+## Shipped
+
+- `sightingsToEntities` carries `holds_against` and `holds_side` verbatim beside `holdsDoor` — [sightingEntities.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/sightingEntities.ts).
+- `indexOccupantPassages` returns `holds`, one per live holder: the door, its direction, its post-side cells as cell keys, and whether the holder is believed neutral or allied. It replaces `heldDoors` and `walkIntoHeldDoors`. A memory holds nothing — [occupantPassages.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/occupantPassages.ts).
+- `buildAtlasPathIndex` keys `heldDoorEdges` and `walkIntoHeldEdges` by directed step together, as the review on the design PR asked. `entering` bars a step from a side cell to its crossing's other cell, `leaving` the reverse, `both` or empty each way — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
+- `edgePassable` and the search's walk-into trigger read the directed step. The second plan still runs only when no route round exists, and crosses a barred step only when every holder that bars it is neutral or allied — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
+
+## Decided
+
+- **An unoriented crossing is held both ways.** An empty `holds_side` (a server before T18), a crossing with neither or both cells in it, and a direction word this client does not know all fail closed — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
+- **The walk-into test is per step, not per door.** A hostile `entering` post and a neutral `leaving` post on the same gate leave the leaving steps crossable on the second plan and the entering steps shut on both. S1b's rule, "every holder is neutral or allied", now counts only the holders that bar that step — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
+- **The S1b tests stay as they were, with two edits.** Their `plan` helper passes `holds` in place of the two sets. The exact-set test now names four directed steps, since a hold with no side cells bars both ways — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
+
+## Found
+
+- **A crossing walked twice needs a third region in the fixture.** The S1b gate fixture has one courtyard, so no walk crosses the opening twice. The S1c fixture walls the cell inside the first crossing off from the rest of the courtyard. The only walk from that cell to the other inside cell goes out by one crossing and back in by the other — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
+- **The preview is only as live as the sighting.** A viewer with the pass gets no `holds_door` from the server, so the gate plans open for that viewer. The web computes nothing about the pass — [design R6](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md).
+
+## Mistaken
+
+- **Two first-draft assertions aimed at the guard's own cell.** A goal on a blocking body has no plan, so those expected paths were empty for the wrong reason, and one assertion would have passed whatever the direction. They now aim at a free courtyard cell — [atlasPath.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.test.ts).
+- **Mutants checked.** Swapping the `entering` and `leaving` branches fails seven tests. Opening an unoriented crossing fails eight — [atlasPath.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/19609cf66cb6006406a11f9da42d98b985f8d657/src/components/session/atlasPath.ts).
+
+— cross-team agent, on behalf of KirkDiggler
