@@ -52,6 +52,44 @@ function pairKey(a: CubeCoord, b: CubeCoord): string {
   return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
 }
 
+/** A key for one DIRECTED step from `a` to `b` (rpg-project#857, R6): a
+ * one-way hold shuts a crossing in one direction only, so its edges are
+ * keyed by the step, not by the unordered pair. */
+export function stepKey(a: CubeCoord, b: CubeCoord): string {
+  return `${coordToKey(a)}>${coordToKey(b)}`;
+}
+
+/** One live holder's hold on a door, as `indexOccupantPassages` reads it
+ * from a sighting (rpg-project#852 R5, rpg-project#857 R6). */
+export interface DoorHold {
+  /** `Sighting.holds_door`: the qualified door id. */
+  door: string;
+  /** `Sighting.holds_against`: `both`, `entering` or `leaving`. Empty, or a
+   * word this client does not know, reads as both (fail closed). */
+  against: string;
+  /** `Sighting.holds_side` as cell keys: the door's crossing cells on the
+   * post's side. A step from one of them to its crossing's other cell is
+   * entering; the reverse is leaving. A crossing it does not orient (empty,
+   * a server before rpg-project#857; or neither or both of its cells) is
+   * held both ways. */
+  side: ReadonlySet<string>;
+  /** The holder is believed neutral or allied: the second plan may cross
+   * what he bars. */
+  walkInto: boolean;
+}
+
+/** Whether `hold` bars the step `from` → `to` across one of its door's
+ * crossings. */
+function holdBars(hold: DoorHold, from: string, to: string): boolean {
+  const fromSide = hold.side.has(from);
+  const toSide = hold.side.has(to);
+  // Unoriented: fail closed, both ways.
+  if (fromSide === toSide) return true;
+  if (hold.against === 'entering') return fromSide;
+  if (hold.against === 'leaving') return toSide;
+  return true;
+}
+
 /** Precomputed, queryable form of the atlas's movement graph — built once
  * per atlas fetch (it's construction truth, same as the atlas itself) and
  * reused across every click. */
@@ -81,15 +119,16 @@ export interface AtlasPathIndex {
    * route round and the goal is not a body's cell. Always a subset of
    * `occupiedCells`. */
   walkIntoCells: ReadonlySet<string>;
-  /** Doorway pairs of a door a live sighting's `holdsDoor` names
-   * (rpg-project#852, R5): a posted body bars the opening, open or shut,
-   * so the first plan treats them as a shut door's. LIVE, like
-   * `shutDoorEdges`; a subset of `doorwayEdges`. */
+  /** DIRECTED steps (`stepKey`) across the doorways of a door a live
+   * sighting holds (rpg-project#852 R5, rpg-project#857 R6): a posted body
+   * bars the opening, open or shut, in the direction its hold says, so the
+   * first plan treats the step as a shut door's. The other direction of a
+   * one-way hold stays open. LIVE, like `shutDoorEdges`. */
   heldDoorEdges: ReadonlySet<string>;
-  /** The held pairs the second plan may cross: every holder is believed
-   * neutral or allied (`indexOccupantPassages`'s `walkIntoHeldDoors`). The
-   * second plan runs only when no route round exists; the server stops the
-   * walk at the opening. A subset of `heldDoorEdges`. */
+  /** The held steps the second plan may take: every holder that bars the
+   * step is believed neutral or allied. The second plan runs only when no
+   * route round exists; the server stops the walk at the opening. A subset
+   * of `heldDoorEdges`, keyed the same way. */
   walkIntoHeldEdges: ReadonlySet<string>;
 }
 
@@ -112,13 +151,10 @@ export function buildAtlasPathIndex(
   /** `indexOccupantPassages`'s `walkInto`. A cell not also in
    * `occupiedCells` is dropped: only a seen blocking body is walked into. */
   walkIntoCells?: ReadonlySet<string>,
-  /** `indexOccupantPassages`'s `heldDoors`: door ids held against the
-   * viewer by a live sighting. Every doorway of such a door, an edge door's
-   * edge or a footprint door's crossing, is planned shut. */
-  heldDoors?: ReadonlySet<string>,
-  /** `indexOccupantPassages`'s `walkIntoHeldDoors`. A door not also in
-   * `heldDoors` is dropped. */
-  walkIntoHeldDoors?: ReadonlySet<string>
+  /** `indexOccupantPassages`'s `holds`: one per live holder. Every doorway
+   * of a held door, an edge door's edge or a footprint door's crossing, is
+   * planned shut in each direction some hold bars. */
+  holds?: readonly DoorHold[]
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
@@ -128,6 +164,13 @@ export function buildAtlasPathIndex(
   const shutDoorEdges = new Set<string>();
   const heldDoorEdges = new Set<string>();
   const walkIntoHeldEdges = new Set<string>();
+  const refusedHeldEdges = new Set<string>();
+  const holdsByDoor = new Map<string, DoorHold[]>();
+  for (const hold of holds ?? []) {
+    const list = holdsByDoor.get(hold.door) ?? [];
+    list.push(hold);
+    holdsByDoor.set(hold.door, list);
+  }
   // Both kinds of doorway are read here: an edge door's edge and a
   // footprint door's crossing (`crossing`, rpg-project#852). Only the
   // renderers tell them apart, so a shut footprint door now plans shut.
@@ -138,10 +181,19 @@ export function buildAtlasPathIndex(
       positionToCube(doorway.to)
     );
     doorwayEdges.add(key);
-    if (heldDoors?.has(doorway.connection)) {
-      heldDoorEdges.add(key);
-      if (walkIntoHeldDoors?.has(doorway.connection))
-        walkIntoHeldEdges.add(key);
+    const from = positionToCube(doorway.from);
+    const to = positionToCube(doorway.to);
+    for (const hold of holdsByDoor.get(doorway.connection) ?? []) {
+      for (const [a, b] of [
+        [from, to],
+        [to, from],
+      ]) {
+        if (!holdBars(hold, coordToKey(a), coordToKey(b))) continue;
+        const step = stepKey(a, b);
+        heldDoorEdges.add(step);
+        if (hold.walkInto) walkIntoHeldEdges.add(step);
+        else refusedHeldEdges.add(step);
+      }
     }
     // With a live door map in hand, only a door KNOWN OPEN passes — an
     // entry that is missing or shut refuses, exactly matching the leaf
@@ -178,6 +230,9 @@ export function buildAtlasPathIndex(
     }
   }
 
+  // A step any refusing holder bars stays shut on both plans.
+  for (const step of refusedHeldEdges) walkIntoHeldEdges.delete(step);
+
   const occupied = occupiedCells ?? new Set<string>();
   return {
     floor,
@@ -213,7 +268,9 @@ export function edgePassable(
   if (index.blockedCells.has(kb) || index.occupiedCells.has(kb)) return false;
   const key = pairKey(a, b);
   if (index.doorwayEdges.has(key))
-    return !index.shutDoorEdges.has(key) && !index.heldDoorEdges.has(key);
+    return (
+      !index.shutDoorEdges.has(key) && !index.heldDoorEdges.has(stepKey(a, b))
+    );
   return !index.blockedEdges.has(key);
 }
 
@@ -260,7 +317,9 @@ export function findAtlasPath(
   // A HELD OPENING (rpg-project#852) is read the same way: the first plan
   // keeps it shut, the second crosses it when a neutral or allied post holds
   // it and nothing goes round, and the server stops the walk at the opening
-  // by his name. A door shut by its own state stays shut on both.
+  // by his name. A door shut by its own state stays shut on both. A one-way
+  // hold (rpg-project#857) is held only in its barred direction, on both
+  // plans: the other way is open floor.
   if (index.occupiedCells.has(goalKey) || !round.metWalkInto) return [];
   const occupied = new Set(index.occupiedCells);
   for (const key of index.walkIntoCells) occupied.delete(key);
@@ -338,7 +397,7 @@ interface AtlasSearch {
   nearest?: CubeCoord[];
   nearestDistance: number;
   /** Whether the search was refused an edge into a `walkIntoCells` cell or
-   * across a `walkIntoHeldEdges` pair: the only cases in which
+   * across a `walkIntoHeldEdges` step: the only cases in which
    * `findAtlasPath`'s second plan can find more. */
   metWalkInto: boolean;
 }
@@ -407,7 +466,7 @@ function searchAtlas(
       if (!edgePassable(index, currentCoord, neighbor)) {
         if (
           index.walkIntoCells.has(neighborKey) ||
-          index.walkIntoHeldEdges.has(pairKey(currentCoord, neighbor))
+          index.walkIntoHeldEdges.has(stepKey(currentCoord, neighbor))
         )
           metWalkInto = true;
         continue;

@@ -25,6 +25,7 @@ import {
   findAtlasApproach,
   findAtlasPath,
   INTERACTION_REACH,
+  stepKey,
 } from './atlasPath';
 import { indexOccupantPassages } from './occupantPassages';
 import { positionToCube } from './positionBridge';
@@ -836,8 +837,7 @@ describe('a held opening plans shut (rpg-project#852, R5)', () => {
       occupancy.blocked,
       occupancy.passThrough,
       occupancy.walkInto,
-      occupancy.heldDoors,
-      occupancy.walkIntoHeldDoors
+      occupancy.holds
     );
     return (from: [number, number], to: [number, number]) =>
       keysOf(
@@ -968,17 +968,28 @@ describe('a held opening plans shut (rpg-project#852, R5)', () => {
       occupancy.blocked,
       occupancy.passThrough,
       occupancy.walkInto,
-      occupancy.heldDoors,
-      occupancy.walkIntoHeldDoors
+      occupancy.holds
     );
     // The pair key `atlasPath.ts` builds: an unordered pair of cell keys.
     const pair = (a: never, b: never) =>
       [coordToKey(positionToCube(a)), coordToKey(positionToCube(b))]
         .sort()
         .join('|');
+    const step = (a: never, b: never) =>
+      stepKey(positionToCube(a), positionToCube(b));
     const gatePairs = [pair(pos(0, 0), pos(0, 1)), pair(pos(1, 0), pos(1, 1))];
     const doorwayPairs = [...gatePairs, pair(pos(3, 0), pos(3, 1))];
-    expect(index.heldDoorEdges).toEqual(new Set(gatePairs));
+    // Held edges are DIRECTED steps (rpg-project#857): a hold with no side
+    // cells, as this guard's, is held both ways on each crossing.
+    expect(index.heldDoorEdges).toEqual(
+      new Set([
+        step(pos(0, 0), pos(0, 1)),
+        step(pos(0, 1), pos(0, 0)),
+        step(pos(1, 0), pos(1, 1)),
+        step(pos(1, 1), pos(1, 0)),
+      ])
+    );
+    expect(index.walkIntoHeldEdges).toEqual(index.heldDoorEdges);
     expect(index.shutDoorEdges).toEqual(new Set());
     expect(index.blockedEdges).toEqual(
       new Set(
@@ -987,5 +998,245 @@ describe('a held opening plans shut (rpg-project#852, R5)', () => {
           .filter((k) => !doorwayPairs.includes(k))
       )
     );
+  });
+});
+
+describe('a one-way hold plans shut only in the barred direction (rpg-project#857, R6)', () => {
+  const key = (x: number, y: number) => coordToKey(positionToCube(pos(x, y)));
+  const keysOf = (path: ReturnType<typeof findAtlasPath>) =>
+    path.map((c) => coordToKey(c));
+  const step = (a: [number, number], b: [number, number]) =>
+    stepKey(positionToCube(pos(...a)), positionToCube(pos(...b)));
+
+  /** The castle gate in small, as #852's fixture: row r=0 is outside (the
+   * post's side, the gatehouse), row r=1 and (1,2) the courtyard, a wall
+   * between the rows. The gate is a footprint door with two crossings,
+   * (0,0)-(0,1) and (1,0)-(1,1); the postern (3,0)-(3,1) is the way round,
+   * shut unless a test opens it. One more wall cuts (0,1) off from the rest
+   * of the courtyard, so the only walk from (0,1) to (1,1) leaves through
+   * one crossing and comes back in through the other: the opening twice. */
+  const cells = [
+    ...[0, 1, 2, 3].flatMap((q) => [pos(q, 0), pos(q, 1)]),
+    pos(1, 2),
+  ];
+  const wall = [
+    [pos(0, 0), pos(0, 1)],
+    [pos(1, 0), pos(0, 1)],
+    [pos(1, 0), pos(1, 1)],
+    [pos(2, 0), pos(1, 1)],
+    [pos(2, 0), pos(2, 1)],
+    [pos(3, 0), pos(2, 1)],
+    [pos(3, 0), pos(3, 1)],
+    [pos(0, 1), pos(1, 1)],
+  ].map(([from, to]) => ({
+    from,
+    to,
+    blocksMovement: true,
+    blocksLineOfSight: true,
+  }));
+  const castle = {
+    cells,
+    boundaries: wall,
+    doorways: [
+      { connection: 'gate', from: pos(0, 0), to: pos(0, 1), crossing: true },
+      { connection: 'gate', from: pos(1, 0), to: pos(1, 1), crossing: true },
+      { connection: 'postern', from: pos(3, 0), to: pos(3, 1) },
+    ],
+    props: [],
+  } as never;
+
+  /** The posted guard as the server sends him: live (or a memory), his
+   * believed stance, the gate, its direction, and the gatehouse-side cells
+   * of its two crossings unless a test sends none. */
+  function guard({
+    against = 'both',
+    stance = 'hostile',
+    side = [pos(0, 0), pos(1, 0)] as never[],
+    remembered = false,
+    subject = 'gate-1',
+  } = {}) {
+    return create(SightingSchema, {
+      subject,
+      kind: MemberKind.MONSTER,
+      passage: Passage.BLOCKED,
+      stance,
+      holdsDoor: 'gate',
+      holdsAgainst: against,
+      holdsSide: side.map((at: { x: number; y: number }) =>
+        create(PositionSchema, at)
+      ),
+      currentVia: remembered ? [] : ['sight'],
+      seen: { position: create(PositionSchema, { x: 1, y: 2 }) },
+    });
+  }
+
+  function build(
+    sightings: ReturnType<typeof guard>[],
+    postern = DoorState.CLOSED
+  ) {
+    const occupancy = indexOccupantPassages(
+      sightingsToEntities(sightings, 'walker')
+    );
+    return buildAtlasPathIndex(
+      castle,
+      new Map<string, DoorInfo>([
+        ['gate', { door: 'gate', state: DoorState.OPEN } as DoorInfo],
+        ['postern', { door: 'postern', state: postern } as DoorInfo],
+      ]),
+      occupancy.blocked,
+      occupancy.passThrough,
+      occupancy.walkInto,
+      occupancy.holds
+    );
+  }
+
+  function plan(
+    sightings: ReturnType<typeof guard>[],
+    postern = DoorState.CLOSED
+  ) {
+    const index = build(sightings, postern);
+    return (from: [number, number], to: [number, number]) =>
+      keysOf(
+        findAtlasPath(
+          index,
+          positionToCube(pos(...from)),
+          positionToCube(pos(...to))
+        )
+      );
+  }
+
+  const IN = step([0, 0], [0, 1]);
+  const IN_2 = step([1, 0], [1, 1]);
+  const OUT = step([0, 1], [0, 0]);
+  const OUT_2 = step([1, 1], [1, 0]);
+
+  it('an entering post holds only the steps from its side: the arrivals', () => {
+    const index = build([guard({ against: 'entering' })]);
+    expect(index.heldDoorEdges).toEqual(new Set([IN, IN_2]));
+    expect(index.walkIntoHeldEdges).toEqual(new Set());
+  });
+
+  it('an entering post lets a path leave through the gate and bars one coming in, from any distance', () => {
+    const go = plan([guard({ against: 'entering' })]);
+    expect(go([0, 1], [0, 0])).toEqual([key(0, 1), key(0, 0)]);
+    expect(go([1, 1], [3, 0])).toEqual([
+      key(1, 1),
+      key(1, 0),
+      key(2, 0),
+      key(3, 0),
+    ]);
+    expect(go([0, 0], [0, 1])).toEqual([]);
+    expect(go([3, 0], [2, 1])).toEqual([]);
+  });
+
+  it('an entering post with a way round sends the arrival round, never through the gate', () => {
+    const path = plan([guard({ against: 'entering' })], DoorState.OPEN)(
+      [0, 0],
+      [2, 1]
+    );
+    expect(path.at(-1)).toBe(key(2, 1));
+    const steps = path.slice(1).map((k, i) => `${path[i]}>${k}`);
+    expect(steps).toContain(`${key(3, 0)}>${key(3, 1)}`);
+    expect(steps).not.toContain(IN);
+    expect(steps).not.toContain(IN_2);
+  });
+
+  it('a leaving post is the reverse: the arrival walks in, the leaver is barred', () => {
+    const index = build([guard({ against: 'leaving' })]);
+    expect(index.heldDoorEdges).toEqual(new Set([OUT, OUT_2]));
+    const go = plan([guard({ against: 'leaving' })]);
+    expect(go([0, 0], [0, 1])).toEqual([key(0, 0), key(0, 1)]);
+    expect(go([3, 0], [2, 1])).toEqual([
+      key(3, 0),
+      key(2, 0),
+      key(1, 0),
+      key(1, 1),
+      key(2, 1),
+    ]);
+    expect(go([0, 1], [0, 0])).toEqual([]);
+    expect(go([2, 1], [3, 0])).toEqual([]);
+  });
+
+  it('both, and an empty direction, bar each way', () => {
+    for (const against of ['both', '']) {
+      expect(build([guard({ against })]).heldDoorEdges).toEqual(
+        new Set([IN, IN_2, OUT, OUT_2])
+      );
+      const go = plan([guard({ against })]);
+      expect(go([0, 0], [0, 1])).toEqual([]);
+      expect(go([0, 1], [0, 0])).toEqual([]);
+    }
+  });
+
+  it('a direction this client does not know bars each way: fail closed', () => {
+    expect(build([guard({ against: 'sideways' })]).heldDoorEdges).toEqual(
+      new Set([IN, IN_2, OUT, OUT_2])
+    );
+  });
+
+  it('a path that crosses a one-way opening twice is barred on the barred leg only', () => {
+    // From (0,1) to (1,1) the only walk leaves by one crossing and comes back
+    // in by the other. Each leg alone: entering lets the leaving leg through
+    // and bars the coming-in leg; leaving the reverse. So the whole walk is
+    // barred either way, at the leg its post bars.
+    const entering = plan([guard({ against: 'entering' })]);
+    expect(entering([0, 1], [1, 0])).toEqual([key(0, 1), key(0, 0), key(1, 0)]);
+    expect(entering([1, 0], [1, 1])).toEqual([]);
+    expect(entering([0, 1], [1, 1])).toEqual([]);
+    const leaving = plan([guard({ against: 'leaving' })]);
+    expect(leaving([0, 1], [1, 0])).toEqual([]);
+    expect(leaving([0, 0], [1, 1])).toEqual([key(0, 0), key(1, 0), key(1, 1)]);
+    expect(leaving([0, 1], [1, 1])).toEqual([]);
+  });
+
+  it('the second plan crosses the barred leg only when every holder is neutral or allied and nothing goes round', () => {
+    expect(
+      plan([guard({ against: 'entering', stance: 'neutral' })])([0, 1], [1, 1])
+    ).toEqual([key(0, 1), key(0, 0), key(1, 0), key(1, 1)]);
+    // A way round: the first plan takes it, never the held leg.
+    const round = plan(
+      [guard({ against: 'entering', stance: 'neutral' })],
+      DoorState.OPEN
+    )([0, 0], [2, 1]);
+    const steps = round.slice(1).map((k, i) => `${round[i]}>${k}`);
+    expect(steps).toContain(`${key(3, 0)}>${key(3, 1)}`);
+    expect(steps).not.toContain(IN);
+    expect(steps).not.toContain(IN_2);
+  });
+
+  it('holders differ by direction: a hostile entering post and a neutral leaving one', () => {
+    const index = build([
+      guard({ against: 'entering', stance: 'hostile' }),
+      guard({ against: 'leaving', stance: 'neutral', subject: 'gate-2' }),
+    ]);
+    expect(index.heldDoorEdges).toEqual(new Set([IN, IN_2, OUT, OUT_2]));
+    expect(index.walkIntoHeldEdges).toEqual(new Set([OUT, OUT_2]));
+  });
+
+  it('a hold with no side cells, from a server before rpg-project#857, is held both ways on every crossing', () => {
+    expect(
+      build([guard({ against: 'entering', side: [] })]).heldDoorEdges
+    ).toEqual(new Set([IN, IN_2, OUT, OUT_2]));
+  });
+
+  it('a crossing the side cells do not orient is held both ways', () => {
+    // Only (0,0) is sent: the (1,0)-(1,1) crossing has neither cell.
+    expect(
+      build([guard({ against: 'entering', side: [pos(0, 0)] })]).heldDoorEdges
+    ).toEqual(new Set([IN, IN_2, OUT_2]));
+    // Both cells of a crossing sent: that crossing is held both ways.
+    expect(
+      build([
+        guard({ against: 'entering', side: [pos(0, 0), pos(0, 1), pos(1, 0)] }),
+      ]).heldDoorEdges
+    ).toEqual(new Set([IN, OUT, IN_2]));
+  });
+
+  it('a remembered sighting holds nothing in either direction', () => {
+    const index = build([guard({ against: 'entering', remembered: true })]);
+    expect(index.heldDoorEdges).toEqual(new Set());
+    expect(
+      plan([guard({ against: 'entering', remembered: true })])([0, 0], [0, 1])
+    ).toEqual([key(0, 0), key(0, 1)]);
   });
 });

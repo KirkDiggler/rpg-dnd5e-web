@@ -1,5 +1,7 @@
 import { Passage } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { coordToKey } from '../hex-grid/hexMath';
+import type { DoorHold } from './atlasPath';
+import { positionToCube } from './positionBridge';
 import type { SightedMember } from './sightingEntities';
 import { STANCE_ALLIED, STANCE_NEUTRAL } from './stanceRing';
 
@@ -18,31 +20,38 @@ import { STANCE_ALLIED, STANCE_NEUTRAL } from './stanceRing';
  * here computes who can see whom. A cell any other blocking body also holds
  * is never in `walkInto`.
  *
- * `heldDoors` (rpg-project#852, R5) are the door ids a live sighting's
- * `holdsDoor` names: a posted body bars that door's opening against the
- * viewer, open or shut, so the planner plans its doorways shut. A memory
- * holds nothing live and is skipped like every other memory. The server
- * decides the hold and whom it bars; the web reads the id it is sent.
- * `walkIntoHeldDoors` is the part of `heldDoors` the second plan may still
- * cross, by the same fail-closed rule as `walkInto`: every body holding the
- * door is believed neutral or allied. The server then stops the walk at the
- * opening and names him.
+ * `holds` (rpg-project#852 R5, rpg-project#857 R6) are the holds a live
+ * sighting's `holdsDoor` names, one per holder: a posted body bars that
+ * door's opening against the viewer, open or shut. Each carries the
+ * server's direction (`holdsAgainst`) and the post's side cells
+ * (`holdsSide`), so the planner shuts each crossing only in the barred
+ * direction. A memory holds nothing live and is skipped like every other
+ * memory. The server decides the hold, its direction and whom it bars; the
+ * web reads what it is sent. `walkInto` on a hold is the same fail-closed
+ * rule as the cell's: the holder is believed neutral or allied, so the
+ * second plan may still cross the opening his way and the server stops the
+ * walk there by his name.
  */
 export function indexOccupantPassages(members: readonly SightedMember[]) {
   const blocked = new Set<string>();
   const passThrough = new Set<string>();
   const walkInto = new Set<string>();
   const refused = new Set<string>();
-  const heldDoors = new Set<string>();
-  const refusedHolds = new Set<string>();
+  const holds: DoorHold[] = [];
   let error: string | null = null;
   for (const member of members) {
     if (member.remembered) continue;
     const cell = coordToKey(member.position);
     if (member.holdsDoor) {
-      heldDoors.add(member.holdsDoor);
-      if (member.stance !== STANCE_NEUTRAL && member.stance !== STANCE_ALLIED)
-        refusedHolds.add(member.holdsDoor);
+      holds.push({
+        door: member.holdsDoor,
+        against: member.holdsAgainst ?? '',
+        side: new Set(
+          (member.holdsSide ?? []).map((at) => coordToKey(positionToCube(at)))
+        ),
+        walkInto:
+          member.stance === STANCE_NEUTRAL || member.stance === STANCE_ALLIED,
+      });
     }
     switch (member.passage) {
       case Passage.BLOCKED:
@@ -62,15 +71,11 @@ export function indexOccupantPassages(members: readonly SightedMember[]) {
     }
   }
   for (const cell of refused) walkInto.delete(cell);
-  const walkIntoHeldDoors = new Set(
-    [...heldDoors].filter((door) => !refusedHolds.has(door))
-  );
   return {
     blocked,
     passThrough,
     walkInto,
-    heldDoors,
-    walkIntoHeldDoors,
+    holds,
     error,
   };
 }
