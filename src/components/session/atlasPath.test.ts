@@ -7,8 +7,15 @@
  * (same shape `atlasWallRuns.test.ts` uses) for an end-to-end route
  * crossing a real doorway.
  */
+import { create } from '@bufbuild/protobuf';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  DoorState,
+  MemberKind,
+  Passage,
+  PositionSchema,
+  SightingSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import { coordToKey } from '../hex-grid/hexMath';
@@ -19,7 +26,9 @@ import {
   findAtlasPath,
   INTERACTION_REACH,
 } from './atlasPath';
+import { indexOccupantPassages } from './occupantPassages';
 import { positionToCube } from './positionBridge';
+import { sightingsToEntities } from './sightingEntities';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 
@@ -747,5 +756,236 @@ describe('findAtlasApproach (rpg-project#753 R4)', () => {
   it('is nothing to walk when no reachable cell is any closer', () => {
     const index = buildAtlasPathIndex(corridor(1));
     expect(findAtlasApproach(index, at(0), at(9), 3)).toEqual([]);
+  });
+});
+
+describe('a held opening plans shut (rpg-project#852, R5)', () => {
+  const key = (x: number, y: number) => coordToKey(positionToCube(pos(x, y)));
+  const keysOf = (path: ReturnType<typeof findAtlasPath>) =>
+    path.map((c) => coordToKey(c));
+
+  /** The castle gate in small. Row r=0 is outside, row r=1 the courtyard,
+   * and a wall blocks every step between them. The gate is a FOOTPRINT
+   * door: its two crossings, (0,0)-(0,1) and (1,0)-(1,1), arrive as
+   * doorways marked `crossing`, with no edge door's edges. The postern at
+   * (3,0)-(3,1) is an edge door, the way round. The guard is posted at
+   * (1,2), inside the courtyard and off every route, so only his hold can
+   * bar it, never his body; and no search from outside ever meets his
+   * cell, so only the held opening can start the second plan. */
+  const cells = [
+    ...[0, 1, 2, 3].flatMap((q) => [pos(q, 0), pos(q, 1)]),
+    pos(1, 2),
+  ];
+  const wall = [
+    [pos(0, 0), pos(0, 1)],
+    [pos(1, 0), pos(0, 1)],
+    [pos(1, 0), pos(1, 1)],
+    [pos(2, 0), pos(1, 1)],
+    [pos(2, 0), pos(2, 1)],
+    [pos(3, 0), pos(2, 1)],
+    [pos(3, 0), pos(3, 1)],
+  ].map(([from, to]) => ({
+    from,
+    to,
+    blocksMovement: true,
+    blocksLineOfSight: true,
+  }));
+  const castle = {
+    cells,
+    boundaries: wall,
+    doorways: [
+      { connection: 'gate', from: pos(0, 0), to: pos(0, 1), crossing: true },
+      { connection: 'gate', from: pos(1, 0), to: pos(1, 1), crossing: true },
+      { connection: 'postern', from: pos(3, 0), to: pos(3, 1) },
+    ],
+    props: [],
+  } as never;
+
+  const doors = (gate: DoorState, postern: DoorState) =>
+    new Map<string, DoorInfo>([
+      ['gate', { door: 'gate', state: gate } as DoorInfo],
+      ['postern', { door: 'postern', state: postern } as DoorInfo],
+    ]);
+
+  /** The guard as the server sends him: a live sighting (or a memory) at
+   * his post, his believed stance, and the door his post holds. */
+  function guard(holdsDoor: string, stance = 'neutral', remembered = false) {
+    return create(SightingSchema, {
+      subject: 'gate-1',
+      kind: MemberKind.MONSTER,
+      passage: Passage.BLOCKED,
+      stance,
+      holdsDoor,
+      currentVia: remembered ? [] : ['sight'],
+      seen: { position: create(PositionSchema, { x: 1, y: 2 }) },
+    });
+  }
+
+  /** The index exactly as the view builds it from its sightings. */
+  function plan(
+    sightings: ReturnType<typeof guard>[],
+    gate: DoorState,
+    postern: DoorState
+  ) {
+    const occupancy = indexOccupantPassages(
+      sightingsToEntities(sightings, 'walker')
+    );
+    const index = buildAtlasPathIndex(
+      castle,
+      doors(gate, postern),
+      occupancy.blocked,
+      occupancy.passThrough,
+      occupancy.walkInto,
+      occupancy.heldDoors,
+      occupancy.walkIntoHeldDoors
+    );
+    return (from: [number, number], to: [number, number]) =>
+      keysOf(
+        findAtlasPath(
+          index,
+          positionToCube(pos(...from)),
+          positionToCube(pos(...to))
+        )
+      );
+  }
+
+  const ROUND = [
+    key(0, 0),
+    key(1, 0),
+    key(2, 0),
+    key(3, 0),
+    key(3, 1),
+    key(2, 1),
+    key(1, 1),
+    key(0, 1),
+  ];
+
+  it('unheld and open, the gate is crossed straight through either crossing', () => {
+    const go = plan([guard('')], DoorState.OPEN, DoorState.OPEN);
+    expect(go([0, 0], [0, 1])).toEqual([key(0, 0), key(0, 1)]);
+    expect(go([1, 0], [1, 1])).toEqual([key(1, 0), key(1, 1)]);
+  });
+
+  it('a shut footprint door is planned shut: NEW, its crossings were never doorways before', () => {
+    expect(
+      plan([guard('')], DoorState.CLOSED, DoorState.OPEN)([0, 0], [0, 1])
+    ).toEqual(ROUND);
+    expect(
+      plan([guard('')], DoorState.CLOSED, DoorState.CLOSED)([0, 0], [0, 1])
+    ).toEqual([]);
+  });
+
+  it('held and open, a way round exists: neither crossing is planned through', () => {
+    const go = plan([guard('gate')], DoorState.OPEN, DoorState.OPEN);
+    expect(go([0, 0], [0, 1])).toEqual(ROUND);
+    const fromTheOtherCell = go([1, 0], [1, 1]);
+    expect(fromTheOtherCell[0]).toBe(key(1, 0));
+    expect(fromTheOtherCell).toContain(key(3, 0));
+    expect(fromTheOtherCell).toContain(key(3, 1));
+  });
+
+  it('held with no way round, the second plan crosses the opening: the server stops the walk there by his name', () => {
+    expect(
+      plan([guard('gate')], DoorState.OPEN, DoorState.CLOSED)([0, 0], [0, 1])
+    ).toEqual([key(0, 0), key(0, 1)]);
+  });
+
+  it('held by a body believed hostile, or with no stance word, the opening stays shut on both plans', () => {
+    for (const stance of ['hostile', '']) {
+      expect(
+        plan(
+          [guard('gate', stance)],
+          DoorState.OPEN,
+          DoorState.CLOSED
+        )([0, 0], [0, 1])
+      ).toEqual([]);
+    }
+  });
+
+  it('a door shut by its own state stays shut on the second plan, held or not', () => {
+    expect(
+      plan([guard('gate')], DoorState.CLOSED, DoorState.CLOSED)([0, 0], [0, 1])
+    ).toEqual([]);
+  });
+
+  it('the hold clears on the next build: the sighting drops holdsDoor and the opening plans again', () => {
+    expect(
+      plan([guard('gate')], DoorState.OPEN, DoorState.OPEN)([0, 0], [0, 1])
+    ).toEqual(ROUND);
+    expect(
+      plan([guard('')], DoorState.OPEN, DoorState.OPEN)([0, 0], [0, 1])
+    ).toEqual([key(0, 0), key(0, 1)]);
+  });
+
+  it('a remembered sighting holds nothing', () => {
+    expect(
+      plan(
+        [guard('gate', 'neutral', true)],
+        DoorState.OPEN,
+        DoorState.OPEN
+      )([0, 0], [0, 1])
+    ).toEqual([key(0, 0), key(0, 1)]);
+  });
+
+  it('an edge door is held the same way: the held postern sends the walk through the open gate', () => {
+    const go = plan([guard('postern')], DoorState.OPEN, DoorState.OPEN);
+    const path = go([3, 0], [3, 1]);
+    expect(path[0]).toBe(key(3, 0));
+    expect(path.at(-1)).toBe(key(3, 1));
+    // It crosses at the gate, never the postern pair.
+    const steps = path.slice(1).map((k, i) => `${path[i]}>${k}`);
+    expect(steps).not.toContain(`${key(3, 0)}>${key(3, 1)}`);
+  });
+
+  it('a door held by a neutral post and a hostile one is never crossed', () => {
+    expect(
+      plan(
+        [
+          guard('gate', 'neutral'),
+          create(SightingSchema, {
+            subject: 'gate-2',
+            kind: MemberKind.MONSTER,
+            passage: Passage.BLOCKED,
+            stance: 'hostile',
+            holdsDoor: 'gate',
+            currentVia: ['sight'],
+            seen: { position: create(PositionSchema, { x: 2, y: 0 }) },
+          }),
+        ],
+        DoorState.OPEN,
+        DoorState.CLOSED
+      )([0, 0], [0, 1])
+    ).toEqual([]);
+  });
+
+  it('held door edges stay out of blockedEdges and shutDoorEdges: a hold is a body’s fact, not the door’s state', () => {
+    const occupancy = indexOccupantPassages(
+      sightingsToEntities([guard('gate')], 'walker')
+    );
+    const index = buildAtlasPathIndex(
+      castle,
+      doors(DoorState.OPEN, DoorState.OPEN),
+      occupancy.blocked,
+      occupancy.passThrough,
+      occupancy.walkInto,
+      occupancy.heldDoors,
+      occupancy.walkIntoHeldDoors
+    );
+    // The pair key `atlasPath.ts` builds: an unordered pair of cell keys.
+    const pair = (a: never, b: never) =>
+      [coordToKey(positionToCube(a)), coordToKey(positionToCube(b))]
+        .sort()
+        .join('|');
+    const gatePairs = [pair(pos(0, 0), pos(0, 1)), pair(pos(1, 0), pos(1, 1))];
+    const doorwayPairs = [...gatePairs, pair(pos(3, 0), pos(3, 1))];
+    expect(index.heldDoorEdges).toEqual(new Set(gatePairs));
+    expect(index.shutDoorEdges).toEqual(new Set());
+    expect(index.blockedEdges).toEqual(
+      new Set(
+        wall
+          .map((w) => pair(w.from, w.to))
+          .filter((k) => !doorwayPairs.includes(k))
+      )
+    );
   });
 });
