@@ -7,7 +7,10 @@
  */
 import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
-import { NPC_WEAPON_SETS } from '@/generated/npcAppearanceCatalog';
+import {
+  NPC_ACTIVITY_PROFILES,
+  NPC_WEAPON_SETS,
+} from '@/generated/npcAppearanceCatalog';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
@@ -192,7 +195,12 @@ vi.mock('@react-three/drei', () => {
         throw new Error(`failed to load ${url}`);
       }
       if (gltfMockState.pendingUrls.has(url)) throw gltfMockState.pending;
-      return { scene: make(url), animations: [] };
+      const profile = NPC_ACTIVITY_PROFILES.find((p) => p.library.url === url);
+      const names = profile?.library.clips ?? ['Idle_Relaxed', 'Walk_Forward'];
+      return {
+        scene: make(url),
+        animations: names.map((name) => new THREE.AnimationClip(name, 1, [])),
+      };
     },
     useTexture: (url: string) => {
       gltfMockState.textureRequests.push(url);

@@ -732,7 +732,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       expect(joined.session.document).toEqual(before);
       act(() => joined.session.redo());
       expect(token('Default activity')).toBe(activity);
-      change('NPC appearance', 'dnd5e:npcs:kingdom:merchant-01');
+      change('NPC appearance', 'dnd5e:npcs:goblin:warrior-male-01');
       expect(token('Default activity')).toBe(activity);
       expect(
         screen.getByRole('option', { name: `Unavailable: ${activity}` })
@@ -751,6 +751,19 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     'soldier-female-01',
     'peasant-male-01',
     'peasant-female-01',
+    'blacksmith-female-01',
+    'blacksmith-male-01',
+    'hermit-01',
+    'jester-01',
+    'king-01',
+    'mage-cape-01',
+    'merchant-01',
+    'monk-01',
+    'nun-01',
+    'priest-01',
+    'prince-01',
+    'princess-01',
+    'rider-01',
   ])('authors and persists a default activity for kingdom %s', (body) => {
     const joined = owner();
     joined.selectActor();
