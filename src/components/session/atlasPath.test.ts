@@ -511,6 +511,184 @@ describe('live member occupancy blocks the destination cell (pathing preview fol
   });
 });
 
+describe('walking into a posted body (rpg-project#841)', () => {
+  const key = (x: number, y: number) => coordToKey(positionToCube(pos(x, y)));
+  const keysOf = (path: ReturnType<typeof findAtlasPath>) =>
+    path.map((c) => coordToKey(c));
+
+  /** The hex rhombus: (0,0) and (2,-1) share two neighbours, (1,0) and
+   * (1,-1), so a body on (1,0) leaves an equal detour through (1,-1). */
+  const rhombus = {
+    cells: [pos(0, 0), pos(1, 0), pos(1, -1), pos(2, -1)],
+    boundaries: [],
+    doorways: [],
+    props: [],
+  } as never;
+
+  /** A one-cell corridor (q, 0) for q = 0..2: nothing round the middle. */
+  const corridor = {
+    cells: [pos(0, 0), pos(1, 0), pos(2, 0)],
+    boundaries: [],
+    doorways: [],
+    props: [],
+  } as never;
+
+  it('an open room with an equal detour goes round a non-hostile blocking body: no bump', () => {
+    const him = new Set([key(1, 0)]);
+    const index = buildAtlasPathIndex(rhombus, undefined, him, undefined, him);
+    const path = keysOf(
+      findAtlasPath(
+        index,
+        positionToCube(pos(0, 0)),
+        positionToCube(pos(2, -1))
+      )
+    );
+    expect(path).toEqual([key(0, 0), key(1, -1), key(2, -1)]);
+    expect(path).not.toContain(key(1, 0));
+  });
+
+  it('a one-cell corridor he fills is planned through him: the server stops the walk at his cell', () => {
+    const him = new Set([key(1, 0)]);
+    const index = buildAtlasPathIndex(corridor, undefined, him, undefined, him);
+    expect(
+      keysOf(
+        findAtlasPath(
+          index,
+          positionToCube(pos(0, 0)),
+          positionToCube(pos(2, 0))
+        )
+      )
+    ).toEqual([key(0, 0), key(1, 0), key(2, 0)]);
+  });
+
+  it('his cell as the goal has no plan: a click on a body is the approach, so hover and click agree', () => {
+    const him = new Set([key(1, 0)]);
+    for (const atlas of [rhombus, corridor]) {
+      const index = buildAtlasPathIndex(atlas, undefined, him, undefined, him);
+      expect(
+        findAtlasPath(
+          index,
+          positionToCube(pos(0, 0)),
+          positionToCube(pos(1, 0))
+        )
+      ).toEqual([]);
+    }
+  });
+
+  it('a hostile blocking body is never planned through: not as the goal, not as the only way', () => {
+    const hostile = new Set([key(1, 0)]);
+    const index = buildAtlasPathIndex(corridor, undefined, hostile);
+    expect(
+      findAtlasPath(index, positionToCube(pos(0, 0)), positionToCube(pos(2, 0)))
+    ).toEqual([]);
+    expect(
+      findAtlasPath(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toEqual([]);
+  });
+
+  it('the second plan walks into him only: another blocking body and a shut door stay shut', () => {
+    // Corridor 0..3; he stands on 1, a hostile body on 2. Going through him
+    // still meets the hostile one, so there is no plan at all.
+    const atlas = {
+      cells: [pos(0, 0), pos(1, 0), pos(2, 0), pos(3, 0)],
+      boundaries: [],
+      doorways: [],
+      props: [],
+    } as never;
+    const index = buildAtlasPathIndex(
+      atlas,
+      undefined,
+      new Set([key(1, 0), key(2, 0)]),
+      undefined,
+      new Set([key(1, 0)])
+    );
+    expect(
+      findAtlasPath(index, positionToCube(pos(0, 0)), positionToCube(pos(3, 0)))
+    ).toEqual([]);
+
+    const gated = buildAtlasPathIndex(
+      {
+        cells: [pos(0, 0), pos(1, 0), pos(2, 0)],
+        boundaries: [
+          {
+            from: pos(1, 0),
+            to: pos(2, 0),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          },
+        ],
+        doorways: [{ from: pos(1, 0), to: pos(2, 0), connection: 'gate' }],
+        props: [],
+      } as never,
+      new Map([['gate', { state: DoorState.CLOSED } as DoorInfo]]),
+      new Set([key(1, 0)]),
+      undefined,
+      new Set([key(1, 0)])
+    );
+    expect(
+      findAtlasPath(gated, positionToCube(pos(0, 0)), positionToCube(pos(2, 0)))
+    ).toEqual([]);
+  });
+
+  it('the castle gate: beneath the gate, him on it, the door open, the courtyard is planned through him; shut, nothing is', () => {
+    // (0,0) the gatehouse, (1,0) beneath the gate where he is posted, (2,0)
+    // the courtyard past the gate door. The door is the only crossing.
+    const gate = (state: DoorState) =>
+      buildAtlasPathIndex(
+        {
+          cells: [pos(0, 0), pos(1, 0), pos(2, 0)],
+          boundaries: [
+            {
+              from: pos(1, 0),
+              to: pos(2, 0),
+              blocksMovement: true,
+              blocksLineOfSight: true,
+            },
+          ],
+          doorways: [{ from: pos(1, 0), to: pos(2, 0), connection: 'gate' }],
+          props: [],
+        } as never,
+        new Map([['gate', { state } as DoorInfo]]),
+        new Set([key(1, 0)]),
+        undefined,
+        new Set([key(1, 0)])
+      );
+    const courtyard = (state: DoorState) =>
+      keysOf(
+        findAtlasPath(
+          gate(state),
+          positionToCube(pos(0, 0)),
+          positionToCube(pos(2, 0))
+        )
+      );
+    expect(courtyard(DoorState.OPEN)).toEqual([
+      key(0, 0),
+      key(1, 0),
+      key(2, 0),
+    ]);
+    expect(courtyard(DoorState.CLOSED)).toEqual([]);
+    // His cell stays the approach, door open or not.
+    expect(
+      findAtlasPath(
+        gate(DoorState.OPEN),
+        positionToCube(pos(0, 0)),
+        positionToCube(pos(1, 0))
+      )
+    ).toEqual([]);
+  });
+
+  it('a walk-into cell outside the blocked set opens nothing: only a seen blocking body is walked into', () => {
+    const index = buildAtlasPathIndex(
+      rhombus,
+      undefined,
+      undefined,
+      undefined,
+      new Set([key(1, 0)])
+    );
+    expect(index.walkIntoCells.size).toBe(0);
+  });
+});
+
 describe('findAtlasApproach (rpg-project#753 R4)', () => {
   /** A straight corridor (q, 0) for q = 0..length-1: each cell hex-adjacent
    * to the next, hex distance |dq|. */
