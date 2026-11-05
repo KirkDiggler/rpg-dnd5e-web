@@ -1,5 +1,7 @@
 # 2026-11-03 · The guard holds the gate S1 · The web walks into him
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#841](https://github.com/KirkDiggler/rpg-project/issues/841), plan Task 4, requirement P1. Web PR [rpg-dnd5e-web#1385](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1385). No protos change. It relies on the server refusing a step at a blocking body with a stop reason, which exists today.
 
 ## Shipped
