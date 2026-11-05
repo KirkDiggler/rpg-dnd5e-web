@@ -72,7 +72,11 @@ export const bumpTheDoor = at(
   Family.ACT,
   {
     case: 'barred',
-    value: { mover: ALICE, barrier: GATE, door: 'gate-wall-door' },
+    value: {
+      mover: ALICE,
+      barrier: GATE,
+      door: 'the-mad-king/gate-wall-door',
+    },
   },
   'door',
   DOOR_TAG

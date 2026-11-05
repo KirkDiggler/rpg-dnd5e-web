@@ -704,7 +704,11 @@ describe('a bump (rpg-project#842)', () => {
       Family.ACT,
       {
         case: 'barred',
-        value: { mover: alice, barrier: gate, door: 'gate-wall-door' },
+        value: {
+          mover: alice,
+          barrier: gate,
+          door: 'the-mad-king/gate-wall-door',
+        },
       },
       'door'
     );

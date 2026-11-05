@@ -483,12 +483,13 @@ function describeWith(
       const b = body.value;
       const mover = name(b.mover);
       if (b.door) {
+        // The wire qualifies the door by its dungeon
+        // ("the-mad-king/gate-wall-door"); a reader wants its own name.
+        const door = authoredWords(b.door.slice(b.door.lastIndexOf('/') + 1));
         return {
           eyebrow: 'Barred',
           headline: `${name(b.barrier)} bars the door`,
-          detail: mover
-            ? `${mover} at the ${authoredWords(b.door)}`
-            : `the ${authoredWords(b.door)}`,
+          detail: mover ? `${mover} at the ${door}` : `the ${door}`,
           tone: 'neutral',
         };
       }

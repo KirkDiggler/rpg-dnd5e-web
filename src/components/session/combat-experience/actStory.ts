@@ -229,6 +229,21 @@ export function buildActStory(
     });
     lastGroup = group;
   }
+  // One line, one toast: under a tag whose answer speaks to the viewer who
+  // bumped, the voice they also hear (`heard-sound`) does not toast again.
+  const spokenTags = new Set(
+    story
+      .filter((row) => row.toastRule?.case === 'answer-to-your-bump')
+      .map((row) => row.group)
+  );
+  for (const [i, row] of story.entries()) {
+    if (
+      row.toastRule?.case === 'heard-sound' &&
+      row.group &&
+      spokenTags.has(row.group)
+    )
+      story[i] = { ...row, toastRule: undefined };
+  }
   return Object.freeze(story);
 }
 

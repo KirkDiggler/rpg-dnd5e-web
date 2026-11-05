@@ -1,13 +1,21 @@
 // @vitest-environment node
+import { create } from '@bufbuild/protobuf';
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import {
+  ActSchema,
+  Family,
+  Sense,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import { needsPacing } from '../monsterBeatQueue';
 import { buildActStory } from './actStory';
 import {
+  ALICE,
   bumpTheDoor,
   bumpTheGuard,
   GATE,
   LINE,
+  MOVE_TAG,
   theGuardAnswers,
   theGuardAnswersAtTheDoor,
   walkToTheGate,
@@ -115,6 +123,39 @@ describe('the bump and the guard’s answer (rpg-project#842)', () => {
     const rows = story([walkToTheGate, bumpTheGuard, pick]);
     expect(rows.find((r) => r.act?.id === 'id-12')?.toastRule).toBeUndefined();
     expect(speechAtSpeakers(rows)).toEqual(new Map());
+  });
+
+  it('the voice she hears under the bump’s tag does not toast beside his line', () => {
+    const voice = create(ActSchema, {
+      session: 's',
+      id: 'id-13',
+      family: Family.PERCEPTION,
+      verb: 'move',
+      act: MOVE_TAG,
+      body: {
+        case: 'perception',
+        value: {
+          observer: ALICE,
+          sense: Sense.HEARING,
+          heard: { kind: 'voice', hops: 1 },
+        },
+      },
+    });
+    for (const order of [
+      [walkToTheGate, bumpTheGuard, voice, theGuardAnswers],
+      [walkToTheGate, bumpTheGuard, theGuardAnswers, voice],
+    ]) {
+      const rows = story(order);
+      expect(rows.find((r) => r.act?.id === 'id-13')).toBeDefined();
+      expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
+        'answer-to-your-bump',
+      ]);
+    }
+    // With no answer under the tag, the voice still toasts as a sound.
+    const alone = story([walkToTheGate, bumpTheGuard, voice]);
+    expect(alone.find((r) => r.act?.id === 'id-13')?.toastRule?.case).toBe(
+      'heard-sound'
+    );
   });
 
   it('the bump ends her walk stretch in the log, at her stop', () => {
