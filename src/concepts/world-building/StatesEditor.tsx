@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { parseDocument, stringify } from 'yaml';
-import { validateStates, type CreatureStates } from './creatureStates';
+import {
+  POST_DIRECTIONS,
+  stateEntries,
+  validateStates,
+  type CreatureState,
+  type CreatureStates,
+} from './creatureStates';
+import {
+  patchStateHolds,
+  setStateBlocks,
+  setStateHolds,
+} from './statePostEdits';
 
 interface StatesEditorProps {
   owner: string;
   value?: CreatureStates;
   inherited?: CreatureStates;
   onChange?: (next: CreatureStates | undefined) => void;
+  /** The doors a post may name (`roomDoorIds`); offered, never enforced. */
+  doors?: readonly string[];
 }
 
 /** The canonical YAML recipe, applied as one undoable edit. In-progress text
@@ -24,6 +37,7 @@ function RecipeDraft({
   value,
   inherited,
   onChange,
+  doors = [],
   source,
 }: StatesEditorProps & { source: string }) {
   const [text, setText] = useState(source);
@@ -92,6 +106,14 @@ function RecipeDraft({
               march. Use the Tables section to author its rows.
             </p>
           </details>
+          {value !== undefined && (
+            <PostFields
+              owner={owner}
+              states={value}
+              doors={doors}
+              onChange={onChange}
+            />
+          )}
           {refusal && <p role="alert">{refusal}</p>}
           <div className="wb-actions">
             <button
@@ -128,5 +150,215 @@ function RecipeDraft({
         value && <pre aria-label={`States for ${owner}`}>{source}</pre>
       )}
     </fieldset>
+  );
+}
+
+/** A state's post as fields (rpg-project#836, #852, #857): whether the body
+ * blocks, and the door it holds, from which cells, which way, and the fact
+ * that lets a mover through. Each change is one applied edit; the recipe
+ * YAML above shows the same words. */
+function PostFields({
+  owner,
+  states,
+  doors,
+  onChange,
+}: {
+  owner: string;
+  states: CreatureStates;
+  doors: readonly string[];
+  onChange: (next: CreatureStates) => void;
+}) {
+  const doorList = `post-doors-${owner}`;
+  return (
+    <fieldset className="wb-policy-block">
+      <legend>Posts</legend>
+      <p className="wb-help">
+        A state may block the creature’s cell and hold a door’s opening: no
+        stranger crosses it while he stands on one of the post’s cells. The
+        server checks the door, the cells and the pass when you play.
+      </p>
+      <datalist id={doorList}>
+        {doors.map((door) => (
+          <option key={door} value={door} />
+        ))}
+      </datalist>
+      {stateEntries(states).map(([name, state]) => (
+        <StatePost
+          key={name}
+          owner={owner}
+          name={name}
+          state={state}
+          doors={doors}
+          doorList={doorList}
+          onBlocks={(on) => onChange(setStateBlocks(states, name, on))}
+          onHolds={(holds) => onChange(setStateHolds(states, name, holds))}
+          onPatch={(patch) => onChange(patchStateHolds(states, name, patch))}
+        />
+      ))}
+    </fieldset>
+  );
+}
+
+function StatePost({
+  owner,
+  name,
+  state,
+  doors,
+  doorList,
+  onBlocks,
+  onHolds,
+  onPatch,
+}: {
+  owner: string;
+  name: string;
+  state: CreatureState;
+  doors: readonly string[];
+  doorList: string;
+  onBlocks: (on: boolean) => void;
+  onHolds: (holds: CreatureState['holds']) => void;
+  onPatch: (patch: Partial<NonNullable<CreatureState['holds']>>) => void;
+}) {
+  const label = `${owner} ${name}`;
+  if (state.terminal)
+    return (
+      <p className="wb-help">
+        {name} is terminal: it ends the machine and holds no post.
+      </p>
+    );
+  const holds = state.holds;
+  const cells = holds?.at ?? [];
+  return (
+    <div className="wb-state-post" aria-label={`Post for ${label}`}>
+      <h5>{name}</h5>
+      <label>
+        <input
+          type="checkbox"
+          aria-label={`Blocks in ${label}`}
+          checked={state.blocks === true}
+          onChange={(event) => onBlocks(event.target.checked)}
+        />
+        <span>Body blocks</span>
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          aria-label={`Holds a door in ${label}`}
+          checked={holds !== undefined}
+          onChange={(event) =>
+            onHolds(
+              event.target.checked ? { door: doors[0] ?? 'door' } : undefined
+            )
+          }
+        />
+        <span>Holds a door</span>
+      </label>
+      {holds && (
+        <>
+          <label>
+            <span>Door</span>
+            <input
+              aria-label={`Held door in ${label}`}
+              list={doorList}
+              value={holds.door}
+              onChange={(event) =>
+                event.target.value && onPatch({ door: event.target.value })
+              }
+            />
+          </label>
+          {holds.door && !doors.includes(holds.door) && (
+            <p className="wb-help">
+              This site declares no door with the id “{holds.door}”.
+            </p>
+          )}
+          <label>
+            <span>Holds against</span>
+            <select
+              aria-label={`Holds against in ${label}`}
+              value={holds.against ?? 'both'}
+              onChange={(event) =>
+                onPatch({
+                  against:
+                    event.target.value === 'both' && holds.against !== 'both'
+                      ? undefined
+                      : (event.target
+                          .value as (typeof POST_DIRECTIONS)[number]),
+                })
+              }
+            >
+              {POST_DIRECTIONS.map((word) => (
+                <option key={word} value={word}>
+                  {word === 'both'
+                    ? 'both ways'
+                    : word === 'entering'
+                      ? 'entering (from the post’s side)'
+                      : 'leaving (into the post’s side)'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Pass fact</span>
+            <input
+              aria-label={`Pass fact in ${label}`}
+              value={holds.pass ?? ''}
+              placeholder="nobody passes"
+              onChange={(event) =>
+                onPatch({ pass: event.target.value || undefined })
+              }
+            />
+          </label>
+          <div aria-label={`Post cells in ${label}`}>
+            <span>Post cells</span>
+            {cells.length === 0 && (
+              <p className="wb-help">None: he holds it from his placed cell.</p>
+            )}
+            {cells.map((cell, index) => (
+              <div key={index} className="wb-actions">
+                {(['q', 'r'] as const).map((axis) => (
+                  <input
+                    key={axis}
+                    type="number"
+                    step={1}
+                    aria-label={`Post cell ${index + 1} ${axis} in ${label}`}
+                    value={cell[axis]}
+                    onChange={(event) => {
+                      const n = Number(event.target.value);
+                      if (event.target.value === '' || !Number.isSafeInteger(n))
+                        return;
+                      onPatch({
+                        at: cells.map((c, i) =>
+                          i === index ? { ...c, [axis]: n } : c
+                        ),
+                      });
+                    }}
+                  />
+                ))}
+                <button
+                  type="button"
+                  aria-label={`Remove post cell ${index + 1} in ${label}`}
+                  onClick={() => {
+                    const at = cells.filter((_, i) => i !== index);
+                    onPatch({ at: at.length ? at : undefined });
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              aria-label={`Add post cell in ${label}`}
+              onClick={() =>
+                onPatch({
+                  at: [...cells, { ...(cells.at(-1) ?? { q: 0, r: 0 }) }],
+                })
+              }
+            >
+              Add cell
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

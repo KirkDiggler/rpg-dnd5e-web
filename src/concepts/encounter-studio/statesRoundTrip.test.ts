@@ -12,6 +12,7 @@ import {
   stringifyRoomDraft,
 } from '../world-building/roomDraft';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
+import served from './fixtures/the-mad-king-posts.yaml?raw';
 import castle from './fixtures/the-mad-king-states.yaml?raw';
 
 function read(source = castle) {
@@ -143,5 +144,48 @@ describe('S6b: the server castle is a Studio document', () => {
       ok: false,
       refusal: expect.stringMatching(/reserve-1.*march.*default/),
     });
+  });
+});
+
+// Copied from rpg-api content/the-mad-king.yaml at be7e83f (the S1c api
+// branch, rpg-project#857): gate-1's posted and alert states carry the post,
+// `blocks` and `holds` with `against` and `pass`. Before #1389 the Studio
+// refused this file at `states.posted has an unsupported field: blocks`.
+describe('the served castle’s posts are a Studio document (rpg-project#857)', () => {
+  it('imports gate-1’s post and writes it back exactly, in its key order', () => {
+    const original = parse(served).room.room.monsterBindings['gate-1'].states;
+    expect(original.posted).toMatchObject({
+      blocks: true,
+      holds: { door: 'gate-wall-door', against: 'entering' },
+    });
+    const result = read(served);
+    const exported = parse(exportDraftYaml(result, result.key));
+    const states = exported.room.room.monsterBindings['gate-1'].states;
+    expect(JSON.stringify(states)).toBe(JSON.stringify(original));
+    expect(stringify(states)).toBe(stringify(original));
+    const again = read(stringify(exported));
+    expect(again.draft.room.monsterBindings).toEqual(
+      result.draft.room.monsterBindings
+    );
+    const stored = parseRoomDocumentJson(
+      stringifyRoomDraft(result.draft, result.scope)
+    );
+    expect(stored).toEqual({ draft: result.draft, scope: result.scope });
+  });
+
+  it('carries a state field a newer server adds, through import, export and storage', () => {
+    const file = parse(served);
+    const posted = file.room.room.monsterBindings['gate-1'].states.posted;
+    posted.challenges = { after: 2, say: 'Last warning.' };
+    posted.holds.escort = 'gate-2';
+    const result = read(stringify(file));
+    const exported = parse(exportDraftYaml(result, result.key));
+    expect(exported.room.room.monsterBindings['gate-1'].states.posted).toEqual(
+      posted
+    );
+    expect(
+      parseRoomDocumentJson(stringifyRoomDraft(result.draft, result.scope))
+        .draft.room.monsterBindings!['gate-1'].states
+    ).toEqual(file.room.room.monsterBindings['gate-1'].states);
   });
 });

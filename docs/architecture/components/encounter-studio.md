@@ -42,6 +42,15 @@ not globally enabled. Complete saves validate each creature's resolved recipe
 against its layered table. Table controls and read-back include custom keys.
 JSON recovery, YAML import/export and unrelated binding edits preserve recipes.
 
+A state may carry a post (rpg-project#836, #852, #857): `blocks: true`, and
+`holds: { door, at, against, pass }`. The Posts fields under the YAML edit
+them: a blocks toggle, a door from the site's wall-bound and bound doors, the
+post cells as `{ q, r }`, `against` (both, the default, writes no word), and
+the pass fact. The server judges the door, the cells and the pass. A state
+field or a `holds` field this codec does not read is carried as written, so a
+document a newer server serves still imports. States and transitions keep the
+author's key order, so an untouched recipe writes back exactly as it was read.
+
 An option without `check` is a plain line, not an empty check. Its success rows
 are carried without inventing a roll; a failure on a plain line is refused.
 

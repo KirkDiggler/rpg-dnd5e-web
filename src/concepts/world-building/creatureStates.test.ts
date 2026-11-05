@@ -94,7 +94,54 @@ describe('creature state recipe — dungeonspec/states.go', () => {
       'table key',
     ],
     [recipe({ on: 'time', surprise: true }), '.transitions[0]', 'surprise'],
-    [{ initial: 'posted', posted: { unknown: true } }, '.posted', 'unknown'],
+    // An unknown STATE field is carried now (rpg-project#857): see "keeps a
+    // state field it does not read". A transition stays exact.
+    [
+      { initial: 'posted', posted: { blocks: 'yes' } },
+      '.posted.blocks',
+      'boolean',
+    ],
+    [
+      { initial: 'posted', posted: { holds: { at: [] } } },
+      '.posted.holds.door',
+      'names the door',
+    ],
+    [
+      { initial: 'posted', posted: { holds: { door: 'gate', against: 'in' } } },
+      '.posted.holds.against',
+      'both, entering or leaving',
+    ],
+    [
+      {
+        initial: 'posted',
+        posted: { holds: { door: 'gate', at: [{ q: 1 }] } },
+      },
+      '.posted.holds.at[0].r',
+      'whole number',
+    ],
+    [
+      {
+        initial: 'posted',
+        posted: { holds: { door: 'gate', at: { q: 1, r: 2 } } },
+      },
+      '.posted.holds.at',
+      'list',
+    ],
+    [
+      { initial: 'posted', posted: { holds: { door: 'gate', pass: 3 } } },
+      '.posted.holds.pass',
+      'text',
+    ],
+    [
+      { initial: 'down', down: { terminal: true, blocks: true } },
+      '.down.blocks',
+      'holds no post',
+    ],
+    [
+      { initial: 'down', down: { terminal: true, holds: { door: 'gate' } } },
+      '.down.holds',
+      'holds no post',
+    ],
   ])('refuses malformed recipe %# at its field', (value, path, words) => {
     expect(() => validateStates(value, 'guard.states')).toThrow(path as string);
     expect(() => validateStates(value, 'guard.states')).toThrow(
@@ -113,5 +160,62 @@ describe('creature state recipe — dungeonspec/states.go', () => {
       },
     };
     expect(validateStates(value, 'states')).toEqual(value);
+  });
+});
+
+describe('a state’s post (rpg-project#836, #852, #857)', () => {
+  const posted = {
+    initial: 'posted',
+    posted: {
+      blocks: true,
+      holds: {
+        door: 'gate-wall-door',
+        at: [
+          { q: -3, r: 7 },
+          { q: -4, r: 7 },
+        ],
+        against: 'entering',
+        pass: 'troupe-admitted',
+      },
+      transitions: [{ on: 'heard', within: 6, to: 'alert' }],
+    },
+    alert: { blocks: true, holds: { door: 'gate-wall-door' } },
+  };
+
+  it('reads blocks and holds in the author’s key order', () => {
+    const states = validateStates(posted, 'gate-1.states');
+    expect(states).toEqual(posted);
+    expect(JSON.stringify(states)).toBe(JSON.stringify(posted));
+  });
+
+  it.each(['both', 'entering', 'leaving'])('accepts against: %s', (against) => {
+    expect(
+      validateStates(
+        { initial: 'p', p: { holds: { door: 'd', against } } },
+        's'
+      )
+    ).toEqual({ initial: 'p', p: { holds: { door: 'd', against } } });
+  });
+
+  it('a terminal state may say blocks: false, which holds nothing', () => {
+    const down = { initial: 'down', down: { terminal: true, blocks: false } };
+    expect(validateStates(down, 's')).toEqual(down);
+  });
+
+  it('keeps a state field it does not read, and a holds field, as written and in place', () => {
+    const future = {
+      initial: 'posted',
+      posted: {
+        blocks: true,
+        watches: { door: 'postern', every: 2 },
+        holds: { door: 'gate', challenge: ['who goes there'], against: 'both' },
+        transitions: [{ on: 'time' }],
+      },
+    };
+    const states = validateStates(future, 'gate-1.states');
+    expect(JSON.stringify(states)).toBe(JSON.stringify(future));
+    // A copy, not the parsed object: an edit to the source never leaks in.
+    future.posted.watches.every = 9;
+    expect(states.posted).toMatchObject({ watches: { every: 2 } });
   });
 });
