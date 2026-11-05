@@ -1,5 +1,7 @@
 # 2026-11-04 · The guard holds the gate S1b · A held door plans shut
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#852](https://github.com/KirkDiggler/rpg-project/issues/852), [plan Task 15](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/plan.md#task-15-s1b-the-web-plans-a-held-opening-as-shut), requirement H6 under [ruling R5](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md). Web PR [rpg-dnd5e-web#1388](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1388). Protos pinned at [rpg-api-protos v0.1.254](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.254), generated commit `ec982ff3`: `AtlasDoorway.crossing` and `Sighting.holds_door`. Built against the protos while the server tasks (encounter T11, session T12, api T14) were built in parallel.
 
 ## Shipped

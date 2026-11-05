@@ -1,5 +1,7 @@
 # Run — 2026-11-03 — Castle NPC activity consumer
 
+processed: 2026-11-05T201556Z
+
 ## Shipped
 
 - Catalog adds the separate55-joint profile for204 Kingdom looks, preserving the original72 goblin-camp bindings and283 appearance entries — [slice](https://github.com/KirkDiggler/rpg-project/issues/845).

@@ -1,5 +1,7 @@
 # 2026-11-02 · When things fire S1 · The web animates by kind
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#825](https://github.com/KirkDiggler/rpg-project/issues/825), slice [rpg-project#828](https://github.com/KirkDiggler/rpg-project/issues/828), design R1 B. Web PR [rpg-dnd5e-web#1383](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1383), on protos v0.1.253 ([rpg-api-protos#415](https://github.com/KirkDiggler/rpg-api-protos/pull/415)) and api [rpg-api#1181](https://github.com/KirkDiggler/rpg-api/pull/1181).
 
 ## Shipped
