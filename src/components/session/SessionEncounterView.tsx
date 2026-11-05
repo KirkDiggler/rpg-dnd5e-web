@@ -610,6 +610,7 @@ function SessionEncounterScope({
     busy: walking,
     walkTo,
     approach,
+    bump,
     onWalkAnimationComplete,
     moveError,
   } = useSessionWalk(
@@ -2167,6 +2168,7 @@ function SessionEncounterScope({
               selectedTargets,
               onTargetClick,
               onApproachClick,
+              speech,
             }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
@@ -2264,6 +2266,16 @@ function SessionEncounterScope({
                             })
                         : undefined
                     }
+                    onBumpClick={
+                      runEnded === null
+                        ? (subject: string) => {
+                            const body = revealedMembers.find(
+                              (m) => m.subject === subject
+                            );
+                            if (body) bump(body.position);
+                          }
+                        : undefined
+                    }
                     onHoverEntity={setHoveredTarget}
                     cellAimEnabled={
                       runEnded === null ? combat.cellCastArmed : false
@@ -2303,6 +2315,7 @@ function SessionEncounterScope({
                       coherentDeclarations
                     )}
                     fitRequest={atlas?.regions.length ?? 0}
+                    speech={speech}
                     presentationLayer={
                       <>
                         {localWorldDieLayer}

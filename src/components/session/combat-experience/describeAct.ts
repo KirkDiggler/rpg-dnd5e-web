@@ -475,6 +475,32 @@ function describeWith(
         roll: r.roll,
       };
     }
+    case 'barred': {
+      // A bump (rpg-project#842, R2, R7): a step refused by a body, or a
+      // door verb refused by a hold. The barrier's answer is its own table
+      // answer under the same act tag, so it nests under this row; the walk's
+      // stop and the door refusal keep their own notices.
+      const b = body.value;
+      const mover = name(b.mover);
+      if (b.door) {
+        // The wire qualifies the door by its dungeon
+        // ("the-mad-king/gate-wall-door"); a reader wants its own name.
+        const door = authoredWords(b.door.slice(b.door.lastIndexOf('/') + 1));
+        return {
+          eyebrow: 'Barred',
+          headline: `${name(b.barrier)} bars the door`,
+          detail: mover ? `${mover} at the ${door}` : `the ${door}`,
+          tone: 'neutral',
+        };
+      }
+      const cell = b.cell ? ` short of (${b.cell.x}, ${b.cell.y})` : '';
+      return {
+        eyebrow: 'Barred',
+        headline: `${name(b.barrier)} bars the way`,
+        detail: mover ? `${mover} stops${cell}` : '',
+        tone: 'neutral',
+      };
+    }
     case 'tableAnswer': {
       const t = body.value;
       if (t.dealt) {

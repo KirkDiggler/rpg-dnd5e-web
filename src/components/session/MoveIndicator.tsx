@@ -11,8 +11,9 @@
  * takes any `CubeCoord[]`, so a single hovered cell (`'invalid'`/
  * `'locked'`/`'target'`) is just a one-element path.
  */
+import { Html } from '@react-three/drei';
 import { PathPreview } from '../hex-grid/PathPreview';
-import type { CubeCoord } from '../hex-grid/hexMath';
+import { cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MoveIndicatorSelection } from './moveIndicator';
 
 // Kept explicit here (rather than relying on PathPreview's own default)
@@ -33,12 +34,16 @@ export interface MoveIndicatorProps {
    * 'path' selection always includes at least the start cell, so this
    * isn't consulted there. */
   hovered: CubeCoord | null;
+  /** The words over a body a click walks into ('bump'), e.g. "Walk up to
+   * Gate Guard" (rpg-project#835 R8). */
+  bumpHint?: string;
 }
 
 export function MoveIndicator({
   selection,
   hexSize,
   hovered,
+  bumpHint,
 }: MoveIndicatorProps) {
   if (!selection || !hovered) return null;
 
@@ -69,6 +74,42 @@ export function MoveIndicator({
               color={OVERBUDGET_COLOR}
               opacity={OVERBUDGET_OPACITY}
             />
+          )}
+        </>
+      );
+    }
+    case 'bump': {
+      // The walk up to him, drawn as any route, and the hint over him: the
+      // last cell is his, where the server stops the walk.
+      const at = cubeToWorld(hovered, hexSize);
+      return (
+        <>
+          <PathPreview
+            path={selection.path.slice(0, selection.affordable)}
+            hexSize={hexSize}
+            color={PATH_COLOR}
+          />
+          {bumpHint && (
+            <Html
+              center
+              position={[at.x, 1.9, at.z]}
+              style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
+              zIndexRange={[5, 0]}
+            >
+              <span
+                data-bump-hint={selection.entityId}
+                style={{
+                  color: '#d6eff0',
+                  background: '#0b1720e8',
+                  border: `1px solid ${PATH_COLOR}`,
+                  borderRadius: 4,
+                  padding: '3px 6px',
+                  fontSize: 11,
+                }}
+              >
+                {bumpHint}
+              </span>
+            </Html>
           )}
         </>
       );

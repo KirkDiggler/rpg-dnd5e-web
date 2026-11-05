@@ -189,3 +189,63 @@ describe('the served castle’s posts are a Studio document (rpg-project#857)', 
     ).toEqual(file.room.room.monsterBindings['gate-1'].states);
   });
 });
+
+// Plan Task 6's content (rpg-project#842), laid on the served castle by hand
+// until rpg-api T9 serves it: gate-1 answers a bump on its post with
+// `pick: barred` and moves to `challenged`, which answers a second bump with
+// `pick: challenged`; gate-patrol says each line. The shorter line is this
+// test's stand-in, not the content's.
+describe('the bump is a Studio word (rpg-project#842)', () => {
+  function withTheBump() {
+    const file = parse(served);
+    const states = file.room.room.monsterBindings['gate-1'].states;
+    states.posted.transitions.push({
+      on: 'barred',
+      to: 'challenged',
+      do: [{ pick: 'barred' }, { anchor: true }],
+    });
+    states.challenged = {
+      blocks: true,
+      holds: { ...states.posted.holds },
+      transitions: [
+        { on: 'barred', do: [{ pick: 'challenged' }] },
+        { on: 'time', rounds: 3, to: 'posted', reason: 'nothing came of it' },
+      ],
+    };
+    file.tables['gate-patrol'].barred = [
+      { say: 'Whoa there, buddy. Can I help you?' },
+    ];
+    file.tables['gate-patrol'].challenged = [{ say: 'Move along.' }];
+    return file;
+  }
+
+  it('imports on: barred and its table keys, and writes them back exactly', () => {
+    const file = withTheBump();
+    const result = read(stringify(file));
+    const exported = parse(exportDraftYaml(result, result.key));
+    expect(
+      JSON.stringify(exported.room.room.monsterBindings['gate-1'].states)
+    ).toBe(JSON.stringify(file.room.room.monsterBindings['gate-1'].states));
+    expect(exported.tables['gate-patrol'].barred).toEqual([
+      { say: 'Whoa there, buddy. Can I help you?' },
+    ]);
+    expect(exported.tables['gate-patrol'].challenged).toEqual([
+      { say: 'Move along.' },
+    ]);
+    const again = read(stringify(exported));
+    expect(again.draft.room.monsterBindings).toEqual(
+      result.draft.room.monsterBindings
+    );
+  });
+
+  it('the studio offers barred among the beats a state listens for', () => {
+    const file = withTheBump();
+    file.room.room.monsterBindings['gate-1'].states.posted.transitions.push({
+      on: 'bared',
+    });
+    expect(readDraftYaml(stringify(file))).toMatchObject({
+      ok: false,
+      refusal: expect.stringContaining('barred'),
+    });
+  });
+});

@@ -80,6 +80,12 @@ export function refreshKeysForAct(
       return [];
     case 'rest':
       return ['characterData', 'afford', 'turn'];
+    // A bump (rpg-project#842) spends nothing and moves nothing: the mover
+    // re-reads where the stopped walk left them and what they can do next;
+    // nobody else re-reads anything for it. The barrier's answer is its own
+    // table answer and refreshes as one.
+    case 'barred':
+      return body.value.mover?.id === member ? ['where', 'afford'] : [];
     // answered refreshes for everybody; tempered refreshes nothing.
     case 'tableAnswer':
       return body.value.dealt ? [] : ['afford', 'view'];

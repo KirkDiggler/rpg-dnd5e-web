@@ -37,7 +37,7 @@ import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
-import { findAtlasApproach, findAtlasPath } from './atlasPath';
+import { findAtlasApproach, findAtlasBump, findAtlasPath } from './atlasPath';
 import { isStaleDeclarationRefusal } from './combat-experience/selection';
 import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
@@ -83,6 +83,10 @@ export interface UseSessionWalkResult {
    * now belongs to `moveController.ts`, which keeps one counter for every
    * actor rather than one per feed. */
   onWalkAnimationComplete: () => void;
+  /** Walk up to a body and into his cell (`findAtlasBump`, rpg-project#835
+   * R8): the server refuses the last step and writes the bump. The same
+   * silent no-ops as `walkTo` when nothing reaches him. */
+  bump: (target: CubeCoord) => void;
   /** The most recent non-stale move-RPC failure message, or `null`.
    * FAILED_PRECONDITION selector refusals use the shared declaration recovery
    * callback instead, so raw stale wording never reaches this field. */
@@ -258,6 +262,13 @@ export function useSessionWalk(
     [dispatch]
   );
 
+  const bump = useCallback(
+    (target: CubeCoord) => {
+      dispatch((index, from) => findAtlasBump(index, from, target));
+    },
+    [dispatch]
+  );
+
   const onWalkAnimationComplete = useCallback(() => {
     if (!busy) return;
     void (async () => {
@@ -274,6 +285,7 @@ export function useSessionWalk(
     busy,
     walkTo,
     approach,
+    bump,
     onWalkAnimationComplete,
     moveError,
     notYourTurn,

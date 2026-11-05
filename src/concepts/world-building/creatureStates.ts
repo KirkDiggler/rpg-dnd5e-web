@@ -82,9 +82,16 @@ export type CreatureStates = { initial: string } & Record<
   string,
   string | CreatureState
 >;
+/**
+ * The beats a state listens for (dungeonspec/states.go). `barred` is a bump
+ * (rpg-project#842): a step refused by this body, or a door verb refused by
+ * its hold. It is heard by the barrier alone, at once, in the Move that
+ * bumped, and is scoped like `heard`.
+ */
 export const STATE_BEATS = [
   'time',
   'heard',
+  'barred',
   'deed',
   'seen',
   'fact',
@@ -252,12 +259,12 @@ export function validateStates(value: unknown, path: string): CreatureStates {
         }
         if (
           (transition.within || transition.regions) &&
-          !['heard', 'deed', 'seen'].includes(on) &&
+          !['heard', 'barred', 'deed', 'seen'].includes(on) &&
           !deed
         )
           fail(
             `${tp}.within`,
-            `${on} happened nowhere, so there is nothing to be within: within and regions are for heard, deed and seen`
+            `${on} happened nowhere, so there is nothing to be within: within and regions are for heard, barred, deed and seen`
           );
         if ('when' in t) transition.when = condition(t.when, `${tp}.when`);
         if ('to' in t) {

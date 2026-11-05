@@ -31,7 +31,13 @@ import {
   type DescribeContext,
 } from './describeAct';
 import { isDashPick, isIdleHoldPick } from './foldLogRows';
-import { actorOf, fightIncludes, isDeed, toastFor } from './toastPolicy';
+import {
+  actorOf,
+  fightIncludes,
+  isDeed,
+  toastFor,
+  type Bump,
+} from './toastPolicy';
 import type {
   CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
@@ -144,6 +150,9 @@ export function buildActStory(
   // Who spoke each line, by act tag, so a line's own table answer can be
   // told apart as an answer to the viewer (toast case `answer-to-your-line`).
   const speakers = new Map<string, string>();
+  // Each bump by act tag, so the barrier's answer under it is told apart as
+  // speech to the member who bumped (toast case `answer-to-your-bump`).
+  const bumps = new Map<string, Bump>();
   for (const fact of facts) {
     const id = actStoryId(fact.act, fact.index);
     if (seen.has(id)) continue;
@@ -165,6 +174,17 @@ export function buildActStory(
     if (act.body.case === 'speak' && act.act && act.body.value.by?.id) {
       speakers.set(act.act, act.body.value.by.id);
     }
+    if (
+      act.body.case === 'barred' &&
+      act.act &&
+      act.body.value.mover?.id &&
+      act.body.value.barrier?.id
+    ) {
+      bumps.set(act.act, {
+        mover: act.body.value.mover.id,
+        barrier: act.body.value.barrier.id,
+      });
+    }
     if (!fact.visible) continue;
     // Another member's turn ending writes no line: the turn order at the top
     // shows it (rpg-project#685). The viewer's own turn end still logs, and
@@ -182,7 +202,8 @@ export function buildActStory(
       act,
       context.viewerMember,
       inFight,
-      group ? speakers.get(group) : undefined
+      group ? speakers.get(group) : undefined,
+      group ? bumps.get(group) : undefined
     );
     story.push({
       id,
@@ -207,6 +228,21 @@ export function buildActStory(
       fightEdge,
     });
     lastGroup = group;
+  }
+  // One line, one toast: under a tag whose answer speaks to the viewer who
+  // bumped, the voice they also hear (`heard-sound`) does not toast again.
+  const spokenTags = new Set(
+    story
+      .filter((row) => row.toastRule?.case === 'answer-to-your-bump')
+      .map((row) => row.group)
+  );
+  for (const [i, row] of story.entries()) {
+    if (
+      row.toastRule?.case === 'heard-sound' &&
+      row.group &&
+      spokenTags.has(row.group)
+    )
+      story[i] = { ...row, toastRule: undefined };
   }
   return Object.freeze(story);
 }

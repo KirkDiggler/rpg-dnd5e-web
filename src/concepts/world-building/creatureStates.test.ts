@@ -26,6 +26,7 @@ describe('creature state recipe — dungeonspec/states.go', () => {
   it.each([
     'time',
     'heard',
+    'barred',
     'seen',
     'deed',
     'deed:attacked',

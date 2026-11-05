@@ -95,9 +95,11 @@ function RecipeDraft({
               have when, within, regions, rounds, to, do and reason.
             </p>
             <p>
-              Listen for time, heard, deed (or deed:attacked), seen, fact, or
-              clock:world / clock:fight / clock:bell:alarm. within and regions
-              scope heard, deed and seen. rounds counts from an anchor.
+              Listen for time, heard, barred, deed (or deed:attacked), seen,
+              fact, or clock:world / clock:fight / clock:bell:alarm. barred is
+              someone walking into this creature, or trying a door its post
+              holds: it hears that alone, at once. within and regions scope
+              heard, barred, deed and seen. rounds counts from an anchor.
             </p>
             <p>
               when reads enemy (seen, remembered, none), fact, or not around one

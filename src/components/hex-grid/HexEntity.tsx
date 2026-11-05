@@ -42,6 +42,7 @@ import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { resolvePlayerCharacterModel } from './classCharacterModels';
 import { resolveDemoNpcModelUrl } from './demoNpcModels';
 import { movePathHeadingSink, seedHeading, seenHeading } from './entityHeading';
+import { EntitySpeech } from './EntitySpeech';
 import {
   EntityTargetMarker,
   type EntityTargetMarkerState,
@@ -89,6 +90,9 @@ export interface HexEntityProps {
   isSelected?: boolean;
   /** Opt-in offered-member selection display; follows this entity's moving group. */
   targetMarker?: EntityTargetMarkerState;
+  /** A line this creature is saying right now, drawn above it as speech
+   * (rpg-project#842). Which lines show, and for how long, is the caller's. */
+  speech?: string;
   onClick?: (entityId: string) => void;
   /** Fires when the pointer enters this entity's own model geometry —
    * rpg-project#249, Kirk's own live-walk finding: the hover affordance
@@ -390,6 +394,7 @@ export function HexEntity({
   hexSize,
   isSelected = false,
   targetMarker,
+  speech,
   onClick,
   onPointerOver: onPointerOverProp,
   onPointerOut: onPointerOutProp,
@@ -809,6 +814,9 @@ export function HexEntity({
     // static prop did).
     return (
       <group ref={movingGroupRef} {...interactionProps}>
+        {speech && !remembered && !isGhost && (
+          <EntitySpeech entityId={entityId} name={name} line={speech} />
+        )}
         {targetMarker && !remembered && !isGhost && (
           <EntityTargetMarker
             entityId={entityId}

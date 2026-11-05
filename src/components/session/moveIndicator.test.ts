@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { buildAtlasPathIndex, findAtlasPath } from './atlasPath';
+import { buildAtlasPathIndex, findAtlasBump, findAtlasPath } from './atlasPath';
 import { affordableCellCount, selectMoveIndicator } from './moveIndicator';
-import { cubeToPosition } from './positionBridge';
+import { cubeToPosition, positionToCube } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 
@@ -299,5 +299,52 @@ describe('affordableCellCount', () => {
 
   it('has nothing to afford in an empty path', () => {
     expect(affordableCellCount(0, 30)).toBe(0);
+  });
+});
+
+describe('the bump hover (rpg-project#835 R8)', () => {
+  // The corridor with the gate guard standing on its far cell.
+  const guardCell = positionToCube(pos(2, -1));
+  const index = buildAtlasPathIndex(
+    {
+      cells: [pos(0, 0), pos(1, 0), pos(2, -1)],
+      boundaries: [],
+      doorways: [],
+      props: [],
+    },
+    undefined,
+    new Set([`${guardCell.x},${guardCell.y},${guardCell.z}`])
+  );
+  const from = positionToCube(pos(0, 0));
+
+  it('hovering a blocking body shows the walk into him, the path a click sends', () => {
+    const selection = selectMoveIndicator({
+      hovered: guardCell,
+      from,
+      pathIndex: index,
+      locked: false,
+      hoveredEntityId: 'gate-1',
+      bumpable: true,
+    });
+    expect(selection).toEqual({
+      kind: 'bump',
+      path: findAtlasBump(index, from, guardCell),
+      affordable: 3,
+      entityId: 'gate-1',
+    });
+  });
+
+  it('an attackable body is still the target, and an ordinary body is not walked into', () => {
+    const hover = {
+      hovered: guardCell,
+      from,
+      pathIndex: index,
+      locked: false,
+      hoveredEntityId: 'gate-1',
+    };
+    expect(
+      selectMoveIndicator({ ...hover, attackable: true, bumpable: true })
+    ).toEqual({ kind: 'target', entityId: 'gate-1' });
+    expect(selectMoveIndicator(hover)).toEqual({ kind: 'invalid' });
   });
 });

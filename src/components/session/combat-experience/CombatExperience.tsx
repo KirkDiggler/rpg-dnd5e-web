@@ -34,6 +34,7 @@ import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { MemberPortrait } from './MemberPortrait';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
+import { speechAtSpeakers } from './speechAtSpeakers';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
 import { StoryNotices } from './StoryNotices';
@@ -345,6 +346,11 @@ function CombatExperienceContent({
     enabled: noticesEnabled,
     streamState,
   });
+  // A creature's answer to the viewer speaks above it while its notice shows
+  // (rpg-project#842): the map is handed who says what, nothing more.
+  const speech = speechAtSpeakers(storyNotices);
+  const renderMapWithSpeech: typeof renderMap = (props) =>
+    renderMap({ ...props, speech });
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -533,7 +539,7 @@ function CombatExperienceContent({
             navigationControls={navigationControls}
             navigationSupplement={navigationSupplement}
             onHeaderBottomChange={desktopHotbar ? setHeaderBottom : undefined}
-            renderMap={renderMap}
+            renderMap={renderMapWithSpeech}
             hoveredTarget={hoveredTarget}
             onTargetClick={onTargetClick}
             speakTarget={presentationState.speakTarget}

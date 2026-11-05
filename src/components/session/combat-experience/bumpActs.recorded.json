@@ -1,0 +1,182 @@
+{
+  "recorded": "rpg-api e7a815c2 (session f2b208f5) on the hold stack, castle free roam, 2026-11-05, as GetStory returned them to the bumping member: the R8 click on gate-1 in the web (a Move whose goal is his cell), then a refused OpenDoor on the gate he holds.",
+  "acts": [
+    {
+      "id": "01M6PQE80Y2J2G51V11J47NK3G",
+      "at": "2",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
+      "verb": "move",
+      "family": "FAMILY_ACT",
+      "segment": 2,
+      "runEnd": true,
+      "walk": {
+        "mover": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
+        },
+        "path": [
+          {
+            "cell": {
+              "x": -5,
+              "y": 9
+            }
+          },
+          {
+            "cell": {
+              "x": -4,
+              "y": 8
+            }
+          },
+          {
+            "cell": {
+              "x": -3,
+              "y": 8
+            }
+          }
+        ],
+        "kind": "MOVE_KIND_OWN"
+      }
+    },
+    {
+      "id": "01M6PQE81M6EPFJ75E2Z5A30EW",
+      "at": "2",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
+      "verb": "move",
+      "family": "FAMILY_ACT",
+      "segment": 3,
+      "runEnd": true,
+      "barred": {
+        "mover": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
+        },
+        "barrier": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "cell": {
+          "x": -3,
+          "y": 7
+        }
+      }
+    },
+    {
+      "id": "01M6PQE81N36CTF7XH81SMAGEF",
+      "at": "2",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
+      "verb": "move",
+      "family": "FAMILY_STATE",
+      "runEnd": true,
+      "state": {
+        "party": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "change": "STATE_KIND_MACHINE",
+        "machine": {
+          "from": "posted",
+          "to": "challenged",
+          "reason": "walked into him"
+        }
+      }
+    },
+    {
+      "id": "01M6PQE81Q4YHXD4EHVFN69A9S",
+      "at": "2",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
+      "verb": "move",
+      "family": "FAMILY_TABLE_ANSWER",
+      "runEnd": true,
+      "tableAnswer": {
+        "who": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "key": "barred",
+        "say": "Whoa there, buddy. Can I help you?",
+        "temperament": "coward"
+      }
+    },
+    {
+      "id": "01M6PQE81S2R8QCFXXRN2CQ5CB",
+      "at": "2",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
+      "verb": "move",
+      "family": "FAMILY_PERCEPTION",
+      "runEnd": true,
+      "perception": {
+        "observer": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
+        },
+        "sense": "SENSE_HEARING",
+        "heard": {
+          "kind": "voice",
+          "cell": {
+            "x": -3,
+            "y": 7
+          }
+        }
+      }
+    },
+    {
+      "id": "01M6PQFGAZ6E9VM657ZWEQQKZK",
+      "at": "2",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
+      "verb": "open_door",
+      "family": "FAMILY_ACT",
+      "segment": 1,
+      "runEnd": true,
+      "barred": {
+        "mover": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
+        },
+        "barrier": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "door": "the-mad-king/gate-wall-door"
+      }
+    },
+    {
+      "id": "01M6PQFGB35QBP11HR3SRWDMSS",
+      "at": "2",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
+      "verb": "open_door",
+      "family": "FAMILY_TABLE_ANSWER",
+      "runEnd": true,
+      "tableAnswer": {
+        "who": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "key": "challenged",
+        "say": "I said, can I help you?",
+        "temperament": "coward"
+      }
+    },
+    {
+      "id": "01M6PQFGB42DWPGQANPHG6NGX6",
+      "at": "2",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
+      "verb": "open_door",
+      "family": "FAMILY_PERCEPTION",
+      "runEnd": true,
+      "perception": {
+        "observer": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
+        },
+        "sense": "SENSE_HEARING",
+        "heard": {
+          "kind": "voice",
+          "cell": {
+            "x": -3,
+            "y": 7
+          }
+        }
+      }
+    }
+  ]
+}
