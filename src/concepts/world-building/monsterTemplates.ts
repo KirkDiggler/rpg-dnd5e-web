@@ -1,5 +1,5 @@
 import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 
 export const TEMPLATE_ABILITIES = [
   'str',
@@ -65,7 +65,6 @@ export function validateMonsterTemplates(value: unknown): SiteTemplates {
     if (!ref || ref.idParts.length !== 1)
       fail(path, 'id must be one reference segment');
     const block = objectShape(value, path);
-    rejectUnknownKeys(block, KEYS, path);
     const base = typedRef(block.base, 'monsters', `${path}.base`);
     if (Object.hasOwn(raw, parseRef(base)!.id))
       fail(
@@ -91,7 +90,7 @@ export function validateMonsterTemplates(value: unknown): SiteTemplates {
       }
     if (Object.hasOwn(block, 'abilities')) {
       const scores = objectShape(block.abilities, `${path}.abilities`);
-      rejectUnknownKeys(scores, TEMPLATE_ABILITIES, `${path}.abilities`);
+      // A score this build does not name is still judged and carried.
       template.abilities = {};
       for (const [key, score] of Object.entries(scores)) {
         if (
@@ -137,7 +136,7 @@ export function validateMonsterTemplates(value: unknown): SiteTemplates {
           return item;
         });
       }
-    entries.push([id, template]);
+    entries.push([id, carryUnknownKeys(block, KEYS, template)]);
   }
   return Object.fromEntries(entries);
 }

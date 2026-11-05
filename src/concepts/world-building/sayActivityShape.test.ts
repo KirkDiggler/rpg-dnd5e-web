@@ -80,13 +80,14 @@ describe('say activity authoring', () => {
     ).toThrow(/activity.*say/);
   });
 
-  it('refuses unknown cue fields instead of dropping authored intent', () => {
+  // Carried, never dropped or refused (rpg-project#857).
+  it('carries an unknown cue field instead of dropping authored intent', () => {
     expect(() =>
       read({
         say: 'Thinking.',
         activity: { ref: 'thoughtful', cycles: 2, delay: 1 },
       })
-    ).toThrow(/activity.*delay/);
+    ).not.toThrow();
   });
 
   it('does not attach a cue to a bundle invocation instead of its selected leaf', () => {

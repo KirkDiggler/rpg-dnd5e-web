@@ -1,7 +1,7 @@
 import { validateRegionPresentation } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { validateActorNames, validateCreaturePalette } from './creaturePalette';
-import { rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys } from './strictShape';
 import type {
   Arrangement,
   ArrangementLibrary,
@@ -14,6 +14,20 @@ import type {
   WorldTransform,
 } from './types';
 import { validateWallFinishes } from './wallFinishTypes';
+
+/** The scene keys this codec reads; any other is carried (rpg-project#857). */
+const SCENE_KEYS = [
+  'version',
+  'id',
+  'name',
+  'items',
+  'groups',
+  'mapLabels',
+  'regionPresentation',
+  'creaturePalette',
+  'actorNames',
+  'wallFinishes',
+];
 
 export const SCENE_STORAGE_KEY = 'rpg.concepts.world-building.scene.v1';
 export const LIBRARY_STORAGE_KEY = 'rpg.concepts.world-building.library.v1';
@@ -93,7 +107,6 @@ export function validateMapLabels(
   return value.map((value, index) => {
     const path = `scene.mapLabels[${index}]`;
     const input = object(value);
-    rejectUnknownKeys(input, ['id', 'text', 'location'], path);
     const id = string(input.id, `${path}.id`);
     if (ids.has(id))
       throw new Error(`${path}.id: duplicate label identity ${id}.`);
@@ -101,13 +114,16 @@ export function validateMapLabels(
     const text = string(input.text, `${path}.text`).trim();
     if (!text) throw new Error(`${path}.text must be nonblank after trimming.`);
     const location = object(input.location);
-    rejectUnknownKeys(location, ['x', 'z'], `${path}.location`);
     const limit = options.horizontalLimit ?? WORLD_LIMIT;
-    const point = {
+    const point = carryUnknownKeys(location, ['x', 'z'], {
       x: finiteNumber(location.x, `${path}.location.x`, -limit, limit),
       z: finiteNumber(location.z, `${path}.location.z`, -limit, limit),
-    };
-    return { id, text, location: point };
+    });
+    return carryUnknownKeys(input, ['id', 'text', 'location'], {
+      id,
+      text,
+      location: point,
+    });
   });
 }
 
@@ -168,7 +184,7 @@ function prop(
       `${field}.assetRef ${JSON.stringify(assetRef)} is not in the local prop catalog.`
     );
   }
-  return {
+  return carryUnknownKeys(input, PROP_KEYS, {
     id: string(input.id, `${field}.id`, 120),
     kind: 'prop',
     assetRef,
@@ -194,8 +210,21 @@ function prop(
       input.pointLight === undefined
         ? undefined
         : pointLight(input.pointLight, `${field}.pointLight`),
-  };
+  });
 }
+
+const PROP_KEYS = [
+  'id',
+  'kind',
+  'assetRef',
+  'label',
+  'transform',
+  'heightScale',
+  'parentId',
+  'supportId',
+  'pointLight',
+];
+const GROUP_KEYS = ['id', 'kind', 'label', 'transform', 'parentId'];
 
 function group(
   value: unknown,
@@ -204,7 +233,7 @@ function group(
 ): WorldGroup {
   const input = object(value);
   if (input.kind !== 'group') throw new Error(`${field}.kind must be group.`);
-  return {
+  return carryUnknownKeys(input, GROUP_KEYS, {
     id: string(input.id, `${field}.id`, 120),
     kind: 'group',
     label: string(input.label, `${field}.label`, 120),
@@ -214,7 +243,7 @@ function group(
       horizontalLimit
     ),
     parentId: optionalId(input.parentId, `${field}.parentId`),
-  };
+  });
 }
 
 function entityArrays(
@@ -327,23 +356,6 @@ export function validateScene(
     );
   if (input.version < 3 && Object.hasOwn(input, 'regionPresentation'))
     throw new Error('regionPresentation requires scene version 3 or later.');
-  if (input.version >= 3)
-    rejectUnknownKeys(
-      input,
-      [
-        'version',
-        'id',
-        'name',
-        'items',
-        'groups',
-        'mapLabels',
-        'regionPresentation',
-        'creaturePalette',
-        'actorNames',
-        'wallFinishes',
-      ],
-      'scene'
-    );
   if (input.version === 1 && Object.hasOwn(input, 'mapLabels'))
     throw new Error(
       'Scene version 1 cannot carry mapLabels; promote to version 2.'
@@ -362,7 +374,7 @@ export function validateScene(
         allowWallFinish: input.version >= 6,
       })
     : {};
-  return {
+  return carryUnknownKeys(input, SCENE_KEYS, {
     version: input.version,
     id: sceneId,
     name: string(input.name, 'scene.name', 120),
@@ -374,7 +386,7 @@ export function validateScene(
     ...(creaturePalette.length > 0 ? { creaturePalette } : {}),
     ...(Object.keys(actorNames).length ? { actorNames } : {}),
     ...(Object.keys(wallFinishes).length ? { wallFinishes } : {}),
-  };
+  });
 }
 
 function validateArrangement(value: unknown, index: number): Arrangement {

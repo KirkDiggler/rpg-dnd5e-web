@@ -49,12 +49,13 @@ describe('region presentation grammar', () => {
     ).toThrow(
       'scene.regionPresentation.hall: declares nothing; omit the entry instead.'
     );
-    expect(() =>
+    // An unknown key is carried now, not refused (rpg-project#857).
+    expect(
       validateRegionPresentation(
         { hall: { tint: 'red' } },
         { allowWallFinish: true }
       )
-    ).toThrow('scene.regionPresentation.hall has an unsupported field: tint.');
+    ).toEqual({ hall: { tint: 'red' } });
     expect(() =>
       validateRegionPresentation([], { allowWallFinish: true })
     ).toThrow('scene.regionPresentation must be an object.');

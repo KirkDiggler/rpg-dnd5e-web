@@ -596,8 +596,7 @@ function SessionEncounterScope({
             occupantPassages.blocked,
             occupantPassages.passThrough,
             occupantPassages.walkInto,
-            occupantPassages.heldDoors,
-            occupantPassages.walkIntoHeldDoors
+            occupantPassages.holds
           )
         : null,
     [atlas, doors, occupantPassages]

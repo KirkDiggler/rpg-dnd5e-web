@@ -182,6 +182,7 @@ import {
   type SiteUntil,
   type SiteUntilStep,
 } from './siteScope';
+import { roomDoorIds } from './statePostEdits';
 import { StatesEditor } from './StatesEditor';
 import { useRowKeys } from './useRowKeys';
 
@@ -1833,6 +1834,7 @@ function FactionRow({
           <StatesEditor
             owner={faction.id}
             value={faction.states}
+            doors={roomDoorIds(room)}
             onChange={(states) =>
               onChange(patchSiteFaction(scope, faction.id, { states }))
             }
@@ -2743,6 +2745,7 @@ export function CreatureOrders({
         owner={monster.id}
         value={binding?.states}
         inherited={faction?.states}
+        doors={roomDoorIds(room)}
         onChange={
           onOrdersChange
             ? (states) =>

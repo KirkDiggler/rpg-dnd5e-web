@@ -57,7 +57,7 @@ import {
   type SiteTemplates,
 } from './monsterTemplates';
 import { NOT_OF_NOT_REFUSAL } from './predicateNot';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 
 /** A faction id has the same grammar as the room key: lower-case, digits,
  * dashes. `party` is never declared — it is the players' side — and the
@@ -200,6 +200,9 @@ export const UNTIL_SENTENCES = Object.freeze({
 /** The authored site scope. Each key is absent when nothing was authored, so a
  * document with none of it writes v3 exactly as it always did. */
 export interface SiteScope {
+  /** Root keys of the dungeon file this build does not read, as written
+   * (rpg-project#857): stored with the scope and written back at the root. */
+  unread?: Record<string, unknown>;
   /** Authored stat blocks; the engine derives their live numbers. */
   templates?: SiteTemplates;
   /** The named groups of rows this site declared, used as one `use:` row
@@ -397,7 +400,6 @@ export function validateSiteFactions(
   for (const [index, entry] of value.entries()) {
     const path = `Site faction at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, FACTION_KEYS, path);
     if (typeof raw.id !== 'string') fail(path, 'needs an id such as goblins');
     const idRefusal = factionIdRefusal(raw.id, [...ids]);
     if (idRefusal) fail(path, idRefusal);
@@ -431,7 +433,7 @@ export function validateSiteFactions(
         fail(`${path} options`, OPTIONS_EMPTY_REFUSAL);
       faction.options = validateOptions(raw.options, `${path} options`, false);
     }
-    factions.push(faction);
+    factions.push(carryUnknownKeys(raw, FACTION_KEYS, faction));
   }
   return factions;
 }
@@ -474,7 +476,6 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site disposition at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, DISPOSITION_KEYS, path);
     const between = validateFactionPair(raw.between, `${path} between`);
     const pairKey = [...between].sort().join('\u0000');
     if (pairs.has(pairKey))
@@ -488,7 +489,7 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
     const disposition: SiteDisposition = { between, stance: raw.stance };
     if (Object.hasOwn(raw, 'until'))
       disposition.until = validateUntil(raw.until, `${path} until`, raw.stance);
-    dispositions.push(disposition);
+    dispositions.push(carryUnknownKeys(raw, DISPOSITION_KEYS, disposition));
   }
   return dispositions;
 }
@@ -557,6 +558,9 @@ export const SCOPE_KEYS = [
   'endings',
   'scenarios',
   'concealments',
+  // Not a root key: the root keys this build does not read, written back at
+  // the root by the encoder (rpg-project#857).
+  'unread',
 ] as const;
 
 /**
@@ -619,16 +623,17 @@ export function validateIntel(value: unknown): SiteIntelRecord[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site intel at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, INTEL_KEYS, path);
     if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
       fail(path, 'needs an id such as vault-map');
     if (ids.has(raw.id)) fail(path, `duplicate intel id: ${raw.id}`);
     ids.add(raw.id);
     const reveals = objectShape(raw.reveals, `${path} reveals`);
-    rejectUnknownKeys(reveals, REVEALS_KEYS, `${path} reveals`);
     if (typeof reveals.door === 'string' && reveals.door !== '')
       fail(`${path} reveals.door`, INTEL_REVEALS_DOOR_REFUSAL);
-    const revealKeys = Object.keys(reveals);
+    // Exactly one target this build reads; any other key is carried.
+    const revealKeys = Object.keys(reveals).filter((key) =>
+      (REVEALS_KEYS as readonly string[]).includes(key)
+    );
     if (revealKeys.length !== 1)
       fail(
         `${path} reveals`,
@@ -641,15 +646,24 @@ export function validateIntel(value: unknown): SiteIntelRecord[] {
     // or concealment resolves is the engine's judgement at `PutDungeon`.
     if (typeof reveals.fact === 'string') {
       if (!reveals.fact) fail(`${path} reveals.fact`, 'must name a fact');
-      records.push({ id: raw.id, reveals: { fact: reveals.fact } });
+      records.push(
+        carryUnknownKeys(raw, INTEL_KEYS, {
+          id: raw.id,
+          reveals: carryUnknownKeys(reveals, REVEALS_KEYS, {
+            fact: reveals.fact,
+          }),
+        })
+      );
     } else {
       const concealment = reveals.concealment;
       if (typeof concealment !== 'string' || !concealment)
         fail(`${path} reveals.concealment`, 'must name a concealment');
-      records.push({
-        id: raw.id,
-        reveals: { concealment },
-      });
+      records.push(
+        carryUnknownKeys(raw, INTEL_KEYS, {
+          id: raw.id,
+          reveals: carryUnknownKeys(reveals, REVEALS_KEYS, { concealment }),
+        })
+      );
     }
   }
   return records;
@@ -666,7 +680,6 @@ export function validateSiteExits(value: unknown): SiteExit[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site exit at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, EXIT_KEYS, path);
     if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
       fail(path, 'needs an id such as entrance');
     if (ids.has(raw.id)) fail(path, `duplicate exit id: ${raw.id}`);
@@ -674,7 +687,7 @@ export function validateSiteExits(value: unknown): SiteExit[] {
     if (!isMapping(raw.cell))
       fail(`${path} cell`, 'must name an axial cell { q, r }');
     const cell = validateSiteCell(raw.cell, `${path} cell`);
-    exits.push({ id: raw.id, cell });
+    exits.push(carryUnknownKeys(raw, EXIT_KEYS, { id: raw.id, cell }));
   }
   return exits;
 }
@@ -690,7 +703,6 @@ export function validateSiteEndings(value: unknown): SiteEnding[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site ending at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, ENDING_KEYS, path);
     if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
       fail(path, 'needs an id such as held-out');
     if (ids.has(raw.id)) fail(path, `duplicate ending id: ${raw.id}`);
@@ -716,7 +728,7 @@ export function validateSiteEndings(value: unknown): SiteEnding[] {
     const ending: SiteEnding = { id: raw.id, when };
     if (hasIf) ending.if = validateEndingIf(raw.if, `${path} if`);
     if (outcome !== undefined) ending.outcome = outcome;
-    endings.push(ending);
+    endings.push(carryUnknownKeys(raw, ENDING_KEYS, ending));
   }
   return endings;
 }
@@ -792,8 +804,8 @@ export function validateSiteBundles(value: unknown): SiteBundles {
     if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as pursuer');
     if (!isMapping(body)) fail(path, 'must be { params, rows }');
     for (const key of Object.keys(body)) {
-      if (key !== 'params' && key !== 'rows')
-        fail(path, `unknown key "${key}" — a bundle is { params, rows }`);
+      // A key this build does not read is carried (rpg-project#857).
+      if (key === 'params' || key === 'rows') continue;
     }
     const bundle: SiteBundle = { rows: [] };
     if (body.params !== undefined && body.params !== null) {
@@ -809,7 +821,7 @@ export function validateSiteBundles(value: unknown): SiteBundles {
         fail(`${path}.rows`, 'must be a list of rows');
       bundle.rows = [...body.rows];
     }
-    bundles[id] = bundle;
+    bundles[id] = carryUnknownKeys(body, ['params', 'rows'], bundle);
   }
   return bundles;
 }
@@ -846,7 +858,6 @@ export function validateSiteConcealments(
     const path = `Site concealment ${id}`;
     if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as vault');
     const raw = objectShape(body, path);
-    rejectUnknownKeys(raw, CONCEALMENT_KEYS, path);
     const spec: SiteConcealmentSpec = {
       checks: validateConcealmentChecks(raw.checks, `${path} checks`),
     };
@@ -854,7 +865,6 @@ export function validateSiteConcealments(
       const attempts = objectShape(raw.attempts, `${path} attempts`);
       if (Object.hasOwn(attempts, 'lifetime'))
         fail(`${path} attempts.lifetime`, LIFETIME_REFUSAL);
-      rejectUnknownKeys(attempts, ['max', 'reset_hexes'], `${path} attempts`);
       const policy: SiteDiscoveryAttempts = {};
       for (const key of ['max', 'reset_hexes'] as const) {
         if (Object.hasOwn(attempts, key)) {
@@ -864,7 +874,11 @@ export function validateSiteConcealments(
           policy[key] = number as number;
         }
       }
-      spec.attempts = policy;
+      spec.attempts = carryUnknownKeys(
+        attempts,
+        ['max', 'reset_hexes'],
+        policy
+      );
     }
     if (Object.hasOwn(raw, 'notice'))
       spec.notice = validateConcealmentChecks(raw.notice, `${path} notice`);
@@ -890,7 +904,7 @@ export function validateSiteConcealments(
       (spec.props?.length ?? 0) === 0
     )
       fail(path, EMPTY_CONCEALMENT_REFUSAL);
-    concealments[id] = spec;
+    concealments[id] = carryUnknownKeys(raw, CONCEALMENT_KEYS, spec);
   }
   return concealments;
 }
@@ -919,25 +933,23 @@ function validateConcealmentCheck(
   path: string
 ): SiteConcealmentCheck {
   const raw = objectShape(value, path);
-  rejectUnknownKeys(raw, CHECK_KEYS, path);
   if (typeof raw.ability !== 'string' || !raw.ability)
     fail(`${path} ability`, 'must name an ability');
   if (typeof raw.dc !== 'number' || !Number.isInteger(raw.dc) || raw.dc < 1)
     fail(`${path} dc`, 'must be a whole number of at least 1');
   const check: SiteConcealmentCheck = { ability: raw.ability, dc: raw.dc };
   if (typeof raw.tool === 'string' && raw.tool !== '') check.tool = raw.tool;
-  return check;
+  return carryUnknownKeys(raw, CHECK_KEYS, check);
 }
 
 /** One axial cell — `{ q, r }`. Both are required integers. */
 function validateSiteCell(value: unknown, path: string): SiteRoomCell {
   const raw = objectShape(value, path);
-  rejectUnknownKeys(raw, CELL_KEYS, path);
   if (typeof raw.q !== 'number' || !Number.isInteger(raw.q))
     fail(`${path} q`, 'must be a whole number');
   if (typeof raw.r !== 'number' || !Number.isInteger(raw.r))
     fail(`${path} r`, 'must be a whole number');
-  return { q: raw.q, r: raw.r };
+  return carryUnknownKeys(raw, CELL_KEYS, { q: raw.q, r: raw.r });
 }
 
 /** The whole site scope, validated and NORMALIZED: each key is kept only when
@@ -957,7 +969,6 @@ export function validateSiteScope(
   picked?: readonly string[]
 ): SiteScope {
   const raw = objectShape(value, 'Site scope');
-  rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
   const tableKeys = picked ?? documentStatePicks(raw.factions);
   const scope: SiteScope = {};
   if (Object.hasOwn(raw, 'templates')) {
@@ -1005,6 +1016,13 @@ export function validateSiteScope(
     });
     if (Object.keys(concealments).length > 0) scope.concealments = concealments;
   }
+  // A root key this build does not read lives on the scope's `unread`, and
+  // the encoder writes it back at the root (rpg-project#857).
+  const unread: Record<string, unknown> = {};
+  if (Object.hasOwn(raw, 'unread'))
+    carryUnknownKeys(objectShape(raw.unread, 'Site scope unread'), [], unread);
+  carryUnknownKeys(raw, SCOPE_KEYS, unread);
+  if (Object.keys(unread).length > 0) scope.unread = unread;
   return scope;
 }
 

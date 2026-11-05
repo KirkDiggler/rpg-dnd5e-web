@@ -5,11 +5,13 @@ import {
   isPair,
   isScalar,
   isSeq,
+  parse,
   parseDocument,
   visit,
   type Scalar,
 } from 'yaml';
 import { documentRowLists, groupRefusals } from './bundles';
+import { dungeonSourceOf, rememberDungeonSource } from './dungeonSources';
 import {
   validateMonsterTemplates,
   type SiteTemplates,
@@ -40,8 +42,11 @@ import {
   type SiteFaction,
   type SiteIntelRecord,
   type SiteScenarios,
+  type SiteScope,
   type SiteTables,
 } from './siteScope';
+import { carryUnknownKeys } from './strictShape';
+import { spliceYaml } from './yamlSplice';
 
 export interface EncodeSingleRoomDungeonInput {
   templates?: SiteTemplates;
@@ -85,6 +90,8 @@ export interface DecodeSingleRoomDungeonResult {
   endings?: SiteEnding[];
   scenarios?: SiteScenarios;
   concealments?: SiteConcealments;
+  /** Root keys this build does not read, as written (rpg-project#857). */
+  unread?: Record<string, unknown>;
 }
 
 /** The fixed play contract of this first playable slice. Keys and values are
@@ -95,7 +102,6 @@ export const PLAY_CONTRACT = {
   lighting: 'bright',
   standing: 'centre-covered',
 } as const;
-const PLAY_KEYS = Object.keys(PLAY_CONTRACT);
 /** Every root key this build reads. `factions` and `dispositions` are the site
  * scope (rpg-project#477); there is deliberately no `sites` layer, no `kind`
  * and no root `name` in this slice — `rooms[]` stays flat and the room's own
@@ -173,9 +179,55 @@ function flowRegionRows(document: Document): void {
   }
 }
 
+/** The encoder's output for each remembered file as it was read, by token;
+ * bounded with the files themselves (`dungeonSources.ts`). */
+const bases = new Map<string, unknown>();
+
+function baseOf(token: string, source: string): unknown {
+  if (bases.has(token)) return bases.get(token);
+  for (const held of bases.keys())
+    if (dungeonSourceOf(held) === undefined) bases.delete(held);
+  const read = decodeSingleRoomDungeon(source);
+  const base = parse(
+    encodeCanonical({
+      key: read.key,
+      draft: read.draft,
+      ...renderScope(scopeFrom(read)),
+    })
+  );
+  bases.set(token, base);
+  return base;
+}
+
+/** The document's bytes. A draft read from a file writes that file back with
+ * only the studio's changes spliced in (`spliceYaml`); a draft the studio
+ * made writes the canonical encoding. */
 export function encodeSingleRoomDungeon(
   input: EncodeSingleRoomDungeonInput
 ): string {
+  const canonical = encodeCanonical(input);
+  const token = input.draft.sourceRef;
+  // A lost file is the caller's to announce (`dungeonSourceLost`): the
+  // publish panels ask before this canonical encoding is saved.
+  const source = dungeonSourceOf(token);
+  if (token === undefined || source === undefined) return canonical;
+  return spliceYaml(source, baseOf(token, source), parse(canonical));
+}
+
+function withoutUnread(scope: SiteScope): SiteScope {
+  const rest = { ...scope };
+  delete rest.unread;
+  return rest;
+}
+
+function withoutSourceRef(draft: RoomDraft): RoomDraft {
+  if (!Object.hasOwn(draft, 'sourceRef')) return draft;
+  const rest = { ...draft };
+  delete rest.sourceRef;
+  return rest;
+}
+
+function encodeCanonical(input: EncodeSingleRoomDungeonInput): string {
   if (!input.key || typeof input.key !== 'string')
     throw new Error('Dungeon key must be non-empty.');
   const draft = validateRoomDocument({
@@ -201,8 +253,10 @@ export function encodeSingleRoomDungeon(
     // room when they are absent, which is what makes the bytes identical.
     // `renderScope` writes them in `SCOPE_KEYS`' order — the root's own — and
     // is the one place the list lives (rpg-dnd5e-web#1201).
-    ...renderScope(scope),
-    room: draft.draft,
+    ...withoutUnread(renderScope(scope)),
+    ...scope.unread,
+    // The draft's source token is the studio's, never the file's.
+    room: withoutSourceRef(draft.draft),
   });
   flowRegionRows(document);
   return document.toString({ flowCollectionPadding: false });
@@ -232,13 +286,22 @@ export type SingleRoomDungeonRead =
 
 import { documentStatePicks } from './creatureStates';
 
-export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
+export function readSingleRoomDungeon(
+  source: string,
+  /** Hold the file so its draft writes it back (`dungeonSources.ts`). A
+   * read that never saves, the play scene, passes false and keeps the
+   * studio's few held files for the studio. */
+  options: { remember?: boolean } = {}
+): SingleRoomDungeonRead {
   const root = parseSingleRoomSource(source);
   const version = root.version;
   if (typeof version !== 'number' || !Number.isFinite(version))
     throw new Error('Authored dungeon source is missing a numeric version.');
   if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
-  return { dialect: 'single-room', ...decodeSingleRoomRoot(root) };
+  const read = decodeSingleRoomRoot(root);
+  if (options.remember !== false)
+    read.draft.sourceRef = rememberDungeonSource(source);
+  return { dialect: 'single-room', ...read };
 }
 
 /** Whether a number scalar is written as a float: the engine's yaml.v3
@@ -307,10 +370,9 @@ export function decodeSingleRoomDungeon(
 function decodeSingleRoomRoot(
   root: Record<string, unknown>
 ): DecodeSingleRoomDungeonResult {
-  for (const key of Object.keys(root)) {
-    if (!ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number]))
-      throw new Error(`Unsupported single-room field: ${key}.`);
-  }
+  // A root key this build does not read is carried on the scope's `unread`
+  // and written back at the root (rpg-project#857).
+  const unread = carryUnknownKeys(root, ROOT_KEYS, {});
   const version = root.version;
   if (version === 3 || version === 4)
     throw new Error(`version: ${RETIRED_VERSIONS_REFUSAL}`);
@@ -324,10 +386,9 @@ function decodeSingleRoomRoot(
   const play = root.play;
   if (!isPlainObject(play))
     throw new Error('Unsupported single-room play contract.');
-  for (const key of Object.keys(play)) {
-    if (!PLAY_KEYS.includes(key))
-      throw new Error(`Unsupported single-room play field: ${key}.`);
-  }
+  // A play field this build does not read is not refused: the play contract
+  // is fixed and the encoder writes it whole, so the file splice is what keeps
+  // the field (rpg-project#857).
   for (const [field, expected] of Object.entries(PLAY_CONTRACT)) {
     if (play[field] !== expected)
       throw new Error(
@@ -408,6 +469,7 @@ function decodeSingleRoomRoot(
       endings,
       scenarios,
       concealments,
+      unread,
     },
   });
   const draft = parseRoomDocumentJson(draftJson).draft;
@@ -443,6 +505,7 @@ function decodeSingleRoomRoot(
     ...(endings.length > 0 ? { endings } : {}),
     ...(Object.keys(scenarios).length > 0 ? { scenarios } : {}),
     ...(Object.keys(concealments).length > 0 ? { concealments } : {}),
+    ...(Object.keys(unread).length > 0 ? { unread } : {}),
   };
 }
 

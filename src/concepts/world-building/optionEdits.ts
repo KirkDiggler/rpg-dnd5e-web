@@ -20,7 +20,9 @@
  * record with no fact yet follows.
  */
 import {
+  APPROACH_KEYS,
   heaviestFirst,
+  OPTION_KEYS,
   type AnswerApproachShape,
   type AnswerEntryShape,
   type OptionRequiresShape,
@@ -28,6 +30,7 @@ import {
   type OptionVerdict,
 } from './answerTableShape';
 import type { RoomGameplayData } from './roomDraft';
+import { carryUnknownKeys } from './strictShape';
 
 /** A binding's options. `undefined` is the authored state "none" and the ONLY
  * empty representation — never `[]`. */
@@ -65,14 +68,24 @@ export function normalizeOption(option: OptionShape): OptionShape {
         dc: approach.dc,
       };
       if (approach.tool) row.tool = approach.tool;
-      return row;
+      return carryUnknownKeys(
+        approach as unknown as Record<string, unknown>,
+        APPROACH_KEYS,
+        row
+      );
     });
   if (option.requires !== undefined) next.requires = option.requires;
   if (option.success !== undefined && option.success.length > 0)
     next.success = option.success;
   if (option.failure !== undefined && option.failure.length > 0)
     next.failure = option.failure;
-  return next;
+  // A field the studio does not author rides through every edit
+  // (rpg-project#857).
+  return carryUnknownKeys(
+    option as unknown as Record<string, unknown>,
+    OPTION_KEYS,
+    next
+  );
 }
 
 /** The list with every option normalized, or `undefined` when it is empty. */

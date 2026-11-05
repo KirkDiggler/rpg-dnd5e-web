@@ -41,10 +41,12 @@ import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { GetDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { dungeonSourceLost } from './dungeonSources';
 import type { RoomDraft } from './roomDraft';
 import {
-  decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
+  readSingleRoomDungeon,
+  type decodeSingleRoomDungeon,
 } from './singleRoomDungeon';
 import { renderScope, scopeFrom, type SiteScope } from './siteScope';
 
@@ -159,6 +161,15 @@ export interface UseRoomPublishingResult {
    * source/identity. */
   confirmOverwrite: () => Promise<boolean>;
   cancelOverwrite: () => void;
+  /** The draft was read from a file the studio no longer holds
+   * (`dungeonSourceLost`, rpg-project#857): a save writes the studio's own
+   * encoding, without the file's comments, layout and the fields the draft
+   * does not hold. Shown whenever it is true. */
+  sourceLost: boolean;
+  /** A save asked to go ahead over a lost file, waiting for the author. */
+  sourceLossPending: { launch: boolean } | null;
+  confirmSourceLoss: () => Promise<boolean>;
+  cancelSourceLoss: () => void;
   /** Canonical YAML import: decodes, replaces the editor document and its
    * scope, and adopts the file's root key. Returns false on refusal/refusal-
    * worth decode errors (message in `error`). */
@@ -203,6 +214,10 @@ export function useRoomPublishing({
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<RoomPublishPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sourceLossPending, setSourceLossPending] = useState<{
+    launch: boolean;
+  } | null>(null);
+  const sourceLossAcceptedRef = useRef(new Set<string>());
   const [overwritePending, setOverwritePending] = useState<{
     key: string;
     launch: boolean;
@@ -400,9 +415,24 @@ export function useRoomPublishing({
     async (input: {
       launch: boolean;
       overwriteConfirmed: boolean;
+      sourceLossConfirmed?: boolean;
     }): Promise<boolean> => {
       if (ownerRef.current) return false;
       const current = draftRef.current;
+      // A FILE THE STUDIO NO LONGER HOLDS (rpg-project#857): ask once per
+      // file before the canonical encoding is saved over it. An overwrite
+      // confirmation comes after this one, so it does not ask again.
+      if (
+        dungeonSourceLost(current) &&
+        !input.sourceLossConfirmed &&
+        !input.overwriteConfirmed &&
+        !sourceLossAcceptedRef.current.has(current.sourceRef!)
+      ) {
+        setSourceLossPending({ launch: input.launch });
+        return false;
+      }
+      if (input.sourceLossConfirmed && current.sourceRef)
+        sourceLossAcceptedRef.current.add(current.sourceRef);
       const currentScope = scopeRef.current;
       const trimmed = keyRef.current.trim();
       const characterAtStart = characterRef.current;
@@ -526,6 +556,17 @@ export function useRoomPublishing({
     () => runTransaction({ launch: false, overwriteConfirmed: false }),
     [runTransaction]
   );
+  const confirmSourceLoss = useCallback(async (): Promise<boolean> => {
+    const pending = sourceLossPending;
+    setSourceLossPending(null);
+    if (!pending) return false;
+    return runTransaction({
+      launch: pending.launch,
+      overwriteConfirmed: false,
+      sourceLossConfirmed: true,
+    });
+  }, [runTransaction, sourceLossPending]);
+  const cancelSourceLoss = useCallback(() => setSourceLossPending(null), []);
   const saveAndPlay = useCallback(
     () => runTransaction({ launch: true, overwriteConfirmed: false }),
     [runTransaction]
@@ -559,7 +600,14 @@ export function useRoomPublishing({
   const importYaml = useCallback((text: string): boolean => {
     let decoded: ReturnType<typeof decodeSingleRoomDungeon>;
     try {
-      decoded = decodeSingleRoomDungeon(text);
+      // The reader, so unknown fields are carried and the file is remembered
+      // for the next save (rpg-project#857).
+      const read = readSingleRoomDungeon(text);
+      if (read.dialect === 'other')
+        throw new Error(
+          `this is a version ${read.version} dungeon, the multi-room dialect`
+        );
+      decoded = read;
     } catch (err) {
       setError(
         `Could not import this canonical YAML: ${
@@ -609,6 +657,10 @@ export function useRoomPublishing({
     saveAndPlay,
     confirmOverwrite,
     cancelOverwrite,
+    sourceLost: dungeonSourceLost(draft),
+    sourceLossPending,
+    confirmSourceLoss,
+    cancelSourceLoss,
     importYaml,
   };
 }

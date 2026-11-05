@@ -189,9 +189,10 @@ describe('single-room dungeon source', () => {
       ).toThrow(
         'version: versions 3 and 4 are retired; regions are the floor (rpg-project#725)'
       );
-    expect(() =>
-      decodeSingleRoomDungeon(`${emitted}\nkind: dungeon\n`)
-    ).toThrow(/Unsupported single-room field: kind/);
+    // An unknown root key is carried, not refused (rpg-project#857).
+    expect(decodeSingleRoomDungeon(`${emitted}\nkind: dungeon\n`).key).toBe(
+      'crypt-room'
+    );
     expect(() => decodeSingleRoomDungeon('version: 6\nkey: room')).toThrow(
       /Unsupported single-room source envelope/
     );
@@ -250,17 +251,20 @@ play:
     expect(decodeSingleRoomDungeon(reencoded)).toEqual(decoded);
   });
 
-  it('refuses unknown root and play fields instead of accepting them', () => {
+  // The studio loads whatever the engine runs (rpg-project#857): unknown
+  // root and play fields are carried past the decoder (the room below is
+  // still refused, for what it is). A known play value is still judged.
+  it('carries unknown root and play fields, and still judges the play contract', () => {
     expect(() =>
       decodeSingleRoomDungeon(
         'version: 5\nkey: room\nboss: null\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
       )
-    ).toThrow(/Unsupported single-room field: boss/);
+    ).toThrow(/Unsupported room draft/);
     expect(() =>
       decodeSingleRoomDungeon(
         'version: 5\nkey: room\nplay: {void: transparent, lighting: bright, standing: centre-covered, seating: 4}\nroom: {version: 3}'
       )
-    ).toThrow(/Unsupported single-room play field: seating/);
+    ).toThrow(/Unsupported room draft/);
     expect(() =>
       decodeSingleRoomDungeon(
         'version: 5\nkey: room\nplay: {void: opaque, lighting: bright, standing: centre-covered}\nroom: {version: 3}'
@@ -687,7 +691,7 @@ ${ROOM_BLOCK}
     ).toThrow(/duplicate intel id/);
   });
 
-  it('refuses an orphan binding and an unknown binding key inside the document', () => {
+  it('refuses an orphan binding and carries an unknown binding key inside the document', () => {
     // A binding naming a creature that is gone is REFUSED, not silently
     // dropped — the discipline `propDeclarations` already keeps.
     expect(() =>
@@ -705,20 +709,18 @@ ${ROOM_BLOCK}
       'coward'
     );
     // `intimidate` RETIRED to options (rpg-project#569 R2) and is refused by
-    // name in the engine's sentence; an actually-unknown key is still refused
-    // as unknown.
+    // name in the engine's sentence; an actually-unknown key is carried
+    // (rpg-project#857), in the draft where it was written.
     expect(() =>
       decodeSingleRoomDungeon(
         `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
       )
     ).toThrow(/`intimidate` is no longer a key: author an option/);
-    expect(() =>
+    expect(
       decodeSingleRoomDungeon(
         `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
-      )
-    ).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidating/
-    );
+      ).draft.room.monsterBindings
+    ).toEqual({ 'goblin-1': { intimidating: { dc: 12 } } });
   });
 
   it('refuses an answer table this build cannot roll, in the engine’s own words', () => {

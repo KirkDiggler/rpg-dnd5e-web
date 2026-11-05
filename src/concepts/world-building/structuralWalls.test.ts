@@ -151,7 +151,8 @@ describe('structural walls in the shared room document', () => {
     expect(source).toEqual(wall());
   });
 
-  it('preserves unsupported stored bytes and reports the load error', () => {
+  // A future wall field is carried now (rpg-project#857): it loads.
+  it('loads a stored wall with a field it does not read, keeping the field', () => {
     const fallback = createRoomDraft(createEmptyScene('fallback'), 'fallback');
     const envelope = JSON.parse(stringifyRoomDraft(draft()));
     envelope.draft.room.walls[0].mystery = true;
@@ -163,21 +164,22 @@ describe('structural walls in the shared room document', () => {
       },
     };
     const result = loadRoomDraft(storage, fallback);
-    expect(result.value).toEqual(fallback);
-    expect(result.error).toMatch(/walls.*mystery/);
+    expect(result.error).toBeFalsy();
+    expect(result.value.room.walls![0]).toMatchObject({ mystery: true });
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
   });
 
-  it('refuses unknown nested fields instead of losing them', () => {
-    expect(() => validate([{ ...wall(), mystery: true }])).toThrow(
-      /walls.*mystery/
-    );
-    expect(() =>
+  // Carried, never refused or lost (rpg-project#857).
+  it('carries unknown nested fields where they were written', () => {
+    expect(validate([{ ...wall(), mystery: true }])[0]).toMatchObject({
+      mystery: true,
+    });
+    expect(
       validate([
         { ...wall(), appearance: { ...wall().appearance, mystery: true } },
-      ])
-    ).toThrow(/appearance.*mystery/);
-    expect(() =>
+      ])[0].appearance
+    ).toMatchObject({ mystery: true });
+    expect(
       validate([
         {
           ...wall(),
@@ -186,8 +188,8 @@ describe('structural walls in the shared room document', () => {
             footprint: { ...wall().blocker.footprint, mystery: true },
           },
         },
-      ])
-    ).toThrow(/footprint.*mystery/);
+      ])[0].blocker.footprint
+    ).toMatchObject({ mystery: true });
   });
 
   it('refuses unknown asset refs and malformed containers', () => {
@@ -290,7 +292,9 @@ describe('structural walls in the shared room document', () => {
     expect(decoded.room.doorBindings).toEqual({ 'door-1': {} });
   });
 
-  it('refuses unknown, non-leaf and malformed attached doors by path', () => {
+  // An unknown door FIELD is carried (rpg-project#857); an asset the renderer
+  // cannot draw is still refused.
+  it('refuses non-leaf and unknown door assets by path, and carries an unknown door field', () => {
     const nonLeaf = wallWithDoor();
     nonLeaf.openings = [
       {
@@ -326,7 +330,9 @@ describe('structural walls in the shared room document', () => {
         } as never,
       },
     ];
-    expect(() => validate([extraKey])).toThrow(/door.*mystery/);
+    expect(validate([extraKey])[0].openings[0].door).toMatchObject({
+      mystery: true,
+    });
   });
 
   it('refuses door ids colliding with walls, openings, scene items or each other', () => {

@@ -1,13 +1,19 @@
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { isDoorAsset } from './doorBindingEdits';
 import type { RoomPropDeclaration } from './roomDraft';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 import {
   wallSolidIntervals,
   type WallGeometry,
   type WallOpeningGeometry,
 } from './structuralWallGeometry';
 import type { WorldPoint } from './types';
+
+/** The wall keys this codec reads; any other is carried (rpg-project#857). */
+const WALL_KEYS = ['id', 'label', 'line', 'appearance', 'blocker', 'openings'];
+const APPEARANCE_KEYS = ['assetRef', 'height', 'thickness', 'elevation'];
+const BLOCKER_KEYS = ['footprint', 'blocksMovement', 'blocksLineOfSight'];
+const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'];
 
 /** One opening's optional attached door: a stable identity and a catalog
  * appearance. THERE IS NO STORED POSE — the owning opening resolves the
@@ -81,7 +87,6 @@ function pointAt(
   horizontalLimit: number
 ): WorldPoint {
   const point = objectShape(value, path);
-  rejectUnknownKeys(point, ['x', 'z'], path);
   const x = numberAt(point.x, `${path}.x`);
   const z = numberAt(point.z, `${path}.z`);
   for (const [axis, coordinate] of [
@@ -93,7 +98,7 @@ function pointAt(
         `${path}.${axis}: beyond the world coordinate bound (±${horizontalLimit})`
       );
   }
-  return { x, z };
+  return carryUnknownKeys(point, ['x', 'z'], { x, z });
 }
 
 /** Strict document parsing, not gameplay validation. Returns independent values;
@@ -121,22 +126,11 @@ export function validateStructuralWalls(input: {
   const rows = input.value.map((value, index) => {
     const location = `${path}[${index}]`;
     const row = objectShape(value, location);
-    rejectUnknownKeys(
-      row,
-      ['id', 'label', 'line', 'appearance', 'blocker', 'openings'],
-      location
-    );
     return { row, location, id: claim(row.id, `${location}.id`) };
   });
   return rows.map(({ row, location, id }) => {
     const line = objectShape(row.line, `${location}.line`);
-    rejectUnknownKeys(line, ['start', 'end'], `${location}.line`);
     const appearance = objectShape(row.appearance, `${location}.appearance`);
-    rejectUnknownKeys(
-      appearance,
-      ['assetRef', 'height', 'thickness', 'elevation'],
-      `${location}.appearance`
-    );
     const assetRef = stringAt(
       appearance.assetRef,
       `${location}.appearance.assetRef`,
@@ -147,18 +141,8 @@ export function validateStructuralWalls(input: {
         `${location}.appearance.assetRef: unknown catalog asset ${assetRef}`
       );
     const blocker = objectShape(row.blocker, `${location}.blocker`);
-    rejectUnknownKeys(
-      blocker,
-      ['footprint', 'blocksMovement', 'blocksLineOfSight'],
-      `${location}.blocker`
-    );
     const footprint = objectShape(
       blocker.footprint,
-      `${location}.blocker.footprint`
-    );
-    rejectUnknownKeys(
-      footprint,
-      ['width', 'depth', 'offsetX', 'offsetZ'],
       `${location}.blocker.footprint`
     );
     const footprintPath = `${location}.blocker.footprint`;
@@ -168,11 +152,9 @@ export function validateStructuralWalls(input: {
       (value, index) => {
         const at = `${location}.openings[${index}]`;
         const opening = objectShape(value, at);
-        rejectUnknownKeys(opening, ['id', 'position', 'width', 'door'], at);
         let door: StructuralWallOpening['door'];
         if (Object.hasOwn(opening, 'door')) {
           const doorShape = objectShape(opening.door, `${at}.door`);
-          rejectUnknownKeys(doorShape, ['id', 'assetRef'], `${at}.door`);
           const doorId = claim(doorShape.id, `${at}.door.id`);
           const doorAssetRef = stringAt(
             doorShape.assetRef,
@@ -186,28 +168,31 @@ export function validateStructuralWalls(input: {
             throw new Error(
               `${at}.door.assetRef: unknown door asset ${doorAssetRef}`
             );
-          door = { id: doorId, assetRef: doorAssetRef };
+          door = carryUnknownKeys(doorShape, ['id', 'assetRef'], {
+            id: doorId,
+            assetRef: doorAssetRef,
+          });
         }
-        return {
+        return carryUnknownKeys(opening, ['id', 'position', 'width', 'door'], {
           id: claim(opening.id, `${at}.id`),
           position: numberAt(opening.position, `${at}.position`),
           width: numberAt(opening.width, `${at}.width`, true),
           ...(door ? { door } : {}),
-        };
+        });
       }
     );
-    const wall: StructuralWall = {
+    const wall: StructuralWall = carryUnknownKeys(row, WALL_KEYS, {
       id,
       label: stringAt(row.label, `${location}.label`),
-      line: {
+      line: carryUnknownKeys(line, ['start', 'end'], {
         start: pointAt(
           line.start,
           `${location}.line.start`,
           input.horizontalLimit
         ),
         end: pointAt(line.end, `${location}.line.end`, input.horizontalLimit),
-      },
-      appearance: {
+      }),
+      appearance: carryUnknownKeys(appearance, APPEARANCE_KEYS, {
         assetRef,
         height: numberAt(
           appearance.height,
@@ -223,8 +208,8 @@ export function validateStructuralWalls(input: {
           appearance.elevation,
           `${location}.appearance.elevation`
         ),
-      },
-      blocker: {
+      }),
+      blocker: carryUnknownKeys(blocker, BLOCKER_KEYS, {
         blocksMovement: booleanAt(
           blocker.blocksMovement,
           `${location}.blocker.blocksMovement`
@@ -233,15 +218,15 @@ export function validateStructuralWalls(input: {
           blocker.blocksLineOfSight,
           `${location}.blocker.blocksLineOfSight`
         ),
-        footprint: {
+        footprint: carryUnknownKeys(footprint, FOOTPRINT_KEYS, {
           width: numberAt(footprint.width, `${footprintPath}.width`, true),
           depth: numberAt(footprint.depth, `${footprintPath}.depth`, true),
           offsetX: numberAt(footprint.offsetX, `${footprintPath}.offsetX`),
           offsetZ: numberAt(footprint.offsetZ, `${footprintPath}.offsetZ`),
-        },
-      },
+        }),
+      }),
       openings,
-    };
+    });
     // Refuse representational overflow before this reaches a renderer/compiler.
     const box = wall.blocker.footprint;
     numberAt(

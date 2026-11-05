@@ -2704,7 +2704,9 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(viewport().roomAuthoring?.doorBindings).toEqual(
       beforeRemoval.draft.room.doorBindings
     );
-  });
+    // About 8.5 s locally against the 15 s default; CI ran it past the default
+    // (the #1389 review), so it gets its own budget.
+  }, 30_000);
 
   it('populated selection/reflow, cancel, no-op, refusal and late epoch release create no wall history or writes', async () => {
     const original = rotatedSeed();
@@ -5347,11 +5349,16 @@ describe('S4 the draft as a file through the real owner', () => {
     fireEvent.click(
       within(confirm).getByRole('button', { name: 'Replace draft' })
     );
-    expect(storage.document()).toEqual(castle);
+    // The imported draft also carries its file's token (rpg-project#857).
+    const imported = {
+      ...castle,
+      draft: { ...castle.draft, sourceRef: expect.any(String) },
+    };
+    expect(storage.document()).toEqual(imported);
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(storage.document()).toEqual(before);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-    expect(storage.document()).toEqual(castle);
+    expect(storage.document()).toEqual(imported);
   });
 
   // The benchmark harness's studio open marks (rpg-project#750, B11): in a
@@ -5519,7 +5526,9 @@ describe('S4 the draft as a file through the real owner', () => {
     );
   });
 
-  it('a v2 file and a typo are refused, naming the dialect and the field, and change nothing', async () => {
+  // A typo'd root key is carried now, not refused (rpg-project#857): the file
+  // reaches the confirm step, and nothing changes until it is confirmed.
+  it('a v2 file is refused naming the dialect; a typo is carried to the confirm step; neither changes anything', async () => {
     const storage = new MemoryStorage(createPopulatedStudioDocument());
     mount(storage);
     await settled();
@@ -5536,12 +5545,9 @@ describe('S4 the draft as a file through the real owner', () => {
         'endngs:'
       )
     );
-    expect(screen.getByRole('alert').textContent).toBe(
-      'Could not import: Unsupported single-room field: endngs.'
-    );
     expect(
-      screen.queryByRole('alertdialog', { name: 'Confirm import' })
-    ).toBeNull();
+      screen.getByRole('alertdialog', { name: 'Confirm import' })
+    ).toBeTruthy();
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
   });

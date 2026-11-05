@@ -121,10 +121,12 @@ describe('fromRows', () => {
     );
   });
 
-  it('refuses an unknown key on a row and a non-list cells value', () => {
-    expect(() => fromRows([{ r: 0, q: [[0, 0]], s: 1 }], path)).toThrow(
-      `${path}[0] has an unsupported field: s.`
-    );
+  // A row's unknown key is not refused (rpg-project#857): a row becomes
+  // cells, so the file splice keeps the key while the row is unchanged.
+  it('reads past an unknown key on a row, and refuses a non-list cells value', () => {
+    expect(fromRows([{ r: 0, q: [[0, 0]], s: 1 }], path)).toEqual([
+      { q: 0, r: 0 },
+    ]);
     expect(() => fromRows({ r: 0 }, path)).toThrow(`${path}: must be a list`);
   });
 

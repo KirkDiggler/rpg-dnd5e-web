@@ -79,11 +79,10 @@ describe('the single room reads a cell and a route as { q, r }', () => {
     expect(table({ time: [{ toward: { at: { q: 1.5, r: 2 } } }] })).toThrow(
       "on.time[0].toward.at: a cell's q must be an integer"
     );
+    // A key a cell does not read is carried now, not refused (rpg-project#857).
     expect(
       table({ time: [{ toward: { at: { q: 1, r: 2, s: -3 } } }] })
-    ).toThrow(
-      'on.time[0].toward.at: field s not found in type dungeonspec.RoomCell'
-    );
+    ).not.toThrow();
     expect(
       table({ time: [{ toward: { path: [{ q: 1, r: 0 }, { r: 2 }] } }] })
     ).toThrow(
@@ -103,17 +102,15 @@ describe('the single room reads a cell and a route as { q, r }', () => {
     ).toThrow(
       'on.time[0].toward.at: a cell is { q, r }, and this one has no q'
     );
-    // An unknown key is refused where it stands in that order too.
-    expect(
-      table({ time: [{ toward: { path: [{ q: 1 }], where: 1 } }] })
-    ).toThrow(
-      'on.time[0].toward.path[0]: a cell is { q, r }, and this one has no r'
-    );
-    expect(
-      table({ time: [{ toward: { where: 1, path: [{ q: 1 }] } }] })
-    ).toThrow(
-      'on.time[0].toward: field where not found in type dungeonspec.SelectorSpec'
-    );
+    // An unknown key is carried, not refused (rpg-project#857): the
+    // malformed cell is still named, wherever the unknown key stands.
+    for (const toward of [
+      { path: [{ q: 1 }], where: 1 },
+      { where: 1, path: [{ q: 1 }] },
+    ])
+      expect(table({ time: [{ toward }] })).toThrow(
+        'on.time[0].toward.path[0]: a cell is { q, r }, and this one has no r'
+      );
   });
 
   it("refuses [col, row] in the engine's exact sentences", () => {
@@ -265,12 +262,11 @@ describe('a route waypoint carries its pause', () => {
     expect(waypoint({ wait: -1 })).toThrow(
       'on.time[0].toward.path[0].wait: a wait is how many rounds the walker stands here, and -1 is negative'
     );
-    // Only a route's waypoint pauses: a cell is still strictly { q, r }.
+    // Only a route's waypoint pauses; a `wait` on a cell is a key the cell
+    // does not read, carried for the engine to judge (rpg-project#857).
     expect(
       table({ time: [{ toward: { at: { q: 0, r: 0, wait: 1 } } }] })
-    ).toThrow(
-      'on.time[0].toward.at: field wait not found in type dungeonspec.RoomCell'
-    );
+    ).not.toThrow();
   });
 
   it('round-trips a paused route through the encoder', () => {

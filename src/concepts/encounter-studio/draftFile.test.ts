@@ -59,6 +59,13 @@ function actionAugmentWalkYaml(): string {
   return stringify(file);
 }
 
+/** A read draft without its file's token (rpg-project#857). */
+function unsourced<T extends { sourceRef?: string }>(draft: T): T {
+  const rest = { ...draft };
+  delete rest.sourceRef;
+  return rest;
+}
+
 describe('the draft as a file (rpg-project#578)', () => {
   it('import accepts a binding with addActions/dropActions (action-augment-walk shape)', () => {
     const read = readDraftYaml(actionAugmentWalkYaml());
@@ -158,17 +165,18 @@ describe('the draft as a file (rpg-project#578)', () => {
     }
   );
 
-  it('an actually-unknown addAction field still refuses with its field path', () => {
+  // The studio loads whatever the engine runs (rpg-project#857): an unknown
+  // binding field is carried and written back, no longer refused.
+  it('an actually-unknown addAction field is carried and written back', () => {
     const file = parse(actionAugmentWalkYaml()) as SingleRoomFile;
     file.room.room.monsterBindings = {
       ...file.room.room.monsterBindings,
       'goblin-1': { addAction: ['dnd5e:weapons:shortbow'] },
     };
-    expect(readDraftYaml(stringify(file))).toEqual({
-      ok: false,
-      refusal:
-        'Could not import: Monster binding for goblin-1 has an unsupported field: addAction.',
-    });
+    const text = stringify(file);
+    const read = readDraftYaml(text);
+    if (!read.ok) throw new Error(read.refusal);
+    expect(exportDraftYaml(read, read.key)).toBe(text);
   });
 
   it('nothing-stated files without action augmentation import and export byte-identically to today', () => {
@@ -204,7 +212,10 @@ describe('the draft as a file (rpg-project#578)', () => {
       expect(read.ok).toBe(true);
       if (!read.ok) return;
       expect(read.key).toBe('round-trip');
-      expect({ draft: read.draft, scope: read.scope }).toEqual(document);
+      // The read draft also carries its file's token (rpg-project#857).
+      expect({ draft: unsourced(read.draft), scope: read.scope }).toEqual(
+        document
+      );
     }
   });
 
@@ -218,17 +229,17 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(session.importDocument).not.toHaveBeenCalled();
   });
 
-  it('a file with an unknown root key is refused naming the key', () => {
+  // Carried, no longer refused (rpg-project#857): the engine judges the key.
+  it('a file with an unknown root key imports, and the key is written back', () => {
     const session = { importDocument: vi.fn(() => true) };
     const yaml = exportDraftYaml(createCastleS4Document(), 'castle').replace(
       /^endings:/m,
       'endngs:'
     );
-    expect(importDraftYaml(yaml, session)).toEqual({
-      ok: false,
-      refusal: 'Could not import: Unsupported single-room field: endngs.',
-    });
-    expect(session.importDocument).not.toHaveBeenCalled();
+    expect(importDraftYaml(yaml, session)).toEqual({ ok: true, key: 'castle' });
+    const read = readDraftYaml(yaml);
+    if (!read.ok) throw new Error(read.refusal);
+    expect(exportDraftYaml(read, read.key)).toBe(yaml);
   });
 
   it('a field the decoder refuses is named with its path', () => {
@@ -255,8 +266,9 @@ describe('the draft as a file (rpg-project#578)', () => {
       ok: true,
       key: 'mad-king',
     });
+    // The decoded draft carries its file's token too (rpg-project#857).
     expect(session.importDocument).toHaveBeenCalledExactlyOnceWith(
-      document.draft,
+      { ...document.draft, sourceRef: expect.any(String) },
       document.scope
     );
   });
@@ -386,8 +398,9 @@ describe('the draft as a file (rpg-project#578)', () => {
       { draft: opened.draft, scope: opened.scope },
       opened.key
     );
-    // The pause survives the save in the file's own spelling.
-    expect(saved).toMatch(/- q: -5\n\s+r: 8\n\s+wait: 1\n\s+facing: ne\n/);
+    // An unedited save is the file it opened, byte for byte (rpg-project#857),
+    // so the pause survives in the file's own spelling.
+    expect(saved).toBe(yaml);
     // The `use:` lines survive the save — `guard-base` on both gate guards,
     // and the bundles inside it — and the bundles keep their `$name`
     // placeholders (rpg-project#670).
@@ -397,7 +410,7 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(saved.match(/use: alarm-reactor/g)).toHaveLength(1);
     expect(saved.match(/use: patrol/g)).toHaveLength(1);
     expect(saved).toContain('path: $path');
-    expect(saved).toMatch(/params:\n\s+path: null/);
+    expect(saved).toContain('params: { path: ~ }');
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
     expect({ draft: reopened.draft, scope: reopened.scope }).toEqual({

@@ -2,7 +2,7 @@ import {
   validateRoomWallFinish,
   type RoomWallFinish,
 } from './regionFinishTypes';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 import type { RoomHexCell } from './workspaceGeometry';
 
 /**
@@ -46,11 +46,11 @@ export function validateRegionPresentation(
   for (const [id, entry] of Object.entries(source)) {
     const path = `scene.regionPresentation.${id}`;
     const input = objectShape(entry, path);
-    rejectUnknownKeys(
-      input,
-      [...(options.allowWallFinish ? ['wallFinish'] : []), 'construction'],
-      path
-    );
+    // A wall finish on a scene before version 6 is a known word the
+    // renderer cannot draw there: refused. Any other key is carried
+    // (rpg-project#857).
+    if (!options.allowWallFinish && Object.hasOwn(input, 'wallFinish'))
+      throw new Error(`${path} has an unsupported field: wallFinish.`);
     const presentation: RegionPresentation = {};
     if (Object.hasOwn(input, 'wallFinish'))
       presentation.wallFinish = validateRoomWallFinish(
@@ -59,6 +59,7 @@ export function validateRegionPresentation(
       );
     if (Object.hasOwn(input, 'construction'))
       presentation.construction = structuredClone(input.construction);
+    carryUnknownKeys(input, ['wallFinish', 'construction'], presentation);
     if (Object.keys(presentation).length === 0)
       throw new Error(`${path}: declares nothing; omit the entry instead.`);
     out[id] = presentation;

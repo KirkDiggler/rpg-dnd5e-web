@@ -28,6 +28,17 @@ toolkit can derive templates from every monster offered in a UI list. The
 rulebook template-base registry is distinct from its monster constructors. Do not
 repair a rejected template by silently changing its base.
 
+## The studio loads whatever the engine runs
+
+The studio loads whatever the engine runs; the dungeonspec compiler is the
+validator; fields the studio does not author are preserved and written back
+unchanged (rpg-project#857). Every decoder carries what it does not read
+(`carryUnknownKeys`), so the draft, storage and every edit keep it, and the
+export splices only the studio's changes into the file as read
+(`world-building/yamlSplice.ts`): an unedited Download or Save is
+byte-identical, and an edit changes only its own lines. The rule and its few
+stated refusals are in `world-building/CONTRACT.md`.
+
 ## Creature state recipes
 
 Creature Behaviour and Factions share `StatesEditor`: the canonical `states:`
@@ -41,6 +52,16 @@ keys such as `march` use the same row vocabulary as `time`; unknown keys are
 not globally enabled. Complete saves validate each creature's resolved recipe
 against its layered table. Table controls and read-back include custom keys.
 JSON recovery, YAML import/export and unrelated binding edits preserve recipes.
+
+A state may carry a post (rpg-project#836, #852, #857): `blocks: true`, and
+`holds: { door, at, against, pass }`. The Posts fields under the YAML edit
+them: a blocks toggle, a door from the site's wall-bound and bound doors, the
+post cells as `{ q, r }`, `against` (both, the default, writes no word), and
+the pass fact. The server judges the door, the cells and the pass. A state
+field, a transition field, a `holds` field or a cell field this codec does not
+read is carried as written, as everywhere in the file. `against: ""` reads as
+both, as the server does. The door field can be emptied and retyped. States and transitions keep the
+author's key order, so an untouched recipe writes back exactly as it was read.
 
 An option without `check` is a plain line, not an empty check. Its success rows
 are carried without inventing a roll; a failure on a plain line is refused.

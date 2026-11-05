@@ -81,14 +81,18 @@ describe('immutable presentation-only map label intents', () => {
       null,
       {},
       [null],
-      [{ ...valid, unknown: true }],
       [{ ...valid, location: null }],
-      [{ ...valid, location: { x: 0, z: 0, y: 1 } }],
       [{ ...valid, location: { x: Infinity, z: 0 } }],
       [{ ...valid, text: '   ' }],
       [{ ...valid, text: 'a'.repeat(121) }],
     ])
       expect(() => validateMapLabels(labels)).toThrow();
+    // A key a label does not read is carried now, not refused (rpg-project#857).
+    for (const extra of [
+      { ...valid, unknown: true },
+      { ...valid, location: { x: 0, z: 0, y: 1 } },
+    ])
+      expect(validateMapLabels([extra])).toEqual([extra]);
     const labels = Array.from({ length: 256 }, (_, i) => ({
       ...valid,
       id: `label-${i}`,

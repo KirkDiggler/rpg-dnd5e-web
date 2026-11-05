@@ -1,5 +1,5 @@
 import { parseRef } from '@/utils/refs';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 import type { WorldScene } from './types';
 
 /** Editor palette recipe, not a live actor or an additional stat block. */
@@ -23,11 +23,6 @@ export function validateCreaturePalette(
   return value.map((item, index) => {
     const path = `scene.creaturePalette[${index}]`;
     const entry = objectShape(item, path);
-    rejectUnknownKeys(
-      entry,
-      ['id', 'name', 'ref', 'modelRef', 'faction'],
-      path
-    );
     for (const key of ['id', 'name', 'faction'] as const) {
       if (key === 'faction' && !Object.hasOwn(entry, key)) continue;
       if (
@@ -52,17 +47,21 @@ export function validateCreaturePalette(
       (typeof entry.modelRef !== 'string' || !parseRef(entry.modelRef))
     )
       throw new Error(`${path}.modelRef must be an appearance reference.`);
-    return {
-      id,
-      name: entry.name as string,
-      ref: entry.ref,
-      ...(Object.hasOwn(entry, 'modelRef')
-        ? { modelRef: entry.modelRef as string }
-        : {}),
-      ...(Object.hasOwn(entry, 'faction')
-        ? { faction: entry.faction as string }
-        : {}),
-    };
+    return carryUnknownKeys(
+      entry,
+      ['id', 'name', 'ref', 'modelRef', 'faction'],
+      {
+        id,
+        name: entry.name as string,
+        ref: entry.ref,
+        ...(Object.hasOwn(entry, 'modelRef')
+          ? { modelRef: entry.modelRef as string }
+          : {}),
+        ...(Object.hasOwn(entry, 'faction')
+          ? { faction: entry.faction as string }
+          : {}),
+      }
+    );
   });
 }
 /** Per-instance authoring labels. Never used as runtime/rulebook names. */

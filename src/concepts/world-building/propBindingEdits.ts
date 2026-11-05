@@ -23,6 +23,7 @@ import {
   replaceOption,
 } from './optionEdits';
 import type { RoomOption, RoomPropBinding } from './roomDraft';
+import { carryUnknownKeys } from './strictShape';
 
 /** The authored orders, keyed by prop id. `undefined` is the authored state
  * "nothing here" and is the ONLY empty representation — never `{}`. */
@@ -43,6 +44,13 @@ export function normalizePropBinding(
   if (next.arrives !== undefined) normalized.arrives = next.arrives;
   const options = normalizeOptions(next.options);
   if (options !== undefined) normalized.options = options;
+  // A field the studio does not author rides through every edit
+  // (rpg-project#857).
+  carryUnknownKeys(
+    next as Record<string, unknown>,
+    ['holdable', 'holds', 'arrives', 'options'],
+    normalized
+  );
   return Object.keys(normalized).length === 0 ? undefined : normalized;
 }
 

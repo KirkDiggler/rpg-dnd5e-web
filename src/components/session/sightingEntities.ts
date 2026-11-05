@@ -43,7 +43,10 @@
  * typed fields, per the review brief's "NEVER decode; render only from
  * typed data" rule.
  */
-import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  Position,
+  Sighting,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
   Passage,
@@ -72,6 +75,14 @@ export interface SightedMember {
    * when it holds nothing. The server's answer, read as given; only a live
    * sighting's hold is planned shut (`indexOccupantPassages`). */
   holdsDoor?: string;
+  /** `Sighting.holds_against`, verbatim (rpg-project#857, R6): `both`,
+   * `entering` or `leaving`; empty reads as both. Planners only. */
+  holdsAgainst?: string;
+  /** `Sighting.holds_side`: the held door's crossing cells on the post's
+   * side, one per crossing, as the server sends them. A crossing from one of
+   * these cells to its other cell is entering; the reverse is leaving. Empty
+   * from a server that predates it: the hold is then read both ways. */
+  holdsSide?: Position[];
   /** The toolkit monster ref id derived from `subject` (strips the
    * trailing `-<ordinal>`) — feeds `resolveMonsterModelUrl` via
    * `HexEntity.monsterRefId`. Undefined for a PLAYER-kind subject: a
@@ -179,6 +190,8 @@ export function sightingsToEntities(
       kind: sighting.kind,
       passage: sighting.passage,
       holdsDoor: sighting.holdsDoor,
+      holdsAgainst: sighting.holdsAgainst,
+      holdsSide: sighting.holdsSide,
       monsterRefId: isPlayer
         ? undefined
         : monsterRefIdFromSubject(sighting.subject),

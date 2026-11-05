@@ -387,26 +387,29 @@ describe('room draft structural exactness', () => {
     expect(loadRoomDraft(storage, painted).value).toEqual(withActor);
   });
 
-  it('refuses unknown draft, frame, room and placement fields instead of dropping them', () => {
+  // Carried, never refused or dropped (rpg-project#857): each unknown field
+  // survives the storage round trip where it was written.
+  it('carries unknown draft, frame, room, placement and footprint fields through storage', () => {
     const base = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
-    const expectRejected = (mutate: (draft: RoomDraft) => void, re: RegExp) =>
-      expect(() => {
-        const draft = structuredClone(base);
-        mutate(draft);
-        stringifyRoomDraft(draft);
-      }).toThrow(re);
+    const expectRejected = (mutate: (draft: RoomDraft) => void, re: RegExp) => {
+      const draft = structuredClone(base);
+      mutate(draft);
+      const stored = parseRoomDocumentJson(stringifyRoomDraft(draft)).draft;
+      const [, field] = /field: (\w+)/.exec(re.source)!;
+      expect(JSON.stringify(stored)).toContain(`"${field}":`);
+    };
 
     expectRejected((draft) => {
       (draft as unknown as Record<string, unknown>).bossPin = { q: 0, r: 0 };
-    }, /Room draft has an unsupported field: bossPin/);
+    }, /field: bossPin/);
     expectRejected((draft) => {
       draft.room.regions[0]!.cells = [{ r: 0, q: [[1, 1]] }];
       (draft.room as unknown as Record<string, unknown>).monstersPerCell = 1;
-    }, /Room gameplay data has an unsupported field: monstersPerCell/);
+    }, /field: monstersPerCell/);
     expectRejected((draft) => {
       (draft.coordinateFrame as unknown as Record<string, unknown>).engineUnit =
         'feet';
-    }, /Room coordinate frame has an unsupported field: engineUnit/);
+    }, /field: engineUnit/);
     expectRejected((draft) => {
       draft.room.regions[0]!.cells = [{ r: 0, q: [[0, 0]] }];
       draft.room.monsterDeclarations = [
@@ -417,7 +420,7 @@ describe('room draft structural exactness', () => {
           facing: 0,
         },
       ] as unknown as RoomDraft['room']['monsterDeclarations'];
-    }, /Monster placement at index 0 has an unsupported field: facing/);
+    }, /field: facing/);
     expectRejected((draft) => {
       draft.scene.items.push({
         id: 'prop-x',
@@ -437,7 +440,7 @@ describe('room draft structural exactness', () => {
           area: 1,
         },
       } as unknown as RoomPropDeclaration;
-    }, /footprint has an unsupported field: area/);
+    }, /field: area/);
   });
 
   it('requires complete declaration shapes and mapping-shaped records', () => {
@@ -928,11 +931,8 @@ describe('room draft structural exactness', () => {
     expect(
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
-    // A key this dialect's binding does not carry is refused as the unknown
-    // key it is.
-    expect(rejection({ 'goblin-1': { intimidating: {} } })).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidating/
-    );
+    // A key this dialect's binding does not read is carried (rpg-project#857).
+    expect(rejection({ 'goblin-1': { intimidating: {} } })).not.toThrow();
     expect(rejection({ 'goblin-1': {} })).toThrow(
       /Monster binding for goblin-1 declares no bindings/
     );
@@ -1536,9 +1536,6 @@ describe('regions are the floor: codec and identity boundary (rpg-project#725)',
     const storage = new RecordingStorage();
     for (const mutate of [
       (d: RawDraft) => {
-        d.scene.futureIntent = true;
-      },
-      (d: RawDraft) => {
         d.scene.authoringRegions = [];
       },
       (d: RawDraft) => {
@@ -1562,6 +1559,13 @@ describe('regions are the floor: codec and identity boundary (rpg-project#725)',
       expect(storage.writes).toEqual([]);
     }
     expect(() => validateRoomDocument({ draft, scope: {} })).not.toThrow();
+    // A future scene field is carried now, not a load failure (rpg-project#857).
+    const future = structuredClone(valid);
+    future.draft.scene.futureIntent = true;
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, JSON.stringify(future));
+    expect(loadRoomDraft(storage, draft).value.scene).toMatchObject({
+      futureIntent: true,
+    });
   });
   it('refuses a region id colliding with an actual document owner, in its own words', () => {
     for (const collision of [
@@ -1831,12 +1835,13 @@ describe('options on a binding (rpg-project#569)', () => {
     ).toThrow(
       'Monster binding for goblin-1 options[1].requires.not.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
     );
+    // A key a line does not read is carried now, not refused (rpg-project#857).
     expect(
       refusal(
         (d) =>
           ((goblin(d)[0] as unknown as Record<string, unknown>).intimidate = [])
       )
-    ).toThrow('field intimidate not found in type dungeonspec.OptionSpec');
+    ).not.toThrow();
   });
 });
 

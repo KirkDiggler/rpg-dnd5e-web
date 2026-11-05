@@ -4,7 +4,12 @@
 import { ANSWER_WHEN, RETIRED_TRIGGER_KEYS } from '@/author/answerVocabulary';
 import type { RoomMonsterBinding } from './roomDraft';
 import type { SiteScope } from './siteScope';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import {
+  carriedCopy as carried,
+  carryUnknownKeys,
+  objectShape,
+  putOwn as put,
+} from './strictShape';
 
 export type StateCondition =
   | { enemy: 'seen' | 'remembered' | 'none' }
@@ -15,6 +20,8 @@ export type StateAct =
   | { wake_in: number }
   | { anchor: true };
 export interface StateTransition {
+  /** A transition field a newer server added: kept as written, never read. */
+  [future: string]: unknown;
   on: string;
   when?: StateCondition;
   within?: number;
@@ -24,10 +31,52 @@ export interface StateTransition {
   do?: StateAct[];
   reason?: string;
 }
+/** The ways a post holds (rpg-project#857, R6); absent reads as both. */
+export const POST_DIRECTIONS = ['both', 'entering', 'leaving'] as const;
+export type PostDirection = (typeof POST_DIRECTIONS)[number];
+/** A state's post (dungeonspec `HoldsSpec`, rpg-project#852 and #857): the
+ * door whose opening a creature in this state bars, the cells he holds it
+ * from (none means his placed cell), the direction it holds, and the fact
+ * that walks a mover through. Carried as written: whether the door exists,
+ * the cells are floor and the pass is a fact the file sets is the server's
+ * to judge at PutDungeon. */
+export interface StateHolds {
+  door: string;
+  at?: { q: number; r: number }[];
+  /** Empty, as absent, reads as both. */
+  against?: PostDirection | '';
+  pass?: string;
+  /** A field a newer server added: kept as written, never read. */
+  [future: string]: unknown;
+}
 export interface CreatureState {
   terminal?: boolean;
   transitions?: StateTransition[];
+  /** The body blocks while in this state (rpg-project#836). */
+  blocks?: boolean;
+  holds?: StateHolds;
+  /** A state field a newer server added: kept as written, never read, so a
+   * document the server serves always imports (rpg-project#857). */
+  [future: string]: unknown;
 }
+/** The transition fields this codec reads; any other is carried verbatim. */
+export const TRANSITION_FIELDS = [
+  'on',
+  'when',
+  'within',
+  'regions',
+  'rounds',
+  'to',
+  'do',
+  'reason',
+] as const;
+/** The state fields this codec reads; any other is carried verbatim. */
+export const STATE_FIELDS = [
+  'terminal',
+  'transitions',
+  'blocks',
+  'holds',
+] as const;
 /** Flat on disk: `initial` beside the named states, not another states map. */
 export type CreatureStates = { initial: string } & Record<
   string,
@@ -55,6 +104,43 @@ function count(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
     fail(path, 'must be a non-negative whole number');
   return value;
+}
+function cell(value: unknown, path: string): { q: number; r: number } {
+  const raw = objectShape(value, path);
+  for (const axis of ['q', 'r'] as const)
+    if (typeof raw[axis] !== 'number' || !Number.isSafeInteger(raw[axis]))
+      fail(`${path}.${axis}`, 'must be a whole number');
+  return carryUnknownKeys(raw, ['q', 'r'], {
+    q: raw.q as number,
+    r: raw.r as number,
+  });
+}
+function holds(value: unknown, path: string): StateHolds {
+  const raw = objectShape(value, path);
+  if (typeof raw.door !== 'string' || !raw.door)
+    fail(
+      `${path}.door`,
+      'a post names the door whose opening it holds: write door: <door id>'
+    );
+  const result = {} as StateHolds;
+  for (const key of Object.keys(raw)) {
+    const at = `${path}.${key}`;
+    if (key === 'door') result.door = raw.door;
+    else if (key === 'at') {
+      if (!Array.isArray(raw.at)) fail(at, 'must be a list of { q, r }');
+      result.at = raw.at.map((c, i) => cell(c, `${at}[${i}]`));
+    } else if (key === 'against') {
+      // Empty reads as both, as the server's PostDirection does.
+      if (![...POST_DIRECTIONS, ''].includes(raw.against as string))
+        fail(
+          at,
+          `"${String(raw.against)}" is not a way a post holds: write both, entering or leaving`
+        );
+      result.against = raw.against as PostDirection | '';
+    } else if (key === 'pass') result.pass = text(raw.pass, at);
+    else put(result, key, carried(raw[key]));
+  }
+  return result;
 }
 function condition(value: unknown, path: string): StateCondition {
   const raw = objectShape(value, path);
@@ -113,13 +199,30 @@ export function validateStates(value: unknown, path: string): CreatureStates {
     const at = `${path}.${name}`;
     if (!name) fail(at, 'a state needs a name');
     const body = objectShape(raw[name], at);
-    rejectUnknownKeys(body, ['terminal', 'transitions'], at);
+    // In the author's key order, so an untouched state writes back as read.
     const state: CreatureState = {};
-    if ('terminal' in body) {
-      if (typeof body.terminal !== 'boolean')
-        fail(`${at}.terminal`, 'must be a boolean');
-      state.terminal = body.terminal;
+    for (const key of Object.keys(body)) {
+      if (key === 'terminal') {
+        if (typeof body.terminal !== 'boolean')
+          fail(`${at}.terminal`, 'must be a boolean');
+        state.terminal = body.terminal;
+      } else if (key === 'blocks') {
+        if (typeof body.blocks !== 'boolean')
+          fail(`${at}.blocks`, 'must be a boolean');
+        state.blocks = body.blocks;
+      } else if (key === 'holds') {
+        state.holds = holds(body.holds, `${at}.holds`);
+      } else if (key === 'transitions') {
+        state.transitions = [];
+      } else put(state, key, carried(body[key]));
     }
+    if (body.terminal === true)
+      for (const key of ['blocks', 'holds'] as const)
+        if (key in body && (key === 'holds' || body.blocks))
+          fail(
+            `${at}.${key}`,
+            `a terminal state ends the machine and holds no post: ${key} is for a state the creature stands in`
+          );
     if ('transitions' in body) {
       if (!Array.isArray(body.transitions))
         fail(`${at}.transitions`, 'must be a list');
@@ -131,11 +234,6 @@ export function validateStates(value: unknown, path: string): CreatureStates {
       state.transitions = body.transitions.map((value, index) => {
         const tp = `${at}.transitions[${index}]`;
         const t = objectShape(value, tp);
-        rejectUnknownKeys(
-          t,
-          ['on', 'when', 'within', 'regions', 'rounds', 'to', 'do', 'reason'],
-          tp
-        );
         const on = text(t.on, `${tp}.on`);
         const deed =
           on.startsWith('deed:') && ANSWER_WHEN.deeds.includes(on.slice(5));
@@ -209,7 +307,17 @@ export function validateStates(value: unknown, path: string): CreatureStates {
             );
           });
         }
-        return transition;
+        // In the author's key order, so an untouched transition writes back
+        // as read; a field this codec does not read is carried as written
+        // (rpg-project#857).
+        return Object.fromEntries(
+          Object.keys(t).map((key) => [
+            key,
+            (TRANSITION_FIELDS as readonly string[]).includes(key)
+              ? transition[key as keyof StateTransition]
+              : carried(t[key]),
+          ])
+        ) as unknown as StateTransition;
       });
     }
     // defineProperty keeps even a state named __proto__ as authored data.
