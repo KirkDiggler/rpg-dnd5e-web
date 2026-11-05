@@ -355,6 +355,10 @@ export function SkinnedAccessoryAttachment({
       // is removed, so no committed frame can observe an empty slot. Marking
       // keeps later preparations from mistaking this runtime subset skin for
       // another authoritative body skin.
+      // Like the body, accessories delegate picking to HexEntity's proxy.
+      // An early raycast here would cache skinned bounds before the new
+      // attachment's world/bind-inverse matrices are updated by the renderer.
+      next.mesh.raycast = () => {};
       markMountedSkinnedAccessory(next.mesh);
       characterRoot.add(next.mesh);
       if (previous) {
