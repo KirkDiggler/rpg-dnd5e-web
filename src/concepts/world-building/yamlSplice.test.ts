@@ -272,6 +272,18 @@ describe('the splicer’s edges (rpg-project#857 review)', () => {
     expect(parse(out)).toEqual({ a: 5, b: 3, c: 2 });
   });
 
+  it('a flow map that gains and loses keys is rewritten whole, never garbled', () => {
+    const source = 'success:\n  - {say: We yield., fact: band-yielded}\n';
+    const out = spliceYaml(
+      source,
+      { success: [{ say: 'We yield.', fact: 'band-yielded' }] },
+      { success: [{ say: 'Let me think.', activity: { ref: 'thoughtful' } }] }
+    );
+    expect(parse(out)).toEqual({
+      success: [{ say: 'Let me think.', activity: { ref: 'thoughtful' } }],
+    });
+  });
+
   it('a removed key takes the comment lines directly above it', () => {
     const source = 'a: 1\n# about b\n# more about b\nb: 2\nc: 3\n';
     expect(spliceYaml(source, { a: 1, b: 2, c: 3 }, { a: 1, c: 3 })).toBe(

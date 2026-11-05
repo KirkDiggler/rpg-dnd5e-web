@@ -335,7 +335,12 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
       Object.keys(b).filter((key) => !Object.hasOwn(c, key) && pairs.has(key))
     );
     // Every pair the source wrote goes: nothing stays to anchor an insert.
-    if (added.length > 0 && removed.size === map.items.length)
+    // A flow map that gains and loses keys is one line with no comments, and
+    // its insert and removal would meet at one point: rewritten whole.
+    if (
+      added.length > 0 &&
+      (removed.size === map.items.length || (inner && removed.size > 0))
+    )
       return replace(map, mergeValue(ownValue(map), b, c), inFlow);
     for (const [key, pair] of pairs) {
       if (!Object.hasOwn(c, key) || !Object.hasOwn(b, key)) continue;
@@ -489,10 +494,24 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
 
   walk(document.contents as Node, base, current, false);
   for (const [alias, { value }] of aliasWrites) replace(alias, value, true);
+  // NO TWO EDITS MAY MEET: an insert where a removal starts, or two ranges
+  // that overlap, could garble the file. A conflict is refused loudly, never
+  // written.
+  const sorted = edits.sort((x, y) => y.start - x.start || y.order - x.order);
+  for (let k = 1; k < sorted.length; k++) {
+    const later = sorted[k - 1];
+    const earlier = sorted[k];
+    const meets =
+      earlier.end > later.start ||
+      (earlier.start === later.start &&
+        (earlier.end > earlier.start || later.end > later.start));
+    if (meets)
+      throw new Error(
+        `the studio could not place its edits in the file it read (bytes ${earlier.start}–${later.end}); nothing was written`
+      );
+  }
   let out = source;
-  for (const { start, end, text } of edits.sort(
-    (x, y) => y.start - x.start || y.order - x.order
-  ))
+  for (const { start, end, text } of sorted)
     out = out.slice(0, start) + text + out.slice(end);
   return out;
 }
