@@ -310,7 +310,7 @@ export function validateStates(value: unknown, path: string): CreatureStates {
             key,
             transition[key as keyof StateTransition],
           ])
-        ) as StateTransition;
+        ) as unknown as StateTransition;
       });
     }
     // defineProperty keeps even a state named __proto__ as authored data.
