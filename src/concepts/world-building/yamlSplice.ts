@@ -1,33 +1,45 @@
 /**
  * THE STUDIO WRITES BACK WHAT IT READ (rpg-project#857, Kirk: "if it runs, we
- * should load it"). The studio loads whatever the engine runs: the dungeonspec
- * compiler is the validator; fields the studio does not author are preserved,
- * never refused.
+ * should load it"). The studio loads whatever the engine runs; the dungeonspec
+ * compiler is the validator; fields the studio does not author are preserved
+ * and written back unchanged.
  *
- * `spliceYaml` is how a saved or exported document keeps them. It takes the
- * file as it was read (`source`), what the studio's encoder writes for the
- * document as it was read (`base`), and what it writes now (`current`), and
- * edits the source TEXT only where `base` and `current` differ. A field the
- * studio never read is in neither, so its bytes are never touched; neither are
- * comments, flow maps or quoting anywhere the author did not change. An
- * unchanged document returns `source` byte for byte.
+ * `spliceYaml` is how a saved or exported document keeps the file's own
+ * bytes. It takes the file as it was read (`source`), what the studio's
+ * encoder writes for the document as it was read (`base`), and what it writes
+ * now (`current`), and edits the source TEXT only where `base` and `current`
+ * differ. Comments, flow maps, quoting and layout are untouched anywhere the
+ * author did not change; an unchanged document returns `source` byte for byte.
  *
  * Edits are byte-range splices over the parsed source's node ranges:
- * - a changed scalar, or a collection that changed shape, is replaced in place;
- * - a map recurses key by key: a key added by the studio is inserted before
- *   the next key it writes that the source already has, else after the last;
- *   a key the studio stopped writing is removed with its lines;
- * - a sequence recurses item by item, appends, or drops trailing items.
- * A map that both gains and loses keys, or any case a splice cannot place
- * safely, is rewritten as one node from the source's own value with the
- * studio's changes applied, so its unread keys still survive.
+ * - a changed scalar, or a value that changed shape, is replaced in place (an
+ *   empty value, `key:`, gains its space: `key: 3`);
+ * - a map recurses key by key: a key the studio adds is inserted after the
+ *   previous key it writes that stays, else before the next; a key it stops
+ *   writing is removed with its lines and the comment lines directly above;
+ * - a sequence ALIGNS its items before it walks them (`alignItems`): by `id`
+ *   when every item on both sides has a unique one, else by the longest
+ *   common subsequence of equal items, with the items between two matches
+ *   paired in order. Matched items that keep their relative order are walked
+ *   in place; every other old item is removed from wherever it stands, and
+ *   every other new item is inserted where it now stands, carrying the
+ *   source's own value for an item that only moved (`mergeValue`);
+ * - a flow sequence that gains, loses or reorders items is rewritten whole
+ *   from that merged value: flow sequences are one line, and hold no comments.
+ * - AN ANCHOR IS NOT SHARED BY AN EDIT: the studio reads `*b` as a copy of
+ *   `&b`, so when the anchored value changes, each alias of it that the edit
+ *   did not reach is first written out as the value it had.
  */
 import {
+  isAlias,
   isMap,
   isScalar,
   isSeq,
   parseDocument,
   stringify,
+  visit,
+  type Alias,
+  type Document,
   type Node,
   type Pair,
   type YAMLMap,
@@ -64,8 +76,89 @@ export function sameValue(a: Json, b: Json): boolean {
   return Number.isNaN(a) && Number.isNaN(b);
 }
 
+/** The `id` of every item, when every item is a map with a unique text or
+ * number id; else null. */
+function idsOf(items: readonly Json[]): (string | number)[] | null {
+  const ids: (string | number)[] = [];
+  for (const item of items) {
+    if (!isObject(item)) return null;
+    const id = item.id;
+    if (typeof id !== 'string' && typeof id !== 'number') return null;
+    ids.push(id);
+  }
+  return new Set(ids).size === ids.length ? ids : null;
+}
+
+/**
+ * Which old item each new item is, as `[oldIndex, newIndex]` pairs in new
+ * order: by `id` when both lists carry unique ids, else by the longest common
+ * subsequence of equal items, with the items between two matches paired in
+ * order (an edited item between two unchanged ones is the same item). An old
+ * item in no pair was removed; a new item in no pair was added.
+ */
+export function alignItems(
+  base: readonly Json[],
+  current: readonly Json[]
+): [number, number][] {
+  const baseIds = idsOf(base);
+  const currentIds = idsOf(current);
+  if (baseIds && currentIds) {
+    const at = new Map(baseIds.map((id, i) => [id, i]));
+    return currentIds.flatMap((id, j): [number, number][] =>
+      at.has(id) ? [[at.get(id)!, j]] : []
+    );
+  }
+  const n = base.length;
+  const m = current.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () =>
+    new Array<number>(m + 1).fill(0)
+  );
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      lcs[i][j] = sameValue(base[i], current[j])
+        ? lcs[i + 1][j + 1] + 1
+        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const anchors: [number, number][] = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (sameValue(base[i], current[j])) anchors.push([i++, j++]);
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) i++;
+    else j++;
+  }
+  const pairs: [number, number][] = [];
+  let [pi, pj] = [0, 0];
+  for (const [ai, aj] of [...anchors, [n, m] as [number, number]]) {
+    for (let k = 0; k < Math.min(ai - pi, aj - pj); k++)
+      pairs.push([pi + k, pj + k]);
+    if (ai < n) pairs.push([ai, aj]);
+    [pi, pj] = [ai + 1, aj + 1];
+  }
+  return pairs;
+}
+
+/** The pairs whose old indices rise with the new ones, longest first: the
+ * items that stay where they are relative to each other. */
+function steadyPairs(pairs: [number, number][]): Set<number> {
+  const tails: number[] = [];
+  const back: number[] = new Array(pairs.length).fill(-1);
+  for (let k = 0; k < pairs.length; k++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (pairs[tails[mid]][0] < pairs[k][0]) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) back[k] = tails[lo - 1];
+    tails[lo] = k;
+  }
+  const steady = new Set<number>();
+  for (let k = tails.at(-1) ?? -1; k !== -1; k = back[k]) steady.add(k);
+  return steady;
+}
+
 /** The source's own value with the studio's base → current changes applied:
- * keys the studio never wrote (in `own`, not in `base`) are kept. */
+ * keys the studio never wrote (in `own`, not in `base`) are kept, and list
+ * items are matched as `alignItems` matches them. */
 export function mergeValue(own: Json, base: Json, current: Json): Json {
   if (sameValue(base, current)) return own;
   if (isObject(own) && isObject(base) && isObject(current)) {
@@ -84,20 +177,30 @@ export function mergeValue(own: Json, base: Json, current: Json): Json {
         out[key] = current[key];
     return out;
   }
-  if (Array.isArray(own) && Array.isArray(base) && Array.isArray(current))
-    return current.map((item, i) =>
-      i < base.length && i < own.length
-        ? mergeValue(own[i], base[i], item)
-        : item
+  if (Array.isArray(own) && Array.isArray(base) && Array.isArray(current)) {
+    const from = new Map(
+      alignItems(base, current).map(([i, j]) => [j, i] as const)
     );
+    return current.map((item, j) => {
+      const i = from.get(j);
+      return i !== undefined && i < own.length
+        ? mergeValue(own[i], base[i], item)
+        : item;
+    });
+  }
   return current;
 }
 
 export function spliceYaml(source: string, base: Json, current: Json): string {
   if (sameValue(base, current)) return source;
   const document = parseDocument(source);
-  if (document.errors.length || !document.contents) return render(current);
+  if (document.errors.length || !document.contents)
+    throw new Error(
+      `the file this draft was read from no longer parses: ${document.errors[0]?.message ?? 'it is empty'}`
+    );
   const pad = /\{ \S/.test(source) || !/\{\S/.test(source);
+  // Brackets keep their own spacing: the castle pads `{ q }` but not `[{`.
+  const padBrackets = /\[ \S/.test(source) || !/\[\S/.test(source);
   const edits: Edit[] = [];
   let order = 0;
   const edit = (start: number, end: number, text: string) =>
@@ -109,10 +212,10 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     return end === -1 ? source.length : end;
   };
   const column = (at: number) => at - lineStart(at);
-  /** The start of the comment lines directly above a line, at its indent. */
-  const commentsAbove = (at: number) => {
+  /** The start of the comment lines directly above line `at`, written at
+   * `indent`. */
+  const commentsAbove = (at: number, indent = column(at)) => {
     let start = lineStart(at);
-    const indent = column(at);
     while (start > 0) {
       const prev = lineStart(start - 1);
       const line = source.slice(prev, start - 1);
@@ -121,13 +224,19 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     }
     return start;
   };
+  /** Through the end of the line `at` ends on, newline included. */
+  const throughLine = (at: number) => Math.min(lineEnd(at) + 1, source.length);
 
-  const flow = (value: Json) =>
-    stringify(value, {
+  const flow = (value: Json) => {
+    const text = stringify(value, {
       collectionStyle: 'flow',
       lineWidth: 0,
       flowCollectionPadding: pad,
     }).trimEnd();
+    return pad && !padBrackets
+      ? text.replace(/\[ /g, '[').replace(/ \]/g, ']')
+      : text;
+  };
   /** Block YAML whose first line sits at `indent` and whose later lines are
    * indented by it. */
   const block = (value: Json, indent: number) =>
@@ -152,11 +261,28 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     valueEnd(pair.value as Node | null, endOf(pair.key as Node));
   const keyOf = (pair: Pair) =>
     isScalar(pair.key) ? String(pair.key.value) : undefined;
+  const ownValue = (node: Node) => node.toJS(document as Document);
+
+  // ANCHORS: each alias's value to write out, keyed by the alias node. An
+  // alias the edit reaches is written as the new value; one it does not is
+  // written as the value it had, when its anchor changes.
+  const aliasesOf = new Map<string, Alias[]>();
+  visit(document, {
+    Alias(_key, node) {
+      const list = aliasesOf.get(node.source) ?? [];
+      list.push(node);
+      aliasesOf.set(node.source, list);
+    },
+  });
+  const aliasWrites = new Map<Alias, { value: Json; reached: boolean }>();
 
   /** Replace a node with `value` rendered in its own style. */
   function replace(node: Node, value: Json, inFlow: boolean) {
     const start = node.range![0];
     const end = endOf(node);
+    // `key:` with nothing after it: a zero-width empty value. The new value
+    // goes after the colon's space, on the key's line, in flow.
+    if (start === end) return edit(start, end, ` ${flow(value)}`);
     const keepFlow =
       inFlow ||
       isScalar(node) ||
@@ -176,6 +302,15 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
 
   function walk(node: Node, b: Json, c: Json, inFlow: boolean) {
     if (sameValue(b, c)) return;
+    if (isAlias(node)) {
+      aliasWrites.set(node, { value: c, reached: true });
+      return;
+    }
+    const anchor = (node as { anchor?: string }).anchor;
+    if (anchor)
+      for (const alias of aliasesOf.get(anchor) ?? [])
+        if (!aliasWrites.get(alias)?.reached)
+          aliasWrites.set(alias, { value: ownValue(node), reached: false });
     if (isMap(node) && isObject(b) && isObject(c))
       return walkMap(node, b, c, inFlow);
     if (isSeq(node) && Array.isArray(b) && Array.isArray(c))
@@ -196,27 +331,29 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
       if (key !== undefined) pairs.set(key, pair);
     }
     const added = Object.keys(c).filter((key) => !pairs.has(key));
-    const removed = Object.keys(b).filter(
-      (key) => !Object.hasOwn(c, key) && pairs.has(key)
+    const removed = new Set(
+      Object.keys(b).filter((key) => !Object.hasOwn(c, key) && pairs.has(key))
     );
-    if ((added.length && removed.length) || removed.length === map.items.length)
-      return replace(map, mergeValue(map.toJSON(), b, c), inFlow);
+    // Every pair the source wrote goes: nothing stays to anchor an insert.
+    if (added.length > 0 && removed.size === map.items.length)
+      return replace(map, mergeValue(ownValue(map), b, c), inFlow);
     for (const [key, pair] of pairs) {
-      if (!Object.hasOwn(c, key)) continue;
+      if (!Object.hasOwn(c, key) || !Object.hasOwn(b, key)) continue;
       const value = pair.value as Node | null;
       if (value?.range) walk(value, b[key], c[key], inner);
       else if (!sameValue(b[key], c[key]))
-        return replace(map, mergeValue(map.toJSON(), b, c), inFlow);
+        return replace(map, mergeValue(ownValue(map), b, c), inFlow);
     }
     for (const key of removed) removePair(map, pairs.get(key)!, inner);
     const order = Object.keys(c);
+    const stays = (key: string) => pairs.has(key) && !removed.has(key);
+    const lastStaying = [...map.items]
+      .reverse()
+      .find((pair) => !removed.has(keyOf(pair) ?? ''));
     for (const key of added) {
       const at = order.indexOf(key);
-      const previous = order
-        .slice(0, at)
-        .reverse()
-        .find((earlier) => pairs.has(earlier));
-      const next = order.slice(at + 1).find((later) => pairs.has(later));
+      const previous = order.slice(0, at).reverse().find(stays);
+      const next = order.slice(at + 1).find(stays);
       insertPair(
         map,
         key,
@@ -225,7 +362,7 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
           ? { after: pairs.get(previous)! }
           : next
             ? { before: pairs.get(next)! }
-            : { after: map.items.at(-1) as Pair },
+            : { after: lastStaying as Pair },
         inner
       );
     }
@@ -244,11 +381,7 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
         ''
       );
     }
-    edit(
-      commentsAbove(keyStart),
-      Math.min(lineEnd(pairEnd(pair)) + 1, source.length),
-      ''
-    );
+    edit(commentsAbove(keyStart), throughLine(pairEnd(pair)), '');
   }
 
   function insertPair(
@@ -284,48 +417,82 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
   function walkSeq(seq: YAMLSeq, b: Json[], c: Json[], inFlow: boolean) {
     const inner = inFlow || seq.flow === true;
     const items = seq.items as (Node | null)[];
+    const whole = () => replace(seq, mergeValue(ownValue(seq), b, c), inFlow);
     if (items.length !== b.length || items.some((item) => !item?.range))
-      return replace(seq, mergeValue(seq.toJSON(), b, c), inFlow);
-    const shared = Math.min(b.length, c.length);
-    for (let i = 0; i < shared; i++) walk(items[i]!, b[i], c[i], inner);
-    if (c.length < b.length) {
-      if (c.length === 0) return replace(seq, [], inFlow);
-      for (let i = c.length; i < b.length; i++) {
-        const item = items[i]!;
-        if (inner) edit(endOf(items[i - 1]!), endOf(item), '');
-        else
-          edit(
-            lineStart(item.range![0]),
-            Math.min(lineEnd(endOf(item)) + 1, source.length),
-            ''
-          );
-      }
-    }
-    if (c.length > b.length) {
+      return whole();
+    const pairs = alignItems(b, c);
+    const steadyAt = steadyPairs(pairs);
+    const steady = pairs.filter((_, k) => steadyAt.has(k));
+    const stableNew = new Map(steady.map(([i, j]) => [j, i] as const));
+    const stableOld = new Set(steady.map(([i]) => i));
+    const movedFrom = new Map(pairs.map(([i, j]) => [j, i] as const));
+    const changesShape =
+      steady.length !== b.length || steady.length !== c.length;
+    // A flow sequence that only grew at its end gains its new items there;
+    // any other change of shape rewrites the one line whole.
+    if (changesShape && inner) {
+      const appended =
+        steady.length === b.length && steady.every(([i, j]) => i === j);
       const last = items.at(-1);
-      if (!last) return replace(seq, mergeValue(seq.toJSON(), b, c), inFlow);
-      const extra = c.slice(b.length);
-      if (inner)
-        return edit(
-          endOf(last),
-          endOf(last),
-          extra.map((v) => `, ${flow(v)}`).join('')
-        );
-      const indent = column(seq.range![0]);
-      const at = lineEnd(endOf(last));
-      edit(at, at, `\n${' '.repeat(indent)}${block(extra, indent)}`);
+      if (!appended || !last) return whole();
+      for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
+      const at = endOf(last);
+      return edit(
+        at,
+        at,
+        c
+          .slice(b.length)
+          .map((v) => `, ${flow(v)}`)
+          .join('')
+      );
+    }
+    if (steady.length === 0) return whole();
+    for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
+    if (!changesShape) return;
+    const dash = column(seq.range![0]);
+    for (let i = 0; i < b.length; i++) {
+      if (stableOld.has(i)) continue;
+      const item = items[i]!;
+      edit(
+        commentsAbove(lineStart(item.range![0]) + dash, dash),
+        throughLine(endOf(item)),
+        ''
+      );
+    }
+    const itemText = (j: number) => {
+      const from = movedFrom.get(j);
+      const value =
+        from === undefined
+          ? c[j]
+          : mergeValue(ownValue(items[from]!), b[from], c[j]);
+      return `${' '.repeat(dash)}${block([value], dash)}`;
+    };
+    // Each new item goes after the steady item before it, or before the first.
+    const firstSteady = items[steady[0][0]]!;
+    for (let j = 0; j < c.length; j++) {
+      if (stableNew.has(j)) continue;
+      let before = -1;
+      for (let k = j - 1; k >= 0; k--)
+        if (stableNew.has(k)) {
+          before = stableNew.get(k)!;
+          break;
+        }
+      if (before === -1) {
+        const at = commentsAbove(lineStart(firstSteady.range![0]) + dash, dash);
+        edit(at, at, `${itemText(j)}\n`);
+      } else {
+        const at = lineEnd(endOf(items[before]!));
+        edit(at, at, `\n${itemText(j)}`);
+      }
     }
   }
 
   walk(document.contents as Node, base, current, false);
+  for (const [alias, { value }] of aliasWrites) replace(alias, value, true);
   let out = source;
   for (const { start, end, text } of edits.sort(
     (x, y) => y.start - x.start || y.order - x.order
   ))
     out = out.slice(0, start) + text + out.slice(end);
   return out;
-}
-
-function render(value: Json): string {
-  return stringify(value);
 }

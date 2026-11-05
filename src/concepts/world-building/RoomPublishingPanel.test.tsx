@@ -24,6 +24,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1181,4 +1182,38 @@ it('the Canonical YAML paste cap admits the ceiling fixture', () => {
     name: 'Canonical YAML',
   }) as HTMLTextAreaElement;
   expect(textarea.maxLength).toBeGreaterThanOrEqual(ceiling.length);
+});
+
+describe('RoomPublishingPanel — a draft whose file is no longer held (rpg-project#857)', () => {
+  it('says so, and asks before a save writes the canonical encoding; cancel sends nothing', async () => {
+    renderPanel({ ...richDraft('room-abc123'), sourceRef: 'src-gone-1' });
+    expect(screen.getByTestId('source-lost').textContent).toMatch(
+      /no longer holds/
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Save without the file it was opened from',
+    });
+    expect(dialog.textContent).toMatch(/No save happened yet/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.queryByRole('alertdialog', {
+        name: 'Save without the file it was opened from',
+      })
+    ).toBeNull();
+    expect(rpc.gets).toHaveLength(0);
+    expect(savePuts()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Save without the file' })
+    );
+    // Confirmed: the save goes on to its key check.
+    await waitFor(() => expect(rpc.gets).toHaveLength(1));
+  });
+
+  it('a draft the studio made, or one whose file is held, asks nothing', () => {
+    renderPanel(richDraft('room-abc123'));
+    expect(screen.queryByTestId('source-lost')).toBeNull();
+  });
 });

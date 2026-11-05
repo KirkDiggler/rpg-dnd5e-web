@@ -10,13 +10,20 @@ import { parse } from 'yaml';
 import type { CreatureStates } from '../world-building/creatureStates';
 import { setDoorBindingState } from '../world-building/doorBindingEdits';
 import {
+  dungeonSourceLost,
+  forgetDungeonSources,
+} from '../world-building/dungeonSources';
+import {
   normalizeBinding,
   setMonsterFaction,
   setMonsterTemper,
 } from '../world-building/monsterOrderEdits';
 import { patchOption } from '../world-building/optionEdits';
+import type { RoomDraft } from '../world-building/roomDraft';
 import {
+  loadRoomDraft,
   parseRoomDocumentJson,
+  saveRoomDraft,
   stringifyRoomDraft,
 } from '../world-building/roomDraft';
 import {
@@ -330,6 +337,98 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
         (o: { id: string }) => o.id === 'troupe'
       )
     ).toMatchObject({ zz: 2, say: 'We play tonight.' });
+  });
+
+  describe('a placement list edit keeps each placement’s own fields (the review’s probe)', () => {
+    const moods = served
+      .replace(
+        '      - id: prisoner-3\n',
+        '      - id: prisoner-3\n        mood: three\n'
+      )
+      .replace(
+        '      - id: prisoner-4\n',
+        '      - id: prisoner-4\n        mood: four\n'
+      );
+    type Declared = RoomDraft['room']['monsterDeclarations'];
+    const exportWith = (edit: (declared: Declared) => Declared) => {
+      const result = read(moods);
+      const room = result.draft.room;
+      const declared = edit([...room.monsterDeclarations]);
+      const ids = new Set(declared.map((m) => m.id));
+      const bindings = Object.fromEntries(
+        Object.entries(room.monsterBindings ?? {}).filter(([id]) => ids.has(id))
+      );
+      const draft = {
+        ...result.draft,
+        room: {
+          ...room,
+          monsterDeclarations: declared,
+          monsterBindings: bindings,
+        },
+      };
+      const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
+      const placed = (
+        parse(saved).room.room.monsterDeclarations as {
+          id: string;
+          mood?: string;
+        }[]
+      ).filter((m) => m.id.startsWith('prisoner'));
+      return { saved, moods: placed.map((m) => `${m.id}:${m.mood ?? '-'}`) };
+    };
+
+    it('deleting prisoner-2 leaves prisoner-3 and prisoner-4 their own moods', () => {
+      const { saved, moods: placed } = exportWith((d) =>
+        d.filter((m) => m.id !== 'prisoner-2')
+      );
+      expect(placed).toEqual([
+        'prisoner-1:-',
+        'prisoner-3:three',
+        'prisoner-4:four',
+      ]);
+      expect(saved).not.toContain('id: prisoner-2\n');
+    });
+
+    it('a placement added at the front leaves every other its own fields', () => {
+      const { moods: placed } = exportWith((d) => [
+        { ...d.find((m) => m.id === 'prisoner-1')!, id: 'prisoner-0' },
+        ...d,
+      ]);
+      expect(placed).toEqual([
+        'prisoner-0:-',
+        'prisoner-1:-',
+        'prisoner-2:-',
+        'prisoner-3:three',
+        'prisoner-4:four',
+      ]);
+    });
+
+    it('reversing the placements moves each with its own fields', () => {
+      const { moods: placed } = exportWith((d) => [...d].reverse());
+      expect(placed).toEqual([
+        'prisoner-4:four',
+        'prisoner-3:three',
+        'prisoner-2:-',
+        'prisoner-1:-',
+      ]);
+    });
+  });
+
+  it('after a reload the draft finds its file in storage and still writes it back byte for byte', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+    };
+    const result = read(served);
+    expect(saveRoomDraft(storage, result.draft, result.scope)).toBeNull();
+    forgetDungeonSources();
+    expect(dungeonSourceLost(result.draft)).toBe(true);
+    const loaded = loadRoomDraft(storage, result.draft);
+    expect(loaded.error).toBeFalsy();
+    expect(dungeonSourceLost(loaded.value)).toBe(false);
+    expect(
+      exportDraftYaml({ draft: loaded.value, scope: loaded.scope }, result.key)
+    ).toBe(served);
   });
 
   it('the two authored post fields edit and export, and only their lines change', () => {

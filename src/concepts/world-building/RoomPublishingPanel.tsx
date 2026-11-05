@@ -192,6 +192,36 @@ export function RoomPublishingPanel({
         </p>
       )}
 
+      {publishing.sourceLost && (
+        <p className="wb-help" role="note" data-testid="source-lost">
+          This draft was opened from a file the studio no longer holds. Saving
+          writes the studio’s own encoding of it: the file’s comments, its
+          layout and any field the draft does not hold are not written back.
+          Open the file again to keep them.
+        </p>
+      )}
+      {publishing.sourceLossPending && (
+        <div
+          className="wb-confirm"
+          role="alertdialog"
+          aria-label="Save without the file it was opened from"
+        >
+          <span>
+            No save happened yet. Save the studio’s own encoding over the file
+            this draft was opened from?
+          </span>
+          <button
+            type="button"
+            disabled={publishing.busy}
+            onClick={() => void publishing.confirmSourceLoss()}
+          >
+            Save without the file
+          </button>
+          <button type="button" onClick={publishing.cancelSourceLoss}>
+            Cancel
+          </button>
+        </div>
+      )}
       {overwritePending && (
         <div
           className="wb-confirm"

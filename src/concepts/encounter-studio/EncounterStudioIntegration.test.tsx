@@ -2704,7 +2704,9 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(viewport().roomAuthoring?.doorBindings).toEqual(
       beforeRemoval.draft.room.doorBindings
     );
-  });
+    // About 8.5 s locally against the 15 s default; CI ran it past the default
+    // (the #1389 review), so it gets its own budget.
+  }, 30_000);
 
   it('populated selection/reflow, cancel, no-op, refusal and late epoch release create no wall history or writes', async () => {
     const original = rotatedSeed();

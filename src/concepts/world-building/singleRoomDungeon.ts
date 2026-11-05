@@ -11,6 +11,7 @@ import {
   type Scalar,
 } from 'yaml';
 import { documentRowLists, groupRefusals } from './bundles';
+import { dungeonSourceOf, rememberDungeonSource } from './dungeonSources';
 import {
   validateMonsterTemplates,
   type SiteTemplates,
@@ -178,37 +179,14 @@ function flowRegionRows(document: Document): void {
   }
 }
 
-/**
- * The files drafts were read from, by token (rpg-project#857). A draft read
- * from a file carries the file's token as `sourceRef`; the encoder splices
- * the studio's changes into that file, so what the studio does not author,
- * an unknown field or a comment, is written back as it was read. The token
- * is the text's own hash, so the same bytes read twice are the same draft.
- * In memory only: a draft restored from storage after a reload whose file is
- * no longer remembered writes the canonical encoding.
- */
-const sources = new Map<string, string>();
-/** The encoder's output for each remembered source as it was read. */
+/** The encoder's output for each remembered file as it was read, by token;
+ * bounded with the files themselves (`dungeonSources.ts`). */
 const bases = new Map<string, unknown>();
-
-function tokenOf(source: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < source.length; i++) {
-    hash ^= source.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `src-${(hash >>> 0).toString(16)}-${source.length}`;
-}
-
-/** Remember a file and answer the token a draft read from it carries. */
-export function rememberDungeonSource(source: string): string {
-  const token = tokenOf(source);
-  sources.set(token, source);
-  return token;
-}
 
 function baseOf(token: string, source: string): unknown {
   if (bases.has(token)) return bases.get(token);
+  for (const held of bases.keys())
+    if (dungeonSourceOf(held) === undefined) bases.delete(held);
   const read = decodeSingleRoomDungeon(source);
   const base = parse(
     encodeCanonical({
@@ -229,15 +207,11 @@ export function encodeSingleRoomDungeon(
 ): string {
   const canonical = encodeCanonical(input);
   const token = input.draft.sourceRef;
-  const source = token === undefined ? undefined : sources.get(token);
+  // A lost file is the caller's to announce (`dungeonSourceLost`): the
+  // publish panels ask before this canonical encoding is saved.
+  const source = dungeonSourceOf(token);
   if (token === undefined || source === undefined) return canonical;
-  let base: unknown;
-  try {
-    base = baseOf(token, source);
-  } catch {
-    return canonical;
-  }
-  return spliceYaml(source, base, parse(canonical));
+  return spliceYaml(source, baseOf(token, source), parse(canonical));
 }
 
 function withoutUnread(scope: SiteScope): SiteScope {
@@ -312,14 +286,21 @@ export type SingleRoomDungeonRead =
 
 import { documentStatePicks } from './creatureStates';
 
-export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
+export function readSingleRoomDungeon(
+  source: string,
+  /** Hold the file so its draft writes it back (`dungeonSources.ts`). A
+   * read that never saves, the play scene, passes false and keeps the
+   * studio's few held files for the studio. */
+  options: { remember?: boolean } = {}
+): SingleRoomDungeonRead {
   const root = parseSingleRoomSource(source);
   const version = root.version;
   if (typeof version !== 'number' || !Number.isFinite(version))
     throw new Error('Authored dungeon source is missing a numeric version.');
   if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
   const read = decodeSingleRoomRoot(root);
-  read.draft.sourceRef = rememberDungeonSource(source);
+  if (options.remember !== false)
+    read.draft.sourceRef = rememberDungeonSource(source);
   return { dialect: 'single-room', ...read };
 }
 

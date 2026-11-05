@@ -174,3 +174,145 @@ describe('sameValue and mergeValue', () => {
     ).toEqual({ a: 3, x: 9, c: 4 });
   });
 });
+
+describe('a sequence aligns its items before it walks them (rpg-project#857 review)', () => {
+  const list = `placements:
+  - id: one
+    q: 1
+  # the second, a hand edit
+  - id: two
+    q: 2
+  - id: three
+    q: 3
+    mood: three
+  - id: four
+    q: 4
+    mood: four
+`;
+  /** What the studio reads: no `mood`, which it does not author. */
+  const read = () =>
+    (parse(list) as { placements: Record<string, unknown>[] }).placements.map(
+      ({ id, q }) => ({ id, q })
+    );
+  const splicedTo = (placements: unknown[]) =>
+    spliceYaml(list, { placements: read() }, { placements });
+
+  it('a middle delete takes its own item and the comment above it, and no other item’s field moves', () => {
+    const [one, , three, four] = read();
+    expect(splicedTo([one, three, four])).toBe(
+      list.replace('  # the second, a hand edit\n  - id: two\n    q: 2\n', '')
+    );
+  });
+
+  it('a front insert goes before the first item, and the rest keep their fields', () => {
+    const out = splicedTo([{ id: 'zero', q: 0 }, ...read()]);
+    expect(out).toBe(`placements:\n  - id: zero\n    q: 0\n${list.slice(12)}`);
+  });
+
+  it('a reorder moves each item with its own fields', () => {
+    const out = parse(splicedTo([...read()].reverse())) as {
+      placements: Record<string, unknown>[];
+    };
+    expect(out.placements.map((p) => [p.id, p.mood])).toEqual([
+      ['four', 'four'],
+      ['three', 'three'],
+      ['two', undefined],
+      ['one', undefined],
+    ]);
+  });
+
+  it('an edit to a moved item lands on that item', () => {
+    const [one, two, three, four] = read();
+    const out = parse(splicedTo([four, { ...three, q: 30 }, one, two])) as {
+      placements: Record<string, unknown>[];
+    };
+    expect(out.placements).toEqual([
+      { id: 'four', q: 4, mood: 'four' },
+      { id: 'three', q: 30, mood: 'three' },
+      { id: 'one', q: 1 },
+      { id: 'two', q: 2 },
+    ]);
+  });
+
+  it('without ids, the longest common subsequence aligns them, and an edited item between two kept ones is that item', () => {
+    const rows = `rows:\n  - say: a\n  - say: b\n    tone: low\n  - say: c\n`;
+    const base = { rows: [{ say: 'a' }, { say: 'b' }, { say: 'c' }] };
+    expect(spliceYaml(rows, base, { rows: [{ say: 'a' }, { say: 'c' }] })).toBe(
+      'rows:\n  - say: a\n  - say: c\n'
+    );
+    expect(
+      spliceYaml(rows, base, {
+        rows: [{ say: 'a' }, { say: 'B' }, { say: 'c' }],
+      })
+    ).toBe(rows.replace('say: b', 'say: B'));
+  });
+
+  it('mergeValue aligns the same way', () => {
+    expect(
+      mergeValue(
+        [
+          { id: 'a', x: 1 },
+          { id: 'b', x: 2 },
+        ],
+        [{ id: 'a' }, { id: 'b' }],
+        [{ id: 'b' }, { id: 'c' }]
+      )
+    ).toEqual([{ id: 'b', x: 2 }, { id: 'c' }]);
+  });
+});
+
+describe('the splicer’s edges (rpg-project#857 review)', () => {
+  it('an empty value gains its space: `b:` edited is `b: 3`', () => {
+    const out = spliceYaml(
+      'a: 1\nb:\nc: 2\n',
+      { a: 1, b: null, c: 2 },
+      { a: 5, b: 3, c: 2 }
+    );
+    expect(out).toBe('a: 5\nb: 3\nc: 2\n');
+    expect(parse(out)).toEqual({ a: 5, b: 3, c: 2 });
+  });
+
+  it('a removed key takes the comment lines directly above it', () => {
+    const source = 'a: 1\n# about b\n# more about b\nb: 2\nc: 3\n';
+    expect(spliceYaml(source, { a: 1, b: 2, c: 3 }, { a: 1, c: 3 })).toBe(
+      'a: 1\nc: 3\n'
+    );
+  });
+
+  it('a map that gains and loses keys keeps the comments on the keys that stay', () => {
+    const source = 'm:\n  # keep me\n  a: 1\n  b: 2\n  z: 9\n';
+    const out = spliceYaml(
+      source,
+      { m: { a: 1, b: 2 } },
+      { m: { a: 1, c: 3 } }
+    );
+    expect(out).toBe('m:\n  # keep me\n  a: 1\n  c: 3\n  z: 9\n');
+  });
+
+  it('a map whose every written key goes is rewritten from its own value: the unread key stays', () => {
+    const out = spliceYaml(
+      'm:\n  a: 1\n  z: 9\n',
+      { m: { a: 1 } },
+      {
+        m: { c: 3 },
+      }
+    );
+    expect(parse(out)).toEqual({ m: { z: 9, c: 3 } });
+  });
+
+  it('an edit inside an anchored value is not shared with its aliases', () => {
+    const source = 'base: &b { hp: 1 }\nx: *b\n';
+    const out = spliceYaml(
+      source,
+      { base: { hp: 1 }, x: { hp: 1 } },
+      { base: { hp: 2 }, x: { hp: 1 } }
+    );
+    expect(parse(out)).toEqual({ base: { hp: 2 }, x: { hp: 1 } });
+    const aliasOnly = spliceYaml(
+      source,
+      { base: { hp: 1 }, x: { hp: 1 } },
+      { base: { hp: 1 }, x: { hp: 5 } }
+    );
+    expect(parse(aliasOnly)).toEqual({ base: { hp: 1 }, x: { hp: 5 } });
+  });
+});

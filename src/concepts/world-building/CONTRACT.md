@@ -69,8 +69,16 @@ unchanged.
 - **Byte for byte.** A draft read from a file carries its file's token
   (`sourceRef`), and `encodeSingleRoomDungeon` splices only the studio's
   changes into that file (`yamlSplice.ts`). An unedited Download or Save is the
-  file byte for byte, and an edit changes only its own lines. Without the file,
-  as after a reload, the canonical encoding still writes every carried field.
+  file byte for byte, and an edit changes only its own lines. A list aligns
+  its items before it is edited: by `id`, else by the longest common
+  subsequence, so a delete, an insert or a reorder moves no item's fields onto
+  another. An edit inside an anchored value is not shared with its aliases:
+  each alias the edit did not reach is written out as the value it had.
+- **The file survives a reload.** The file text is kept in storage beside the
+  draft (`DUNGEON_SOURCE_STORAGE_KEY`, `dungeonSources.ts`), and in memory for
+  the few most recently used files. A draft whose file is in neither says so
+  in the publish panels, and Save & Play asks once before it writes the
+  canonical encoding over that file. The play scene's reads hold nothing.
 - **The file alone keeps two kinds.** A field on the fixed play contract, and a
   key on a region's cell row (rows are rebuilt from cells). They are written
   back while that part is unchanged.

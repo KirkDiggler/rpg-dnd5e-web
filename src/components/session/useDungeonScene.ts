@@ -115,7 +115,7 @@ export function useDungeonScene(
       }
       if (!live) return;
       try {
-        const read = readSingleRoomDungeon(yaml);
+        const read = readSingleRoomDungeon(yaml, { remember: false });
         // Narrowed to the presentation fields on purpose, PLUS the
         // placement-id set surfaced at the render gate (rpg-dnd5e-web#1182).
         // The room rides along for ONE reason: the floor surface is sized from

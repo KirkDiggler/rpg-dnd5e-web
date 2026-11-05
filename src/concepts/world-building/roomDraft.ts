@@ -21,6 +21,7 @@ import {
   validateStates,
   type CreatureStates,
 } from './creatureStates';
+import { loadDungeonSource, saveDungeonSource } from './dungeonSources';
 import { requiresRead } from './predicateNot';
 import { fromRows, rowCellCount, toRows, type RoomCellRow } from './regionRuns';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
@@ -1877,7 +1878,10 @@ export function saveRoomDraft(
 ): string | null {
   try {
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft, scope));
-    return null;
+    // The file the draft was read from, beside it, so a reload finds it
+    // (rpg-project#857). A failure here leaves the draft saved and the
+    // source announced as lost.
+    return saveDungeonSource(storage, draft);
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -1945,6 +1949,7 @@ export function loadRoomDraft(
       const document = parseRoomDocumentJson(migrated.json, {
         requireMembers: false,
       });
+      loadDungeonSource(storage, document.draft);
       return {
         value: document.draft,
         scope: document.scope,

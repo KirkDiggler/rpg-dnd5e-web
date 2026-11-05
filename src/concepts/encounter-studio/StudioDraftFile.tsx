@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { dungeonSourceLost } from '../world-building/dungeonSources';
 import {
   exportDraftYaml,
   readDraftYaml,
@@ -89,7 +90,12 @@ export function StudioDraftFile({
     link.download = `${name}.yaml`;
     link.click();
     URL.revokeObjectURL(url);
-    setMessage({ text: `Exported ${name}.yaml`, refusal: false });
+    setMessage({
+      text: dungeonSourceLost(document.draft)
+        ? `Exported ${name}.yaml in the studio’s own encoding: the file this draft was opened from is no longer held, so its comments, layout and the fields the draft does not hold are not in it.`
+        : `Exported ${name}.yaml`,
+      refusal: false,
+    });
   };
 
   const choose = async (file: File): Promise<void> => {
