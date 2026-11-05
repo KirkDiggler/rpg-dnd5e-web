@@ -40,6 +40,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - **The round-1 splicer aligned list items by index.** A middle delete gave each later item its successor's values while it kept its own unread keys and comments, and the file still parsed. The reviewer's probe on the placements caught it. A mutant that pairs by index now fails six tests — [yamlSplice.test.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/b71cbdee76cce4757014c531db33a0cc3d1cddd6/src/concepts/world-building/yamlSplice.test.ts).
 - **An empty value, `b:`, was replaced against its colon** and wrote `b:3`, which does not parse. A zero-width value now gains its space — [yamlSplice.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/b71cbdee76cce4757014c531db33a0cc3d1cddd6/src/concepts/world-building/yamlSplice.ts).
 - **An edit inside an anchored map changed its aliases too.** Each untouched alias is now written out as the value it had — [yamlSplice.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/b71cbdee76cce4757014c531db33a0cc3d1cddd6/src/concepts/world-building/yamlSplice.ts).
+- **An insert and a removal in one flow row met at one byte** and garbled it (`{say: Let me think.nd5e:…`), found by the say-cue round trip after alignment. A flow map that gains and loses keys is now rewritten whole, and the splicer refuses any two edits that meet instead of writing them — [yamlSplice.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/blob/7d135ddd8eebdff115df1715dc6672044a73ae87/src/concepts/world-building/yamlSplice.ts).
 
 ## Mistaken
 
