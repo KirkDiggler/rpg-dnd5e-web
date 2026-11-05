@@ -294,6 +294,94 @@ describe('SkinnedAccessoryAttachment', () => {
     await renderer.unmount();
   });
 
+  it.each(['scalp', 'facial-hair'] as const)(
+    'keeps %s visible when picking runs before the first mounted frame, including replacements',
+    async (slot) => {
+      const body = makeBody();
+      body.root.position.set(10, 0, 10);
+      body.root.scale.setScalar(0.75);
+      // The body already delegates picking to the entity's static proxy.
+      body.mesh.raycast = () => {};
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1));
+      proxy.position.y = 1;
+      body.root.add(proxy);
+      body.root.updateMatrixWorld(true);
+
+      const sources = [FIRST_URL, SECOND_URL].map((url) => {
+        const source = makeAccessory(url);
+        source.geometry.copy(
+          new THREE.BoxGeometry(0.2, 0.2, 0.2).translate(0, 1.7, 0)
+        );
+        const count = source.geometry.getAttribute('position').count;
+        const indices = new Uint16Array(count * 4);
+        const weights = new Float32Array(count * 4);
+        for (let index = 0; index < count; index += 1) {
+          indices[index * 4] = 1; // Head in the accessory's subset skeleton.
+          weights[index * 4] = 1;
+        }
+        source.geometry.setAttribute(
+          'skinIndex',
+          new THREE.Uint16BufferAttribute(indices, 4)
+        );
+        source.geometry.setAttribute(
+          'skinWeight',
+          new THREE.Float32BufferAttribute(weights, 4)
+        );
+        return source;
+      });
+      const raycaster = new THREE.Raycaster(
+        new THREE.Vector3(10, 1.275, 15),
+        new THREE.Vector3(0, 0, -1)
+      );
+      const camera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+      camera.position.set(10, 1.275, 15);
+      camera.lookAt(10, 1.275, 10);
+      camera.updateMatrixWorld(true);
+      const frustum = new THREE.Frustum().setFromProjectionMatrix(
+        new THREE.Matrix4().multiplyMatrices(
+          camera.projectionMatrix,
+          camera.matrixWorldInverse
+        )
+      );
+      const attachment = (url: string) => (
+        <SkinnedAccessoryAttachment
+          characterRoot={body.root}
+          presentation={{ ...presentation(url), slot }}
+        />
+      );
+      const renderer = await ReactThreeTestRenderer.create(
+        attachment(FIRST_URL)
+      );
+      try {
+        for (const url of [FIRST_URL, SECOND_URL]) {
+          if (url === SECOND_URL) await renderer.update(attachment(url));
+          const mesh = body.root.getObjectByName(
+            `accessory:${url}`
+          ) as THREE.SkinnedMesh;
+
+          // Pointer events can arrive after commit but before the renderer
+          // updates the newly attached mesh's world/bind-inverse matrices.
+          const hits = raycaster.intersectObject(body.root, true);
+          const boundsAfterPicking = mesh.boundingSphere;
+          body.root.updateMatrixWorld(true);
+
+          expect(frustum.intersectsObject(mesh)).toBe(true);
+          expect(boundsAfterPicking).toBeNull();
+          expect(hits.some((hit) => hit.object === proxy)).toBe(true);
+          expect(raycaster.intersectObject(mesh)).toEqual([]);
+          expect(mesh.frustumCulled).toBe(true);
+        }
+        for (const source of sources) {
+          expect(source.mesh.boundingSphere).toBeNull();
+          expect(source.mesh.raycast).toBe(THREE.SkinnedMesh.prototype.raycast);
+          expect(source.mesh.parent).toBe(source.root);
+        }
+      } finally {
+        await renderer.unmount();
+      }
+    }
+  );
+
   it('publishes and mounts a pending attachment after it resolves in StrictMode', async () => {
     const body = makeBody();
     makeAccessory(FIRST_URL);
