@@ -73,13 +73,16 @@
  */
 import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AtlasPathIndex } from './atlasPath';
-import { findAtlasPath } from './atlasPath';
+import { findAtlasBump, findAtlasPath } from './atlasPath';
 
 export type MoveIndicatorSelection =
   | { kind: 'path'; path: CubeCoord[]; affordable: number }
   | { kind: 'invalid' }
   | { kind: 'locked' }
-  | { kind: 'target'; entityId: string };
+  | { kind: 'target'; entityId: string }
+  /** A blocking body a click walks up to and into (rpg-project#835 R8):
+   * the same path `useSessionWalk.bump` sends, ending on his cell. */
+  | { kind: 'bump'; path: CubeCoord[]; affordable: number; entityId: string };
 
 export interface SelectMoveIndicatorArgs {
   /** The floor cell currently under the cursor, or `null` when nothing is
@@ -100,6 +103,9 @@ export interface SelectMoveIndicatorArgs {
   /** True iff `hoveredEntityId` is available on the currently armed exact
    * declaration. Ignored when `hoveredEntityId` is unset. */
   attackable?: boolean;
+  /** True iff a click on `hoveredEntityId` is the bump (`targetClickIntent`).
+   * Ignored when `hoveredEntityId` is unset or `attackable` wins. */
+  bumpable?: boolean;
   /** Feet of movement left this turn — the MOVE declaration's `remaining`.
    * `undefined` when no budget applies; see this module's own doc comment. */
   budgetFeet?: number;
@@ -138,6 +144,7 @@ export function selectMoveIndicator(
     locked,
     hoveredEntityId,
     attackable,
+    bumpable,
     budgetFeet,
   } = args;
 
@@ -152,6 +159,17 @@ export function selectMoveIndicator(
   // nothing rather than a false 'invalid'. See this module's own doc
   // comment ("`null` means 'nothing to judge yet'").
   if (!from || !pathIndex) return null;
+
+  if (hoveredEntityId && bumpable) {
+    const bump = findAtlasBump(pathIndex, from, hovered);
+    if (bump.length === 0) return { kind: 'invalid' };
+    return {
+      kind: 'bump',
+      path: bump,
+      affordable: affordableCellCount(bump.length, budgetFeet),
+      entityId: hoveredEntityId,
+    };
+  }
 
   const path = findAtlasPath(pathIndex, from, hovered);
   if (path.length === 0) return { kind: 'invalid' };

@@ -389,6 +389,42 @@ export function findAtlasApproach(
   return [];
 }
 
+/**
+ * THE BUMP (rpg-project#835 R8): a path that walks up to a body and takes
+ * one more step INTO his cell. A click on a reachable body whose state
+ * blocks sends this; the server refuses the last step, writes the bump and
+ * his answer in the same Move, and the walk stops beside him. No new verb:
+ * the Move is the gesture.
+ *
+ * The path ends on his cell, and the cell before it is one from which the
+ * step in crosses no wall, shut door or held opening: only the body is in
+ * the way. Every other step is the ordinary first plan, so it never routes
+ * THROUGH another blocking body. `[]` when no such cell is reachable.
+ */
+export function findAtlasBump(
+  index: AtlasPathIndex,
+  start: CubeCoord,
+  target: CubeCoord
+): CubeCoord[] {
+  const startKey = coordToKey(start);
+  const targetKey = coordToKey(target);
+  if (!index.floor.has(startKey) || !index.floor.has(targetKey)) return [];
+  if (startKey === targetKey) return [];
+  const occupied = new Set(index.occupiedCells);
+  occupied.delete(targetKey);
+  const into = { ...index, occupiedCells: occupied };
+  const stepsIn = (coord: CubeCoord): boolean =>
+    hexDistance(coord, target) === 1 && edgePassable(into, coord, target);
+  if (stepsIn(start)) return [start, target];
+  const found = searchAtlas(
+    index,
+    start,
+    (coord, key) => stepsIn(coord) && !index.passThroughCells.has(key),
+    (coord) => Math.max(0, hexDistance(coord, target) - 1)
+  );
+  return found.path.length > 0 ? [...found.path, target] : [];
+}
+
 interface AtlasSearch {
   /** The path to the first goal cell, start included, or `[]`. */
   path: CubeCoord[];

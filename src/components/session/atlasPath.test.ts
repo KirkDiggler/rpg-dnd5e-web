@@ -23,6 +23,7 @@ import {
   buildAtlasPathIndex,
   edgePassable,
   findAtlasApproach,
+  findAtlasBump,
   findAtlasPath,
   INTERACTION_REACH,
   stepKey,
@@ -1238,5 +1239,58 @@ describe('a one-way hold plans shut only in the barred direction (rpg-project#85
     expect(
       plan([guard({ against: 'entering', remembered: true })])([0, 0], [0, 1])
     ).toEqual([key(0, 0), key(0, 1)]);
+  });
+});
+
+describe('findAtlasBump (rpg-project#835 R8)', () => {
+  const corridor = (length: number) => ({
+    cells: Array.from({ length }, (_, q) => pos(q, 0)),
+    boundaries: [],
+    doorways: [],
+    props: [],
+  });
+  const at = (q: number) => positionToCube(pos(q, 0));
+  const qs = (path: { x: number }[]) => path.map((cell) => cell.x);
+
+  it('walks up to a blocking body and one step into his cell', () => {
+    const index = buildAtlasPathIndex(
+      corridor(8),
+      undefined,
+      new Set([coordToKey(at(6))])
+    );
+    expect(findAtlasPath(index, at(0), at(6))).toEqual([]);
+    expect(qs(findAtlasBump(index, at(0), at(6)))).toEqual([
+      0, 1, 2, 3, 4, 5, 6,
+    ]);
+  });
+
+  it('beside him already, the bump is the one step in', () => {
+    const index = buildAtlasPathIndex(
+      corridor(4),
+      undefined,
+      new Set([coordToKey(at(3))])
+    );
+    expect(qs(findAtlasBump(index, at(2), at(3)))).toEqual([2, 3]);
+  });
+
+  it('never routes through another blocking body on the way', () => {
+    const index = buildAtlasPathIndex(
+      corridor(8),
+      undefined,
+      new Set([coordToKey(at(3)), coordToKey(at(6))])
+    );
+    expect(findAtlasBump(index, at(0), at(6))).toEqual([]);
+  });
+
+  it('a wall between him and the only cell beside him is no bump', () => {
+    const index = buildAtlasPathIndex(
+      {
+        ...corridor(4),
+        boundaries: [{ from: pos(2, 0), to: pos(3, 0), blocksMovement: true }],
+      } as never,
+      undefined,
+      new Set([coordToKey(at(3))])
+    );
+    expect(findAtlasBump(index, at(0), at(3))).toEqual([]);
   });
 });

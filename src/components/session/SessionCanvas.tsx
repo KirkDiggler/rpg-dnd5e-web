@@ -101,6 +101,7 @@ import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
+import { targetClickIntent } from './targetClickIntent';
 import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -225,6 +226,11 @@ export interface SessionCanvasProps {
    * it is the caller's; this component only owns the click. Absent, such a
    * click means nothing, as before. */
   onApproachClick?: (subject: string) => void;
+  /** Fires on the move picker when a click lands on a live body whose state
+   * blocks and that is neither attackable nor allied (rpg-project#835 R8):
+   * the caller walks up to him and into his cell (`findAtlasBump`), and the
+   * server stops the walk. Absent, such a click means nothing, as before. */
+  onBumpClick?: (subject: string) => void;
   /** An armed CELL cast owns creature clicks as cell placement. The creature's
    * observed `otherMembers` position routes through the same `onHexClick` seam
    * as exposed floor; MEMBER selection remains unchanged when false. */
@@ -356,6 +362,7 @@ export function SessionScene({
   onCancelSelection,
   onEntityClick,
   onApproachClick,
+  onBumpClick,
   cellAimEnabled = false,
   onHoverEntity,
   onMovementPainted,
@@ -518,35 +525,44 @@ export function SessionScene({
   // `onInteractClick` unconditionally — it is never an attack candidate, so
   // it would never appear in `attackableSet` and a click on it would
   // otherwise be silently swallowed by the gate below.
+  //
+  // Which branch a click takes is `targetClickIntent`'s. A remembered
+  // sighting is where the creature WAS: walking toward a memory is not an
+  // approach to anyone, nor a bump. CELL aiming selects a place, not a
+  // victim: it submits the sighting's position through the floor seam.
+  const bumpArmed = Boolean(onBumpClick) && movementPreviewEnabled;
   const handleTargetClick = useCallback(
     (subject: string) => {
       const observed = membersBySubject.get(subject);
-      if (memberTargeting) {
-        if (
-          !observed?.remembered &&
-          attackableSet.has(subject) &&
-          (observed || subject === characterId)
-        )
+      const intent = targetClickIntent({
+        observed,
+        isSelf: subject === characterId,
+        memberTargeting,
+        cellAim: cellAimEnabled,
+        attackable: attackableSet.has(subject),
+        approachArmed: Boolean(onApproachClick),
+        moveArmed: bumpArmed,
+      });
+      switch (intent) {
+        case 'select':
+        case 'attack':
           onEntityClick?.(subject);
-        return;
+          return;
+        case 'aim':
+          onHexClick?.(observed!.position);
+          return;
+        case 'interact':
+          onInteractClick?.(subject);
+          return;
+        case 'approach':
+          onApproachClick?.(subject);
+          return;
+        case 'bump':
+          onBumpClick?.(subject);
+          return;
+        case 'none':
+          return;
       }
-      if (cellAimEnabled && observed) {
-        // CELL aiming selects a place, not a victim. Use only the position in
-        // this viewer's sighting and submit it through the exact floor seam.
-        onHexClick?.(observed.position);
-        return;
-      }
-      if (observed?.kind === MemberKind.WORLD) {
-        onInteractClick?.(subject);
-        return;
-      }
-      if (attackableSet.has(subject)) {
-        onEntityClick?.(subject);
-        return;
-      }
-      // A remembered sighting is where the creature WAS; walking toward a
-      // memory is not an approach to anyone.
-      if (observed && !observed.remembered) onApproachClick?.(subject);
     },
     [
       membersBySubject,
@@ -558,6 +574,8 @@ export function SessionScene({
       onEntityClick,
       onApproachClick,
       onInteractClick,
+      onBumpClick,
+      bumpArmed,
     ]
   );
 
@@ -720,6 +738,22 @@ export function SessionScene({
   const hoveredEntityIsAttackable = hoveredEntityId
     ? attackableSet.has(hoveredEntityId)
     : false;
+  // The bump's hover (rpg-project#835 R8): the same decision the click
+  // makes, so the hint shows exactly where a click walks into him.
+  const hoveredMember = hoveredEntityId
+    ? membersBySubject.get(hoveredEntityId)
+    : undefined;
+  const hoveredEntityIsBumpable =
+    !!hoveredEntityId &&
+    targetClickIntent({
+      observed: hoveredMember,
+      isSelf: hoveredEntityId === characterId,
+      memberTargeting,
+      cellAim: cellAimEnabled,
+      attackable: hoveredEntityIsAttackable,
+      approachArmed: Boolean(onApproachClick),
+      moveArmed: bumpArmed,
+    }) === 'bump';
   // Attack hover remains its own orange target affordance. Every other floor
   // marker is prospective movement and therefore exists only while Move is
   // explicitly selected (or an exploration caller keeps the default enabled).
@@ -734,6 +768,7 @@ export function SessionScene({
     locked: turnLocked,
     hoveredEntityId,
     attackable: hoveredEntityIsAttackable,
+    bumpable: hoveredEntityIsBumpable,
     budgetFeet: movementBudgetFeet,
   });
 
@@ -842,6 +877,9 @@ export function SessionScene({
         selection={moveIndicatorSelection}
         hexSize={hexSize}
         hovered={moveIndicatorHovered}
+        bumpHint={
+          hoveredMember ? `Walk up to ${hoveredMember.name}` : undefined
+        }
       />
       <HexEntity
         entityId={characterId}

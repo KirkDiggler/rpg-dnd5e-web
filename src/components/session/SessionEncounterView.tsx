@@ -610,6 +610,7 @@ function SessionEncounterScope({
     busy: walking,
     walkTo,
     approach,
+    bump,
     onWalkAnimationComplete,
     moveError,
   } = useSessionWalk(
@@ -2263,6 +2264,16 @@ function SessionEncounterScope({
                               case: 'memberId',
                               value: subject,
                             })
+                        : undefined
+                    }
+                    onBumpClick={
+                      runEnded === null
+                        ? (subject: string) => {
+                            const body = revealedMembers.find(
+                              (m) => m.subject === subject
+                            );
+                            if (body) bump(body.position);
+                          }
                         : undefined
                     }
                     onHoverEntity={setHoveredTarget}
