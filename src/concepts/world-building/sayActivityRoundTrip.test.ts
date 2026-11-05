@@ -33,7 +33,12 @@ it('keeps a configured say cue through the actual Studio edit/export/reopen path
       activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
     },
   ]);
-  expect(reopened.draft).toEqual(opened.draft);
+  // The room is unchanged; only its file token differs, since the file did
+  // (rpg-project#857).
+  expect({ ...reopened.draft, sourceRef: undefined }).toEqual({
+    ...opened.draft,
+    sourceRef: undefined,
+  });
   expect(original.success).toEqual([
     { say: 'We yield.', fact: 'band-yielded' },
   ]);

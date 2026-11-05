@@ -29,7 +29,11 @@ import {
   validateSiteScope,
   type SiteScope,
 } from './siteScope';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import {
+  carriesUnknownFields,
+  objectShape,
+  rejectUnknownKeys,
+} from './strictShape';
 import {
   validateStructuralWalls,
   type StructuralWall,
@@ -363,6 +367,12 @@ export interface RoomDraft {
   };
   scene: WorldScene;
   room: RoomGameplayData;
+  /** The file this draft was read from, as a token
+   * (`singleRoomDungeon.ts`, rpg-project#857): its export splices the
+   * studio's changes into that file, so what the studio does not author is
+   * written back as read. Absent on a draft the studio made. Never written
+   * into the dungeon file. */
+  sourceRef?: string;
 }
 /**
  * What a renderer needs to draw an authored room, and nothing else: the
@@ -1210,6 +1220,7 @@ function validateMonsterBindings(
           `Monster binding for ${id} ${key}: ${retiredBindingKeyRefusal(key)}`
         );
     }
+    const written = Object.keys(block).length;
     rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
     const parsed: RoomMonsterBinding = {};
     if (Object.hasOwn(block, 'faction')) {
@@ -1332,11 +1343,16 @@ function validateMonsterBindings(
       parsed.dropActions === undefined &&
       parsed.options === undefined &&
       parsed.arrives === undefined &&
-      parsed.holds === undefined
-    )
+      parsed.holds === undefined &&
+      parsed.states === undefined
+    ) {
+      // Only fields the studio does not author: carried by the file, not a
+      // binding the studio edits (rpg-project#857).
+      if (carriesUnknownFields() && written > 0) continue;
       throw new Error(
         `Monster binding for ${id} declares no bindings; omit the binding instead.`
       );
+    }
     bindings[id] = parsed;
   }
   return bindings;
@@ -1534,9 +1550,11 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
     );
   rejectUnknownKeys(
     input as Record<string, unknown>,
-    ['version', 'id', 'name', 'coordinateFrame', 'scene', 'room'],
+    ['version', 'id', 'name', 'coordinateFrame', 'scene', 'room', 'sourceRef'],
     'Room draft'
   );
+  if (Object.hasOwn(input, 'sourceRef') && typeof input.sourceRef !== 'string')
+    throw new Error('Room draft sourceRef must be text.');
   const frame = objectShape(input.coordinateFrame, 'Room coordinate frame');
   validateCoordinateFrame(frame);
   rejectUnknownKeys(

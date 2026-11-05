@@ -43,8 +43,9 @@ import { GetDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RoomDraft } from './roomDraft';
 import {
-  decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
+  readSingleRoomDungeon,
+  type decodeSingleRoomDungeon,
 } from './singleRoomDungeon';
 import { renderScope, scopeFrom, type SiteScope } from './siteScope';
 
@@ -559,7 +560,14 @@ export function useRoomPublishing({
   const importYaml = useCallback((text: string): boolean => {
     let decoded: ReturnType<typeof decodeSingleRoomDungeon>;
     try {
-      decoded = decodeSingleRoomDungeon(text);
+      // The reader, so unknown fields are carried and the file is remembered
+      // for the next save (rpg-project#857).
+      const read = readSingleRoomDungeon(text);
+      if (read.dialect === 'other')
+        throw new Error(
+          `this is a version ${read.version} dungeon, the multi-room dialect`
+        );
+      decoded = read;
     } catch (err) {
       setError(
         `Could not import this canonical YAML: ${

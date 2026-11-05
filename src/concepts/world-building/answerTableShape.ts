@@ -100,6 +100,7 @@ import {
   OPTION_REQUIRES_FORMS,
   type OptionRequires,
 } from './predicateNot';
+import { carriesUnknownFields } from './strictShape';
 
 /** One cell of the room, as its walkable hexes are written: axial. */
 export interface AnswerCellShape {
@@ -315,7 +316,9 @@ function validateAnswerActivity(
 ): AnswerActivityShape {
   if (!isMapping(value)) fail(path, 'expected a mapping');
   for (const key of Object.keys(value)) {
-    if (key !== 'ref' && key !== 'cycles') fail(path, `unknown key "${key}"`);
+    if (key === 'ref' || key === 'cycles') continue;
+    if (carriesUnknownFields()) delete value[key];
+    else fail(path, `unknown key "${key}"`);
   }
   if (typeof value.ref !== 'string' || value.ref.length === 0)
     fail(`${path}.ref`, 'expected a nonempty activity reference');
@@ -471,6 +474,12 @@ function validateAnswerEntry(
     // patrol is `toward: { path }`, and an author who wrote `patrol` meant it.
     if (key === 'patrol')
       fail(`${path}.patrol`, HEARING_SENTENCES.patrol(SINGLE_ROOM_CELL_FORMS));
+    // A dungeon file's word this build does not read is carried
+    // (rpg-project#857).
+    if (carriesUnknownFields()) {
+      delete value[key];
+      continue;
+    }
     const meant = suggestKey(key, ENTRY_KEYS);
     fail(
       path,
@@ -827,6 +836,10 @@ function validateWhenCondition(
     // the one declaration rather than listed again. The sentence is Go's own
     // strict-field text, because that is what the server would say.
     if (ANSWER_WHEN.bodyKeys.includes(bodyKey)) continue;
+    if (carriesUnknownFields()) {
+      delete body[bodyKey];
+      continue;
+    }
     fail(
       `${path}.${key}.${bodyKey}`,
       `field ${bodyKey} not found in type dungeonspec.withinSpec`
@@ -874,6 +887,10 @@ function validateHeard(
   if (!isMapping(value)) fail(path, HEARING_SENTENCES.heardShape());
   for (const key of Object.keys(value)) {
     if (ANSWER_WHEN.heardBodyKeys.includes(key)) continue;
+    if (carriesUnknownFields()) {
+      delete value[key];
+      continue;
+    }
     fail(`${path}.${key}`, HEARING_SENTENCES.heardUnknownKey(key));
   }
   const kind =
@@ -1008,8 +1025,11 @@ function validateAnswerSelector(
     const route: AnswerWaypointShape[] = [];
     let offsetWaypoint = false;
     for (const key of Object.keys(value)) {
-      if (!SELECTOR_MAPPING_KEYS.includes(key))
-        fail(path, unknownSelectorKeyRefusal(key));
+      if (!SELECTOR_MAPPING_KEYS.includes(key)) {
+        if (!carriesUnknownFields()) fail(path, unknownSelectorKeyRefusal(key));
+        delete value[key];
+        continue;
+      }
       if (key === ANSWER_AT_SELECTOR.key && hasAt && isMapping(rawAt))
         at = hexCell(rawAt, `${path}.at`);
       if (key === ANSWER_PATH_SELECTOR.key)
@@ -1054,8 +1074,12 @@ function hexCell(
   path: string
 ): AnswerCellShape {
   for (const key of Object.keys(value)) {
-    if (key !== 'q' && key !== 'r')
-      fail(path, `field ${key} not found in type dungeonspec.RoomCell`);
+    if (key !== 'q' && key !== 'r') {
+      if (!carriesUnknownFields())
+        fail(path, `field ${key} not found in type dungeonspec.RoomCell`);
+      delete value[key];
+      continue;
+    }
     const n = value[key];
     if (typeof n !== 'number' || !Number.isInteger(n))
       fail(path, `a cell's ${key} must be an integer`);
@@ -1259,8 +1283,9 @@ export function validateOptions(
         'an option is { id, say, check } plus what it requires and answers'
       );
     for (const key of Object.keys(raw)) {
-      if (!OPTION_KEYS.includes(key))
-        fail(at, `field ${key} not found in type dungeonspec.OptionSpec`);
+      if (OPTION_KEYS.includes(key)) continue;
+      if (carriesUnknownFields()) delete raw[key];
+      else fail(at, `field ${key} not found in type dungeonspec.OptionSpec`);
     }
 
     if (raw.id !== undefined && raw.id !== null && typeof raw.id !== 'string')
@@ -1328,8 +1353,9 @@ function validateApproaches(
     const at = `${path}[${index}]`;
     if (!isMapping(raw)) fail(at, 'an approach is { ability, dc, tool }');
     for (const key of Object.keys(raw)) {
-      if (!APPROACH_KEYS.includes(key))
-        fail(at, `field ${key} not found in type dungeonspec.ApproachSpec`);
+      if (APPROACH_KEYS.includes(key)) continue;
+      if (carriesUnknownFields()) delete raw[key];
+      else fail(at, `field ${key} not found in type dungeonspec.ApproachSpec`);
     }
     if (
       raw.ability !== undefined &&

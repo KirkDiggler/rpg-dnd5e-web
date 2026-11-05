@@ -34,33 +34,6 @@ import stackCastleYaml from './fixtures/stack-sites/the-mad-king.yaml?raw';
 import theftWalkYaml from './fixtures/stack-sites/theft-walk.yaml?raw';
 import castleYaml from './fixtures/the-mad-king.yaml?raw';
 
-/** A row list the studio carries heaviest first (R12): a table's trigger
- * and an option's verdict. */
-const SORTED_ROW_KEYS = new Set(['time', 'success', 'failure']);
-
-/** The source as the studio's ordering law writes it: rows heaviest first,
- * equal weights in authored order. Nothing else is touched. */
-function heaviestFirstDeep(value: unknown, key?: string): unknown {
-  if (Array.isArray(value)) {
-    const items = value.map((item) => heaviestFirstDeep(item));
-    if (key === undefined || !SORTED_ROW_KEYS.has(key)) return items;
-    return items
-      .map((row, index) => ({ row, index }))
-      .sort(
-        (a, b) =>
-          (((b.row as { weight?: number }).weight ?? 1) as number) -
-            (((a.row as { weight?: number }).weight ?? 1) as number) ||
-          a.index - b.index
-      )
-      .map(({ row }) => row);
-  }
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, heaviestFirstDeep(v, k)])
-    );
-  return value;
-}
-
 /** Every difference between two parsed files, by path. */
 function differences(a: unknown, b: unknown, path = ''): string[] {
   if (Array.isArray(a) && Array.isArray(b)) {
@@ -94,14 +67,10 @@ function differences(a: unknown, b: unknown, path = ''): string[] {
 }
 
 const SITES: readonly [string, string, readonly string[]][] = [
-  // The castle's empty `mapLabels: []` is the studio's "none", which it
-  // writes as absent (the draft's own law for an empty list).
-  [
-    'the toolkit castle (web fixture)',
-    castleYaml,
-    ['.room.scene.mapLabels: dropped'],
-  ],
-  ['the-mad-king (stack)', stackCastleYaml, ['.room.scene.mapLabels: dropped']],
+  // An unedited download is the file it opened (rpg-project#857): the
+  // castle's empty `mapLabels: []` is no longer dropped.
+  ['the toolkit castle (web fixture)', castleYaml, []],
+  ['the-mad-king (stack)', stackCastleYaml, []],
   ['gate-walk', gateWalkYaml, []],
   ['ally-walk', allyWalkYaml, []],
   ['survivors-walk', survivorsWalkYaml, []],
@@ -138,9 +107,9 @@ describe('the stack’s sites open in the studio and Download writes them back (
       const saved = parse(
         exportDraftYaml({ draft: read.draft, scope: read.scope }, read.key)
       );
-      expect(differences(heaviestFirstDeep(parse(text)), saved)).toEqual(
-        expected
-      );
+      // Compared with the file as written, not re-sorted heaviest first: an
+      // unedited download is the file's own bytes (rpg-project#857).
+      expect(differences(parse(text), saved)).toEqual(expected);
     }
   );
 

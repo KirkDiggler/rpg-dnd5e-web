@@ -12,16 +12,47 @@
  * is untouched and the words stay in one place.
  */
 
-/** Structurally exact records only: unknown-invalid fields are refused, not
- * dropped or reinterpreted as valid data. Arrays are never mapping shapes. */
+let carrying = 0;
+
+/**
+ * THE STUDIO LOADS WHATEVER THE ENGINE RUNS (rpg-project#857, Kirk: "if it
+ * runs, we should load it"): the dungeonspec compiler is the validator;
+ * fields the studio does not author are preserved, never refused.
+ *
+ * Inside `carryUnknownFields`, the dungeon file's decode, an unknown key is
+ * set aside from the freshly parsed value instead of refused: the decoded
+ * model holds only what the studio authors, and the export splices the
+ * studio's changes into the file as it was read (`yamlSplice.ts`), so the
+ * set-aside bytes are written back untouched. Outside it, the studio's own
+ * workspace and storage formats stay exact.
+ */
+export function carryUnknownFields<T>(read: () => T): T {
+  carrying++;
+  try {
+    return read();
+  } finally {
+    carrying--;
+  }
+}
+
+/** Whether a dungeon file is being read, where unknown keys are carried. */
+export function carriesUnknownFields(): boolean {
+  return carrying > 0;
+}
+
+/** Structurally exact records only: outside a dungeon file's decode an
+ * unknown field is refused, not dropped or reinterpreted as valid data.
+ * Inside one it is set aside for the export to keep (`carryUnknownFields`).
+ * Arrays are never mapping shapes. */
 export function rejectUnknownKeys(
   value: Record<string, unknown>,
   allowed: readonly string[],
   label: string
 ): void {
   for (const key of Object.keys(value)) {
-    if (!allowed.includes(key))
-      throw new Error(`${label} has an unsupported field: ${key}.`);
+    if (allowed.includes(key)) continue;
+    if (carrying) delete value[key];
+    else throw new Error(`${label} has an unsupported field: ${key}.`);
   }
 }
 

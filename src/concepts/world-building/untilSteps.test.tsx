@@ -9,6 +9,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import castleYaml from '../encounter-studio/fixtures/stack-sites/the-mad-king.yaml?raw';
 import { dispositionLine } from './predicateSentence';
@@ -82,7 +83,8 @@ describe('until steps (rpg-project#717)', () => {
     const reopened = readDraftYaml(saved);
     if (!reopened.ok) throw new Error(reopened.refusal);
     expect(reopened.scope.dispositions?.[0]?.until).toEqual(until);
-    expect(saved).toMatch(/until:\n\s+- fact: veteran-joined\n\s+then: allied/);
+    // Spliced into the file in its own style (rpg-project#857): read the value.
+    expect(parse(saved).dispositions[0].until).toEqual(until);
   });
 
   it('takes an allied pair whose steps name a then', () => {

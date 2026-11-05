@@ -57,7 +57,11 @@ import {
   type SiteTemplates,
 } from './monsterTemplates';
 import { NOT_OF_NOT_REFUSAL } from './predicateNot';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import {
+  carriesUnknownFields,
+  objectShape,
+  rejectUnknownKeys,
+} from './strictShape';
 
 /** A faction id has the same grammar as the room key: lower-case, digits,
  * dashes. `party` is never declared — it is the players' side — and the
@@ -792,8 +796,9 @@ export function validateSiteBundles(value: unknown): SiteBundles {
     if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as pursuer');
     if (!isMapping(body)) fail(path, 'must be { params, rows }');
     for (const key of Object.keys(body)) {
-      if (key !== 'params' && key !== 'rows')
-        fail(path, `unknown key "${key}" — a bundle is { params, rows }`);
+      if (key === 'params' || key === 'rows') continue;
+      if (carriesUnknownFields()) delete body[key];
+      else fail(path, `unknown key "${key}" — a bundle is { params, rows }`);
     }
     const bundle: SiteBundle = { rows: [] };
     if (body.params !== undefined && body.params !== null) {

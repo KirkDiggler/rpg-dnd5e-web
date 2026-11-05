@@ -1,3 +1,6 @@
+# SYNCED FIXTURE (rpg-project#857): rpg-api hold-the-gate-s1c-api content/the-mad-king.yaml
+# at commit be7e83f, git blob 5fdd6b041ede5fb5d5e632e5a34dfc65c00d118a.
+# Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
 # two endings, authored as ONE studio document: one file, one run, rooms

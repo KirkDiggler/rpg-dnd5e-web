@@ -5,6 +5,7 @@ import {
   isPair,
   isScalar,
   isSeq,
+  parse,
   parseDocument,
   visit,
   type Scalar,
@@ -42,6 +43,8 @@ import {
   type SiteScenarios,
   type SiteTables,
 } from './siteScope';
+import { carriesUnknownFields, carryUnknownFields } from './strictShape';
+import { spliceYaml } from './yamlSplice';
 
 export interface EncodeSingleRoomDungeonInput {
   templates?: SiteTemplates;
@@ -173,9 +176,76 @@ function flowRegionRows(document: Document): void {
   }
 }
 
+/**
+ * The files drafts were read from, by token (rpg-project#857). A draft read
+ * from a file carries the file's token as `sourceRef`; the encoder splices
+ * the studio's changes into that file, so what the studio does not author,
+ * an unknown field or a comment, is written back as it was read. The token
+ * is the text's own hash, so the same bytes read twice are the same draft.
+ * In memory only: a draft restored from storage after a reload whose file is
+ * no longer remembered writes the canonical encoding.
+ */
+const sources = new Map<string, string>();
+/** The encoder's output for each remembered source as it was read. */
+const bases = new Map<string, unknown>();
+
+function tokenOf(source: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < source.length; i++) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `src-${(hash >>> 0).toString(16)}-${source.length}`;
+}
+
+/** Remember a file and answer the token a draft read from it carries. */
+export function rememberDungeonSource(source: string): string {
+  const token = tokenOf(source);
+  sources.set(token, source);
+  return token;
+}
+
+function baseOf(token: string, source: string): unknown {
+  if (bases.has(token)) return bases.get(token);
+  const read = carryUnknownFields(() => decodeSingleRoomDungeon(source));
+  const base = parse(
+    encodeCanonical({
+      key: read.key,
+      draft: read.draft,
+      ...renderScope(scopeFrom(read)),
+    })
+  );
+  bases.set(token, base);
+  return base;
+}
+
+/** The document's bytes. A draft read from a file writes that file back with
+ * only the studio's changes spliced in (`spliceYaml`); a draft the studio
+ * made writes the canonical encoding. */
 export function encodeSingleRoomDungeon(
   input: EncodeSingleRoomDungeonInput
 ): string {
+  const canonical = encodeCanonical(input);
+  const token = input.draft.sourceRef;
+  const source = token === undefined ? undefined : sources.get(token);
+  if (token === undefined || source === undefined) return canonical;
+  let base: unknown;
+  try {
+    base = baseOf(token, source);
+  } catch {
+    return canonical;
+  }
+  return spliceYaml(source, base, parse(canonical));
+}
+
+function withoutSourceRef(draft: RoomDraft): RoomDraft {
+  if (!Object.hasOwn(draft, 'sourceRef')) return draft;
+  const rest = { ...draft };
+  delete rest.sourceRef;
+  return rest;
+}
+
+function encodeCanonical(input: EncodeSingleRoomDungeonInput): string {
   if (!input.key || typeof input.key !== 'string')
     throw new Error('Dungeon key must be non-empty.');
   const draft = validateRoomDocument({
@@ -202,7 +272,8 @@ export function encodeSingleRoomDungeon(
     // `renderScope` writes them in `SCOPE_KEYS`' order — the root's own — and
     // is the one place the list lives (rpg-dnd5e-web#1201).
     ...renderScope(scope),
-    room: draft.draft,
+    // The draft's source token is the studio's, never the file's.
+    room: withoutSourceRef(draft.draft),
   });
   flowRegionRows(document);
   return document.toString({ flowCollectionPadding: false });
@@ -238,7 +309,9 @@ export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
   if (typeof version !== 'number' || !Number.isFinite(version))
     throw new Error('Authored dungeon source is missing a numeric version.');
   if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
-  return { dialect: 'single-room', ...decodeSingleRoomRoot(root) };
+  const read = carryUnknownFields(() => decodeSingleRoomRoot(root));
+  read.draft.sourceRef = rememberDungeonSource(source);
+  return { dialect: 'single-room', ...read };
 }
 
 /** Whether a number scalar is written as a float: the engine's yaml.v3
@@ -301,15 +374,19 @@ function parseSingleRoomSource(source: string): Record<string, unknown> {
 export function decodeSingleRoomDungeon(
   source: string
 ): DecodeSingleRoomDungeonResult {
-  return decodeSingleRoomRoot(parseSingleRoomSource(source));
+  // A dungeon file: what this build does not read is carried (rpg-project#857).
+  return carryUnknownFields(() =>
+    decodeSingleRoomRoot(parseSingleRoomSource(source))
+  );
 }
 
 function decodeSingleRoomRoot(
   root: Record<string, unknown>
 ): DecodeSingleRoomDungeonResult {
   for (const key of Object.keys(root)) {
-    if (!ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number]))
-      throw new Error(`Unsupported single-room field: ${key}.`);
+    if (ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number])) continue;
+    if (carriesUnknownFields()) delete root[key];
+    else throw new Error(`Unsupported single-room field: ${key}.`);
   }
   const version = root.version;
   if (version === 3 || version === 4)
@@ -325,8 +402,9 @@ function decodeSingleRoomRoot(
   if (!isPlainObject(play))
     throw new Error('Unsupported single-room play contract.');
   for (const key of Object.keys(play)) {
-    if (!PLAY_KEYS.includes(key))
-      throw new Error(`Unsupported single-room play field: ${key}.`);
+    if (PLAY_KEYS.includes(key)) continue;
+    if (carriesUnknownFields()) delete play[key];
+    else throw new Error(`Unsupported single-room play field: ${key}.`);
   }
   for (const [field, expected] of Object.entries(PLAY_CONTRACT)) {
     if (play[field] !== expected)

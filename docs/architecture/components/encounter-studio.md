@@ -28,6 +28,15 @@ toolkit can derive templates from every monster offered in a UI list. The
 rulebook template-base registry is distinct from its monster constructors. Do not
 repair a rejected template by silently changing its base.
 
+## The studio loads whatever the engine runs
+
+The studio loads whatever the engine runs: the dungeonspec compiler is the
+validator; fields the studio does not author are preserved, never refused
+(rpg-project#857). A dungeon file's unknown keys are set aside on read and the
+export splices only the studio's changes into the file as read, so an
+unedited Download or Save is byte-identical and an edit changes only its own
+lines (`world-building/yamlSplice.ts`).
+
 ## Creature state recipes
 
 Creature Behaviour and Factions share `StatesEditor`: the canonical `states:`
@@ -47,8 +56,8 @@ A state may carry a post (rpg-project#836, #852, #857): `blocks: true`, and
 them: a blocks toggle, a door from the site's wall-bound and bound doors, the
 post cells as `{ q, r }`, `against` (both, the default, writes no word), and
 the pass fact. The server judges the door, the cells and the pass. A state
-field or a `holds` field this codec does not read is carried as written, so a
-document a newer server serves still imports. States and transitions keep the
+field or a `holds` field this codec does not read is carried as written, in the
+draft as well as in the file. States and transitions keep the
 author's key order, so an untouched recipe writes back exactly as it was read.
 
 An option without `check` is a plain line, not an empty check. Its success rows
