@@ -35,6 +35,22 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     ['afford', 'turn', 'where'],
   ],
   [
+    'own bump',
+    act(Family.ACT, {
+      case: 'barred',
+      value: { mover: me, barrier: them, cell: { x: 3, y: 1 } },
+    }),
+    ['where', 'afford'],
+  ],
+  [
+    'their bump',
+    act(Family.ACT, {
+      case: 'barred',
+      value: { mover: them, barrier: me, cell: { x: 3, y: 1 } },
+    }),
+    [],
+  ],
+  [
     'their walk',
     act(Family.ACT, { case: 'walk', value: { mover: them } }),
     ['view'],

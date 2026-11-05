@@ -16,6 +16,8 @@ import {
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { buildActStory } from './actStory';
+import * as bump from './bumpActs.fixture';
 import { CombatExperience } from './CombatExperience';
 import { standingActionsBlocked } from './standingActions';
 import type {
@@ -1555,5 +1557,49 @@ describe('a companion on the party’s side of the turn order (rpg-project#733)'
     expect(entryFor('the veteran').getAttribute('title')).not.toContain(
       'with the party'
     );
+  });
+});
+
+describe('the guard’s answer to a bump speaks at him on the map (rpg-project#842)', () => {
+  it('hands the map his line while its notice shows, and no tooltip', () => {
+    const viewer = bump.ALICE.id;
+    const bumpStory = buildActStory(
+      [bump.walkToTheGate, bump.bumpTheGuard, bump.theGuardAnswers].map(
+        (a) => ({
+          act: a,
+          index: 0,
+          seq: 1n,
+          source: 'live' as const,
+          visible: true,
+        })
+      ),
+      { viewerMember: viewer, memberNames: { 'gate-1': 'Gate Guard' } }
+    );
+    const props = propsFor(fresh, {
+      viewerMember: viewer,
+      streamState: 'live',
+      storyFeedback: { scopeKey: 'bump' },
+      renderMap: ({ speech }) => (
+        <div data-testid="map-speech">
+          {[...(speech ?? new Map())].map(([who, line]) => (
+            <p key={who}>{`${who}: ${line}`}</p>
+          ))}
+        </div>
+      ),
+    });
+    const view = render(<CombatExperience {...props} story={[]} />);
+    expect(screen.getByTestId('map-speech').textContent).toBe('');
+    view.rerender(<CombatExperience {...props} story={bumpStory} />);
+    expect(screen.getByTestId('map-speech').textContent).toBe(
+      `gate-1: ${bump.LINE}`
+    );
+    expect(screen.getByTestId('story-notices').textContent).toContain(
+      bump.LINE
+    );
+    // The bump itself raises no notice: the walk's stop line is its own.
+    expect(screen.getByTestId('story-notices').textContent).not.toContain(
+      'bars the way'
+    );
+    view.unmount();
   });
 });

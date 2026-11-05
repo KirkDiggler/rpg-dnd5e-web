@@ -51,6 +51,8 @@ vi.mock('@react-three/drei', () => {
       names: [],
       mixer: new THREE.AnimationMixer(new THREE.Group()),
     }),
+    // DOM overlays (a speech line, a target label) are not scene nodes.
+    Html: () => null,
   };
 });
 
@@ -119,6 +121,28 @@ describe('remembered entities are inert', () => {
       await renderer.unmount();
     }
   );
+  it.each([
+    ['a live creature speaks above itself', undefined, false, 1],
+    ['a remembered one does not', 'remembered' as const, false, 0],
+    ['a ghost does not', undefined, true, 0],
+  ])('%s (rpg-project#842)', async (_, knowledgeState, isGhost, count) => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        knowledgeState={knowledgeState}
+        isGhost={isGhost}
+        speech="Whoa there, buddy."
+      />
+    );
+    expect(
+      renderer.scene.findAll(
+        (node) => node.props.name === 'entity-speech-goblin-1'
+      )
+    ).toHaveLength(count);
+    await renderer.unmount();
+  });
   it('gives a remembered monster no pointer handlers at all', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <HexEntity

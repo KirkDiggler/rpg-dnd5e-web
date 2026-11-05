@@ -36,6 +36,7 @@ export function ActFamilyForm({
     case 'drop':
     case 'equip':
     case 'stay':
+    case 'barred':
       rolled = false;
       break;
     case 'tableAnswer':

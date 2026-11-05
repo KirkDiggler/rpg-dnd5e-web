@@ -320,6 +320,9 @@ export interface SessionCanvasProps {
   /** Optional presentation-only R3F layer. Concepts use this to prove
    * temporary world-space effects without teaching SessionCanvas game rules. */
   presentationLayer?: ReactNode;
+  /** Who is saying which line right now, by member id, drawn above them as
+   * speech (rpg-project#842). Presentation only: the story notices decide it. */
+  speech?: ReadonlyMap<string, string>;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -374,6 +377,7 @@ export function SessionScene({
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
+  speech,
   compositionSource,
 }: SessionCanvasProps) {
   const pickingBounds = useMemo(
@@ -842,6 +846,7 @@ export function SessionScene({
       <HexEntity
         entityId={characterId}
         targetMarker={targetMarkerFor(characterId)}
+        speech={speech?.get(characterId)}
         onClick={memberTargeting ? handleTargetClick : undefined}
         onPointerOver={memberTargeting ? setMeshHoveredSubject : undefined}
         onPointerOut={
@@ -893,6 +898,7 @@ export function SessionScene({
           key={member.subject}
           entityId={member.subject}
           targetMarker={targetMarkerFor(member.subject, member.remembered)}
+          speech={speech?.get(member.subject)}
           name={member.name}
           position={member.position}
           movePath={movements?.get(member.subject)?.route}

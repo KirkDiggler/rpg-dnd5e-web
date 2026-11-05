@@ -210,6 +210,12 @@ export interface CombatExperienceMapRenderProps {
    * such a click means nothing, as before.
    */
   onApproachClick?: (target: SpeakTarget) => void;
+  /**
+   * Who is saying which line right now, by member id: a creature's answer
+   * that speaks to the viewer, for as long as its notice shows
+   * (`speechAtSpeakers`, rpg-project#842). The map draws it above them.
+   */
+  speech?: ReadonlyMap<string, string>;
 }
 
 interface CombatExperienceBaseProps {

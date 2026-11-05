@@ -19,6 +19,9 @@
  * | `answer-to-your-line` | "a line spoken to you", as changed by |
  * |                       | the operator: a creature's answer to  |
  * |                       | your own line                         |
+ * | `answer-to-your-bump` | the line a barrier says when you walk |
+ * |                       | into him (rpg-project#842, R2): his   |
+ * |                       | answer under your bump's act tag      |
  *
  * `own-speech` and `speech-to-you` keep primary lines in view; `heard-sound`
  * is a secondary cue for the observer only. A discovery remains log-only.
@@ -42,6 +45,7 @@ export type ToastCase =
   | 'fight-formed'
   | 'fight-ended'
   | 'answer-to-your-line'
+  | 'answer-to-your-bump'
   | 'own-speech'
   | 'speech-to-you'
   | 'heard-sound';
@@ -72,6 +76,7 @@ export function actorOf(act: Act): Party | undefined {
   const body = act.body;
   switch (body.case) {
     case 'walk':
+    case 'barred':
       return body.value.mover;
     case 'stay':
       return body.value.member;
@@ -182,21 +187,31 @@ function windowFor(act: Act, member: string): boolean {
  * `inFight` is whether a fight is formed once this act has landed; a toast
  * fired then holds. `lineSpokenBy` is who spoke the line this act answers,
  * when it is a speak's own table answer (the same act tag as the line).
+ * `bump` is the bump under this act's tag, when one landed before it: who
+ * walked into whom (rpg-project#842).
  */
 export function toastFor(
   act: Act,
   member: string,
   inFight: boolean,
-  lineSpokenBy?: string
+  lineSpokenBy?: string,
+  bump?: Bump
 ): ToastRule | null {
-  const matched = toastCase(act, member, lineSpokenBy);
+  const matched = toastCase(act, member, lineSpokenBy, bump);
   return matched ? { case: matched, hold: inFight } : null;
+}
+
+/** A bump under an act tag: who walked into whom. */
+export interface Bump {
+  readonly mover: string;
+  readonly barrier: string;
 }
 
 function toastCase(
   act: Act,
   member: string,
-  lineSpokenBy: string | undefined
+  lineSpokenBy: string | undefined,
+  bump: Bump | undefined
 ): ToastCase | null {
   if (act.refused || !member) return null;
   switch (act.family) {
@@ -235,8 +250,16 @@ function toastCase(
     case Family.TABLE_ANSWER:
       // A table pick never toasts; only a creature's answer to the viewer's
       // own line does (the operator's change to "a line spoken to you").
-      return act.verb === 'speak' && lineSpokenBy === member
-        ? 'answer-to-your-line'
+      if (act.verb === 'speak' && lineSpokenBy === member)
+        return 'answer-to-your-line';
+      // The line a barrier says to the viewer who bumped him: speech, under
+      // the bump's own act tag. A word with no line is a pick, not speech.
+      return bump?.mover === member &&
+        act.body.case === 'tableAnswer' &&
+        !act.body.value.dealt &&
+        Boolean(act.body.value.say) &&
+        act.body.value.who?.id === bump.barrier
+        ? 'answer-to-your-bump'
         : null;
     default:
       return null; // perception: what one observer saw is not news

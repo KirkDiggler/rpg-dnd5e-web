@@ -86,6 +86,13 @@ export function recentEventIdentity(
       return result('Sneak', EyeOff);
     case 'rest':
       return result('Rest', Moon);
+    case 'barred':
+      // Who barred, not who bumped: the barrier is the news.
+      return result(
+        'Barred',
+        Hand,
+        partyName(body.value.barrier, context) || 'Unknown actor'
+      );
     case 'tableAnswer':
       return result(
         'Answer',

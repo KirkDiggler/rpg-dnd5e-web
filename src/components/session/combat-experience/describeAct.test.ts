@@ -183,6 +183,17 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
     ),
     'Gate Guard: "No."',
   ],
+  barred: [
+    act(
+      Family.ACT,
+      {
+        case: 'barred',
+        value: { mover: alice, barrier: gate, cell: { x: 4, y: 2 } },
+      },
+      'move'
+    ),
+    'Gate Guard bars the way',
+  ],
   state: [
     act(Family.STATE, {
       case: 'state',
@@ -674,6 +685,31 @@ describe('the run ending in the story (rpg-project#733)', () => {
   it('names only the ending when it declares no result, as an old run does', () => {
     expect(describeAct(ended('captain-slain'), context)?.detail).toBe(
       'captain slain'
+    );
+  });
+});
+
+describe('a bump (rpg-project#842)', () => {
+  it('a step bump names the barrier and where the mover stopped short', () => {
+    const line = describeAct(EVERY_BODY.barred![0], context)!;
+    expect(line.text).toBe(
+      'Gate Guard bars the way — Alice stops short of (4, 2)'
+    );
+    expect(line.eyebrow).toBe('Barred');
+    expect(formatRollFormula(EVERY_BODY.barred![0], context)).toBe('');
+  });
+
+  it('a door bump names the door and no cell', () => {
+    const door = act(
+      Family.ACT,
+      {
+        case: 'barred',
+        value: { mover: alice, barrier: gate, door: 'gate-wall-door' },
+      },
+      'door'
+    );
+    expect(describeAct(door, context)?.text).toBe(
+      'Gate Guard bars the door — Alice at the gate wall door'
     );
   });
 });
