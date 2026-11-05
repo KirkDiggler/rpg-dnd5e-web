@@ -1,8 +1,8 @@
 /**
  * A bump as the act stream delivered it (rpg-project#842), recorded from the
  * real wire (`bumpActs.recorded.json`): in castle free roam the sandbox
- * fighter walks into the gate guard on his post, then tries the gate door he
- * holds. Each bump's acts share its verb's act tag, as GetStory returned
+ * fighter clicks the gate guard on his post (rpg-project#835 R8, a Move whose
+ * goal is his cell), then tries the gate door he holds. Each bump's acts share its verb's act tag, as GetStory returned
  * them to the member who bumped:
  *
  * - the Move: the walk's last steps, the `barred` act (the step refused into
@@ -38,11 +38,11 @@ const answer = (key: string) => (a: Act) =>
 const voice = (verb: string) => (a: Act) =>
   a.body.case === 'perception' && a.verb === verb;
 
-export const MOVE_TAG = 'move:01M6PNBCE741DAYER9B9FNGBN7';
-export const DOOR_TAG = 'open_door:01M6PNC4B419FNG190TSAGREW1';
+export const MOVE_TAG = 'move:01M6PQE7VH7EXF27EZ6A274QWN';
+export const DOOR_TAG = 'open_door:01M6PQFGAY6G474300TDHXG8CS';
 export const ALICE = {
   kind: PartyKind.MEMBER,
-  id: 'char_eb0b190e-d173-46de-bf59-676b8c7189ae',
+  id: 'char_ae557118-9ef5-4d7e-940b-ce983b05363b',
 };
 export const GATE = { kind: PartyKind.MEMBER, id: 'gate-1' };
 /** His `barred` row. */

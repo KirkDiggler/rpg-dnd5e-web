@@ -1,10 +1,10 @@
 {
-  "recorded": "rpg-api 2943eab3 (encounter d610e5d6, session 2ca8601f) on the hold stack, castle free roam, 2026-11-05: a step bump into gate-1 and a refused OpenDoor on the gate he holds, as GetStory returned them to the bumping member",
+  "recorded": "rpg-api e7a815c2 (session f2b208f5) on the hold stack, castle free roam, 2026-11-05, as GetStory returned them to the bumping member: the R8 click on gate-1 in the web (a Move whose goal is his cell), then a refused OpenDoor on the gate he holds.",
   "acts": [
     {
-      "id": "01M6PNBCJ90B44B0XWNGM6T44E",
+      "id": "01M6PQE80Y2J2G51V11J47NK3G",
       "at": "2",
-      "act": "move:01M6PNBCE741DAYER9B9FNGBN7",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
       "family": "FAMILY_ACT",
       "segment": 2,
@@ -12,7 +12,7 @@
       "walk": {
         "mover": {
           "kind": "PARTY_KIND_MEMBER",
-          "id": "char_eb0b190e-d173-46de-bf59-676b8c7189ae"
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
         "path": [
           {
@@ -38,9 +38,9 @@
       }
     },
     {
-      "id": "01M6PNBCJX47Z1FVNDCRG0Q1AP",
+      "id": "01M6PQE81M6EPFJ75E2Z5A30EW",
       "at": "2",
-      "act": "move:01M6PNBCE741DAYER9B9FNGBN7",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
       "family": "FAMILY_ACT",
       "segment": 3,
@@ -48,7 +48,7 @@
       "barred": {
         "mover": {
           "kind": "PARTY_KIND_MEMBER",
-          "id": "char_eb0b190e-d173-46de-bf59-676b8c7189ae"
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
         "barrier": {
           "kind": "PARTY_KIND_MEMBER",
@@ -61,9 +61,9 @@
       }
     },
     {
-      "id": "01M6PNBCJY0J5YJ93803ETNZHG",
+      "id": "01M6PQE81N36CTF7XH81SMAGEF",
       "at": "2",
-      "act": "move:01M6PNBCE741DAYER9B9FNGBN7",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
       "family": "FAMILY_STATE",
       "runEnd": true,
@@ -81,9 +81,9 @@
       }
     },
     {
-      "id": "01M6PNBCJZ0MVPKXC9WFEKEKV6",
+      "id": "01M6PQE81Q4YHXD4EHVFN69A9S",
       "at": "2",
-      "act": "move:01M6PNBCE741DAYER9B9FNGBN7",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
       "family": "FAMILY_TABLE_ANSWER",
       "runEnd": true,
@@ -94,20 +94,20 @@
         },
         "key": "barred",
         "say": "Whoa there, buddy. Can I help you?",
-        "temperament": "soldier"
+        "temperament": "coward"
       }
     },
     {
-      "id": "01M6PNBCK00Q2SBZPFP3W4AW3Z",
+      "id": "01M6PQE81S2R8QCFXXRN2CQ5CB",
       "at": "2",
-      "act": "move:01M6PNBCE741DAYER9B9FNGBN7",
+      "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
       "family": "FAMILY_PERCEPTION",
       "runEnd": true,
       "perception": {
         "observer": {
           "kind": "PARTY_KIND_MEMBER",
-          "id": "char_eb0b190e-d173-46de-bf59-676b8c7189ae"
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
         "sense": "SENSE_HEARING",
         "heard": {
@@ -120,9 +120,9 @@
       }
     },
     {
-      "id": "01M6PNC4B419FNG190TSCFNPRY",
+      "id": "01M6PQFGAZ6E9VM657ZWEQQKZK",
       "at": "2",
-      "act": "open_door:01M6PNC4B419FNG190TSAGREW1",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
       "verb": "open_door",
       "family": "FAMILY_ACT",
       "segment": 1,
@@ -130,7 +130,7 @@
       "barred": {
         "mover": {
           "kind": "PARTY_KIND_MEMBER",
-          "id": "char_eb0b190e-d173-46de-bf59-676b8c7189ae"
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
         "barrier": {
           "kind": "PARTY_KIND_MEMBER",
@@ -140,9 +140,9 @@
       }
     },
     {
-      "id": "01M6PNC4B92WCR3BXPGTMYX7XF",
+      "id": "01M6PQFGB35QBP11HR3SRWDMSS",
       "at": "2",
-      "act": "open_door:01M6PNC4B419FNG190TSAGREW1",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
       "verb": "open_door",
       "family": "FAMILY_TABLE_ANSWER",
       "runEnd": true,
@@ -153,20 +153,20 @@
         },
         "key": "challenged",
         "say": "I said, can I help you?",
-        "temperament": "soldier"
+        "temperament": "coward"
       }
     },
     {
-      "id": "01M6PNC4BA35DXW89PKF286MAC",
+      "id": "01M6PQFGB42DWPGQANPHG6NGX6",
       "at": "2",
-      "act": "open_door:01M6PNC4B419FNG190TSAGREW1",
+      "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
       "verb": "open_door",
       "family": "FAMILY_PERCEPTION",
       "runEnd": true,
       "perception": {
         "observer": {
           "kind": "PARTY_KIND_MEMBER",
-          "id": "char_eb0b190e-d173-46de-bf59-676b8c7189ae"
+          "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
         "sense": "SENSE_HEARING",
         "heard": {
