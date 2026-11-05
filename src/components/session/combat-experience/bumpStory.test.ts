@@ -6,6 +6,7 @@ import { buildActStory } from './actStory';
 import {
   bumpTheDoor,
   bumpTheGuard,
+  GATE,
   LINE,
   theGuardAnswers,
   theGuardAnswersAtTheDoor,
@@ -84,6 +85,36 @@ describe('the bump and the guard’s answer (rpg-project#842)', () => {
     const elsewhere = { ...theGuardAnswers, act: 'move:id-99' } as Act;
     const rows = story([walkToTheGate, bumpTheGuard, elsewhere]);
     expect(rows.at(-1)?.toastRule).toBeUndefined();
+  });
+
+  it('another creature answering under the bump’s tag does not speak to her', () => {
+    const other = {
+      ...theGuardAnswers,
+      id: 'id-13',
+      body: {
+        case: 'tableAnswer',
+        value: {
+          ...theGuardAnswers.body.value,
+          who: { ...GATE, id: 'gate-2' },
+        },
+      },
+    } as Act;
+    const rows = story([walkToTheGate, bumpTheGuard, other]);
+    expect(rows.find((r) => r.act?.id === 'id-13')?.toastRule).toBeUndefined();
+    expect(speechAtSpeakers(rows)).toEqual(new Map());
+  });
+
+  it('his answer with a word and no line stays a pick: no toast, no speech', () => {
+    const pick = {
+      ...theGuardAnswers,
+      body: {
+        case: 'tableAnswer',
+        value: { ...theGuardAnswers.body.value, say: '' },
+      },
+    } as Act;
+    const rows = story([walkToTheGate, bumpTheGuard, pick]);
+    expect(rows.find((r) => r.act?.id === 'id-12')?.toastRule).toBeUndefined();
+    expect(speechAtSpeakers(rows)).toEqual(new Map());
   });
 
   it('the bump ends her walk stretch in the log, at her stop', () => {
