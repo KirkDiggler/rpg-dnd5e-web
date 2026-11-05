@@ -81,7 +81,6 @@ import {
   unknownDeedRefusal,
   unknownEnemyBandRefusal,
   unknownScopeRefusal,
-  unknownSelectorKeyRefusal,
   unknownSelectorRefusal,
   unknownThreatRefusal,
   unknownTriggerRefusal,
@@ -100,7 +99,7 @@ import {
   OPTION_REQUIRES_FORMS,
   type OptionRequires,
 } from './predicateNot';
-import { carriesUnknownFields } from './strictShape';
+import { carriedCopy, carryUnknownKeys } from './strictShape';
 
 /** One cell of the room, as its walkable hexes are written: axial. */
 export interface AnswerCellShape {
@@ -315,11 +314,6 @@ function validateAnswerActivity(
   path: string
 ): AnswerActivityShape {
   if (!isMapping(value)) fail(path, 'expected a mapping');
-  for (const key of Object.keys(value)) {
-    if (key === 'ref' || key === 'cycles') continue;
-    if (carriesUnknownFields()) delete value[key];
-    else fail(path, `unknown key "${key}"`);
-  }
   if (typeof value.ref !== 'string' || value.ref.length === 0)
     fail(`${path}.ref`, 'expected a nonempty activity reference');
   if (
@@ -329,7 +323,10 @@ function validateAnswerActivity(
     value.cycles > 4294967295
   )
     fail(`${path}.cycles`, 'expected a whole number from 1 through 4294967295');
-  return { ref: value.ref, cycles: value.cycles };
+  return carryUnknownKeys(value, ['ref', 'cycles'], {
+    ref: value.ref,
+    cycles: value.cycles,
+  });
 }
 
 /** `search`'s body as written: `{}`, `{ distance: N }`, `{ heading: H }` or
@@ -474,17 +471,8 @@ function validateAnswerEntry(
     // patrol is `toward: { path }`, and an author who wrote `patrol` meant it.
     if (key === 'patrol')
       fail(`${path}.patrol`, HEARING_SENTENCES.patrol(SINGLE_ROOM_CELL_FORMS));
-    // A dungeon file's word this build does not read is carried
-    // (rpg-project#857).
-    if (carriesUnknownFields()) {
-      delete value[key];
-      continue;
-    }
-    const meant = suggestKey(key, ENTRY_KEYS);
-    fail(
-      path,
-      `unknown key "${key}"${meant ? ` — did you mean "${meant}"?` : ''}`
-    );
+    // Any other word this build does not read is carried on the entry
+    // (rpg-project#857); the engine judges it.
   }
 
   if (value.activity === null) fail(`${path}.activity`, 'expected a mapping');
@@ -619,7 +607,7 @@ function validateAnswerEntry(
       fail(path, HEARING_SENTENCES.soundWithoutHeard());
   }
 
-  return entry;
+  return carryUnknownKeys(value, ENTRY_KEYS, entry);
 }
 
 /** The words a group row may NOT carry, in `behavior.Answer.words`' order:
@@ -683,7 +671,7 @@ function validateUseEntry(
     if (!ANSWER_AS_WORDS.includes(as)) fail(path, GROUP_SENTENCES.asWord(as));
     entry.as = as;
   }
-  return entry;
+  return carryUnknownKeys(value, ENTRY_KEYS, entry);
 }
 
 /**
@@ -831,20 +819,8 @@ function validateWhenCondition(
   const body = value[key];
   if (!isMapping(body)) fail(path, missingSpanRefusal(key));
 
-  for (const bodyKey of Object.keys(body)) {
-    // `within`, `on` and `as` are the three keys the engine decodes, read from
-    // the one declaration rather than listed again. The sentence is Go's own
-    // strict-field text, because that is what the server would say.
-    if (ANSWER_WHEN.bodyKeys.includes(bodyKey)) continue;
-    if (carriesUnknownFields()) {
-      delete body[bodyKey];
-      continue;
-    }
-    fail(
-      `${path}.${key}.${bodyKey}`,
-      `field ${bodyKey} not found in type dungeonspec.withinSpec`
-    );
-  }
+  // `within`, `on` and `as` are the keys the engine decodes, read from the
+  // one declaration; any other key is carried, in place (rpg-project#857).
 
   const within = body.within;
   if (within === undefined || within === null)
@@ -871,6 +847,8 @@ function validateWhenCondition(
   const ordered: Record<string, unknown> = {};
   for (const bodyKey of Object.keys(body))
     if (read[bodyKey] !== undefined) ordered[bodyKey] = read[bodyKey];
+    else if (!ANSWER_WHEN.bodyKeys.includes(bodyKey))
+      ordered[bodyKey] = carriedCopy(body[bodyKey]);
   return { [key]: ordered } as AnswerWhenCondition;
 }
 
@@ -885,14 +863,7 @@ function validateHeard(
   wrap: (sentence: string) => string
 ): AnswerWhenHeard {
   if (!isMapping(value)) fail(path, HEARING_SENTENCES.heardShape());
-  for (const key of Object.keys(value)) {
-    if (ANSWER_WHEN.heardBodyKeys.includes(key)) continue;
-    if (carriesUnknownFields()) {
-      delete value[key];
-      continue;
-    }
-    fail(`${path}.${key}`, HEARING_SENTENCES.heardUnknownKey(key));
-  }
+  // A key this build does not read is carried (rpg-project#857).
   const kind =
     value.kind === undefined || value.kind === null
       ? ''
@@ -922,7 +893,7 @@ function validateHeard(
   if (kind === '') fail(rowPath, wrap(HEARING_SENTENCES.heardNoKind()));
   if (within < ANSWER_WHEN.minimumWithin)
     fail(rowPath, wrap(HEARING_SENTENCES.heardSpan(within)));
-  return { kind, within };
+  return carryUnknownKeys(value, ANSWER_WHEN.heardBodyKeys, { kind, within });
 }
 
 /** WHOSE deed a condition is about — `on: ally`, `as: actor`, or `undefined`
@@ -1025,11 +996,8 @@ function validateAnswerSelector(
     const route: AnswerWaypointShape[] = [];
     let offsetWaypoint = false;
     for (const key of Object.keys(value)) {
-      if (!SELECTOR_MAPPING_KEYS.includes(key)) {
-        if (!carriesUnknownFields()) fail(path, unknownSelectorKeyRefusal(key));
-        delete value[key];
-        continue;
-      }
+      // A key this build does not read is carried (rpg-project#857).
+      if (!SELECTOR_MAPPING_KEYS.includes(key)) continue;
       if (key === ANSWER_AT_SELECTOR.key && hasAt && isMapping(rawAt))
         at = hexCell(rawAt, `${path}.at`);
       if (key === ANSWER_PATH_SELECTOR.key)
@@ -1057,9 +1025,10 @@ function validateAnswerSelector(
     if (route.length > 0) {
       if (!walksTo(word))
         fail(rowPathOf(path, word), HEARING_SENTENCES.pathNotToward(word));
-      return { path: route };
+      return carryUnknownKeys(value, SELECTOR_MAPPING_KEYS, { path: route });
     }
-    if (at !== null) return { at };
+    if (at !== null)
+      return carryUnknownKeys(value, SELECTOR_MAPPING_KEYS, { at });
     fail(rowPathOf(path, word), HEARING_SENTENCES.namesNoTarget(word));
   }
   fail(path, selectorShapeRefusal(SINGLE_ROOM_CELL_FORMS));
@@ -1074,12 +1043,8 @@ function hexCell(
   path: string
 ): AnswerCellShape {
   for (const key of Object.keys(value)) {
-    if (key !== 'q' && key !== 'r') {
-      if (!carriesUnknownFields())
-        fail(path, `field ${key} not found in type dungeonspec.RoomCell`);
-      delete value[key];
-      continue;
-    }
+    // A key this build does not read is carried (rpg-project#857).
+    if (key !== 'q' && key !== 'r') continue;
     const n = value[key];
     if (typeof n !== 'number' || !Number.isInteger(n))
       fail(path, `a cell's ${key} must be an integer`);
@@ -1090,7 +1055,10 @@ function hexCell(
   }
   // Written q then r, the order the engine's fixture and the room's own
   // walkable hexes use, so the bytes re-emit in that order.
-  return { q: value.q as number, r: value.r as number };
+  return carryUnknownKeys(value, ['q', 'r'], {
+    q: value.q as number,
+    r: value.r as number,
+  });
 }
 
 /** The engine's `decodeWaypoint` and the dialect's waypoint checks
@@ -1188,7 +1156,7 @@ export const OPTION_VERDICTS = ['success', 'failure'] as const;
 export type OptionVerdict = (typeof OPTION_VERDICTS)[number];
 
 /** Every key an option reads — `optionKeys` in `dungeonspec/spec.go`. */
-const OPTION_KEYS: readonly string[] = Object.freeze([
+export const OPTION_KEYS: readonly string[] = Object.freeze([
   'id',
   'say',
   'check',
@@ -1196,7 +1164,7 @@ const OPTION_KEYS: readonly string[] = Object.freeze([
   ...OPTION_VERDICTS,
 ]);
 /** Every key an approach reads — `approachKeys` in `dungeonspec/spec.go`. */
-const APPROACH_KEYS: readonly string[] = Object.freeze([
+export const APPROACH_KEYS: readonly string[] = Object.freeze([
   'ability',
   'tool',
   'dc',
@@ -1283,9 +1251,8 @@ export function validateOptions(
         'an option is { id, say, check } plus what it requires and answers'
       );
     for (const key of Object.keys(raw)) {
+      // A key this build does not read is carried (rpg-project#857).
       if (OPTION_KEYS.includes(key)) continue;
-      if (carriesUnknownFields()) delete raw[key];
-      else fail(at, `field ${key} not found in type dungeonspec.OptionSpec`);
     }
 
     if (raw.id !== undefined && raw.id !== null && typeof raw.id !== 'string')
@@ -1335,7 +1302,7 @@ export function validateOptions(
         })
       );
     }
-    return option;
+    return carryUnknownKeys(raw, OPTION_KEYS, option);
   });
 }
 
@@ -1353,9 +1320,8 @@ function validateApproaches(
     const at = `${path}[${index}]`;
     if (!isMapping(raw)) fail(at, 'an approach is { ability, dc, tool }');
     for (const key of Object.keys(raw)) {
+      // A key this build does not read is carried (rpg-project#857).
       if (APPROACH_KEYS.includes(key)) continue;
-      if (carriesUnknownFields()) delete raw[key];
-      else fail(at, `field ${key} not found in type dungeonspec.ApproachSpec`);
     }
     if (
       raw.ability !== undefined &&
@@ -1374,7 +1340,7 @@ function validateApproaches(
       if (typeof raw.tool !== 'string') fail(`${at}.tool`, 'expected a string');
       approach.tool = raw.tool;
     }
-    return approach;
+    return carryUnknownKeys(raw, APPROACH_KEYS, approach);
   });
 }
 

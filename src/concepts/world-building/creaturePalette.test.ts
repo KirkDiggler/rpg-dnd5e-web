@@ -128,9 +128,17 @@ describe('editor creature palette', () => {
     [{ ...recipe, name: '' }],
     [{ ...recipe, ref: 'dnd5e:props:scroll' }],
     [{ ...recipe, modelRef: '' }],
-    [{ ...recipe, startingCell: { q: 0, r: 0 } }],
-    [{ ...recipe, hp: 20 }],
   ])('refuses malformed recipes without substituting data: %j', (value) => {
     expect(() => validateCreaturePalette(value)).toThrow();
   });
+  // A key the palette does not read is carried now, not refused
+  // (rpg-project#857).
+  it.each([[{ startingCell: { q: 0, r: 0 } }], [{ hp: 20 }]])(
+    'carries a key it does not read: %j',
+    (extra) => {
+      expect(validateCreaturePalette([{ ...recipe, ...extra }])).toEqual([
+        { ...recipe, ...extra },
+      ]);
+    }
+  );
 });

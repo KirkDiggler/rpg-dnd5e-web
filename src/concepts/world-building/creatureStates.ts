@@ -4,7 +4,12 @@
 import { ANSWER_WHEN, RETIRED_TRIGGER_KEYS } from '@/author/answerVocabulary';
 import type { RoomMonsterBinding } from './roomDraft';
 import type { SiteScope } from './siteScope';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import {
+  carriedCopy as carried,
+  carryUnknownKeys,
+  objectShape,
+  putOwn as put,
+} from './strictShape';
 
 export type StateCondition =
   | { enemy: 'seen' | 'remembered' | 'none' }
@@ -15,6 +20,8 @@ export type StateAct =
   | { wake_in: number }
   | { anchor: true };
 export interface StateTransition {
+  /** A transition field a newer server added: kept as written, never read. */
+  [future: string]: unknown;
   on: string;
   when?: StateCondition;
   within?: number;
@@ -36,7 +43,8 @@ export type PostDirection = (typeof POST_DIRECTIONS)[number];
 export interface StateHolds {
   door: string;
   at?: { q: number; r: number }[];
-  against?: PostDirection;
+  /** Empty, as absent, reads as both. */
+  against?: PostDirection | '';
   pass?: string;
   /** A field a newer server added: kept as written, never read. */
   [future: string]: unknown;
@@ -51,6 +59,17 @@ export interface CreatureState {
    * document the server serves always imports (rpg-project#857). */
   [future: string]: unknown;
 }
+/** The transition fields this codec reads; any other is carried verbatim. */
+export const TRANSITION_FIELDS = [
+  'on',
+  'when',
+  'within',
+  'regions',
+  'rounds',
+  'to',
+  'do',
+  'reason',
+] as const;
 /** The state fields this codec reads; any other is carried verbatim. */
 export const STATE_FIELDS = [
   'terminal',
@@ -88,24 +107,13 @@ function count(value: unknown, path: string): number {
 }
 function cell(value: unknown, path: string): { q: number; r: number } {
   const raw = objectShape(value, path);
-  rejectUnknownKeys(raw, ['q', 'r'], path);
   for (const axis of ['q', 'r'] as const)
     if (typeof raw[axis] !== 'number' || !Number.isSafeInteger(raw[axis]))
       fail(`${path}.${axis}`, 'must be a whole number');
-  return { q: raw.q as number, r: raw.r as number };
-}
-/** Own data, even for a key named __proto__. */
-function put(target: object, key: string, value: unknown) {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    writable: true,
-    configurable: true,
+  return carryUnknownKeys(raw, ['q', 'r'], {
+    q: raw.q as number,
+    r: raw.r as number,
   });
-}
-/** A field this codec does not read, deep-copied as written. */
-function carried(value: unknown): unknown {
-  return value === undefined ? value : structuredClone(value);
 }
 function holds(value: unknown, path: string): StateHolds {
   const raw = objectShape(value, path);
@@ -122,12 +130,13 @@ function holds(value: unknown, path: string): StateHolds {
       if (!Array.isArray(raw.at)) fail(at, 'must be a list of { q, r }');
       result.at = raw.at.map((c, i) => cell(c, `${at}[${i}]`));
     } else if (key === 'against') {
-      if (!(POST_DIRECTIONS as readonly unknown[]).includes(raw.against))
+      // Empty reads as both, as the server's PostDirection does.
+      if (![...POST_DIRECTIONS, ''].includes(raw.against as string))
         fail(
           at,
           `"${String(raw.against)}" is not a way a post holds: write both, entering or leaving`
         );
-      result.against = raw.against as PostDirection;
+      result.against = raw.against as PostDirection | '';
     } else if (key === 'pass') result.pass = text(raw.pass, at);
     else put(result, key, carried(raw[key]));
   }
@@ -225,11 +234,6 @@ export function validateStates(value: unknown, path: string): CreatureStates {
       state.transitions = body.transitions.map((value, index) => {
         const tp = `${at}.transitions[${index}]`;
         const t = objectShape(value, tp);
-        rejectUnknownKeys(
-          t,
-          ['on', 'when', 'within', 'regions', 'rounds', 'to', 'do', 'reason'],
-          tp
-        );
         const on = text(t.on, `${tp}.on`);
         const deed =
           on.startsWith('deed:') && ANSWER_WHEN.deeds.includes(on.slice(5));
@@ -304,11 +308,14 @@ export function validateStates(value: unknown, path: string): CreatureStates {
           });
         }
         // In the author's key order, so an untouched transition writes back
-        // as read.
+        // as read; a field this codec does not read is carried as written
+        // (rpg-project#857).
         return Object.fromEntries(
           Object.keys(t).map((key) => [
             key,
-            transition[key as keyof StateTransition],
+            (TRANSITION_FIELDS as readonly string[]).includes(key)
+              ? transition[key as keyof StateTransition]
+              : carried(t[key]),
           ])
         ) as unknown as StateTransition;
       });

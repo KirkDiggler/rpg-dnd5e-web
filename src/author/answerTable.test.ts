@@ -71,24 +71,13 @@ describe('a typo is answered with what the author meant', () => {
     );
   });
 
-  it('names the word a transposition was reaching for', () => {
-    // Plain Levenshtein scores a transposition 2; this one costs 1, which
-    // is the whole reason the distance is Damerau.
-    expect(() => parseDungeon(entryWith('fact:', 'fcat:'))).toThrow(
-      /unknown key "fcat" — did you mean "fact"\?/
-    );
-  });
-
-  it('says nothing extra when nothing is close', () => {
-    // A suggestion is a courtesy, never a guess: a key nothing resembles
-    // gets the plain refusal.
-    expect(() => parseDungeon(entryWith('fact:', 'wibble:'))).toThrow(
-      /unknown key "wibble"$/
-    );
-  });
-
-  it('still refuses — a suggestion is not an acceptance', () => {
-    expect(() => parseDungeon(entryWith('fact:', 'fcat:'))).toThrow();
+  // An entry key this build does not read is carried now, not refused
+  // (rpg-project#857): the dungeonspec compiler is the validator, so a
+  // misspelt word is named by the server at Save, not here. A trigger is
+  // still a table key the creature's states pick, and is named above.
+  it('carries an entry key it does not read, close to a word or not', () => {
+    expect(() => parseDungeon(entryWith('fact:', 'fcat:'))).not.toThrow();
+    expect(() => parseDungeon(entryWith('fact:', 'wibble:'))).not.toThrow();
   });
 });
 

@@ -40,6 +40,7 @@
  */
 import { resolveWorldAsset } from '@/generated/worldAssetCatalog';
 import type { RoomDoorApproach, RoomDoorBinding } from './roomDraft';
+import { carryUnknownKeys } from './strictShape';
 
 /** The authored door state, keyed by item id. `undefined` is "nothing here and
  * nothing was written" and is the ONLY empty representation — never `{}`. */
@@ -76,10 +77,20 @@ export function normalizeDoorBinding(next: RoomDoorBinding): RoomDoorBinding {
     normalized.locked = next.locked.map((row) => {
       const approach: RoomDoorApproach = { ability: row.ability, dc: row.dc };
       if (row.tool !== undefined && row.tool !== '') approach.tool = row.tool;
-      return approach;
+      return carryUnknownKeys(
+        row as unknown as Record<string, unknown>,
+        ['ability', 'dc', 'tool'],
+        approach
+      );
     });
   }
-  return normalized;
+  // A field the studio does not author rides through every edit
+  // (rpg-project#857).
+  return carryUnknownKeys(
+    next as Record<string, unknown>,
+    ['closed', 'locked'],
+    normalized
+  );
 }
 
 /** Set or clear ONE item's door state in the map. `undefined` is the author's
@@ -129,15 +140,21 @@ export function setDoorBindingState(
   binding: RoomDoorBinding | undefined,
   state: DoorBindingState
 ): RoomDoorBinding | undefined {
+  // What the studio does not author rides through a state change
+  // (rpg-project#857).
+  const rest: RoomDoorBinding = { ...binding };
+  delete rest.closed;
+  delete rest.locked;
   switch (state) {
     case 'none':
       return undefined;
     case 'open':
-      return normalizeDoorBinding({});
+      return normalizeDoorBinding(rest);
     case 'closed':
-      return normalizeDoorBinding({ closed: true });
+      return normalizeDoorBinding({ ...rest, closed: true });
     case 'locked':
       return normalizeDoorBinding({
+        ...rest,
         locked: binding?.locked ?? [defaultDoorApproach()],
       });
   }

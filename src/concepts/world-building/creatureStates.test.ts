@@ -93,7 +93,8 @@ describe('creature state recipe — dungeonspec/states.go', () => {
       '.do[0].pick',
       'table key',
     ],
-    [recipe({ on: 'time', surprise: true }), '.transitions[0]', 'surprise'],
+    // A transition field this codec does not read is carried now
+    // (rpg-project#857): see "carries a transition field and a cell field".
     // An unknown STATE field is carried now (rpg-project#857): see "keeps a
     // state field it does not read". A transition stays exact.
     [
@@ -217,5 +218,26 @@ describe('a state’s post (rpg-project#836, #852, #857)', () => {
     // A copy, not the parsed object: an edit to the source never leaks in.
     future.posted.watches.every = 9;
     expect(states.posted).toMatchObject({ watches: { every: 2 } });
+  });
+});
+
+describe('the codec carries what it does not read (rpg-project#857)', () => {
+  it('carries a transition field and a cell field, in place, as written', () => {
+    const future = {
+      initial: 'posted',
+      posted: {
+        holds: { door: 'gate', at: [{ q: 1, r: 2, level: 1 }] },
+        transitions: [
+          { on: 'time', surprise: true, to: 'posted', escort: 'x' },
+        ],
+      },
+    };
+    const states = validateStates(future, 'gate-1.states');
+    expect(JSON.stringify(states)).toBe(JSON.stringify(future));
+  });
+
+  it('reads an empty against as both, as the server does, and keeps the word', () => {
+    const empty = { initial: 'p', p: { holds: { door: 'd', against: '' } } };
+    expect(validateStates(empty, 's')).toEqual(empty);
   });
 });

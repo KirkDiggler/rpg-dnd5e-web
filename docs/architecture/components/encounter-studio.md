@@ -30,12 +30,14 @@ repair a rejected template by silently changing its base.
 
 ## The studio loads whatever the engine runs
 
-The studio loads whatever the engine runs: the dungeonspec compiler is the
-validator; fields the studio does not author are preserved, never refused
-(rpg-project#857). A dungeon file's unknown keys are set aside on read and the
-export splices only the studio's changes into the file as read, so an
-unedited Download or Save is byte-identical and an edit changes only its own
-lines (`world-building/yamlSplice.ts`).
+The studio loads whatever the engine runs; the dungeonspec compiler is the
+validator; fields the studio does not author are preserved and written back
+unchanged (rpg-project#857). Every decoder carries what it does not read
+(`carryUnknownKeys`), so the draft, storage and every edit keep it, and the
+export splices only the studio's changes into the file as read
+(`world-building/yamlSplice.ts`): an unedited Download or Save is
+byte-identical, and an edit changes only its own lines. The rule and its few
+stated refusals are in `world-building/CONTRACT.md`.
 
 ## Creature state recipes
 
@@ -56,8 +58,9 @@ A state may carry a post (rpg-project#836, #852, #857): `blocks: true`, and
 them: a blocks toggle, a door from the site's wall-bound and bound doors, the
 post cells as `{ q, r }`, `against` (both, the default, writes no word), and
 the pass fact. The server judges the door, the cells and the pass. A state
-field or a `holds` field this codec does not read is carried as written, in the
-draft as well as in the file. States and transitions keep the
+field, a transition field, a `holds` field or a cell field this codec does not
+read is carried as written, as everywhere in the file. `against: ""` reads as
+both, as the server does. The door field can be emptied and retyped. States and transitions keep the
 author's key order, so an untouched recipe writes back exactly as it was read.
 
 An option without `check` is a plain line, not an empty check. Its success rows

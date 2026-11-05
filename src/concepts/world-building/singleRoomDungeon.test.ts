@@ -691,7 +691,7 @@ ${ROOM_BLOCK}
     ).toThrow(/duplicate intel id/);
   });
 
-  it('refuses an orphan binding and an unknown binding key inside the document', () => {
+  it('refuses an orphan binding and carries an unknown binding key inside the document', () => {
     // A binding naming a creature that is gone is REFUSED, not silently
     // dropped — the discipline `propDeclarations` already keeps.
     expect(() =>
@@ -710,7 +710,7 @@ ${ROOM_BLOCK}
     );
     // `intimidate` RETIRED to options (rpg-project#569 R2) and is refused by
     // name in the engine's sentence; an actually-unknown key is carried
-    // (rpg-project#857): a binding of nothing else reads as no binding.
+    // (rpg-project#857), in the draft where it was written.
     expect(() =>
       decodeSingleRoomDungeon(
         `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
@@ -720,7 +720,7 @@ ${ROOM_BLOCK}
       decodeSingleRoomDungeon(
         `version: 5\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
       ).draft.room.monsterBindings
-    ).toBeUndefined();
+    ).toEqual({ 'goblin-1': { intimidating: { dc: 12 } } });
   });
 
   it('refuses an answer table this build cannot roll, in the engine’s own words', () => {

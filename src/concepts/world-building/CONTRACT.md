@@ -58,15 +58,26 @@ composer; they do not narrow this current Studio boundary.
 
 ## The studio loads whatever the engine runs (rpg-project#857)
 
-The studio loads whatever the engine runs: the dungeonspec compiler is the
-validator; fields the studio does not author are preserved, never refused.
-Reading a dungeon file sets unknown keys aside at every level
-(`carryUnknownFields`); the draft carries its file's token (`sourceRef`), and
-`encodeSingleRoomDungeon` splices only the studio's changes into that file
-(`yamlSplice.ts`), so an unedited Download or Save is the file byte for byte
-and an edit changes only its own lines. A draft the studio made, or one whose
-file is no longer in memory after a reload, writes the canonical encoding.
-Values the studio does read are still checked in the engine's words.
+The studio loads whatever the engine runs; the dungeonspec compiler is the
+validator; fields the studio does not author are preserved and written back
+unchanged.
+
+- **One mechanism.** Every decoder keeps the keys it does not read with
+  `carryUnknownKeys` (`strictShape.ts`), at every level of the file. The draft
+  holds them, storage keeps them, the edit helpers carry them through, and the
+  encoder writes them. Root keys ride on the scope's `unread`.
+- **Byte for byte.** A draft read from a file carries its file's token
+  (`sourceRef`), and `encodeSingleRoomDungeon` splices only the studio's
+  changes into that file (`yamlSplice.ts`). An unedited Download or Save is the
+  file byte for byte, and an edit changes only its own lines. Without the file,
+  as after a reload, the canonical encoding still writes every carried field.
+- **The file alone keeps two kinds.** A field on the fixed play contract, and a
+  key on a region's cell row (rows are rebuilt from cells). They are written
+  back while that part is unchanged.
+- **Still refused**, each for a stated reason: a retired word, by name; a
+  known word its version gate forbids (a region `wallFinish` before scene 6);
+  a value the studio reads and the engine would refuse; an asset the renderer
+  cannot draw; and the studio's own local workspace format (`rejectUnknownKeys`).
 
 ## Studio Save and Play (#1236, rpg-project#545 R15–R19)
 
@@ -541,9 +552,10 @@ perpendicular in the XZ plane. The per-prop 12-unit clamp does not truncate wall
 Openings have stable identities, local center distances and widths. A doorless
 opening carries no state; an opening's optional attached door is documented in
 **Attached-door editor** below. Existing placed doors are unchanged.
-No stored/generated spans or second door pose are introduced. A dungeon file's
-unsupported fields are carried and written back (see **The studio loads
-whatever the engine runs**); stored workspace JSON still refuses them.
+No stored/generated spans or second door pose are introduced. The studio
+loads whatever the engine runs; the dungeonspec compiler is the validator;
+fields the studio does not author are preserved and written back unchanged
+(see **The studio loads whatever the engine runs**).
 
 Walls use the existing JSON save/reload and YAML encode/decode paths. Empty walls
 normalize to absence; documents without walls retain their previous output.

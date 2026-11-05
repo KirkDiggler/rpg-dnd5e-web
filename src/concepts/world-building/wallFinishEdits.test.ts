@@ -98,13 +98,19 @@ describe('wall-owned face intent', () => {
     for (const row of [
       null,
       {},
-      { front: GRAY_REF },
       { 'positive-z': null },
       { 'positive-z': 'bad' },
     ])
       expect(() =>
         validateScene({ ...draft.scene, wallFinishes: { north: row } })
       ).toThrow();
+    // A side this build does not name is carried now (rpg-project#857).
+    expect(
+      validateScene({
+        ...draft.scene,
+        wallFinishes: { north: { front: GRAY_REF } },
+      }).wallFinishes
+    ).toEqual({ north: { front: GRAY_REF } });
     expect(() =>
       stringifyRoomDraft({
         ...draft,

@@ -41,9 +41,10 @@ import {
   type SiteFaction,
   type SiteIntelRecord,
   type SiteScenarios,
+  type SiteScope,
   type SiteTables,
 } from './siteScope';
-import { carriesUnknownFields, carryUnknownFields } from './strictShape';
+import { carryUnknownKeys } from './strictShape';
 import { spliceYaml } from './yamlSplice';
 
 export interface EncodeSingleRoomDungeonInput {
@@ -88,6 +89,8 @@ export interface DecodeSingleRoomDungeonResult {
   endings?: SiteEnding[];
   scenarios?: SiteScenarios;
   concealments?: SiteConcealments;
+  /** Root keys this build does not read, as written (rpg-project#857). */
+  unread?: Record<string, unknown>;
 }
 
 /** The fixed play contract of this first playable slice. Keys and values are
@@ -98,7 +101,6 @@ export const PLAY_CONTRACT = {
   lighting: 'bright',
   standing: 'centre-covered',
 } as const;
-const PLAY_KEYS = Object.keys(PLAY_CONTRACT);
 /** Every root key this build reads. `factions` and `dispositions` are the site
  * scope (rpg-project#477); there is deliberately no `sites` layer, no `kind`
  * and no root `name` in this slice — `rooms[]` stays flat and the room's own
@@ -207,7 +209,7 @@ export function rememberDungeonSource(source: string): string {
 
 function baseOf(token: string, source: string): unknown {
   if (bases.has(token)) return bases.get(token);
-  const read = carryUnknownFields(() => decodeSingleRoomDungeon(source));
+  const read = decodeSingleRoomDungeon(source);
   const base = parse(
     encodeCanonical({
       key: read.key,
@@ -236,6 +238,12 @@ export function encodeSingleRoomDungeon(
     return canonical;
   }
   return spliceYaml(source, base, parse(canonical));
+}
+
+function withoutUnread(scope: SiteScope): SiteScope {
+  const rest = { ...scope };
+  delete rest.unread;
+  return rest;
 }
 
 function withoutSourceRef(draft: RoomDraft): RoomDraft {
@@ -271,7 +279,8 @@ function encodeCanonical(input: EncodeSingleRoomDungeonInput): string {
     // room when they are absent, which is what makes the bytes identical.
     // `renderScope` writes them in `SCOPE_KEYS`' order — the root's own — and
     // is the one place the list lives (rpg-dnd5e-web#1201).
-    ...renderScope(scope),
+    ...withoutUnread(renderScope(scope)),
+    ...scope.unread,
     // The draft's source token is the studio's, never the file's.
     room: withoutSourceRef(draft.draft),
   });
@@ -309,7 +318,7 @@ export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
   if (typeof version !== 'number' || !Number.isFinite(version))
     throw new Error('Authored dungeon source is missing a numeric version.');
   if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
-  const read = carryUnknownFields(() => decodeSingleRoomRoot(root));
+  const read = decodeSingleRoomRoot(root);
   read.draft.sourceRef = rememberDungeonSource(source);
   return { dialect: 'single-room', ...read };
 }
@@ -374,20 +383,15 @@ function parseSingleRoomSource(source: string): Record<string, unknown> {
 export function decodeSingleRoomDungeon(
   source: string
 ): DecodeSingleRoomDungeonResult {
-  // A dungeon file: what this build does not read is carried (rpg-project#857).
-  return carryUnknownFields(() =>
-    decodeSingleRoomRoot(parseSingleRoomSource(source))
-  );
+  return decodeSingleRoomRoot(parseSingleRoomSource(source));
 }
 
 function decodeSingleRoomRoot(
   root: Record<string, unknown>
 ): DecodeSingleRoomDungeonResult {
-  for (const key of Object.keys(root)) {
-    if (ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number])) continue;
-    if (carriesUnknownFields()) delete root[key];
-    else throw new Error(`Unsupported single-room field: ${key}.`);
-  }
+  // A root key this build does not read is carried on the scope's `unread`
+  // and written back at the root (rpg-project#857).
+  const unread = carryUnknownKeys(root, ROOT_KEYS, {});
   const version = root.version;
   if (version === 3 || version === 4)
     throw new Error(`version: ${RETIRED_VERSIONS_REFUSAL}`);
@@ -401,11 +405,9 @@ function decodeSingleRoomRoot(
   const play = root.play;
   if (!isPlainObject(play))
     throw new Error('Unsupported single-room play contract.');
-  for (const key of Object.keys(play)) {
-    if (PLAY_KEYS.includes(key)) continue;
-    if (carriesUnknownFields()) delete play[key];
-    else throw new Error(`Unsupported single-room play field: ${key}.`);
-  }
+  // A play field this build does not read is not refused: the play contract
+  // is fixed and the encoder writes it whole, so the file splice is what keeps
+  // the field (rpg-project#857).
   for (const [field, expected] of Object.entries(PLAY_CONTRACT)) {
     if (play[field] !== expected)
       throw new Error(
@@ -486,6 +488,7 @@ function decodeSingleRoomRoot(
       endings,
       scenarios,
       concealments,
+      unread,
     },
   });
   const draft = parseRoomDocumentJson(draftJson).draft;
@@ -521,6 +524,7 @@ function decodeSingleRoomRoot(
     ...(endings.length > 0 ? { endings } : {}),
     ...(Object.keys(scenarios).length > 0 ? { scenarios } : {}),
     ...(Object.keys(concealments).length > 0 ? { concealments } : {}),
+    ...(Object.keys(unread).length > 0 ? { unread } : {}),
   };
 }
 

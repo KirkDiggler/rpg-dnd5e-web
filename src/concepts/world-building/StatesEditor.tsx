@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { parseDocument, stringify } from 'yaml';
 import {
   POST_DIRECTIONS,
@@ -254,17 +254,12 @@ function StatePost({
       </label>
       {holds && (
         <>
-          <label>
-            <span>Door</span>
-            <input
-              aria-label={`Held door in ${label}`}
-              list={doorList}
-              value={holds.door}
-              onChange={(event) =>
-                event.target.value && onPatch({ door: event.target.value })
-              }
-            />
-          </label>
+          <DoorField
+            label={label}
+            doorList={doorList}
+            door={holds.door}
+            onCommit={(door) => onPatch({ door })}
+          />
           {holds.door && !doors.includes(holds.door) && (
             <p className="wb-help">
               This site declares no door with the id “{holds.door}”.
@@ -274,7 +269,7 @@ function StatePost({
             <span>Holds against</span>
             <select
               aria-label={`Holds against in ${label}`}
-              value={holds.against ?? 'both'}
+              value={holds.against || 'both'}
               onChange={(event) =>
                 onPatch({
                   against:
@@ -360,5 +355,42 @@ function StatePost({
         </>
       )}
     </div>
+  );
+}
+
+/** The held door as text the author can empty and retype: a post names a
+ * door, so an empty field is shown and says so, and only a named door is
+ * applied. */
+function DoorField({
+  label,
+  doorList,
+  door,
+  onCommit,
+}: {
+  label: string;
+  doorList: string;
+  door: string;
+  onCommit: (door: string) => void;
+}) {
+  const [text, setText] = useState(door);
+  useEffect(() => setText(door), [door]);
+  return (
+    <>
+      <label>
+        <span>Door</span>
+        <input
+          aria-label={`Held door in ${label}`}
+          list={doorList}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            if (event.target.value) onCommit(event.target.value);
+          }}
+        />
+      </label>
+      {!text && (
+        <p className="wb-help">A post names the door it holds: pick one.</p>
+      )}
+    </>
   );
 }

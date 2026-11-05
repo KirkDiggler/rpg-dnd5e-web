@@ -57,7 +57,9 @@ import {
   replaceOption,
 } from './optionEdits';
 import type { RoomMonsterBinding, RoomOption } from './roomDraft';
+import { BINDING_KEYS } from './roomDraft';
 import { defaultAnswerEntry } from './sitePolicyEdits';
+import { carryUnknownKeys } from './strictShape';
 
 /** The authored orders, keyed by creature id. `undefined` is the authored
  * state "nothing here" and is the ONLY empty representation — never `{}`. */
@@ -109,6 +111,9 @@ export function normalizeBinding(
   // never stored (`optionEdits.ts` normalizes each line the same way).
   const options = normalizeOptions(next.options);
   if (options !== undefined) normalized.options = options;
+  // A field the studio does not author rides through every edit
+  // (rpg-project#857).
+  carryUnknownKeys(next as Record<string, unknown>, BINDING_KEYS, normalized);
   return Object.keys(normalized).length === 0 ? undefined : normalized;
 }
 

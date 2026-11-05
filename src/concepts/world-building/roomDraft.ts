@@ -29,11 +29,7 @@ import {
   validateSiteScope,
   type SiteScope,
 } from './siteScope';
-import {
-  carriesUnknownFields,
-  objectShape,
-  rejectUnknownKeys,
-} from './strictShape';
+import { carryUnknownKeys, objectShape } from './strictShape';
 import {
   validateStructuralWalls,
   type StructuralWall,
@@ -993,7 +989,6 @@ function validateStartingCell(value: unknown, field: string): RoomStartingCell {
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
-  rejectUnknownKeys(source, STARTING_CELL_KEYS, field);
   const start: RoomStartingCell = {
     location: validateCell(source.location, `${field} location`),
   };
@@ -1004,7 +999,7 @@ function validateStartingCell(value: unknown, field: string): RoomStartingCell {
       );
     start.facing = source.facing;
   }
-  return start;
+  return carryUnknownKeys(source, STARTING_CELL_KEYS, start);
 }
 
 // `rejectUnknownKeys` / `objectShape` live in `strictShape.ts` and are
@@ -1014,7 +1009,6 @@ const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'] as const;
 
 function validateFootprint(value: unknown, owner: string): RoomFootprint {
   const source = objectShape(value, `${owner} footprint`);
-  rejectUnknownKeys(source, FOOTPRINT_KEYS, `${owner} footprint`);
   for (const field of FOOTPRINT_KEYS) {
     const n = source[field];
     if (n === undefined || n === null)
@@ -1029,31 +1023,30 @@ function validateFootprint(value: unknown, owner: string): RoomFootprint {
     )
       throw new Error(`Invalid footprint ${field}.`);
   }
-  return {
+  return carryUnknownKeys(source, FOOTPRINT_KEYS, {
     width: source.width as number,
     depth: source.depth as number,
     offsetX: source.offsetX as number,
     offsetZ: source.offsetZ as number,
-  };
+  });
 }
 
 function validateDeclaration(value: unknown, id: string): RoomPropDeclaration {
   const source = objectShape(value, `Prop declaration for ${id}`);
-  rejectUnknownKeys(
-    source,
-    ['blocksMovement', 'blocksLineOfSight', 'footprint'],
-    `Prop declaration for ${id}`
-  );
   if (
     typeof source.blocksMovement !== 'boolean' ||
     typeof source.blocksLineOfSight !== 'boolean'
   )
     throw new Error('Prop flags must be boolean.');
-  return {
-    blocksMovement: source.blocksMovement,
-    blocksLineOfSight: source.blocksLineOfSight,
-    footprint: validateFootprint(source.footprint, `Prop ${id}`),
-  };
+  return carryUnknownKeys(
+    source,
+    ['blocksMovement', 'blocksLineOfSight', 'footprint'],
+    {
+      blocksMovement: source.blocksMovement,
+      blocksLineOfSight: source.blocksLineOfSight,
+      footprint: validateFootprint(source.footprint, `Prop ${id}`),
+    }
+  );
 }
 
 function validateDeclarationMap(
@@ -1096,7 +1089,7 @@ const MONSTER_KEYS = [
 const STARTING_CELL_KEYS = ['location', 'facing'] as const;
 /** What a monster binding may carry. `options` replaced `intimidate` and
  * `persuade` (rpg-project#569 R2) — see `RoomMonsterInteraction`. */
-const BINDING_KEYS = [
+export const BINDING_KEYS = [
   'states',
   'faction',
   'table',
@@ -1131,11 +1124,6 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       throw new Error(
         `room.room.monsterDeclarations[${index}].faction: faction belongs in monsterBindings, keyed by this monster's id; move it there`
       );
-    rejectUnknownKeys(
-      source,
-      MONSTER_KEYS,
-      `Monster placement at index ${index}`
-    );
     if (typeof source.id !== 'string' || !source.id || ids.has(source.id))
       throw new Error(
         `Invalid monster placement at index ${index}: stable nonempty unique ids are required.`
@@ -1168,7 +1156,7 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id} defaultActivityRef`
       );
     }
-    monsters.push(monster);
+    monsters.push(carryUnknownKeys(source, MONSTER_KEYS, monster));
   }
   return monsters;
 }
@@ -1220,8 +1208,6 @@ function validateMonsterBindings(
           `Monster binding for ${id} ${key}: ${retiredBindingKeyRefusal(key)}`
         );
     }
-    const written = Object.keys(block).length;
-    rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
     const parsed: RoomMonsterBinding = {};
     if (Object.hasOwn(block, 'faction')) {
       if (
@@ -1333,26 +1319,11 @@ function validateMonsterBindings(
     }
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
-    if (
-      parsed.faction === undefined &&
-      parsed.table === undefined &&
-      parsed.on === undefined &&
-      parsed.temper === undefined &&
-      parsed.actions === undefined &&
-      parsed.addActions === undefined &&
-      parsed.dropActions === undefined &&
-      parsed.options === undefined &&
-      parsed.arrives === undefined &&
-      parsed.holds === undefined &&
-      parsed.states === undefined
-    ) {
-      // Only fields the studio does not author: carried by the file, not a
-      // binding the studio edits (rpg-project#857).
-      if (carriesUnknownFields() && written > 0) continue;
+    carryUnknownKeys(block, BINDING_KEYS, parsed);
+    if (Object.keys(parsed).length === 0)
       throw new Error(
         `Monster binding for ${id} declares no bindings; omit the binding instead.`
       );
-    }
     bindings[id] = parsed;
   }
   return bindings;
@@ -1452,6 +1423,27 @@ function validateCoordinateFrame(frame: Record<string, unknown>): void {
 }
 
 const REGION_KEYS = ['id', 'name', 'lighting', 'cells'] as const;
+/** The coordinate frame and room keys this codec reads; any other is carried
+ * (rpg-project#857). */
+const FRAME_KEYS = [
+  'horizontalPlane',
+  'verticalAxis',
+  'distanceUnit',
+  'hexRadius',
+  'footprintFrame',
+];
+const ROOM_KEYS = [
+  'implicitRegionId',
+  'walls',
+  'regions',
+  'propDeclarations',
+  'arrangementDeclarations',
+  'partyStart',
+  'monsterDeclarations',
+  'monsterBindings',
+  'doorBindings',
+  'propBindings',
+];
 
 /** Where in a region's rows a cell is listed: `cells[j].q[k]`. */
 function spanPathOf(rows: readonly RoomCellRow[], cell: RoomHexCell): string {
@@ -1482,7 +1474,6 @@ function validateRegions(value: unknown): RoomRegion[] {
   return value.map((source, i): RoomRegion => {
     const path = `room.room.regions[${i}]`;
     const input = objectShape(source, path);
-    rejectUnknownKeys(input, REGION_KEYS, path);
     if (typeof input.id !== 'string' || !input.id || input.id.length > 120)
       throw new Error(`${path}.id: is required`);
     if (ids.has(input.id))
@@ -1491,7 +1482,6 @@ function validateRegions(value: unknown): RoomRegion[] {
     if (typeof input.name !== 'string')
       throw new Error(`${path}.name: must be a string`);
     const lighting = objectShape(input.lighting, `${path}.lighting`);
-    rejectUnknownKeys(lighting, ['intensity'], `${path}.lighting`);
     const intensity = lighting.intensity;
     if (
       typeof intensity !== 'number' ||
@@ -1517,15 +1507,15 @@ function validateRegions(value: unknown): RoomRegion[] {
         );
       owner.set(key, input.id);
     }
-    return {
+    return carryUnknownKeys(input, REGION_KEYS, {
       id: input.id,
       name: input.name,
-      lighting: { intensity },
+      lighting: carryUnknownKeys(lighting, ['intensity'], { intensity }),
       cells: rows.map((row) => ({
         r: row.r,
         q: row.q.map(([a, b]) => [a, b] as [number, number]),
       })),
-    };
+    });
   });
 }
 
@@ -1548,26 +1538,12 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
     throw new Error(
       'room.workspace: the canvas is unbounded and the file carries no workspace (rpg-project#725); remove the key'
     );
-  rejectUnknownKeys(
-    input as Record<string, unknown>,
-    ['version', 'id', 'name', 'coordinateFrame', 'scene', 'room', 'sourceRef'],
-    'Room draft'
-  );
-  if (Object.hasOwn(input, 'sourceRef') && typeof input.sourceRef !== 'string')
+  // A draft field this codec does not read rides on the `...input` spread
+  // below (rpg-project#857).
+  if (input.sourceRef !== undefined && typeof input.sourceRef !== 'string')
     throw new Error('Room draft sourceRef must be text.');
   const frame = objectShape(input.coordinateFrame, 'Room coordinate frame');
   validateCoordinateFrame(frame);
-  rejectUnknownKeys(
-    frame as unknown as Record<string, unknown>,
-    [
-      'horizontalPlane',
-      'verticalAxis',
-      'distanceUnit',
-      'hexRadius',
-      'footprintFrame',
-    ],
-    'Room coordinate frame'
-  );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
     throw new Error(
@@ -1577,22 +1553,6 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
     throw new Error(
       'room.room.walkableHexes: regions are the floor (rpg-project#725); a cell is floor when a region lists it'
     );
-  rejectUnknownKeys(
-    room,
-    [
-      'implicitRegionId',
-      'walls',
-      'regions',
-      'propDeclarations',
-      'arrangementDeclarations',
-      'partyStart',
-      'monsterDeclarations',
-      'monsterBindings',
-      'doorBindings',
-      'propBindings',
-    ],
-    'Room gameplay data'
-  );
   if (
     typeof room.implicitRegionId !== 'string' ||
     !room.implicitRegionId ||
@@ -1690,17 +1650,17 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
     version: 3,
     id: input.id,
     name: input.name,
-    coordinateFrame: {
+    coordinateFrame: carryUnknownKeys(frame, FRAME_KEYS, {
       horizontalPlane: 'world-xz',
       verticalAxis: 'world-y-up',
       distanceUnit: 'world-scene-unit',
       hexRadius: 1,
       footprintFrame: 'owner-local-xz',
-    },
+    }),
     scene: validateScene(input.scene, {
       horizontalLimit: MAX_WORLD_COORD,
     }),
-    room: {
+    room: carryUnknownKeys(room, ROOM_KEYS, {
       implicitRegionId: room.implicitRegionId,
       ...(walls.length > 0 ? { walls } : {}),
       regions,
@@ -1723,7 +1683,7 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
       ...(propBindings && Object.keys(propBindings).length > 0
         ? { propBindings }
         : {}),
-    },
+    }),
   } as RoomDraft;
   const wallIds = new Set(walls.map((wall) => wall.id));
   for (const id of Object.keys(draft.scene.wallFinishes ?? {}))

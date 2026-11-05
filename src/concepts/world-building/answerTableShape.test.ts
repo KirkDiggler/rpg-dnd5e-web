@@ -38,17 +38,15 @@ describe('answer table shape', () => {
       );
   });
 
-  it('refuses an unknown trigger and an unknown entry key, with a suggestion', () => {
+  // A trigger is a key the creature's states must pick, so an unknown one is
+  // still named; an unknown ENTRY key is carried (rpg-project#857).
+  it('refuses an unknown trigger with a suggestion, and carries an unknown entry key', () => {
     expect(table({ taunted: [{ say: 'hi' }] })).toThrow(
       /"taunted" is not a trigger this build rolls: they are time$/
     );
     expect(table({ tiem: [{ say: 'hi' }] })).toThrow(/did you mean "time"\?/);
-    expect(table({ time: [{ hodl: {}, say: 'hi' }] })).toThrow(
-      /did you mean "hold"\?/
-    );
-    expect(table({ time: [{ temper: 'coward' }] })).toThrow(
-      /unknown key "temper"/
-    );
+    const carried = { time: [{ hodl: {}, say: 'hi' }] };
+    expect(validateAnswerTable(carried, 'on')).toEqual(carried);
   });
 
   it('refuses an empty trigger list and an entry that does nothing', () => {
@@ -176,12 +174,13 @@ describe('answer table shape', () => {
       /`as: enemy` is not a scope this build reads: they are ally, actor/
     );
 
-    // AN UNKNOWN BODY KEY IS REFUSED, NOT DROPPED. Before scopes a dropped key
-    // here did nothing; now it would decide WHOSE deeds the row reads, so
-    // `no: ally` would leave the condition firing for the wrong wound.
-    expect(
-      table({ time: [{ when: { fled: { within: 3, no: 'ally' } } }] })
-    ).toThrow(/field no not found in type dungeonspec\.withinSpec/);
+    // AN UNKNOWN BODY KEY IS CARRIED, NOT DROPPED (rpg-project#857): it is
+    // written back where it stood, so the engine judges `no: ally` itself
+    // rather than the studio quietly widening whose deeds the row reads.
+    const carried = {
+      time: [{ when: { fled: { within: 3, no: 'ally' } }, hold: {} }],
+    };
+    expect(validateAnswerTable(carried, 'on')).toEqual(carried);
   });
 
   /** A scope is a refinement of a DEED, so it has no meaning on an enemy band

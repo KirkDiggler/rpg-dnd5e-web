@@ -1,58 +1,58 @@
 /**
- * The two strict-decoder primitives every authored-document decoder shares.
+ * The shared decoder primitives (rpg-project#857, rpg-dnd5e-web#1136).
  *
- * EXTRACTED FROM `roomDraft.ts` UNCHANGED (rpg-dnd5e-web#1136). The
- * answer-table shape adapter (`answerTableShape.ts`) refuses an unknown field
- * in the same words these do, and `roomDraft.ts` is one of its callers — so if
- * the helpers stayed there the two modules would import each other. A cycle
- * for two sentences is not a trade worth making, and a second copy of them is
- * the "second dialect" `roomDraft.ts`'s own doc comment bans.
+ * THE STUDIO LOADS WHATEVER THE ENGINE RUNS: the dungeonspec compiler is the
+ * validator; fields the studio does not author are preserved and written back
+ * unchanged. `carryUnknownKeys` is the one way a decoder keeps a field it does
+ * not read. `rejectUnknownKeys` is only for the studio's own stored formats.
  *
- * `roomDraft.ts` re-exports both, so every existing caller (`roomSceneJson.ts`)
- * is untouched and the words stay in one place.
+ * `roomDraft.ts` re-exports `objectShape` and `rejectUnknownKeys`, so existing
+ * callers (`roomSceneJson.ts`) are untouched.
  */
 
-let carrying = 0;
+/** Own data on `target`, even for a key named __proto__. */
+export function putOwn(target: object, key: string, value: unknown): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/** A field the studio does not read, deep-copied as written. */
+export function carriedCopy(value: unknown): unknown {
+  return value === undefined ? value : structuredClone(value);
+}
 
 /**
- * THE STUDIO LOADS WHATEVER THE ENGINE RUNS (rpg-project#857, Kirk: "if it
- * runs, we should load it"): the dungeonspec compiler is the validator;
- * fields the studio does not author are preserved, never refused.
- *
- * Inside `carryUnknownFields`, the dungeon file's decode, an unknown key is
- * set aside from the freshly parsed value instead of refused: the decoded
- * model holds only what the studio authors, and the export splices the
- * studio's changes into the file as it was read (`yamlSplice.ts`), so the
- * set-aside bytes are written back untouched. Outside it, the studio's own
- * workspace and storage formats stay exact.
+ * THE IMPORT MECHANISM (rpg-project#857): every key of `source` the decoder
+ * does not read (`known`) is copied onto `into`, its decoded value, as
+ * written. The draft holds it, storage keeps it, and the encoder writes it
+ * back; the studio never refuses it. Returns `into`.
  */
-export function carryUnknownFields<T>(read: () => T): T {
-  carrying++;
-  try {
-    return read();
-  } finally {
-    carrying--;
-  }
+export function carryUnknownKeys<T extends object>(
+  source: Record<string, unknown>,
+  known: readonly string[],
+  into: T
+): T {
+  for (const key of Object.keys(source))
+    if (!known.includes(key)) putOwn(into, key, carriedCopy(source[key]));
+  return into;
 }
 
-/** Whether a dungeon file is being read, where unknown keys are carried. */
-export function carriesUnknownFields(): boolean {
-  return carrying > 0;
-}
-
-/** Structurally exact records only: outside a dungeon file's decode an
- * unknown field is refused, not dropped or reinterpreted as valid data.
- * Inside one it is set aside for the export to keep (`carryUnknownFields`).
- * Arrays are never mapping shapes. */
+/** Structurally exact records only, for the studio's OWN stored formats
+ * (the local workspace): an unknown field there is refused, not dropped.
+ * A dungeon file never comes here; its decoders carry what they do not read
+ * (`carryUnknownKeys`). Arrays are never mapping shapes. */
 export function rejectUnknownKeys(
   value: Record<string, unknown>,
   allowed: readonly string[],
   label: string
 ): void {
   for (const key of Object.keys(value)) {
-    if (allowed.includes(key)) continue;
-    if (carrying) delete value[key];
-    else throw new Error(`${label} has an unsupported field: ${key}.`);
+    if (!allowed.includes(key))
+      throw new Error(`${label} has an unsupported field: ${key}.`);
   }
 }
 

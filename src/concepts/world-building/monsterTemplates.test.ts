@@ -158,15 +158,25 @@ describe('authored stat blocks through the shared scope and codecs', () => {
     result.guard.actions!.push('dnd5e:weapons:dagger');
     expect(guard).toEqual(before);
   });
+  // A field or a score this build does not name is carried now, not refused
+  // (rpg-project#857); a named field's value is still judged.
   it.each([
     { hp: 20 },
     { hitPoints: 20 },
     { armorClass: 15 },
     { speed: { walk: 30 } },
+    { abilities: { unknown: 12 } },
+  ])('carries a field it does not read: %j', (change) => {
+    expect(
+      validateSiteScope({ templates: { guard: { ...guard, ...change } } })
+        .templates?.guard
+    ).toMatchObject(change);
+  });
+  it.each([
     { abilities: { str: 12.5 } },
     { abilities: { con: 0 } },
     { abilities: { wis: 31 } },
-    { abilities: { unknown: 12 } },
+    { abilities: { unknown: 0 } },
     { abilities: null },
     { proficiency: -1 },
     { experience: 1.5 },

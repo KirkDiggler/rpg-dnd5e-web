@@ -431,14 +431,28 @@ describe('region presentation on the scene (rpg-project#725)', () => {
       'scene.authoringRegions is retired: regions are the floor (rpg-project#725), listed in room.room.regions'
     );
   });
-  it('protects stored unknown fields and malformed presentation instead of pruning them', () => {
+  it('carries stored unknown fields and protects malformed presentation instead of pruning it', () => {
     const fallback = validScene();
     const storage = new MemoryStorage();
-    for (const invalid of [
+    // A future scene or presentation field is carried now (rpg-project#857),
+    // so it loads; what the codec cannot represent still protects the bytes.
+    for (const future of [
       { ...scene3(), futureIntent: { area: 1 } },
+      { ...scene3(), regionPresentation: { hall: { tint: 'red' } } },
+    ]) {
+      storage.values.set(
+        SCENE_STORAGE_KEY,
+        JSON.stringify({
+          kind: 'rpg-world-building-scene',
+          version: 1,
+          scene: future,
+        })
+      );
+      expect(loadScene(storage, fallback).value).toMatchObject(future);
+    }
+    for (const invalid of [
       { ...scene3(), authoringRegions: [] },
       { ...scene3(), regionPresentation: { hall: {} } },
-      { ...scene3(), regionPresentation: { hall: { tint: 'red' } } },
       { ...scene3(), regionPresentation: [] },
     ]) {
       const bytes = JSON.stringify({

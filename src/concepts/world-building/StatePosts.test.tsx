@@ -123,6 +123,13 @@ describe('a state’s post as fields (rpg-project#857)', () => {
     expect(
       screen.getByText(/declares no door with the id “moat”/)
     ).toBeTruthy();
+    // The door can be emptied and retyped; only a named door is applied.
+    const door = screen.getByLabelText('Held door in gate-1 posted');
+    fireEvent.change(door, { target: { value: '' } });
+    expect((door as HTMLInputElement).value).toBe('');
+    expect(screen.getByText(/names the door it holds/)).toBeTruthy();
+    fireEvent.change(door, { target: { value: 'postern' } });
+    expect((door as HTMLInputElement).value).toBe('postern');
     expect(screen.queryByLabelText('Blocks in gate-1 down')).toBeNull();
     expect(screen.getByText(/down is terminal/)).toBeTruthy();
   });

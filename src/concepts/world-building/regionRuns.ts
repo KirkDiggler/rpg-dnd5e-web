@@ -1,4 +1,4 @@
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { objectShape } from './strictShape';
 import type { RoomHexCell } from './workspaceGeometry';
 
 /**
@@ -22,8 +22,6 @@ export interface RoomCellRow {
 
 /** The toolkit's integer defence (`maxSiteCoord`): not a map size. */
 export const MAX_SITE_COORD = 2 ** 24;
-
-const ROW_KEYS = ['r', 'q'] as const;
 
 const inBound = (v: number) => v <= MAX_SITE_COORD && v >= -MAX_SITE_COORD;
 
@@ -58,7 +56,9 @@ export function fromRows(value: unknown, path: string): RoomHexCell[] {
   value.forEach((source, j) => {
     const rowPath = `${path}[${j}]`;
     const row = objectShape(source, rowPath);
-    rejectUnknownKeys(row, ROW_KEYS, rowPath);
+    // A row is expanded into cells and rebuilt on write, so a key it does not
+    // read has no place in the draft: it is not refused, and the file splice
+    // keeps it while the row is unchanged (rpg-project#857).
     const r = row.r;
     if (typeof r !== 'number' || !Number.isInteger(r))
       throw new Error(`${rowPath}.r: must be an integer`);
