@@ -212,6 +212,8 @@ export interface LayoutRoutePick {
 export interface LayoutViewportProps {
   draft: Readonly<RoomDraft>;
   tool: LayoutTool;
+  groundCatalog?: import('@/rendering/groundCatalog').GroundCatalogSnapshot;
+  groundBrush?: 'paint' | 'erase' | null;
   frame: LayoutFrame;
   onFrameChange(next: LayoutFrame): void;
   /** Paint goes into `regionId` (the implicit region when absent). */
@@ -421,6 +423,15 @@ export interface EncounterStudioSession {
   };
   wallEditing: StudioWallEditing;
   regionEditing: StudioRegionEditing;
+  groundEditing: {
+    readonly catalog: import('@/rendering/groundCatalog').GroundCatalogSnapshot;
+    setBase(regionId: string, ref: string | null): boolean;
+    paint(
+      regionId: string,
+      cells: readonly RoomHexCell[],
+      ref: string | null
+    ): boolean;
+  };
   /** Replace the draft with an imported file's document, through the
    * owner's `importCanonicalRoomYaml`: one undoable step, saved locally.
    * Refused while publishing or for a document the gate refuses. */

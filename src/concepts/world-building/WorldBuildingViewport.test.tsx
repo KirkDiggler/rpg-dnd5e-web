@@ -76,6 +76,26 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
   }),
 }));
 
+vi.mock('@/components/session/useGroundCatalog', () => ({
+  useGroundCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      schemaVersion: 1,
+      styles: [
+        {
+          ref: 'dnd5e:ground:fantasy-kingdom:grass_01',
+          displayName: 'Grass',
+          diffuse: `ground/images/${'a'.repeat(64)}.png`,
+          sha256: 'a'.repeat(64),
+          width: 2048,
+          height: 2048,
+          worldUnitsPerRepeat: 6,
+        },
+      ],
+    },
+  }),
+}));
+
 import { useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 import type { RoomHexCell } from './roomDraft';
@@ -580,6 +600,38 @@ describe('room boundary lifetime and floor layering', () => {
 
     await renderer.unmount();
     expect(composerDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ground appearances readable instead of covering them with the walkable-cell tint', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...baseProps}
+        roomAuthoring={{
+          ...authoring(12, [{ q: 0, r: 0 }]),
+          groundRegions: [
+            {
+              id: 'court',
+              name: 'Court',
+              lighting: { intensity: 1 },
+              cells: [{ r: 0, q: [[0, 0]] }],
+              ground: { baseRef: 'dnd5e:ground:fantasy-kingdom:grass_01' },
+            },
+          ],
+        }}
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'room-walkable-0-0' })
+    ).toHaveLength(0);
+    expect(
+      renderer.scene.findAllByProps({
+        name: 'ground-style-dnd5e:ground:fantasy-kingdom:grass_01',
+      })
+    ).toHaveLength(1);
+    expect(
+      renderer.scene.findAllByProps({ name: 'world-building-real-hex-basis' })
+    ).toHaveLength(1);
+    await renderer.unmount();
   });
 
   it('mounts the real underlay above the pointer ground and below every floor overlay and walking surface', async () => {

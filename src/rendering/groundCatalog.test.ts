@@ -79,6 +79,19 @@ describe('ground catalog contract', () => {
 });
 
 describe('ground catalog loading', () => {
+  it('identifies an explicitly mounted private preview rather than implying publication', async () => {
+    const store = createGroundCatalogStore({
+      fetcher: async () =>
+        new Response(JSON.stringify(fixture()), {
+          headers: { 'X-RPG-Ground-Preview': '1' },
+        }),
+    });
+    await store.load();
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      preview: true,
+    });
+  });
   it('shares one request and publishes a ready immutable catalog to subscribers', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(fixture())));
     const store = createGroundCatalogStore({ fetcher });

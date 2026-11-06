@@ -136,7 +136,11 @@ export function requireGroundStyle(
 
 export type GroundCatalogSnapshot =
   | { readonly status: 'idle' | 'loading' }
-  | { readonly status: 'ready'; readonly catalog: GroundCatalog }
+  | {
+      readonly status: 'ready';
+      readonly catalog: GroundCatalog;
+      readonly preview?: boolean;
+    }
   | { readonly status: 'error'; readonly message: string };
 
 export interface GroundCatalogStore {
@@ -175,7 +179,13 @@ export function createGroundCatalogStore({
             );
           const parsed = parseGroundCatalog(await response.json());
           if (!parsed.ok) throw new Error(parsed.reason);
-          publish({ status: 'ready', catalog: parsed.catalog });
+          publish({
+            status: 'ready',
+            catalog: parsed.catalog,
+            ...(response.headers.get('X-RPG-Ground-Preview') === '1'
+              ? { preview: true }
+              : {}),
+          });
         } catch (cause) {
           publish({
             status: 'error',

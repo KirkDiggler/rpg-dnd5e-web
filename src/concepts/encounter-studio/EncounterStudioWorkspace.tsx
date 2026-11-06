@@ -15,6 +15,7 @@ import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { regionLabelPoint } from '../world-building/regionLabel';
+import { cellOwners } from '../world-building/roomDraft';
 import { appendWaypoint } from '../world-building/routeEdits';
 import {
   RoutePickContext,
@@ -164,6 +165,11 @@ function StudioSurface({
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
+  const [groundRef, setGroundRef] = useState<string | null>(null);
+  const [groundBrush, setGroundBrush] = useState<'paint' | 'erase' | null>(
+    null
+  );
+  const groundCatalog = session.groundEditing.catalog;
   const selectedRegion =
     session.arrange?.kind === 'region' ? session.arrange.region : undefined;
   /** THE ACTIVE REGION (rpg-project#725 R5): where Paint and Rectangle put
@@ -193,10 +199,24 @@ function StudioSurface({
   const commitStroke = (
     cells: readonly RoomHexCell[],
     mode: 'paint' | 'erase'
-  ): boolean =>
-    mode === 'paint'
+  ): boolean => {
+    if (groundBrush !== null) {
+      if (groundBrush === 'paint' && groundRef === null) return false;
+      const owners = cellOwners(session.document.draft);
+      const owned = cells.filter(
+        (cell) => owners.get(`${cell.q},${cell.r}`) === activeRegionId
+      );
+      if (!owned.length) return false;
+      return session.groundEditing.paint(
+        activeRegionId,
+        owned,
+        groundBrush === 'erase' ? null : groundRef
+      );
+    }
+    return mode === 'paint'
       ? session.commitFloor(cells, mode, activeRegionId)
       : session.commitFloor(cells, mode);
+  };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sections, setSections] = useState<
@@ -217,6 +237,7 @@ function StudioSurface({
     shownKey.current = selectionKey;
   }, [selectionKey]);
   const changeTool = (next: LayoutTool): void => {
+    setGroundBrush(null);
     if (next !== layoutTool) session.cancelTransients();
     onLayoutToolChange(next);
   };
@@ -1138,7 +1159,7 @@ function StudioSurface({
                     <button
                       type="button"
                       key={tool}
-                      aria-pressed={layoutTool === tool}
+                      aria-pressed={groundBrush === null && layoutTool === tool}
                       onClick={() => {
                         if (session.doorEditing.active)
                           session.doorEditing.setActive(false);
@@ -1221,6 +1242,72 @@ function StudioSurface({
               Redo
             </button>
           </div>
+          {home === 'build' && view === 'layout' && (
+            <div
+              className="es-buttons"
+              role="group"
+              aria-label="Ground appearance tools"
+            >
+              <label>
+                Ground paint appearance
+                <select
+                  aria-label="Ground paint appearance"
+                  value={groundRef ?? ''}
+                  onChange={(event) => setGroundRef(event.target.value || null)}
+                  disabled={groundCatalog.status !== 'ready'}
+                >
+                  <option value="">Choose ground…</option>
+                  {groundCatalog.status === 'ready' &&
+                    groundCatalog.catalog.styles.map((style) => (
+                      <option key={style.ref} value={style.ref}>
+                        {style.displayName}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                aria-pressed={groundBrush === 'paint'}
+                disabled={
+                  groundRef === null || groundCatalog.status !== 'ready'
+                }
+                onClick={() => {
+                  session.doorEditing.setActive(false);
+                  labels.editing.onCancel();
+                  changeTool('paint');
+                  setGroundBrush('paint');
+                }}
+              >
+                Paint ground
+              </button>
+              <button
+                type="button"
+                aria-pressed={groundBrush === 'erase'}
+                onClick={() => {
+                  session.doorEditing.setActive(false);
+                  labels.editing.onCancel();
+                  changeTool('erase');
+                  setGroundBrush('erase');
+                }}
+              >
+                Erase ground paint
+              </button>
+              {groundBrush && (
+                <span role="status">
+                  Ground {groundBrush} ·{' '}
+                  {room.regions.find((r) => r.id === activeRegionId)?.name ??
+                    activeRegionId}{' '}
+                  · existing hexes only
+                </span>
+              )}
+              {groundCatalog.status === 'ready' && groundCatalog.preview && (
+                <span role="status">Candidate ground preview</span>
+              )}
+              {groundCatalog.status === 'error' && (
+                <span role="status">{groundCatalog.message}</span>
+              )}
+            </div>
+          )}
           {home === 'build' && view === '3d' && (
             <p className="es-help">
               {session.viewportProps.roomAuthoring?.tool === 'repeat'
@@ -1295,6 +1382,8 @@ function StudioSurface({
                   <LayoutViewport
                     draft={session.document.draft}
                     tool={layoutTool}
+                    groundCatalog={groundCatalog}
+                    groundBrush={groundBrush}
                     frame={frame}
                     onFrameChange={onFrameChange}
                     onCommit={commitStroke}
