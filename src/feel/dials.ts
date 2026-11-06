@@ -9,6 +9,7 @@
  */
 import { CAMERA_DIAL_SPECS } from '@/components/hex-grid/cameraDials';
 import { DICE_DIAL_SPECS } from '@/components/session/local-world-die/diceDials';
+import { CONTROL_DIAL_SPECS } from './controlDials';
 import type { DialSpec } from './dialTypes';
 import { NOTIFICATION_DIAL_SPECS } from './notificationDials';
 
@@ -25,6 +26,7 @@ export const ALL_DIAL_SPECS: readonly DialSpec[] = [
   ...CAMERA_DIAL_SPECS,
   ...DICE_DIAL_SPECS,
   ...NOTIFICATION_DIAL_SPECS,
+  ...CONTROL_DIAL_SPECS,
 ];
 
 const SPECS_BY_KEY: ReadonlyMap<string, DialSpec> = new Map(

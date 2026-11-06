@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import {
   selectMoveIndicator,
+  type HoverAct,
   type MoveIndicatorSelection,
 } from './moveIndicator';
 
@@ -24,6 +25,7 @@ export interface UseMoveIndicatorArgs {
   attackable?: boolean;
   bumpable?: boolean;
   budgetFeet?: number;
+  act?: HoverAct | null;
 }
 
 export function useMoveIndicator({
@@ -35,6 +37,7 @@ export function useMoveIndicator({
   attackable,
   bumpable,
   budgetFeet,
+  act,
 }: UseMoveIndicatorArgs): MoveIndicatorSelection | null {
   return useMemo(
     () =>
@@ -47,6 +50,7 @@ export function useMoveIndicator({
         attackable,
         bumpable,
         budgetFeet,
+        act,
       }),
     [
       hovered,
@@ -57,6 +61,7 @@ export function useMoveIndicator({
       attackable,
       bumpable,
       budgetFeet,
+      act,
     ]
   );
 }

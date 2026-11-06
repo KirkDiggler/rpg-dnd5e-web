@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/dice/visualThrowProfile';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { mark } from '@/dev/perfMarks';
+import { CLICK_TO_ACT_DIAL } from '@/feel/controlDials';
+import { useDialValues } from '@/feel/dialStore';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type {
@@ -91,6 +93,7 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { cellKnowledge } from './cellKnowledge';
+import { clickToActOffers } from './clickToAct';
 import { CombatExperience } from './combat-experience/CombatExperience';
 import {
   type DesktopHotbarLayout,
@@ -611,6 +614,7 @@ function SessionEncounterScope({
     walkTo,
     approach,
     bump,
+    walkToCell,
     onWalkAnimationComplete,
     moveError,
   } = useSessionWalk(
@@ -808,7 +812,17 @@ function SessionEncounterScope({
     presentableMembers,
     presentableActivityMembers,
     approach: approachSpeakTarget,
+    // Click a hostile to attack (rpg-project#872): the ordinary route to the
+    // server's approach cell, planned on the same map every walk uses.
+    walkToApproach: walkToCell,
   });
+  // THE DIAL (rpg-project#872 D2), remembered per browser. Off, no offers
+  // reach the map and a creature click behaves exactly as before.
+  const clickToActOn = useDialValues()[CLICK_TO_ACT_DIAL] === 'on';
+  const creatureOffers = useMemo(
+    () => (clickToActOn ? clickToActOffers(coherentDeclarations) : undefined),
+    [clickToActOn, coherentDeclarations]
+  );
   // The same cursor hold protects a queued watcher's floor overlay before
   // its route starts, not just while the route is already interpolating.
   const walkingMembers = useMemo(() => {
@@ -2275,6 +2289,13 @@ function SessionEncounterScope({
                             if (body) bump(body.position);
                           }
                         : undefined
+                    }
+                    clickToAct={runEnded === null ? creatureOffers : undefined}
+                    onStrikeClick={
+                      runEnded === null ? combat.onStrike : undefined
+                    }
+                    onSpeakToClick={
+                      runEnded === null ? combat.onSpeakTo : undefined
                     }
                     onHoverEntity={setHoveredTarget}
                     cellAimEnabled={

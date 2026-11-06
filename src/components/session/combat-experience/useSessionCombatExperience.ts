@@ -38,7 +38,10 @@ import {
   useState,
   type SetStateAction,
 } from 'react';
+import type { CubeCoord } from '../../hex-grid/hexMath';
 import type { ActDeliveryMetadata } from '../actFeed';
+import { attackReachFor } from '../clickToAct';
+import { positionToCube } from '../positionBridge';
 import type { MoveOutcome } from '../useSessionWalk';
 import type { TurnBeat } from '../useTurnOrderFollow';
 import type { PresentWalk } from '../walkPresentation';
@@ -158,6 +161,14 @@ export interface UseSessionCombatExperienceArgs {
    * target's click means nothing, as before.
    */
   approach?: (target: SpeakTarget, outcome: MoveOutcome) => boolean;
+  /**
+   * Walk to the server's `approach` cell for an Attack candidate
+   * (rpg-project#872): the caller plans the ordinary route on the map it
+   * holds and sends it. Returns true when a Move was dispatched, and then
+   * calls exactly one of `outcome`'s two for THAT Move. Absent, a hostile out
+   * of reach is never walked to.
+   */
+  walkToApproach?: (cell: CubeCoord, outcome: MoveOutcome) => boolean;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -212,6 +223,12 @@ export interface UseSessionCombatExperienceResult {
    * offer now has them (rpg-project#753 R4).
    */
   onApproachTarget: (target: SpeakTarget) => void;
+  /** Click a hostile to attack (rpg-project#872 D1): swing at once when the
+   * Attack row has him in reach, walk to its `approach` cell and swing on
+   * arrival when it has one, otherwise nothing. */
+  onStrike: (target: string) => void;
+  /** Speak to a creature from its menu (rpg-project#872 D3). */
+  onSpeakTo: (subject: string) => void;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -343,6 +360,7 @@ export function useSessionCombatExperience({
   presentableMembers,
   presentableActivityMembers,
   approach,
+  walkToApproach,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const [notificationInteraction, setNotificationInteraction] = useState(false);
   const pauseWhileReading = useDialValues().notificationPausePlayback === 'on';
@@ -426,6 +444,13 @@ export function useSessionCombatExperience({
   const approachRef = useRef<{ target: SpeakTarget; walked: boolean } | null>(
     null
   );
+  /** THE STRIKE INTENT (rpg-project#872): a hostile's click carried across
+   * the walk to the server's approach cell; see `onStrike`. */
+  const strikeRef = useRef<{
+    target: string;
+    walked: boolean;
+    arrived: boolean;
+  } | null>(null);
   const approachArgRef = useRef(approach);
   approachArgRef.current = approach;
   const reactInFlightRef = useRef(false);
@@ -455,6 +480,7 @@ export function useSessionCombatExperience({
     // carry. A later routine TURN refresh must not silently bring Move back.
     carryWorldMovementRef.current = false;
     approachRef.current = null;
+    strikeRef.current = null;
     setInteraction(EMPTY_INTERACTION);
     setTargeting(false);
   }, [setInteraction]);
@@ -1452,6 +1478,78 @@ export function useSessionCombatExperience({
     ]
   );
 
+  /**
+   * THE ORDINARY ATTACK PATH: one Attack request echoing the server's
+   * selector, the response handed to the presentation, then a refresh. A
+   * map-armed click and a click-to-attack swing (rpg-project#872) both end
+   * here, so the swing that lands in the log is the same either way.
+   */
+  const fireAttack = useCallback(
+    (declaration: Declaration, target: string): void => {
+      attackInFlightRef.current = true;
+      void (async () => {
+        try {
+          const response = await attack({
+            session,
+            attacker: member,
+            target: target,
+            declarationId: declaration.id,
+          });
+          if (!mountedRef.current) return;
+          presentation.acceptAttackResponse(
+            attackResponseFact({
+              session,
+              attacker: member,
+              target: target,
+              response,
+            })
+          );
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(declaration.id, Verb.ATTACK, target);
+          } else {
+            // A transport/unknown failure is ambiguous: the provider may have
+            // committed the command even though its response did not arrive.
+            // Keep the honest error, but never leave pre-command authority
+            // armed or executable and never replay the mutation.
+            const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            // A legacy window cannot identify its die without the response;
+            // keep that already-open choice answerable after response loss.
+            // A current window carries its own provider ID and can still roll.
+            setReceivedRollWindow((current) =>
+              current?.session === session &&
+              current.receivedDuringLocalAttack &&
+              !current.presentationId
+                ? { ...current, bypassDiceSettlement: true }
+                : current
+            );
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          }
+        } finally {
+          attackInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      attack,
+      invalidateAuthority,
+      member,
+      presentation,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+      setInteraction,
+    ]
+  );
+
   const onTargetClick = useCallback(
     (target: string) => {
       if (
@@ -1664,65 +1762,14 @@ export function useSessionCombatExperience({
         return;
       }
 
-      attackInFlightRef.current = true;
-      void (async () => {
-        try {
-          const response = await attack({
-            session,
-            attacker: member,
-            target: exactTarget,
-            declarationId: declaration.id,
-          });
-          if (!mountedRef.current) return;
-          presentation.acceptAttackResponse(
-            attackResponseFact({
-              session,
-              attacker: member,
-              target: exactTarget,
-              response,
-            })
-          );
-          invalidateAuthority();
-          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-        } catch (error) {
-          if (!mountedRef.current) return;
-          if (isStaleDeclarationRefusal(error)) {
-            recoverStaleDeclaration(declaration.id, Verb.ATTACK, exactTarget);
-          } else {
-            // A transport/unknown failure is ambiguous: the provider may have
-            // committed the command even though its response did not arrive.
-            // Keep the honest error, but never leave pre-command authority
-            // armed or executable and never replay the mutation.
-            const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
-            // A legacy window cannot identify its die without the response;
-            // keep that already-open choice answerable after response loss.
-            // A current window carries its own provider ID and can still roll.
-            setReceivedRollWindow((current) =>
-              current?.session === session &&
-              current.receivedDuringLocalAttack &&
-              !current.presentationId
-                ? { ...current, bypassDiceSettlement: true }
-                : current
-            );
-            invalidateAuthority();
-            setInteraction({
-              ...EMPTY_INTERACTION,
-              changedOptionNotice: notice,
-            });
-            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-          }
-        } finally {
-          attackInFlightRef.current = false;
-        }
-      })();
+      fireAttack(declaration, exactTarget);
     },
     [
       activate,
-      attack,
+      fireAttack,
       chooseSpeakTarget,
       invalidateAuthority,
       member,
-      presentation,
       memberTargetingMode,
       selectionIsCurrent,
       setInteraction,
@@ -1730,6 +1777,145 @@ export function useSessionCombatExperience({
       scheduleRefresh,
       session,
     ]
+  );
+
+  /**
+   * CLICK A HOSTILE TO ATTACK (rpg-project#872 D1). Read off the CURRENT
+   * Attack row at the moment of the click: in reach, the ordinary swing at
+   * once; out of reach with the server's `approach` cell, a walk to that
+   * cell, and the swing only after it. Nothing else swings.
+   *
+   * THE WALK NEVER SWINGS ON ITS OWN. The intent survives the walk the way
+   * the Speak approach's does: `walked` turns true only when THIS Move is
+   * accepted, `arrived` only when its steps end on the cell asked for. On the
+   * first fresh offer after it, the swing fires only if the walk arrived AND
+   * the refreshed Attack row has him in reach from there. A walk cut short
+   * (an opportunity attack, a body in the way, a fight forming, a refusal)
+   * or a target no longer offered drops the intent and sends nothing.
+   */
+  const walkToApproachRef = useRef(walkToApproach);
+  walkToApproachRef.current = walkToApproach;
+  const strikeBlocked = (): boolean =>
+    !mountedRef.current ||
+    attackInFlightRef.current ||
+    activateInFlightRef.current ||
+    castInFlightRef.current ||
+    speakInFlightRef.current ||
+    !authorityRef.current.fresh ||
+    !actsOnThisClock(
+      authorityRef.current.clock,
+      authorityRef.current.active,
+      member
+    );
+  const onStrike = useCallback(
+    (target: string): void => {
+      if (!target || strikeBlocked()) return;
+      const reach = attackReachFor(declarationsRef.current, target);
+      if (!reach || reach.kind === 'out-of-reach') return;
+      // Any explicit action supersedes whatever was armed or carried.
+      carryWorldMovementRef.current = false;
+      approachRef.current = null;
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      if (reach.kind === 'in-reach') {
+        strikeRef.current = null;
+        fireAttack(reach.declaration, target);
+        return;
+      }
+      const cell = positionToCube(reach.cell);
+      const intent = { target, walked: false, arrived: false };
+      strikeRef.current = intent;
+      const dispatched = walkToApproachRef.current?.(cell, {
+        accepted: (end) => {
+          if (strikeRef.current !== intent) return;
+          intent.walked = true;
+          intent.arrived =
+            end !== null &&
+            end.x === cell.x &&
+            end.y === cell.y &&
+            end.z === cell.z;
+        },
+        refused: () => {
+          if (strikeRef.current === intent) strikeRef.current = null;
+        },
+      });
+      if (!dispatched && strikeRef.current === intent) {
+        strikeRef.current = null;
+      }
+    },
+    // strikeBlocked reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fireAttack, member, setInteraction]
+  );
+
+  useEffect(() => {
+    const intent = strikeRef.current;
+    if (!intent?.walked || !authorityFresh) return;
+    strikeRef.current = null;
+    if (!intent.arrived) return;
+    if (interactionRef.current.armedDeclarationId !== null) return;
+    if (!actsOnThisClock(clock, active, member)) return;
+    if (
+      attackInFlightRef.current ||
+      activateInFlightRef.current ||
+      castInFlightRef.current ||
+      speakInFlightRef.current
+    )
+      return;
+    const reach = attackReachFor(declarations, intent.target);
+    if (reach?.kind !== 'in-reach') return;
+    fireAttack(reach.declaration, intent.target);
+  }, [active, authorityFresh, clock, declarations, fireAttack, member]);
+
+  /**
+   * SPEAK FROM THE CREATURE'S MENU (rpg-project#872 D3). The one Speak offer,
+   * with his lines open when it lists him; otherwise the existing approach
+   * walk toward him, which re-arms Speak on arrival (rpg-project#753 R4).
+   */
+  const onSpeakTo = useCallback(
+    (subject: string): void => {
+      if (!subject || strikeBlocked()) return;
+      const speaks = declarationsRef.current.filter(
+        (declaration) =>
+          declaration.verb === Verb.SPEAK &&
+          declaration.targetKind === TargetKind.MEMBER &&
+          declaration.available &&
+          declaration.id.length > 0
+      );
+      const declaration = speaks.length === 1 ? speaks[0]! : undefined;
+      if (!declaration) return;
+      const target: SpeakTarget = { case: 'memberId', value: subject };
+      carryWorldMovementRef.current = false;
+      strikeRef.current = null;
+      if (speakLinesFor(declaration, target).length > 0) {
+        approachRef.current = null;
+        setInteraction({
+          ...EMPTY_INTERACTION,
+          armedDeclarationId: declaration.id,
+          speakTarget: target,
+        });
+        setTargeting(true);
+        return;
+      }
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      const intent = { target, walked: false };
+      approachRef.current = intent;
+      const dispatched = approachArgRef.current?.(target, {
+        accepted: () => {
+          if (approachRef.current === intent) intent.walked = true;
+        },
+        refused: () => {
+          if (approachRef.current === intent) approachRef.current = null;
+        },
+      });
+      if (!dispatched && approachRef.current === intent) {
+        approachRef.current = null;
+      }
+    },
+    // strikeBlocked reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [member, setInteraction]
   );
 
   // runActivate is held in a ref so onSelectDeclaration can call it without
@@ -2406,6 +2592,8 @@ export function useSessionCombatExperience({
       onChooseSpeakTarget: chooseSpeakTarget,
       onSpeakOption,
       onApproachTarget,
+      onStrike,
+      onSpeakTo,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2441,6 +2629,8 @@ export function useSessionCombatExperience({
       chooseSpeakTarget,
       onSpeakOption,
       onApproachTarget,
+      onStrike,
+      onSpeakTo,
       onConfirmTargets,
       pacing.notice,
       pacing.monsterTurnIds,

@@ -14,7 +14,7 @@
 import { Html } from '@react-three/drei';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
-import type { MoveIndicatorSelection } from './moveIndicator';
+import type { HoverActTone, MoveIndicatorSelection } from './moveIndicator';
 
 // Kept explicit here (rather than relying on PathPreview's own default)
 // so a reviewer can read what 'path' renders without opening that file.
@@ -37,6 +37,49 @@ export interface MoveIndicatorProps {
   /** The words over a body a click walks into ('bump'), e.g. "Walk up to
    * Gate Guard" (rpg-project#835 R8). */
   bumpHint?: string;
+}
+
+const TAG_BORDER: Record<HoverActTone, string> = {
+  attack: TARGET_COLOR,
+  verb: PATH_COLOR,
+  refused: INVALID_COLOR,
+};
+
+/** The words over a creature: "Walk up to Gate Guard", "Attack Guard",
+ * "Out of reach". One look for every verb, so they read the same way. */
+function HoverTag({
+  at,
+  border,
+  children,
+  data,
+}: {
+  at: { x: number; z: number };
+  border: string;
+  children: string;
+  data: Record<string, string>;
+}) {
+  return (
+    <Html
+      center
+      position={[at.x, 1.9, at.z]}
+      style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
+      zIndexRange={[5, 0]}
+    >
+      <span
+        {...data}
+        style={{
+          color: '#d6eff0',
+          background: '#0b1720e8',
+          border: `1px solid ${border}`,
+          borderRadius: 4,
+          padding: '3px 6px',
+          fontSize: 11,
+        }}
+      >
+        {children}
+      </span>
+    </Html>
+  );
 }
 
 export function MoveIndicator({
@@ -90,27 +133,46 @@ export function MoveIndicator({
             color={PATH_COLOR}
           />
           {bumpHint && (
-            <Html
-              center
-              position={[at.x, 1.9, at.z]}
-              style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
-              zIndexRange={[5, 0]}
+            <HoverTag
+              at={at}
+              border={PATH_COLOR}
+              data={{ 'data-bump-hint': selection.entityId }}
             >
-              <span
-                data-bump-hint={selection.entityId}
-                style={{
-                  color: '#d6eff0',
-                  background: '#0b1720e8',
-                  border: `1px solid ${PATH_COLOR}`,
-                  borderRadius: 4,
-                  padding: '3px 6px',
-                  fontSize: 11,
-                }}
-              >
-                {bumpHint}
-              </span>
-            </Html>
+              {bumpHint}
+            </HoverTag>
           )}
+        </>
+      );
+    }
+    case 'act': {
+      // Click a creature to act (rpg-project#872): the walk to the server's
+      // approach cell when the act walks first, and the words over him.
+      const at = cubeToWorld(hovered, hexSize);
+      return (
+        <>
+          {selection.path.length > 0 && (
+            <PathPreview
+              path={selection.path}
+              hexSize={hexSize}
+              color={PATH_COLOR}
+            />
+          )}
+          <PathPreview
+            path={[hovered]}
+            hexSize={hexSize}
+            color={TAG_BORDER[selection.tone]}
+            opacity={selection.tone === 'refused' ? 0.35 : 0.55}
+          />
+          <HoverTag
+            at={at}
+            border={TAG_BORDER[selection.tone]}
+            data={{
+              'data-act-hint': selection.entityId,
+              'data-act-tone': selection.tone,
+            }}
+          >
+            {selection.hint}
+          </HoverTag>
         </>
       );
     }

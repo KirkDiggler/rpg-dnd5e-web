@@ -187,6 +187,9 @@ const DICE_SPECS = ALL_DIAL_SPECS.filter((spec) => spec.group === 'dice');
 const NOTIFICATION_SPECS = ALL_DIAL_SPECS.filter(
   (spec) => spec.group === 'notifications'
 );
+const CONTROL_SPECS = ALL_DIAL_SPECS.filter(
+  (spec) => spec.group === 'controls'
+);
 
 export function FeelDialsDrawer({ open, onClose }: FeelDialsDrawerProps) {
   const values = useDialValues();
@@ -231,6 +234,11 @@ export function FeelDialsDrawer({ open, onClose }: FeelDialsDrawerProps) {
         <DialGroupSection
           title="Notifications"
           specs={NOTIFICATION_SPECS}
+          values={values}
+        />
+        <DialGroupSection
+          title="Controls"
+          specs={CONTROL_SPECS}
           values={values}
         />
       </div>

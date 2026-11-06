@@ -78,3 +78,44 @@ describe('the move picker on a body (rpg-project#835 R8)', () => {
     expect(click({ cellAim: true })).toBe('aim');
   });
 });
+
+describe('click a creature to act (rpg-project#872)', () => {
+  const hostile = { ...guard, stance: 'hostile', passage: Passage.STANDABLE };
+  const strike = { verb: 'attack', reach: 'approach' } as const;
+
+  it('with the dial off (no verbs) a hostile click is what it was', () => {
+    expect(click({ observed: hostile })).toBe('none');
+    expect(click({})).toBe('bump');
+  });
+
+  it('one verb acts at once', () => {
+    expect(click({ observed: hostile, verbs: [strike] })).toBe('strike');
+    expect(click({ verbs: [{ verb: 'speak' }] })).toBe('speak');
+    expect(click({ verbs: [{ verb: 'bump' }] })).toBe('bump');
+  });
+
+  it('more than one shows the choices', () => {
+    expect(click({ verbs: [strike, { verb: 'bump' }] })).toBe('menu');
+  });
+
+  it('an Attack alone that no walk reaches does nothing', () => {
+    expect(
+      click({
+        observed: hostile,
+        verbs: [{ verb: 'attack', reach: 'out-of-reach' }],
+      })
+    ).toBe('none');
+  });
+
+  it('whatever is armed still wins', () => {
+    expect(click({ verbs: [strike], attackable: true })).toBe('attack');
+    expect(click({ verbs: [strike], approachArmed: true })).toBe('approach');
+    expect(click({ verbs: [strike], memberTargeting: true })).toBe('none');
+    expect(
+      click({
+        verbs: [strike],
+        observed: { ...guard, kind: MemberKind.WORLD },
+      })
+    ).toBe('interact');
+  });
+});

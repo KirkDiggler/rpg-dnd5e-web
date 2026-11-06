@@ -10,7 +10,7 @@ import {
 } from './dials';
 
 describe('ALL_DIAL_SPECS', () => {
-  it('aggregates camera, dice, then notification specs', () => {
+  it('aggregates camera, dice, notification, then control specs', () => {
     const groups = ALL_DIAL_SPECS.map((spec) => spec.group);
     const firstDiceIndex = groups.indexOf('dice');
     expect(firstDiceIndex).toBeGreaterThan(0);
@@ -24,9 +24,16 @@ describe('ALL_DIAL_SPECS', () => {
         .slice(firstDiceIndex, firstNotificationIndex)
         .every((g) => g === 'dice')
     ).toBe(true);
+    const firstControlIndex = groups.indexOf('controls');
+    expect(firstControlIndex).toBeGreaterThan(firstNotificationIndex);
     expect(
-      groups.slice(firstNotificationIndex).every((g) => g === 'notifications')
+      groups
+        .slice(firstNotificationIndex, firstControlIndex)
+        .every((g) => g === 'notifications')
     ).toBe(true);
+    expect(groups.slice(firstControlIndex).every((g) => g === 'controls')).toBe(
+      true
+    );
   });
 
   it('has no duplicate keys', () => {

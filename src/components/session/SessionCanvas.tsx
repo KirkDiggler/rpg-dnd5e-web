@@ -91,17 +91,27 @@ import { AreaFootprintPreview } from './AreaFootprintPreview';
 import { AreaTargetOutline } from './AreaTargetOutline';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
+import {
+  creatureVerbs,
+  verbEnabled,
+  verbLabel,
+  type ClickToActOffers,
+  type CreatureVerb,
+} from './clickToAct';
+import { CreatureVerbMenu } from './CreatureVerbMenu';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
 import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import { facingWhileWalking, type Movements } from './moveController';
+import type { HoverAct } from './moveIndicator';
 import { MoveIndicator } from './MoveIndicator.tsx';
+import { positionToCube } from './positionBridge';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
-import { targetClickIntent } from './targetClickIntent';
+import { blocksTheWay, targetClickIntent } from './targetClickIntent';
 import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -231,6 +241,15 @@ export interface SessionCanvasProps {
    * the caller walks up to him and into his cell (`findAtlasBump`), and the
    * server stops the walk. Absent, such a click means nothing, as before. */
   onBumpClick?: (subject: string) => void;
+  /** CLICK A CREATURE TO ACT (rpg-project#872): the server's offers a click
+   * reads (`clickToActOffers`). Present only while the dial is on; absent, a
+   * click on a creature behaves exactly as before (D2). */
+  clickToAct?: ClickToActOffers;
+  /** A click that attacks a hostile: the caller swings at once when he is in
+   * reach, or walks to the server's approach cell and swings on arrival. */
+  onStrikeClick?: (subject: string) => void;
+  /** A click that speaks to a creature the Speak row lists. */
+  onSpeakToClick?: (subject: string) => void;
   /** An armed CELL cast owns creature clicks as cell placement. The creature's
    * observed `otherMembers` position routes through the same `onHexClick` seam
    * as exposed floor; MEMBER selection remains unchanged when false. */
@@ -363,6 +382,9 @@ export function SessionScene({
   onEntityClick,
   onApproachClick,
   onBumpClick,
+  clickToAct,
+  onStrikeClick,
+  onSpeakToClick,
   cellAimEnabled = false,
   onHoverEntity,
   onMovementPainted,
@@ -531,6 +553,35 @@ export function SessionScene({
   // approach to anyone, nor a bump. CELL aiming selects a place, not a
   // victim: it submits the sighting's position through the floor seam.
   const bumpArmed = Boolean(onBumpClick) && movementPreviewEnabled;
+  // The verbs a click on him offers (rpg-project#872), only while the dial
+  // is on: undefined keeps every creature click exactly as it was.
+  const verbsFor = useCallback(
+    (
+      subject: string,
+      observed: SightedMember | undefined
+    ): CreatureVerb[] | undefined =>
+      clickToAct
+        ? creatureVerbs({
+            member: observed,
+            attack: clickToAct.attackReach.get(subject) ?? null,
+            speakListed: clickToAct.speakListed.has(subject),
+            bumpable: bumpArmed && blocksTheWay(observed),
+          })
+        : undefined,
+    [clickToAct, bumpArmed]
+  );
+  // The creature whose choices are open (D3), by subject.
+  const [verbMenu, setVerbMenu] = useState<string | null>(null);
+  const actOnVerb = useCallback(
+    (subject: string, verb: CreatureVerb) => {
+      setVerbMenu(null);
+      if (!verbEnabled(verb)) return;
+      if (verb.verb === 'attack') onStrikeClick?.(subject);
+      else if (verb.verb === 'speak') onSpeakToClick?.(subject);
+      else onBumpClick?.(subject);
+    },
+    [onStrikeClick, onSpeakToClick, onBumpClick]
+  );
   const handleTargetClick = useCallback(
     (subject: string) => {
       const observed = membersBySubject.get(subject);
@@ -542,7 +593,9 @@ export function SessionScene({
         attackable: attackableSet.has(subject),
         approachArmed: Boolean(onApproachClick),
         moveArmed: bumpArmed,
+        verbs: verbsFor(subject, observed),
       });
+      setVerbMenu(intent === 'menu' ? subject : null);
       switch (intent) {
         case 'select':
         case 'attack':
@@ -560,6 +613,13 @@ export function SessionScene({
         case 'bump':
           onBumpClick?.(subject);
           return;
+        case 'strike':
+          onStrikeClick?.(subject);
+          return;
+        case 'speak':
+          onSpeakToClick?.(subject);
+          return;
+        case 'menu':
         case 'none':
           return;
       }
@@ -575,7 +635,10 @@ export function SessionScene({
       onApproachClick,
       onInteractClick,
       onBumpClick,
+      onStrikeClick,
+      onSpeakToClick,
       bumpArmed,
+      verbsFor,
     ]
   );
 
@@ -590,6 +653,7 @@ export function SessionScene({
   // never falls through to a walk attempt.
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
+      setVerbMenu(null);
       const key = coordToKey(coord);
       if (memberTargeting && key === coordToKey(myPosition)) {
         handleTargetClick(characterId);
@@ -743,22 +807,58 @@ export function SessionScene({
   const hoveredMember = hoveredEntityId
     ? membersBySubject.get(hoveredEntityId)
     : undefined;
-  const hoveredEntityIsBumpable =
-    !!hoveredEntityId &&
-    targetClickIntent({
-      observed: hoveredMember,
-      isSelf: hoveredEntityId === characterId,
-      memberTargeting,
-      cellAim: cellAimEnabled,
-      attackable: hoveredEntityIsAttackable,
-      approachArmed: Boolean(onApproachClick),
-      moveArmed: bumpArmed,
-    }) === 'bump';
+  const hoveredIntent = hoveredEntityId
+    ? targetClickIntent({
+        observed: hoveredMember,
+        isSelf: hoveredEntityId === characterId,
+        memberTargeting,
+        cellAim: cellAimEnabled,
+        attackable: hoveredEntityIsAttackable,
+        approachArmed: Boolean(onApproachClick),
+        moveArmed: bumpArmed,
+        verbs: verbsFor(hoveredEntityId, hoveredMember),
+      })
+    : 'none';
+  const hoveredEntityIsBumpable = hoveredIntent === 'bump';
+  // The hover names what the click does before it is made (rpg-project#872
+  // D1): "Attack Guard", "Speak to Guard", the choices, or "Out of reach".
+  const hoverAct = useMemo((): HoverAct | null => {
+    if (!hoveredEntityId || !hoveredMember || !clickToAct) return null;
+    const verbs = verbsFor(hoveredEntityId, hoveredMember) ?? [];
+    const name = hoveredMember.name;
+    if (hoveredIntent === 'menu') {
+      return {
+        hint: verbs.map((verb) => verbLabel(verb, name)).join(' · '),
+        tone: 'verb',
+        walkTo: null,
+      };
+    }
+    if (hoveredIntent === 'strike') {
+      const reach = clickToAct.attackReach.get(hoveredEntityId);
+      return {
+        hint: `Attack ${name}`,
+        tone: 'attack',
+        walkTo: reach?.kind === 'approach' ? positionToCube(reach.cell) : null,
+      };
+    }
+    if (hoveredIntent === 'speak') {
+      return { hint: `Speak to ${name}`, tone: 'verb', walkTo: null };
+    }
+    if (
+      hoveredIntent === 'none' &&
+      verbs.length === 1 &&
+      !verbEnabled(verbs[0]!)
+    ) {
+      return { hint: 'Out of reach', tone: 'refused', walkTo: null };
+    }
+    return null;
+  }, [hoveredEntityId, hoveredMember, clickToAct, verbsFor, hoveredIntent]);
   // Attack hover remains its own orange target affordance. Every other floor
   // marker is prospective movement and therefore exists only while Move is
   // explicitly selected (or an exploration caller keeps the default enabled).
   const moveIndicatorHovered =
-    !memberTargeting && (movementPreviewEnabled || hoveredEntityIsAttackable)
+    !memberTargeting &&
+    (movementPreviewEnabled || hoveredEntityIsAttackable || hoverAct)
       ? effectiveHoveredHex
       : null;
   const moveIndicatorSelection = useMoveIndicator({
@@ -770,7 +870,25 @@ export function SessionScene({
     attackable: hoveredEntityIsAttackable,
     bumpable: hoveredEntityIsBumpable,
     budgetFeet: movementBudgetFeet,
+    act: hoverAct,
   });
+
+  // The open choices follow the creature's live sighting and the server's
+  // current offers; a memory, or a creature with nothing left to offer,
+  // closes them.
+  const verbMenuMember = verbMenu ? membersBySubject.get(verbMenu) : undefined;
+  const verbMenuVerbs =
+    verbMenu && verbMenuMember && !verbMenuMember.remembered
+      ? (verbsFor(verbMenu, verbMenuMember) ?? [])
+      : [];
+  useEffect(() => {
+    if (!verbMenu) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setVerbMenu(null);
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [verbMenu]);
 
   // The passive, persistent in-reach rings — every attackable target's
   // own cell, at the quiet opacity (see this module's own doc comment).
@@ -881,6 +999,17 @@ export function SessionScene({
           hoveredMember ? `Walk up to ${hoveredMember.name}` : undefined
         }
       />
+      {verbMenu && verbMenuMember && verbMenuVerbs.length > 0 && (
+        <CreatureVerbMenu
+          subject={verbMenu}
+          name={verbMenuMember.name}
+          position={verbMenuMember.position}
+          hexSize={hexSize}
+          verbs={verbMenuVerbs}
+          onChoose={actOnVerb}
+          onClose={() => setVerbMenu(null)}
+        />
+      )}
       <HexEntity
         entityId={characterId}
         targetMarker={targetMarkerFor(characterId)}

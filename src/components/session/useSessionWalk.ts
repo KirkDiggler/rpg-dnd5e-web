@@ -47,9 +47,12 @@ function sameCube(a: CubeCoord | null, b: CubeCoord | null): boolean {
   return a.x === b.x && a.y === b.y && a.z === b.z;
 }
 
-/** What became of one dispatched Move: exactly one of the two is called. */
+/** What became of one dispatched Move: exactly one of the two is called.
+ * `accepted` hears the cell the server's steps ended on, or null when the
+ * walk did not move at all: a walk the world cut short ends short of the
+ * cell asked for (rpg-project#872). */
 export interface MoveOutcome {
-  accepted: () => void;
+  accepted: (end: CubeCoord | null) => void;
   refused: () => void;
 }
 
@@ -87,6 +90,11 @@ export interface UseSessionWalkResult {
    * R8): the server refuses the last step and writes the bump. The same
    * silent no-ops as `walkTo` when nothing reaches him. */
   bump: (target: CubeCoord) => void;
+  /** Walk to exactly this cell by the ordinary route (`findAtlasPath`, the
+   * floor click's own planner: shut doors stay shut), with `outcome` hearing
+   * what became of THIS Move. Returns true when a Move was dispatched. The
+   * cell is the server's (`TargetCandidate.approach`, rpg-project#872). */
+  walkToCell: (target: CubeCoord, outcome?: MoveOutcome) => boolean;
   /** The most recent non-stale move-RPC failure message, or `null`.
    * FAILED_PRECONDITION selector refusals use the shared declaration recovery
    * callback instead, so raw stale wording never reaches this field. */
@@ -196,11 +204,11 @@ export function useSessionWalk(
           // waiting for a redundant MOVED delivery.
           accepted = true;
           onMoveAccepted?.();
-          outcome?.accepted();
-          if (response.stopReason) setMoveError(response.stopReason);
           const steps = response.steps
             .filter((step) => step.position !== undefined)
             .map((step) => positionToCube(step.position!));
+          outcome?.accepted(steps.at(-1) ?? null);
+          if (response.stopReason) setMoveError(response.stopReason);
 
           if (steps.length === 0) {
             // The walk did not move at all (e.g. the very first step was
@@ -269,6 +277,12 @@ export function useSessionWalk(
     [dispatch]
   );
 
+  const walkToCell = useCallback(
+    (target: CubeCoord, outcome?: MoveOutcome): boolean =>
+      dispatch((index, from) => findAtlasPath(index, from, target), outcome),
+    [dispatch]
+  );
+
   const onWalkAnimationComplete = useCallback(() => {
     if (!busy) return;
     void (async () => {
@@ -286,6 +300,7 @@ export function useSessionWalk(
     walkTo,
     approach,
     bump,
+    walkToCell,
     onWalkAnimationComplete,
     moveError,
     notYourTurn,
