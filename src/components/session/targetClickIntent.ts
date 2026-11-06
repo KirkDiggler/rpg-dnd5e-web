@@ -10,11 +10,20 @@
  * interacted with, and an armed Speak still approaches. A body that does not
  * block, or is allied, stays as before. Every fact read here is the
  * server's: the passage, the stance, the offers.
+ *
+ * CLICK A CREATURE TO ACT (rpg-project#872). With the dial on, the caller
+ * passes the verbs the server offers for him (`creatureVerbs`): one verb acts
+ * at once ('strike', 'speak', 'bump'), more than one opens the choices
+ * ('menu'), and an Attack alone that no walk this turn reaches does nothing.
+ * Everything armed (a target choice, an aim, a world NPC, an armed attack's
+ * list, an armed Speak's approach) still wins first. Without `verbs` the
+ * click is exactly what it was before.
  */
 import {
   MemberKind,
   Passage,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { creatureClick, type CreatureVerb } from './clickToAct';
 import type { SightedMember } from './sightingEntities';
 import { STANCE_ALLIED } from './stanceRing';
 
@@ -25,6 +34,9 @@ export type TargetClickIntent =
   | 'attack'
   | 'approach'
   | 'bump'
+  | 'strike'
+  | 'speak'
+  | 'menu'
   | 'none';
 
 /** A live body whose state blocks, not allied, and not a world NPC. */
@@ -53,6 +65,9 @@ export interface TargetClickArgs {
   approachArmed: boolean;
   /** The move picker is live: a floor click would walk. */
   moveArmed: boolean;
+  /** The verbs the server offers for him (`creatureVerbs`), present only
+   * while the click-to-act dial is on (rpg-project#872 D2). */
+  verbs?: readonly CreatureVerb[];
 }
 
 export function targetClickIntent(args: TargetClickArgs): TargetClickIntent {
@@ -66,6 +81,7 @@ export function targetClickIntent(args: TargetClickArgs): TargetClickIntent {
   if (attackable) return 'attack';
   if (!observed || observed.remembered) return 'none';
   if (args.approachArmed) return 'approach';
+  if (args.verbs) return creatureClick(args.verbs);
   if (args.moveArmed && blocksTheWay(observed)) return 'bump';
   return 'none';
 }

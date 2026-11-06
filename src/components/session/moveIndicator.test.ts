@@ -348,3 +348,62 @@ describe('the bump hover (rpg-project#835 R8)', () => {
     expect(selectMoveIndicator(hover)).toEqual({ kind: 'invalid' });
   });
 });
+
+describe('the act hover (rpg-project#872)', () => {
+  const from = positionToCube(pos(0, 0));
+  const orcCell = positionToCube(pos(2, -1));
+  const approach = positionToCube(pos(1, 0));
+  const hover = {
+    hovered: orcCell,
+    from,
+    pathIndex: corridorIndex(),
+    locked: false,
+    hoveredEntityId: 'orc-2',
+  };
+
+  it('a walk-then-swing previews the very route the click sends to the server’s cell', () => {
+    const selection = selectMoveIndicator({
+      ...hover,
+      act: { hint: 'Attack Orc', tone: 'attack', walkTo: approach },
+    });
+    expect(selection).toEqual({
+      kind: 'act',
+      entityId: 'orc-2',
+      path: findAtlasPath(corridorIndex(), from, approach),
+      hint: 'Attack Orc',
+      tone: 'attack',
+    });
+    expect(selection?.kind === 'act' && selection.path.length).toBeGreaterThan(
+      1
+    );
+  });
+
+  it('a swing where the player stands, or out of reach, draws no walk', () => {
+    expect(
+      selectMoveIndicator({
+        ...hover,
+        act: { hint: 'Out of reach', tone: 'refused', walkTo: null },
+      })
+    ).toMatchObject({ kind: 'act', path: [], hint: 'Out of reach' });
+  });
+
+  it('an armed attack’s own target hover still wins', () => {
+    expect(
+      selectMoveIndicator({
+        ...hover,
+        attackable: true,
+        act: { hint: 'Attack Orc', tone: 'attack', walkTo: approach },
+      })
+    ).toEqual({ kind: 'target', entityId: 'orc-2' });
+  });
+
+  it('not this member’s turn reads locked, never an act', () => {
+    expect(
+      selectMoveIndicator({
+        ...hover,
+        locked: true,
+        act: { hint: 'Attack Orc', tone: 'attack', walkTo: approach },
+      })
+    ).toEqual({ kind: 'locked' });
+  });
+});

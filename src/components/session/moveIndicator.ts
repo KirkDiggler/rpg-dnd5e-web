@@ -82,7 +82,30 @@ export type MoveIndicatorSelection =
   | { kind: 'target'; entityId: string }
   /** A blocking body a click walks up to and into (rpg-project#835 R8):
    * the same path `useSessionWalk.bump` sends, ending on his cell. */
-  | { kind: 'bump'; path: CubeCoord[]; affordable: number; entityId: string };
+  | { kind: 'bump'; path: CubeCoord[]; affordable: number; entityId: string }
+  /** A creature a click acts on (rpg-project#872): the words over him, and
+   * the walk to the server's approach cell when the act walks first. */
+  | {
+      kind: 'act';
+      entityId: string;
+      path: CubeCoord[];
+      hint: string;
+      tone: HoverActTone;
+    };
+
+/** How the hover over a creature reads: an Attack, any other verb, or an
+ * Attack no walk this turn reaches. */
+export type HoverActTone = 'attack' | 'verb' | 'refused';
+
+/** What a click on the hovered creature would do (rpg-project#872), decided
+ * by the caller from the server's offers (`clickToAct.ts`). */
+export interface HoverAct {
+  hint: string;
+  tone: HoverActTone;
+  /** The server's approach cell the click walks to, or null when the click
+   * acts where the player stands. */
+  walkTo: CubeCoord | null;
+}
 
 export interface SelectMoveIndicatorArgs {
   /** The floor cell currently under the cursor, or `null` when nothing is
@@ -109,6 +132,9 @@ export interface SelectMoveIndicatorArgs {
   /** Feet of movement left this turn — the MOVE declaration's `remaining`.
    * `undefined` when no budget applies; see this module's own doc comment. */
   budgetFeet?: number;
+  /** What a click on `hoveredEntityId` does, when it acts on him. Ignored
+   * when `hoveredEntityId` is unset or `attackable` wins. */
+  act?: HoverAct | null;
 }
 
 /** The server's documented price for a walk: five feet per cell entered
@@ -146,6 +172,7 @@ export function selectMoveIndicator(
     attackable,
     bumpable,
     budgetFeet,
+    act,
   } = args;
 
   if (!hovered) return null;
@@ -155,6 +182,23 @@ export function selectMoveIndicator(
   }
 
   if (locked) return { kind: 'locked' };
+
+  // The act's walk is the floor click's own route to the server's cell, so
+  // the preview is the path the click sends.
+  if (hoveredEntityId && act) {
+    const path =
+      act.walkTo && from && pathIndex
+        ? findAtlasPath(pathIndex, from, act.walkTo)
+        : [];
+    return {
+      kind: 'act',
+      entityId: hoveredEntityId,
+      path,
+      hint: act.hint,
+      tone: act.tone,
+    };
+  }
+
   // Not enough to judge yet (no GetWhere answer, or no atlas) — draw
   // nothing rather than a false 'invalid'. See this module's own doc
   // comment ("`null` means 'nothing to judge yet'").
