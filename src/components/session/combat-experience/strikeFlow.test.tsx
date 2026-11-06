@@ -23,11 +23,14 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { act, render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildAtlasPathIndex } from '../atlasPath';
+import { hexDistance } from '../../hex-grid/hexMath';
+import { buildAtlasPathIndex, INTERACTION_REACH } from '../atlasPath';
 import { positionToCube } from '../positionBridge';
+import { selectCombatExperience } from './selection';
+import { TargetSurface } from './TargetSurface';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
 
 const hoisted = vi.hoisted(() => ({
@@ -61,6 +64,7 @@ const names = new Map([
  * q=9, and the server's approach cell for him at q=8. */
 const where = { x: 0, y: 0 } as never;
 const APPROACH = pos(8, 0);
+const ORC_AT = positionToCube(pos(9, 0));
 const pathIndex = buildAtlasPathIndex(
   {
     cells: Array.from({ length: 12 }, (_, q) => pos(q, 0)),
@@ -136,8 +140,31 @@ function Harness({ declarations }: { declarations: readonly Declaration[] }) {
     invalidateAuthoritySnapshots: () => setFresh(false),
     scheduleRefresh: () => {},
     walkToApproach: walk.walkToCell,
+    // The armed Speak's approach walk (rpg-project#753 R4), as the view
+    // wires it: stop within interaction reach of him.
+    approach: (target, outcome) =>
+      target.case === 'memberId' && target.value === 'orc-2'
+        ? walk.approach(ORC_AT, INTERACTION_REACH, outcome)
+        : false,
   });
-  return null;
+  const state = latest.presentationState;
+  return (
+    <TargetSurface
+      phase={latest.phase}
+      selection={selectCombatExperience(declarations, state)}
+      isViewerTurn={false}
+      showTurnNotice={false}
+      memberNames={names}
+      location={{ name: 'The Keep', area: 'Yard' }}
+      renderMap={() => null}
+      onTargetClick={latest.onTargetClick}
+      speakTarget={state.speakTarget}
+      onChooseSpeakTarget={latest.onChooseSpeakTarget}
+      onSpeakOption={latest.onSpeakOption}
+      onApproachTarget={latest.onApproachTarget}
+      onCancelSelection={latest.onCancelSelection}
+    />
+  );
 }
 
 const requestedPath = (): { x: number; y: number }[] =>
@@ -265,22 +292,24 @@ describe('a click on a hostile no walk this turn reaches', () => {
   });
 });
 
+const taunt = create(SpeakOptionSchema, {
+  target: { case: 'memberId', value: 'orc-2' },
+  optionId: 'taunt',
+  line: 'Come on, then.',
+  available: true,
+});
+const speakRow = (rows: (typeof taunt)[]) =>
+  create(DeclarationSchema, {
+    id: 'v2.speak.keep.1',
+    verb: Verb.SPEAK,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    speakOptions: rows,
+  });
+
 describe('Speak from the creature’s choices (rpg-project#872 D3)', () => {
   it('opens his lines from the one Speak offer, sending nothing', async () => {
-    const speak = create(DeclarationSchema, {
-      id: 'v2.speak.keep.1',
-      verb: Verb.SPEAK,
-      available: true,
-      targetKind: TargetKind.MEMBER,
-      speakOptions: [
-        create(SpeakOptionSchema, {
-          target: { case: 'memberId', value: 'orc-2' },
-          optionId: 'taunt',
-          line: 'Come on, then.',
-          available: true,
-        }),
-      ],
-    });
+    const speak = speakRow([taunt]);
     render(<Harness declarations={[attackRow('in-reach'), speak]} />);
     await act(async () => latest.onSpeakTo('orc-2'));
 
@@ -291,5 +320,47 @@ describe('Speak from the creature’s choices (rpg-project#872 D3)', () => {
     });
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('Speak to a creature beyond reach (rpg-project#872 D3)', () => {
+  it('walks into speaking reach and opens his lines on arrival, never swinging', async () => {
+    const { rerender } = render(
+      <Harness declarations={[attackRow('approach'), speakRow([])]} />
+    );
+    await act(async () => latest.onSpeakTo('orc-2'));
+
+    // The armed Speak's approach walk: it stops within interaction reach.
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+    const path = requestedPath();
+    const end = positionToCube(path[path.length - 1] as never);
+    expect(hexDistance(end, ORC_AT)).toBe(INTERACTION_REACH);
+
+    // The refreshed offer lists him now.
+    await act(async () => {
+      rerender(
+        <Harness declarations={[attackRow('in-reach'), speakRow([taunt])]} />
+      );
+    });
+
+    expect(screen.getByText('What do you say to Orc?')).toBeTruthy();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('with no lines on arrival it opens the Speak list, as armed Speak does', async () => {
+    const { rerender } = render(
+      <Harness declarations={[attackRow('approach'), speakRow([])]} />
+    );
+    await act(async () => latest.onSpeakTo('orc-2'));
+    await act(async () => {
+      rerender(
+        <Harness declarations={[attackRow('in-reach'), speakRow([])]} />
+      );
+    });
+
+    expect(latest.presentationState.armedDeclarationId).toBe('v2.speak.keep.1');
+    expect(latest.presentationState.speakTarget).toBeNull();
+    expect(screen.getByText('Nobody within reach')).toBeTruthy();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
   });
 });

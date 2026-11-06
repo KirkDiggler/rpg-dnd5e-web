@@ -12,7 +12,8 @@
  *
  * D3 MORE THAN ONE THING TO DO. The verbs are only those the server offers
  * for that creature: Attack (a hostile on the Attack row), Speak (the Speak
- * row lists him with a line), and the bump (a blocking body on the move
+ * row lists him with a line, or he is beyond its reach and the one Speak
+ * offer's approach walk goes to him, rpg-project#753 R4), and the bump (a blocking body on the move
  * picker, rpg-project#835 R8). One verb acts at once; more than one shows the
  * choices, with an out-of-reach Attack shown disabled.
  *
@@ -92,6 +93,21 @@ export function attackReachFor(
   return named ? { kind: 'out-of-reach' } : null;
 }
 
+/** The one available Speak offer on a member, or undefined when there is
+ * none or more than one (the same reading the combat hook arms by). */
+function oneSpeakOffer(
+  declarations: readonly Declaration[]
+): Declaration | undefined {
+  const speaks = declarations.filter(
+    (declaration) =>
+      declaration.verb === Verb.SPEAK &&
+      declaration.targetKind === TargetKind.MEMBER &&
+      declaration.available &&
+      declaration.id.length > 0
+  );
+  return speaks.length === 1 ? speaks[0] : undefined;
+}
+
 /** The members the Speak row lists with at least one line. */
 export function speakListedMembers(
   declarations: readonly Declaration[]
@@ -122,6 +138,10 @@ export interface CreatureVerbsArgs {
   attack: AttackReach | null;
   /** The Speak row lists him with a line. */
   speakListed: boolean;
+  /** One Speak offer stands, so a creature it does not list is walked to
+   * and his lines appear on arrival, as armed Speak does (rpg-project#753
+   * R4). Kirk: "for speaking we would just auto walk into range". */
+  speakApproachable: boolean;
   /** A click on him is the bump today (`targetClickIntent`'s own rule). */
   bumpable: boolean;
 }
@@ -138,7 +158,9 @@ export function creatureVerbs(args: CreatureVerbsArgs): CreatureVerb[] {
   if (args.attack && member.stance === STANCE_HOSTILE) {
     verbs.push({ verb: 'attack', reach: args.attack.kind });
   }
-  if (args.speakListed) verbs.push({ verb: 'speak' });
+  if (args.speakListed || args.speakApproachable) {
+    verbs.push({ verb: 'speak' });
+  }
   if (args.bumpable) verbs.push({ verb: 'bump' });
   return verbs;
 }
@@ -176,6 +198,8 @@ export function verbEnabled(verb: CreatureVerb): boolean {
 export interface ClickToActOffers {
   attackReach: ReadonlyMap<string, AttackReach>;
   speakListed: ReadonlySet<string>;
+  /** One Speak offer stands, so Speak can walk to anyone it does not list. */
+  speakApproachable: boolean;
 }
 
 /** Every Attack candidate's answer and every Speak-listed member, once. */
@@ -191,5 +215,9 @@ export function clickToActOffers(
       if (reach) attackReach.set(candidate.member, reach);
     }
   }
-  return { attackReach, speakListed: speakListedMembers(declarations) };
+  return {
+    attackReach,
+    speakListed: speakListedMembers(declarations),
+    speakApproachable: oneSpeakOffer(declarations) !== undefined,
+  };
 }

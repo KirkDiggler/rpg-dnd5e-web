@@ -565,6 +565,7 @@ export function SessionScene({
             member: observed,
             attack: clickToAct.attackReach.get(subject) ?? null,
             speakListed: clickToAct.speakListed.has(subject),
+            speakApproachable: clickToAct.speakApproachable,
             bumpable: bumpArmed && blocksTheWay(observed),
           })
         : undefined,

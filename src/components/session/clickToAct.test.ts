@@ -164,6 +164,11 @@ describe('clickToActOffers', () => {
     expect(offers.attackReach.get('orc-2')?.kind).toBe('approach');
     expect(offers.speakListed.has('cook-3')).toBe(true);
     expect(offers.speakListed.has('orc-2')).toBe(false);
+    expect(offers.speakApproachable).toBe(true);
+  });
+
+  it('no Speak offer, nobody to walk to for a word', () => {
+    expect(clickToActOffers([attack()]).speakApproachable).toBe(false);
   });
 });
 
@@ -176,6 +181,7 @@ describe('creatureVerbs: only what the server offers for him', () => {
         member: orc,
         attack: inReach,
         speakListed: false,
+        speakApproachable: false,
         bumpable: false,
       })
     ).toEqual([{ verb: 'attack', reach: 'in-reach' }]);
@@ -187,6 +193,7 @@ describe('creatureVerbs: only what the server offers for him', () => {
         member: { ...orc, stance: STANCE_NEUTRAL },
         attack: inReach,
         speakListed: false,
+        speakApproachable: false,
         bumpable: false,
       })
     ).toEqual([]);
@@ -198,6 +205,7 @@ describe('creatureVerbs: only what the server offers for him', () => {
         member: { ...orc, remembered: true },
         attack: inReach,
         speakListed: true,
+        speakApproachable: false,
         bumpable: true,
       })
     ).toEqual([]);
@@ -209,9 +217,51 @@ describe('creatureVerbs: only what the server offers for him', () => {
         member: orc,
         attack: inReach,
         speakListed: true,
+        speakApproachable: false,
         bumpable: true,
       }).map((verb) => verb.verb)
     ).toEqual(['attack', 'speak', 'bump']);
+  });
+});
+
+describe('Speak beyond reach (rpg-project#872 D3, R4 approach)', () => {
+  const approach = attackReachFor([attack({ candidate: 'approach' })], 'orc-2');
+
+  it('a far hostile the Speak row does not list still offers Speak beside Attack', () => {
+    const verbs = creatureVerbs({
+      member: orc,
+      attack: approach,
+      speakListed: false,
+      speakApproachable: true,
+      bumpable: false,
+    });
+    expect(verbs.map((verb) => verb.verb)).toEqual(['attack', 'speak']);
+    expect(creatureClick(verbs)).toBe('menu');
+  });
+
+  it('a far blocking body offers Speak beside the bump', () => {
+    const verbs = creatureVerbs({
+      member: { ...orc, stance: STANCE_NEUTRAL, passage: Passage.BLOCKED },
+      attack: null,
+      speakListed: false,
+      speakApproachable: true,
+      bumpable: true,
+    });
+    expect(verbs.map((verb) => verb.verb)).toEqual(['speak', 'bump']);
+  });
+
+  it('with no Speak offer at all a far hostile just swings', () => {
+    expect(
+      creatureClick(
+        creatureVerbs({
+          member: orc,
+          attack: approach,
+          speakListed: false,
+          speakApproachable: false,
+          bumpable: false,
+        })
+      )
+    ).toBe('strike');
   });
 });
 
