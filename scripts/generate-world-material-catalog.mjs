@@ -73,7 +73,12 @@ export function renderWorldMaterialCatalogModule({ commit, catalog }) {
   return execFileSync(
     process.execPath,
     [PRETTIER, '--stdin-filepath', FORMAT_PATH],
-    { input: source, encoding: 'utf8' }
+    {
+      input: source,
+      encoding: 'utf8',
+      // The caller's ignore rules must not change the generated pin bytes.
+      cwd: resolve(dirname(FORMAT_PATH), '../..'),
+    }
   );
 }
 function verifyOutput(outputPath, source) {

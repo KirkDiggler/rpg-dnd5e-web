@@ -396,6 +396,41 @@ afterEach(async () => {
 });
 
 describe('production Docker private runtime packaging', () => {
+  it('checks generated pins independently of the calling directory and its ignore rules', async () => {
+    const fixture = await makeFixture();
+    await runAssetStep(await assetStepScript(), fixture, 'fixture-token');
+    const metadata = await readFile(
+      join(fixture.webRoot, 'src/generated/groundCatalogProvider.ts')
+    );
+    const outside = dirname(fixture.webRoot);
+    await put(join(outside, '.prettierignore'), 'web/**\n');
+    await execFileAsync(
+      'sh',
+      [
+        join(fixture.webRoot, 'scripts/sync-game-assets.sh'),
+        '--pinned-runtime',
+      ],
+      {
+        cwd: outside,
+        env: {
+          ...gitEnvironment,
+          RPG_GAME_ASSETS_PATH: fixture.providerRoot,
+          RPG_WEB_ROOT: fixture.webRoot,
+          ASSETS_SYNC_SKIP_UPDATE: '1',
+        },
+      }
+    );
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'src/generated/groundCatalogProvider.ts')
+      )
+    ).toEqual(metadata);
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'public/models/synty', fixture.groundFile)
+      )
+    ).toEqual(fixture.groundBytes);
+  });
   it('fails instead of building without the required provider secret', async () => {
     const script = await assetStepScript();
     const fixture = await makeFixture();

@@ -33,7 +33,11 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 - Temporary real-Git provider tests first refused the missing ground sync mode and packaging pin, then verified scoped adoption, pinned absence, independent pin preservation and corrupt-source refusal; the actual provider's pinned runtime union also passes without rewriting other generated catalogs — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
+- Normal minified delivery fetched the adopted catalog and grass/dirt bytes without a preview header, resumed both the open and gated fixtures and completed a native Move. The same-byte old-head comparison retains the same stone/ground appearance; this is delivery evidence, not a new paired performance claim — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
 ## Mistaken
+
+- A same-input sync from outside the Web checkout falsely reported stale material metadata: the caller's ignore rules changed Prettier's output. The executable packaging regression reproduces this with an ignored fixture checkout; ground/material pin renderers now own their formatting directory instead of inheriting the caller's — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - The Docker workflow fixture copied the old script dependency set and initially omitted the extracted image verifier. The fixture now carries the actual ground delivery dependencies and exercises a third distinct ground pin through shallow-clone fetching and pinned packaging, rather than only testing the collector in isolation — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
