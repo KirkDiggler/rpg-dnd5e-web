@@ -1,4 +1,5 @@
 import { PALETTE_MONSTERS, paletteNameForRef } from '@/author/paletteData';
+import { useGroundCatalog } from '@/components/session/useGroundCatalog';
 import { compositionMetadata } from '@/compositions/compositionMetadata';
 import {
   compositionErrorMessage,
@@ -10,6 +11,7 @@ import {
   isRoomDocument,
 } from '@/compositions/roomDocument';
 import { armMark, mark } from '@/dev/perfMarks';
+import { requireGroundStyle } from '@/rendering/groundCatalog';
 import {
   useCallback,
   useEffect,
@@ -96,6 +98,7 @@ import {
 } from './regionEdits';
 import { setRegionWallFinish } from './regionFinishEdits';
 import type { RegionWallFinishPatch } from './regionFinishTypes';
+import { paintRegionGround, setRegionGroundBase } from './regionGround';
 import { projectRegionLighting } from './regionLighting';
 import { addRepeatedProps } from './repeatPlacement';
 import {
@@ -3700,6 +3703,13 @@ export function WorldBuildingConcept({
     [roomDraft]
   );
   const materialCatalog = useWorldMaterialCatalog();
+  const groundCatalog = useGroundCatalog();
+  const requireAvailableGround = (ref: string | null): void => {
+    if (ref === null) return;
+    if (groundCatalog.status !== 'ready')
+      throw new Error('Ground appearances are unavailable.');
+    requireGroundStyle(groundCatalog.catalog, ref);
+  };
   const roomFinishes = useMemo(
     () =>
       projectWallFinishes(
@@ -4269,6 +4279,7 @@ export function WorldBuildingConcept({
             : {}),
           workspace: contentGrid,
           floorCells: roomFloor,
+          groundRegions: roomDraft.room.regions,
           concealments: siteScope.concealments,
           activeConcealmentId,
           onConcealmentCellPick: (cell) => {
@@ -5142,6 +5153,25 @@ export function WorldBuildingConcept({
                   activateStudioTarget(null);
                 return true;
               }),
+            },
+            groundEditing: {
+              catalog: groundCatalog,
+              setBase: guardSnapshotIntent(
+                (regionId, ref) =>
+                  studioHomeRef.current === 'build' &&
+                  editRegionById((draft) => {
+                    requireAvailableGround(ref);
+                    return setRegionGroundBase(draft, regionId, ref);
+                  })
+              ),
+              paint: guardSnapshotIntent(
+                (regionId, cells, ref) =>
+                  studioHomeRef.current === 'build' &&
+                  editRegionById((draft) => {
+                    requireAvailableGround(ref);
+                    return paintRegionGround(draft, regionId, cells, ref);
+                  })
+              ),
             },
             renameDocument: guardSnapshotIntent(renameDocument),
             importDocument: guardSnapshotIntent(importCanonicalRoomYaml),

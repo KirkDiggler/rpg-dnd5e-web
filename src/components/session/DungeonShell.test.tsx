@@ -132,8 +132,33 @@ function pendingGltf(url: string) {
   };
 }
 
+vi.mock('./useGroundCatalog', () => ({
+  useGroundCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      schemaVersion: 1,
+      styles: [
+        {
+          ref: 'dnd5e:ground:fantasy-kingdom:grass_01',
+          displayName: 'Grass',
+          diffuse: `ground/images/${'a'.repeat(64)}.png`,
+          sha256: 'a'.repeat(64),
+          width: 2048,
+          height: 2048,
+          worldUnitsPerRepeat: 6,
+        },
+      ],
+    },
+  }),
+}));
+
 vi.mock('./useDungeonShellCatalog', () => ({
   useDungeonShellCatalog: () => shellState.snapshot,
+}));
+
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: (_loader: unknown, url: string) => readTexture(url),
 }));
 
 vi.mock('@react-three/drei', () => {
@@ -301,6 +326,28 @@ beforeEach(() => {
 });
 
 describe('DungeonShell actual shell integration', () => {
+  it.each(['profile', 'legacy'] as const)(
+    'carries recipient ground through the %s shell path',
+    async (mode) => {
+      if (mode === 'profile') shellState.snapshot = ready();
+      const value = scene();
+      value.groundRefs = new Map([
+        ['0,0,0', 'dnd5e:ground:fantasy-kingdom:grass_01'],
+      ]);
+      const renderer = await ReactThreeTestRenderer.create(
+        <DungeonShell scene={value} doors={doors} />
+      );
+      expect(
+        renderer.scene.findAllByProps({
+          name: 'ground-style-dnd5e:ground:fantasy-kingdom:grass_01',
+        })
+      ).toHaveLength(1);
+      expect(
+        renderer.scene.findAllByProps({ name: 'floor-tile-0,0,0' })
+      ).toHaveLength(0);
+      await renderer.unmount();
+    }
+  );
   it('keeps a closed legacy leaf on loading and named legacy paths', async () => {
     const loading = await ReactThreeTestRenderer.create(
       <DungeonShell scene={scene()} doors={doors} />

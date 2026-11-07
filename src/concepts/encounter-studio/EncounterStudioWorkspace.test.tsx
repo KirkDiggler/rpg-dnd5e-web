@@ -629,6 +629,8 @@ describe('shared Arrange context lifecycle', () => {
       'Inspector (N)',
       'Undo',
       'Redo',
+      'Paint ground',
+      'Erase ground paint',
     ]);
     expect(
       within(toolbar)

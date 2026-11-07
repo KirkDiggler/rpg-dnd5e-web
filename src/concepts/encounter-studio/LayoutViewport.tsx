@@ -36,6 +36,7 @@ import type {
   WorldPoint,
 } from './studioSession';
 
+import { hasGroundAppearance } from '../world-building/regionGroundTiles';
 import { cellsInWorldRectangle, floorCells } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
@@ -57,6 +58,7 @@ import {
   workspaceBounds,
 } from '../world-building/workspaceGeometry';
 import { MAX_WORLD_COORD } from '../world-building/worldBounds';
+import { LayoutGroundOverlay } from './LayoutGroundOverlay';
 import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
@@ -279,6 +281,8 @@ function snapEndpoint(
 export function LayoutViewport({
   draft,
   tool,
+  groundCatalog,
+  groundBrush,
   frame,
   onFrameChange,
   onCommit,
@@ -1222,7 +1226,9 @@ export function LayoutViewport({
               ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
               : tool === 'label' || labelEditing?.active
                 ? 'Select and drag map labels. When placement is armed, click on the map or press Enter to place at the view center.'
-                : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+                : groundBrush
+                  ? `Drag to ${groundBrush} ground appearances on existing hexes of the active region.`
+                  : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -1232,6 +1238,11 @@ export function LayoutViewport({
           transform={worldTransform}
         >
           <LayoutGrid cells={workspace} committed={committed} />
+          <LayoutGroundOverlay
+            cells={workspace}
+            regions={draft.room.regions}
+            catalog={groundCatalog}
+          />
         </g>
       )}
       {transform && patternStart && (
@@ -1263,6 +1274,7 @@ export function LayoutViewport({
           resolutions={regionEditing.resolutions}
           colours={overview?.colours}
           selectedId={selectedRegion?.id}
+          showFill={!hasGroundAppearance(draft.room.regions)}
           transform={worldTransform}
         />
       )}

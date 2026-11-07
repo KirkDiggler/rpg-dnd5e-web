@@ -1,5 +1,8 @@
+import { GroundFloor } from '@/components/hex-grid/GroundFloor';
+import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { useRememberedModelTint } from '@/components/hex-grid/useRememberedModelTint';
 import { useDungeonShellCatalog } from '@/components/session/useDungeonShellCatalog';
+import { useGroundCatalog } from '@/components/session/useGroundCatalog';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import type { DungeonShellFloorProfile } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
@@ -7,6 +10,11 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import {
+  groundTilesFromRegions,
+  hasGroundAppearance,
+} from './regionGroundTiles';
+import type { RoomRegion } from './roomDraft';
 import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import type { RoomWorkspace } from './workspaceGeometry';
@@ -73,12 +81,50 @@ export function WorkspaceFloorSurface({
  * Optional room-authoring visual. Catalog and texture loading stay inside this
  * boundary so the plain, interactive ground remains mounted at every state.
  */
+function AuthoredRegionFloor({
+  regions,
+  profile,
+  visualLighting,
+}: {
+  regions: readonly RoomRegion[];
+  profile?: DungeonShellFloorProfile;
+  visualLighting?: RegionLightingMaterialBinding;
+}) {
+  const catalog = useGroundCatalog();
+  const tiles = useMemo(() => groundTilesFromRegions(regions), [regions]);
+  return (
+    <GroundFloor
+      tiles={tiles}
+      hexSize={HEX_SIZE}
+      catalog={catalog}
+      defaultProfile={profile}
+      visualLighting={visualLighting}
+    />
+  );
+}
+
 export function WorkspaceFloorUnderlay({
   radius,
   workspace,
   visualLighting,
-}: WorkspaceFloorExtent & { visualLighting?: RegionLightingMaterialBinding }) {
+  regions,
+}: WorkspaceFloorExtent & {
+  visualLighting?: RegionLightingMaterialBinding;
+  regions?: readonly RoomRegion[];
+}) {
   const shellCatalog = useDungeonShellCatalog();
+  if (regions && hasGroundAppearance(regions))
+    return (
+      <AuthoredRegionFloor
+        regions={regions}
+        profile={
+          shellCatalog.status === 'ready'
+            ? shellCatalog.catalog.profiles.crypt.floor
+            : undefined
+        }
+        visualLighting={visualLighting}
+      />
+    );
   if (shellCatalog.status !== 'ready') return null;
 
   return (

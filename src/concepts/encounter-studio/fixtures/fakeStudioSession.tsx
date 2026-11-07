@@ -14,6 +14,11 @@ export function createFakeStudioSession(
   return {
     document: { draft, scope: {} },
     intentEpoch: 0,
+    groundEditing: {
+      catalog: { status: 'idle' },
+      setBase: vi.fn(() => true),
+      paint: vi.fn(() => true),
+    },
     regionEditing: {
       resolutions: [],
       createRegion: vi.fn(() => true),
