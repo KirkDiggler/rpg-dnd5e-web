@@ -21,9 +21,13 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 - Native browser capture has no page exceptions; console messages are the existing documented GetDungeon empty-key authoring probe, not a claim of zero console output. Candidate ground is absent from both public build input and production dist — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The explicit private preview mount verifies resource identity, identifies candidate status and keeps unapproved images out of production build input — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
+- The joined private walk now proves native Save a copy → Play, two-client gate discovery with different permitted paint, actor/NPC movement, reload and captured-source immutability. Hardware benchmarking is separate from the initial SwiftShader functional walk — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- The explicit `bench` preview uses the same hash-verified private mount for minified-build measurements; a new HTTP test refuses that mount in ordinary production preview. The complete Web gate passes 9971 tests with five skips — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
 ## Mistaken
 
 - A targeted edit initially mismatched a comment; the exact source was reread and the batch reapplied before testing — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- Layout initially oriented image V opposite to the WebGL chart; a red/green DOM regression now keeps their image orientation aligned without changing source bytes or 3D rendering — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The first browser look showed authoring fill tints hiding the grass/dirt colors; new tests now keep outlines/grid while omitting those fill tints when appearances are authored — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The initial candidate mirror went into ignored public assets; the preview-custody pass moved it outside build input and added the explicit dev-only verified mount before publication — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The browser guard initially treated every PutDungeon as a write and then assumed JSON; the existing RPC uses binary gRPC-Web and validate_only. The driver now checks that field with the protobuf wire reader and permits only the read-only preview — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).

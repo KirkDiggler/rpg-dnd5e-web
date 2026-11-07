@@ -341,8 +341,10 @@ grid remain, while fill tints do not recolor authored ground. No actor elevation
 terrain-following movement, material-derived mechanics or background audio is
 introduced. JSON/YAML persistence retains the base/paint distinction.
 
-Ground candidate previews use an explicitly configured development-only verified
-mount from private staging, not copies in public build input. Publication,
+Ground candidate previews use an explicitly configured verified mount from
+private staging, not copies in public build input. It serves development and
+explicit `bench` preview mode only; ordinary production preview does not mount
+private staging. Publication,
 recipient-specific Play delivery and final visual acceptance remain separate
 gates, tracked by the slice.
 

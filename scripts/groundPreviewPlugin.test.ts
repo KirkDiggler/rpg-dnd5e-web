@@ -14,7 +14,7 @@ import {
 } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ViteDevServer } from 'vite';
+import type { PreviewServer, ViteDevServer } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { groundPreviewPlugin } from './groundPreviewPlugin';
 
@@ -53,27 +53,59 @@ function stage(): { root: string; image: Buffer; sha: string } {
   return { root, image, sha };
 }
 function handler(
-  root: string
+  root: string,
+  mode: 'dev' | 'bench' | 'production' = 'dev'
 ): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
-  let installed!: ReturnType<typeof handler>;
+  let installed: ReturnType<typeof handler> = (_req, _res, next) => next();
   const plugin = groundPreviewPlugin(root);
-  const configure = plugin.configureServer;
+  const configure =
+    mode === 'dev' ? plugin.configureServer : plugin.configurePreviewServer;
   if (typeof configure !== 'function')
     throw new Error('No preview server hook');
   configure.call(
     {} as never,
     {
+      config: { mode },
       middlewares: {
         use: (fn: typeof installed) => {
           installed = fn;
         },
       },
-    } as unknown as ViteDevServer
+    } as unknown as ViteDevServer & PreviewServer
   );
   return installed;
 }
 
 describe('private dev-only ground mount', () => {
+  it.each(['bench', 'production'] as const)(
+    'serves candidate resources in %s preview only when it is the explicit benchmark mode',
+    async (mode) => {
+      const source = stage(),
+        serve = handler(source.root, mode);
+      const server = createServer((req, res) =>
+        serve(req, res, () => {
+          res.statusCode = 404;
+          res.end();
+        })
+      );
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve)
+      );
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('No port');
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/models/synty/ground/manifest.json`
+        );
+        expect(response.status).toBe(mode === 'bench' ? 200 : 404);
+        expect(response.headers.get('x-rpg-ground-preview')).toBe(
+          mode === 'bench' ? '1' : null
+        );
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    }
+  );
   it('serves only verified candidate bytes and identifies the preview without public copies', async () => {
     const source = stage();
     const serve = handler(source.root);

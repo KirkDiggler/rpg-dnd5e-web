@@ -60,6 +60,7 @@ export function LayoutGroundOverlay({
               width={style.worldUnitsPerRepeat}
               height={style.worldUnitsPerRepeat}
               preserveAspectRatio="none"
+              transform={`translate(0 ${style.worldUnitsPerRepeat}) scale(1 -1)`}
               onError={() =>
                 setFailedImages((old) => new Set([...old, style.sha256]))
               }

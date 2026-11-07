@@ -59,8 +59,10 @@ floor; an unavailable explicit ref produces a diagnostic rather than stone.
 A candidate is explicitly mounted for local development with
 `RPG_GROUND_PREVIEW_ROOT=/private/verified/ground npm run dev`. The Vite plugin
 verifies catalog/image identity, serves only declared resources, marks the
-response as a preview and applies only to the dev server. Candidate files stay
-outside `public/` and production output. The picker labels the candidate status.
+response as a preview and applies only to the dev server or explicit `bench`
+preview mode. Ordinary production preview does not mount private staging.
+Candidate files stay outside `public/` and production output. The picker labels
+the candidate status.
 
 The source-to-play contract and unfinished joined delivery are tracked by
 [rpg-project#874](https://github.com/KirkDiggler/rpg-project/issues/874); Studio

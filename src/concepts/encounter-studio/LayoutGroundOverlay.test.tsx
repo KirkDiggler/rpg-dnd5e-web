@@ -64,6 +64,11 @@ describe('Layout ground feedback', () => {
     expect(view.container.querySelector('pattern')?.getAttribute('width')).toBe(
       '6'
     );
+    // World Z increases downward in Layout; WebGL v=0 samples the
+    // bottom of a flipY image. Both views must share that chart.
+    expect(
+      view.container.querySelector('image')?.getAttribute('transform')
+    ).toBe('translate(0 6) scale(1 -1)');
     fireEvent.error(view.container.querySelector('image')!);
     expect(polygon.getAttribute('fill')).toBe('#d850a0');
     expect(polygon.textContent).toContain('unavailable');
