@@ -1,3 +1,5 @@
+// @vitest-environment node
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createGroundCatalogStore,
@@ -21,6 +23,10 @@ const fixture = () => ({
     },
   ],
 });
+
+const catalogSha256 = createHash('sha256')
+  .update(JSON.stringify(fixture()))
+  .digest('hex');
 
 describe('ground catalog contract', () => {
   it('resolves hash-bound resources without exposing private source paths', () => {
@@ -79,8 +85,45 @@ describe('ground catalog contract', () => {
 });
 
 describe('ground catalog loading', () => {
+  it('refuses valid but different manifest bytes rather than following a floating provider', async () => {
+    const changed = fixture();
+    changed.styles[0].worldUnitsPerRepeat = 7;
+    const store = createGroundCatalogStore({
+      catalogSha256,
+      fetcher: async () => new Response(JSON.stringify(changed)),
+    });
+    await store.load();
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'error',
+      message: expect.stringMatching(/pin|adopted|digest/i),
+    });
+  });
+  it('refuses an unadopted catalog instead of implicitly adopting server HEAD', async () => {
+    const store = createGroundCatalogStore({
+      catalogSha256: null,
+      fetcher: async () => new Response(JSON.stringify(fixture())),
+    });
+    await store.load();
+    expect(store.getSnapshot()).toMatchObject({ status: 'error' });
+  });
+  it('does not accept a preview header without explicit development permission', async () => {
+    const store = createGroundCatalogStore({
+      catalogSha256,
+      fetcher: async () =>
+        new Response(JSON.stringify(fixture()), {
+          headers: { 'X-RPG-Ground-Preview': '1' },
+        }),
+    });
+    await store.load();
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'error',
+      message: expect.stringMatching(/preview/i),
+    });
+  });
   it('identifies an explicitly mounted private preview rather than implying publication', async () => {
     const store = createGroundCatalogStore({
+      catalogSha256: 'b'.repeat(64),
+      allowPreview: true,
       fetcher: async () =>
         new Response(JSON.stringify(fixture()), {
           headers: { 'X-RPG-Ground-Preview': '1' },
@@ -94,7 +137,7 @@ describe('ground catalog loading', () => {
   });
   it('shares one request and publishes a ready immutable catalog to subscribers', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(fixture())));
-    const store = createGroundCatalogStore({ fetcher });
+    const store = createGroundCatalogStore({ fetcher, catalogSha256 });
     const seen: string[] = [];
     const unsubscribe = store.subscribe(() =>
       seen.push(store.getSnapshot().status)
@@ -103,7 +146,9 @@ describe('ground catalog loading', () => {
     expect(store.load()).toBe(first);
     await first;
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(fetcher).toHaveBeenCalledWith('/models/synty/ground/manifest.json');
+    expect(fetcher).toHaveBeenCalledWith(
+      `/models/synty/ground/manifest.json?v=${catalogSha256}`
+    );
     expect(seen).toEqual(['loading', 'ready']);
     const state = store.getSnapshot();
     expect(state.status).toBe('ready');
@@ -121,8 +166,13 @@ describe('ground catalog loading', () => {
   ])(
     'reports unavailable/malformed resources without a stone fallback',
     async (response) => {
+      const reply = response();
+      const expected = createHash('sha256')
+        .update(await reply.clone().text())
+        .digest('hex');
       const store = createGroundCatalogStore({
-        fetcher: async () => response(),
+        catalogSha256: expected,
+        fetcher: async () => reply,
       });
       await store.load();
       expect(store.getSnapshot()).toMatchObject({

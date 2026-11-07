@@ -7,10 +7,15 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 - Studio and play-renderer checkpoint adds region bases, hex ground paint/erase, owner guards/history, native file round trips, Layout textures and batched level ground; joined runtime acceptance and publication remain pending — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - Adopt generated protos v0.1.258, merge ground paint across partial discoveries, and draw permitted atlas appearances through both shell paths with existing exposure/pools/fog/watch-zone treatment — [wire contract](https://github.com/KirkDiggler/rpg-api-protos/pull/421).
 
+- Added normal ground-owner sync, read-only checks, packaging pin discovery and an independently reproduced ground subtree, using the reviewed private provider commit for development rather than claiming a merged release — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
 ## Decided
 
 - Keep paint equal to the base as explicit intent; prune paint when its region loses the cell; preserve unknown native-source fields and old absence — [design and plan](https://github.com/KirkDiggler/rpg-project/pull/875).
 - Keep the authoring/persistence assertions together in the new ground test file while exercising real room/composition/native helpers rather than adding duplicate fixtures to large existing suites — [S2 plan T1](https://github.com/KirkDiggler/rpg-project/blob/design/867-courtyard-ground/ideas/courtyard-ground/plan.md#t1--authoring-state-persistence-and-edit-invariants).
+
+- Share decoded-PNG and owned-file verification, plus scoped image-owner sync, with the existing material path because these are the same custody concerns; keep the ground schema separate and ground-only opacity explicit — [S2 plan](https://github.com/KirkDiggler/rpg-project/pull/875).
+- Bind runtime metadata to the generated manifest digest and allow preview override only in dev/bench; otherwise a correct renderer could silently consume a different provider's catalog — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 ## Found
 
@@ -18,7 +23,7 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 - Existing region owner edits retain unknown fields unchanged, so ground needs explicit pruning to avoid orphan paint after floor edits — [S2 plan](https://github.com/KirkDiggler/rpg-project/pull/875).
 - The play-wiring complete Web gate passed with 9969 tests and five skips; the earlier native Studio checks proved base-preserving paint, pointer paint/erase, undo/redo, YAML export and browser reload without a mutating server request — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - New tests first caught old paint disappearing on a partial discovery and the shell dropping the supplied ground refs; the corrected reducers/rendering now pass the full gate — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
-- Native browser capture has no page exceptions; console messages are the existing documented GetDungeon empty-key authoring probe, not a claim of zero console output. Candidate ground is absent from both public build input and production dist — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- Native browser capture has no page exceptions; console messages are the existing documented GetDungeon empty-key authoring probe, not a claim of zero console output. At the preview-only checkpoint, candidate ground was absent from both public build input and production dist — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The explicit private preview mount verifies resource identity, identifies candidate status and keeps unapproved images out of production build input — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - The joined private walk now proves native Save a copy → Play, two-client gate discovery with different permitted paint, actor/NPC movement, reload and captured-source immutability. Hardware benchmarking is separate from the initial SwiftShader functional walk — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
@@ -26,7 +31,11 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 - Hardware measurement exposed two GPU copies per new style: Drei eagerly uploaded the cached source before GroundFloor uploaded its differently configured clone. A real renderer-counter regression first observed one unused allocation instead of zero; loading without eager upload preserves owned-clone disposal and removes that redundant allocation — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
+- Temporary real-Git provider tests first refused the missing ground sync mode and packaging pin, then verified scoped adoption, pinned absence, independent pin preservation and corrupt-source refusal; the actual provider's pinned runtime union also passes without rewriting other generated catalogs — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
 ## Mistaken
+
+- The Docker workflow fixture copied the old script dependency set and initially omitted the extracted image verifier. The fixture now carries the actual ground delivery dependencies and exercises a third distinct ground pin through shallow-clone fetching and pinned packaging, rather than only testing the collector in isolation — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - A targeted edit initially mismatched a comment; the exact source was reread and the batch reapplied before testing — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - Layout initially oriented image V opposite to the WebGL chart; a red/green DOM regression now keeps their image orientation aligned without changing source bytes or 3D rendering — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).

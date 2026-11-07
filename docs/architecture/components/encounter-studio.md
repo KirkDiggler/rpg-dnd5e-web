@@ -56,13 +56,24 @@ tints do not obscure the chosen appearances. Absent ground retains the existing
 floor; an unavailable explicit ref produces a diagnostic rather than stone.
 
 `ground/manifest.json` supplies public-safe metadata for private runtime images.
+Normal adoption uses `npm run ground:sync` against an explicit clean
+`RPG_GAME_ASSETS_PATH`; `npm run ground:check` verifies without writes. Only the
+owned ground subtree is mirrored. The generated `groundCatalogProvider.ts`
+binds its Git commit and manifest digest; packaging fetches that commit, and
+pinned-runtime sync preserves it independently of other asset owners. The
+browser cache-keys and verifies the manifest against that digest, refusing drift
+rather than following provider HEAD. These hashes identify bytes, not a claim
+that a development provider commit has merged.
+
 A candidate is explicitly mounted for local development with
 `RPG_GROUND_PREVIEW_ROOT=/private/verified/ground npm run dev`. The Vite plugin
 verifies catalog/image identity, serves only declared resources, marks the
 response as a preview and applies only to the dev server or explicit `bench`
 preview mode. Ordinary production preview does not mount private staging.
-Candidate files stay outside `public/` and production output. The picker labels
-the candidate status.
+The preview mount never copies staging inputs into `public/` or build output;
+adopted provider resources use the normal ignored runtime mirror instead. The
+picker labels mounted candidates. Only dev/bench clients may accept a preview
+header in place of the committed manifest digest.
 
 The source-to-play contract and unfinished joined delivery are tracked by
 [rpg-project#874](https://github.com/KirkDiggler/rpg-project/issues/874); Studio

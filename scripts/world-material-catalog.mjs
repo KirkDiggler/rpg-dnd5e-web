@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { PNG } from 'pngjs';
+import { lstatSync, readFileSync } from 'node:fs';
+import {
+  MAX_IMAGE_PIXELS,
+  verifyOwnedResourceFiles,
+  verifyRuntimeImage,
+} from './runtime-image-resources.mjs';
 
 const IMAGE_ROLES = ['baseColor', 'normal', 'metallicRoughness', 'occlusion'];
 const IMAGE_KEYS = ['file', 'sha256', 'sizeBytes', 'width', 'height'];
-// Match the provider's decompression safeguard before allocating decoded pixels.
-const MAX_IMAGE_PIXELS = 89478485;
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function fail(message) {
   throw new Error(`World material catalog: ${message}`);
@@ -40,65 +41,6 @@ function pattern(value, regex, path) {
   if (typeof value !== 'string' || !regex.test(value))
     fail(`${path} is invalid`);
   return value;
-}
-function regularFile(root, relative) {
-  let path = root;
-  if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isDirectory())
-    fail('model root must be a real directory');
-  // Callers only supply the exact content-addressed path validated below.
-  for (const part of relative.split('/')) {
-    path = join(path, part);
-    if (lstatSync(path).isSymbolicLink())
-      fail(`resource symlink refused: ${relative}`);
-  }
-  if (!lstatSync(path).isFile())
-    fail(`resource must be a regular file: ${relative}`);
-  return path;
-}
-function verifyImage(modelRoot, image) {
-  const bytes = readFileSync(regularFile(modelRoot, image.file));
-  if (bytes.length !== image.sizeBytes || digest(bytes) !== image.sha256)
-    fail(`${image.file} hash/size mismatch`);
-  if (
-    bytes.length < 33 ||
-    !bytes
-      .subarray(0, 8)
-      .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
-    bytes.toString('ascii', 12, 16) !== 'IHDR' ||
-    bytes.readUInt32BE(16) !== image.width ||
-    bytes.readUInt32BE(20) !== image.height ||
-    ![2, 6].includes(bytes[25])
-  )
-    fail(`${image.file} PNG dimensions/format mismatch`);
-  try {
-    const decoded = PNG.sync.read(bytes, { checkCRC: true });
-    if (decoded.width !== image.width || decoded.height !== image.height)
-      fail('decoded dimensions differ');
-  } catch (error) {
-    fail(`${image.file} invalid PNG: ${error.message}`);
-  }
-}
-function verifyOwnedFiles(modelRoot, expected) {
-  const actual = new Set();
-  const visit = (relative) => {
-    const path = join(modelRoot, relative);
-    const info = lstatSync(path);
-    if (info.isSymbolicLink()) fail(`resource symlink refused: ${relative}`);
-    if (info.isDirectory()) {
-      for (const name of readdirSync(path)) visit(`${relative}/${name}`);
-    } else if (info.isFile()) actual.add(relative);
-    else fail(`non-regular resource: ${relative}`);
-  };
-  try {
-    visit('world-materials');
-  } catch (error) {
-    if (!(error.code === 'ENOENT' && expected.size === 0)) throw error;
-  }
-  if (
-    actual.size !== expected.size ||
-    [...actual].some((file) => !expected.has(file))
-  )
-    fail('world-materials file set differs from catalog');
 }
 
 /** Read a release OR an explicit private candidate using the identical strict
@@ -196,7 +138,11 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     }
     return result;
   });
-  for (const image of images.values()) verifyImage(modelRoot, image);
-  verifyOwnedFiles(modelRoot, images);
+  for (const image of images.values()) verifyRuntimeImage({ modelRoot, image });
+  verifyOwnedResourceFiles({
+    modelRoot,
+    subtree: 'world-materials',
+    expected: images,
+  });
   return { catalogSha256: digest(bytes), materials };
 }

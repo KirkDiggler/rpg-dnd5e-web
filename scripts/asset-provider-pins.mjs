@@ -7,6 +7,7 @@ const SOURCES = [
   ['worldAssetCatalog.ts', 'commit'],
   ['worldMaterialCatalog.ts', 'commit'],
   ['itemThumbnailCatalog.ts', 'commit'],
+  ['groundCatalogProvider.ts', 'commit'],
 ];
 /** Packaging fetches exactly the provider commits all generated asset owners
  * describe. Missing/malformed pins refuse; never fall back to provider HEAD. */

@@ -152,7 +152,13 @@ export interface GroundCatalogStore {
 /** One request owner shared by Studio and play. A store owns no image resources. */
 export function createGroundCatalogStore({
   fetcher = fetch,
-}: { fetcher?: typeof fetch } = {}): GroundCatalogStore {
+  catalogSha256,
+  allowPreview = false,
+}: {
+  fetcher?: typeof fetch;
+  catalogSha256: string | null;
+  allowPreview?: boolean;
+}): GroundCatalogStore {
   let snapshot: GroundCatalogSnapshot = Object.freeze({ status: 'idle' });
   let owner: Promise<void> | undefined;
   const listeners = new Set<() => void>();
@@ -172,19 +178,38 @@ export function createGroundCatalogStore({
       if (owner) return owner;
       owner = Promise.resolve().then(async () => {
         try {
-          const response = await fetcher('/models/synty/ground/manifest.json');
+          const url =
+            '/models/synty/ground/manifest.json' +
+            (catalogSha256 ? `?v=${catalogSha256}` : '');
+          const response = await fetcher(url);
           if (!response.ok)
             throw new Error(
               `Ground catalog unavailable (HTTP ${response.status})`
             );
-          const parsed = parseGroundCatalog(await response.json());
+          const preview = response.headers.get('X-RPG-Ground-Preview') === '1';
+          if (preview && !allowPreview)
+            throw new Error('Ground preview is not permitted in this build');
+          const bytes = await response.arrayBuffer();
+          if (!preview) {
+            if (!catalogSha256 || !SHA.test(catalogSha256))
+              throw new Error('Ground catalog has no adopted provider pin');
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            const actual = Array.from(new Uint8Array(digest), (byte) =>
+              byte.toString(16).padStart(2, '0')
+            ).join('');
+            if (actual !== catalogSha256)
+              throw new Error(
+                'Ground catalog differs from the adopted provider digest'
+              );
+          }
+          const parsed = parseGroundCatalog(
+            JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+          );
           if (!parsed.ok) throw new Error(parsed.reason);
           publish({
             status: 'ready',
             catalog: parsed.catalog,
-            ...(response.headers.get('X-RPG-Ground-Preview') === '1'
-              ? { preview: true }
-              : {}),
+            ...(preview ? { preview: true } : {}),
           });
         } catch (cause) {
           publish({

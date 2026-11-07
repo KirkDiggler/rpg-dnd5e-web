@@ -344,9 +344,12 @@ introduced. JSON/YAML persistence retains the base/paint distinction.
 Ground candidate previews use an explicitly configured verified mount from
 private staging, not copies in public build input. It serves development and
 explicit `bench` preview mode only; ordinary production preview does not mount
-private staging. Publication,
-recipient-specific Play delivery and final visual acceptance remain separate
-gates, tracked by the slice.
+private staging. Normal delivery is the independently pinned ground subtree,
+validated by the existing asset-sync path and identified by generated provider
+commit/manifest digest metadata. Runtime metadata must match that digest;
+only a dev/bench preview may explicitly override it. A development pin is not
+proof of a merged release. Publication, recipient-specific Play delivery and
+final visual acceptance remain separate gates, tracked by the slice.
 
 ## Regions are the floor (rpg-project#725)
 

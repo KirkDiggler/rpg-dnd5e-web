@@ -22,6 +22,7 @@ function fixture() {
     ['worldAssetCatalog.ts', 'commit', 'c'],
     ['worldMaterialCatalog.ts', 'commit', 'c'],
     ['itemThumbnailCatalog.ts', 'commit', 'd'],
+    ['groundCatalogProvider.ts', 'commit', 'e'],
   ])
     writeFileSync(
       join(generated, file),
@@ -35,20 +36,21 @@ afterEach(() =>
     .forEach((root) => rmSync(root, { recursive: true, force: true }))
 );
 describe('packaging provider pins', () => {
-  it('includes the item owner and deduplicates explicit pins without choosing provider HEAD', () => {
+  it('includes item and ground owners and deduplicates explicit pins without choosing provider HEAD', () => {
     const f = fixture();
     expect(assetProviderPins(f.root)).toEqual([
       'a'.repeat(40),
       'b'.repeat(40),
       'c'.repeat(40),
       'd'.repeat(40),
+      'e'.repeat(40),
     ]);
   });
   it.each(['missing', 'short', 'duplicate'])(
     'fails closed on %s metadata',
     (kind) => {
       const f = fixture(),
-        file = join(f.generated, 'worldMaterialCatalog.ts');
+        file = join(f.generated, 'groundCatalogProvider.ts');
       if (kind === 'missing') rmSync(file);
       if (kind === 'short') writeFileSync(file, "commit: 'abc'\n");
       if (kind === 'duplicate')
