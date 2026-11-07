@@ -37,6 +37,8 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 ## Mistaken
 
+- The delivery change used the established dev/bench predicate but omitted its named gate inventory. The comment and benchmark G12 now name verified ground-preview acceptance and its private-candidate measurement rationale; production refusal and runtime behavior are unchanged — [focused review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1395#pullrequestreview-5815395552).
+
 - A same-input sync from outside the Web checkout falsely reported stale material metadata: the caller's ignore rules changed Prettier's output. The executable packaging regression reproduces this with an ignored fixture checkout; ground/material pin renderers now own their formatting directory instead of inheriting the caller's — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - The Docker workflow fixture copied the old script dependency set and initially omitted the extracted image verifier. The fixture now carries the actual ground delivery dependencies and exercises a third distinct ground pin through shallow-clone fetching and pinned packaging, rather than only testing the collector in isolation — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
