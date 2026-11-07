@@ -36,6 +36,11 @@ vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
 }));
 
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: () => floorTextureState.base,
+}));
+
 vi.mock('@react-three/drei', () => ({
   Html: () => null,
   OrbitControls: () => null,

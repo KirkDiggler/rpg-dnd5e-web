@@ -5,7 +5,8 @@ import {
   type GroundCatalogSnapshot,
 } from '@/rendering/groundCatalog';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
-import { Html, useTexture } from '@react-three/drei';
+import { Html } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import {
@@ -74,7 +75,12 @@ function Surface({
   visualLighting?: RegionLightingMaterialBinding;
 }) {
   const root = useRef<THREE.Mesh>(null);
-  const shared = useTexture(`/models/synty/${profile.diffuse}`);
+  // useTexture eagerly uploads the unused cache entry as well as our clone.
+  // Load only here; the renderer uploads the instance-owned map when drawn.
+  const shared = useLoader(
+    THREE.TextureLoader,
+    `/models/synty/${profile.diffuse}`
+  );
   const texture = useMemo(() => {
     const map = shared.clone();
     map.wrapS = map.wrapT = THREE.RepeatWrapping;

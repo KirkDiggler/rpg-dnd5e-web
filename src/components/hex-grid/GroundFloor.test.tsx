@@ -1,5 +1,6 @@
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { GroundCatalogSnapshot } from '@/rendering/groundCatalog';
+import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -8,8 +9,13 @@ import { GroundFloor } from './GroundFloor';
 const textures = vi.hoisted(() => ({
   value: undefined as THREE.Texture | undefined,
 }));
-vi.mock('@react-three/drei', () => ({
-  useTexture: () => textures.value,
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: () => textures.value,
+}));
+vi.mock('@react-three/drei', async () => ({
+  // Keep the real convenience hook's eager GPU upload observable.
+  useTexture: (await import('@react-three/drei/core/Texture.js')).useTexture,
   Html: () => null,
 }));
 
@@ -44,6 +50,25 @@ beforeAll(() => {
 });
 
 describe('shared ground drawing', () => {
+  it('does not allocate a GPU copy of the unused cached source before a draw', async () => {
+    const shared = new THREE.DataTexture(
+      new Uint8Array([255, 255, 255, 255]),
+      1,
+      1
+    );
+    shared.needsUpdate = true;
+    textures.value = shared;
+    let renderer: THREE.WebGLRenderer | undefined;
+    function ObservedSurface() {
+      renderer = useThree((state) => state.gl);
+      return <GroundFloor tiles={tiles} catalog={catalog} hexSize={1} />;
+    }
+    const view = await ReactThreeTestRenderer.create(<ObservedSurface />);
+    // Test renderer has not advanced a frame: the material-owned clone must
+    // upload only when drawn, and its unused cached source must never upload.
+    expect(renderer!.info.memory.textures).toBe(0);
+    await view.unmount();
+  });
   it('draws one level batch per style and disposes only instance-owned resources', async () => {
     const shared = new THREE.Texture();
     textures.value = shared;

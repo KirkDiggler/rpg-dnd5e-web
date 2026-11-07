@@ -5,7 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { DungeonShellFloorProfile } from '../../rendering/dungeonShellManifest';
 
-const useTextureMock = vi.hoisted(() => vi.fn(() => new THREE.Texture()));
+const useTextureMock = vi.hoisted(() =>
+  vi.fn<(url: string) => THREE.Texture>(() => new THREE.Texture())
+);
+
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: (_loader: unknown, url: string) => useTextureMock(url),
+}));
 
 vi.mock('@react-three/drei', () => ({
   useTexture: useTextureMock,

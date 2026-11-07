@@ -156,6 +156,11 @@ vi.mock('./useDungeonShellCatalog', () => ({
   useDungeonShellCatalog: () => shellState.snapshot,
 }));
 
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: (_loader: unknown, url: string) => readTexture(url),
+}));
+
 vi.mock('@react-three/drei', () => {
   const useGLTF = (url: string) => readAsset(url);
   useGLTF.preload = () => undefined;

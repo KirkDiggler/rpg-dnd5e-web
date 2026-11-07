@@ -22,7 +22,9 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 - The explicit private preview mount verifies resource identity, identifies candidate status and keeps unapproved images out of production build input — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - The joined private walk now proves native Save a copy → Play, two-client gate discovery with different permitted paint, actor/NPC movement, reload and captured-source immutability. Hardware benchmarking is separate from the initial SwiftShader functional walk — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
-- The explicit `bench` preview uses the same hash-verified private mount for minified-build measurements; a new HTTP test refuses that mount in ordinary production preview. The complete Web gate passes 9971 tests with five skips — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- The explicit `bench` preview uses the same hash-verified private mount for minified-build measurements; a new HTTP test refuses that mount in ordinary production preview. The complete Web gate passes 9972 tests with five skips — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
+- Hardware measurement exposed two GPU copies per new style: Drei eagerly uploaded the cached source before GroundFloor uploaded its differently configured clone. A real renderer-counter regression first observed one unused allocation instead of zero; loading without eager upload preserves owned-clone disposal and removes that redundant allocation — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 ## Mistaken
 

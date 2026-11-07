@@ -10,12 +10,17 @@ const textureState = vi.hoisted(() => ({
   pending: new Promise<never>(() => {}),
 }));
 
+function readFixtureTexture() {
+  if (textureState.mode === 'pending') throw textureState.pending;
+  if (textureState.mode === 'error') throw new Error('texture failed');
+  return textureState.base;
+}
 vi.mock('@react-three/drei', () => ({
-  useTexture: vi.fn(() => {
-    if (textureState.mode === 'pending') throw textureState.pending;
-    if (textureState.mode === 'error') throw new Error('texture failed');
-    return textureState.base;
-  }),
+  useTexture: vi.fn(readFixtureTexture),
+}));
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: readFixtureTexture,
 }));
 
 vi.mock('@/components/session/useDungeonShellCatalog', () => ({
