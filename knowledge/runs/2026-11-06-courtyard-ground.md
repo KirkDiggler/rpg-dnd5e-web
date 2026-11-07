@@ -35,7 +35,11 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 - Normal minified delivery fetched the adopted catalog and grass/dirt bytes without a preview header, resumed both the open and gated fixtures and completed a native Move. The same-byte old-head comparison retains the same stone/ground appearance; this is delivery evidence, not a new paired performance claim — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
+- A fresh Studio regression imports the exact current served-castle source, round-trips it unchanged, authors the courtyard base and connecting dirt paths, persists/reopens it, and proves every other source fact survives. The same production edit/export helpers generated the API/toolkit castle change — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
 ## Mistaken
+
+- The older served-castle fixtures did not include the current challenged-post/pass fields. The ground regression uses a new snapshot of the actual served source instead of assuming a historically named fixture is current — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 - The delivery change used the established dev/bench predicate but omitted its named gate inventory. The comment and benchmark G12 now name verified ground-preview acceptance and its private-candidate measurement rationale; production refusal and runtime behavior are unchanged — [focused review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1395#pullrequestreview-5815395552).
 
