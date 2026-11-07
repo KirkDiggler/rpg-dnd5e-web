@@ -57,6 +57,7 @@ function LegacyShell({
       <FallbackReporter reason={reason} onFallbackReason={onFallbackReason} />
       <SyntyHexFloor
         floorTiles={scene.floorTiles}
+        groundRefs={scene.groundRefs}
         hexSize={HEX_SIZE}
         floorLighting={floorLighting}
       />
@@ -97,6 +98,7 @@ function ProfileResources({
       <FallbackReporter reason={null} onFallbackReason={onFallbackReason} />
       <SyntyHexFloor
         floorTiles={scene.floorTiles}
+        groundRefs={scene.groundRefs}
         hexSize={HEX_SIZE}
         profile={profile.floor}
         spaceTheme="crypt"

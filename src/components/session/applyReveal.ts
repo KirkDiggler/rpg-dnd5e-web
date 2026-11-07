@@ -49,6 +49,7 @@ import type {
   PropPresentation,
   StructuralWallOpeningsReplacement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { mergeRegionGround } from './groundAppearance';
 import { applyPropPresentations } from './propPresentations';
 import { assertStructuralLayoutIntegrity } from './structuralLayout';
 
@@ -266,12 +267,17 @@ function unionRegions(
   for (const region of incoming) {
     const at = out.findIndex((r) => r.id === region.id);
     if (at < 0) {
-      out.push({ ...region, cells: appendNew([], region.cells, cellKey) });
+      out.push({
+        ...region,
+        cells: appendNew([], region.cells, cellKey),
+        ground: mergeRegionGround(undefined, region),
+      });
       continue;
     }
     out[at] = {
       ...region,
       cells: appendNew(out[at]!.cells, region.cells, cellKey),
+      ground: mergeRegionGround(out[at], region),
     };
   }
   return out;

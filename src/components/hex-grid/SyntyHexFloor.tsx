@@ -21,12 +21,15 @@
  * floor, so this is deliberately floor-texture-only.
  */
 
+import { useGroundCatalog } from '@/components/session/useGroundCatalog';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { DungeonShellFloorProfile } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { GroundFloor } from './GroundFloor';
+import { authoredGroundTiles } from './authoredGroundTiles';
 import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners } from './hexMath';
 import {
@@ -251,6 +254,8 @@ function SyntyHexFloorTile({
 
 export interface SyntyHexFloorProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
+  /** Appearance refs already resolved from the recipient's atlas. */
+  groundRefs?: ReadonlyMap<string, string>;
   hexSize: number;
   /** Floor-tile keys ("x,y,z", coordToKey format) that should render with
    * the lit, tinted crypt material instead of the default unlit one
@@ -284,8 +289,39 @@ export interface SyntyHexFloorProps {
   profile?: DungeonShellFloorProfile;
 }
 
+function AuthoredFloor({
+  tiles,
+  refs,
+  hexSize,
+  floorLighting,
+  rememberedFloorHexKeys,
+  poolLights,
+}: {
+  tiles: readonly AbsoluteFloorTile[];
+  refs: ReadonlyMap<string, string>;
+} & Pick<
+  SyntyHexFloorProps,
+  'hexSize' | 'floorLighting' | 'rememberedFloorHexKeys' | 'poolLights'
+>) {
+  const catalog = useGroundCatalog();
+  const ground = useMemo(
+    () =>
+      authoredGroundTiles({
+        tiles,
+        refs,
+        hexSize,
+        lighting: floorLighting,
+        remembered: rememberedFloorHexKeys,
+        poolLights,
+      }),
+    [tiles, refs, hexSize, floorLighting, rememberedFloorHexKeys, poolLights]
+  );
+  return <GroundFloor tiles={ground} hexSize={hexSize} catalog={catalog} />;
+}
+
 export function SyntyHexFloor({
   floorTiles,
+  groundRefs,
   hexSize,
   themeFloorHexKeys,
   rememberedFloorHexKeys,
@@ -315,10 +351,29 @@ export function SyntyHexFloor({
   }, [floorMap]);
 
   const tiles = useMemo(() => Array.from(floorTiles.values()), [floorTiles]);
+  const legacyTiles = useMemo(
+    () =>
+      groundRefs?.size
+        ? tiles.filter(
+            (tile) => !groundRefs.has(`${tile.x},${tile.y},${tile.z}`)
+          )
+        : tiles,
+    [tiles, groundRefs]
+  );
 
   return (
     <Suspense fallback={null}>
-      {tiles.map((tile) => {
+      {groundRefs !== undefined && groundRefs.size > 0 && (
+        <AuthoredFloor
+          tiles={tiles}
+          refs={groundRefs}
+          hexSize={hexSize}
+          floorLighting={floorLighting}
+          rememberedFloorHexKeys={rememberedFloorHexKeys}
+          poolLights={poolLights}
+        />
+      )}
+      {legacyTiles.map((tile) => {
         const key = `${tile.x},${tile.y},${tile.z}`;
         const intensity = floorLighting?.exposureByCell.get(key);
         const baseColor =

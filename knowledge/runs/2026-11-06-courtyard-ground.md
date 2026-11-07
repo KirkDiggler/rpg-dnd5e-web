@@ -4,7 +4,8 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 ## Shipped
 
-- Studio checkpoint adds region bases, hex ground paint/erase, owner guards/history, native file round trips, Layout textures and batched level 3D ground; live-play integration and publication remain pending — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- Studio and play-renderer checkpoint adds region bases, hex ground paint/erase, owner guards/history, native file round trips, Layout textures and batched level ground; joined runtime acceptance and publication remain pending — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- Adopt generated protos v0.1.258, merge ground paint across partial discoveries, and draw permitted atlas appearances through both shell paths with existing exposure/pools/fog/watch-zone treatment — [wire contract](https://github.com/KirkDiggler/rpg-api-protos/pull/421).
 
 ## Decided
 
@@ -15,7 +16,8 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 - Missing-contract test run failed on the absent `regionGround` import; after implementation the five focused files pass 130 tests and TypeScript checks pass — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - Existing region owner edits retain unknown fields unchanged, so ground needs explicit pruning to avoid orphan paint after floor edits — [S2 plan](https://github.com/KirkDiggler/rpg-project/pull/875).
-- The final complete Web gate passed with 9959 tests and five skips; native browser checks proved base-preserving paint, pointer paint/erase, undo/redo, YAML export and browser reload without a mutating server request — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- The play-wiring complete Web gate passed with 9969 tests and five skips; the earlier native Studio checks proved base-preserving paint, pointer paint/erase, undo/redo, YAML export and browser reload without a mutating server request — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+- New tests first caught old paint disappearing on a partial discovery and the shell dropping the supplied ground refs; the corrected reducers/rendering now pass the full gate — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - Native browser capture has no page exceptions; console messages are the existing documented GetDungeon empty-key authoring probe, not a claim of zero console output. Candidate ground is absent from both public build input and production dist — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - The explicit private preview mount verifies resource identity, identifies candidate status and keeps unapproved images out of production build input — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
