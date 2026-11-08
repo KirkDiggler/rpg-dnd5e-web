@@ -15,17 +15,20 @@ import type { RecordRow } from '../recordFeed';
  * Debug only: the combat log shows the roll and the result, never this.
  */
 
+/** Captured integer evidence may exceed the live Struct/JS number range. */
+export type RecordedNumber = number | bigint;
+
 /** One row of a described table, as the `table` beat carries it. */
 export interface TableRowSymbol {
   readonly entry: number;
   readonly when: readonly string[];
   readonly word: string;
   readonly selector: string;
-  readonly weight: number;
+  readonly weight: RecordedNumber;
   readonly say: string;
   readonly fact: string;
   readonly search: {
-    readonly distance: number;
+    readonly distance: RecordedNumber;
     readonly heading: string;
   } | null;
   /** A GROUP row (rpg-project#670): the bundle it was compiled from, its
@@ -51,14 +54,14 @@ export interface RowVerdict {
   readonly entry: number;
   readonly held: boolean;
   readonly affordable: boolean;
-  readonly weight: number;
-  readonly percent: number;
-  readonly loaded: number;
+  readonly weight: RecordedNumber;
+  readonly percent: RecordedNumber;
+  readonly loaded: RecordedNumber;
   /** A group's verdict holds its rows' verdicts, and the inner die when the
    * pick descended into it (rpg-project#670). */
   readonly rows?: readonly RowVerdict[];
-  readonly roll?: number;
-  readonly of?: number;
+  readonly roll?: RecordedNumber;
+  readonly of?: RecordedNumber;
 }
 
 /** The fields of an `answered` beat this module reads. */
@@ -66,8 +69,8 @@ export interface AnsweredSymbol {
   readonly creature: string;
   readonly option: string;
   readonly key: string;
-  readonly roll: number;
-  readonly of: number;
+  readonly roll: RecordedNumber;
+  readonly of: RecordedNumber;
   readonly entry: number;
   /** The row picked at every level (rpg-project#670): `[4]` for a word row,
    * `[4, 1]` for the second row inside the group at entry 4. A beat from
@@ -97,8 +100,12 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-function num(v: unknown): number {
-  return typeof v === 'number' ? v : 0;
+function num(v: unknown): RecordedNumber {
+  return typeof v === 'number' || typeof v === 'bigint' ? v : 0;
+}
+
+function index(v: unknown): number {
+  return typeof v === 'number' && Number.isSafeInteger(v) ? v : -1;
 }
 
 function scopeOf(creature: string, option: string, key: string): string {
@@ -121,7 +128,7 @@ function tableRowOf(r: unknown): TableRowSymbol {
   const row = (r ?? {}) as Record<string, unknown>;
   const search = row.search as Record<string, unknown> | null | undefined;
   const out: TableRowSymbol = {
-    entry: num(row.entry),
+    entry: index(row.entry),
     when: Array.isArray(row.when) ? row.when.map(str) : [],
     word: str(row.word),
     selector: str(row.selector),
@@ -155,7 +162,7 @@ function tableRowOf(r: unknown): TableRowSymbol {
 function verdictOf(r: unknown): RowVerdict {
   const v = (r ?? {}) as Record<string, unknown>;
   const out: RowVerdict = {
-    entry: num(v.entry),
+    entry: index(v.entry),
     held: v.held === true,
     affordable: v.affordable === true,
     weight: num(v.weight),
@@ -210,7 +217,7 @@ export function symbolsOf(
   const latest = new Map<string, TableSymbol>();
   const out = new Map<string, TableSymbol>();
   for (const row of rows) {
-    if (!row.fields) continue;
+    if (!row.fields || row.precisionUnavailable) continue;
     if (row.beat === 'table') {
       const table = tableOf(row.fields);
       latest.set(scopeOf(table.creature, table.option, table.key), table);

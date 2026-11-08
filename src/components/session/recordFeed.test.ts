@@ -11,7 +11,11 @@ import {
   type StreamRecordResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
 import { describe, expect, it, vi } from 'vitest';
-import { startRecordFeed, type RecordFeedSnapshot } from './recordFeed';
+import {
+  startRecordFeed,
+  toRecordRow,
+  type RecordFeedSnapshot,
+} from './recordFeed';
 
 function beat(id: string, name = 'moved', act = 'move:01HF'): RecordEvent {
   return create(RecordEventSchema, {
@@ -96,6 +100,17 @@ function harness(
 }
 
 describe('recordFeed', () => {
+  it('marks live Struct integers outside the exact range rather than claiming fidelity', () => {
+    const record = beat('A1', 'behavior_config');
+    record.fields = {
+      schema: 1,
+      config: 'wide',
+      configuration: { count: 9007199254740992 },
+    };
+    expect(toRecordRow(record).precisionUnavailable).toBe(true);
+    record.fields = { value: 0, flag: false, label: '' };
+    expect(toRecordRow(record).precisionUnavailable).toBeUndefined();
+  });
   it('opens from the oldest retained beat', async () => {
     const h = harness([scripted([eventMsg('A1'), eventMsg('A2')], 'hold')]);
     await vi.waitFor(() => expect(h.ids()).toEqual(['A1', 'A2']));
@@ -193,6 +208,111 @@ describe('recordFeed', () => {
     );
     expect(last?.notice).toBe(notice);
     feed.stop();
+  });
+
+  it('does not mutate an earlier published snapshot when a new record arrives', async () => {
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held: RecordFeedSnapshot[] = [];
+    const feed = startRecordFeed({
+      stream: (_after, signal) =>
+        (async function* () {
+          yield eventMsg('A1');
+          await next;
+          yield eventMsg('A2');
+          await new Promise<void>((resolve) =>
+            signal.addEventListener('abort', () => resolve(), { once: true })
+          );
+        })(),
+      get: async () => page([]),
+      onChange: (value) => held.push(value),
+      retryDelayMs: () => 0,
+    });
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    release();
+    await vi.waitFor(() => expect(held).toHaveLength(2));
+    expect(held[0].rows.map((row) => row.id)).toEqual(['A1']);
+    expect(held[1].rows).not.toBe(held[0].rows);
+    feed.stop();
+  });
+
+  it('keeps configuration and table symbols after their rows age out', async () => {
+    const config = create(StreamRecordResponseSchema, {
+      item: { case: 'event', value: beat('A0000', 'behavior_config') },
+    });
+    const table = create(StreamRecordResponseSchema, {
+      item: { case: 'event', value: beat('A0001', 'table') },
+    });
+    const many = Array.from({ length: 520 }, (_, i) =>
+      eventMsg(`B${String(i).padStart(4, '0')}`)
+    );
+    const h = harness([scripted([config, table, ...many], 'hold')]);
+    await vi.waitFor(() => expect(h.ids()).toHaveLength(500));
+    expect(h.feed.snapshot().symbols?.map((row) => row.id)).toEqual([
+      'A0000',
+      'A0001',
+    ]);
+    h.feed.stop();
+    const held = h.feed.snapshot();
+    const resumed = startRecordFeed({
+      stream: (_after, signal) => scripted([eventMsg('C1')], 'hold')(signal),
+      get: async () => page([]),
+      rows: held.rows,
+      symbols: held.symbols,
+      related: held.related,
+      onChange: () => {},
+      retryDelayMs: () => 0,
+    });
+    await vi.waitFor(() => expect(resumed.lastId()).toBe('C1'));
+    expect(resumed.snapshot().symbols?.map((row) => row.id)).toEqual([
+      'A0000',
+      'A0001',
+    ]);
+    resumed.stop();
+    const other = harness([scripted([eventMsg('N1')], 'hold')]);
+    await vi.waitFor(() => expect(other.ids()).toEqual(['N1']));
+    expect(other.feed.snapshot().symbols).toEqual([]);
+    other.feed.stop();
+  });
+
+  it('retains a referenced pick when its decision is still in the visible window', async () => {
+    const pick = create(StreamRecordResponseSchema, {
+      item: { case: 'event', value: beat('A0000', 'answered') },
+    });
+    const decision = beat('A0001', 'behavior_decision');
+    decision.fields = { beat: 'behavior_decision', pick_record: 'A0000' };
+    const messages = [
+      pick,
+      create(StreamRecordResponseSchema, {
+        item: { case: 'event', value: decision },
+      }),
+      ...Array.from({ length: 499 }, (_, i) =>
+        eventMsg(`B${String(i).padStart(4, '0')}`)
+      ),
+    ];
+    const h = harness([scripted(messages, 'hold')]);
+    await vi.waitFor(() => expect(h.ids()).toHaveLength(500));
+    expect(h.ids()[0]).toBe('A0001');
+    expect(h.feed.snapshot().related?.map((row) => row.id)).toEqual(['A0000']);
+    h.feed.stop();
+  });
+
+  it('reports disabled diagnostic access without reconnecting forever', async () => {
+    const refused = async function* (): AsyncIterable<StreamRecordResponse> {
+      yield* [];
+      throw new ConnectError(
+        'diagnostic record access is disabled',
+        Code.PermissionDenied
+      );
+    };
+    const h = harness([() => refused()]);
+    await vi.waitFor(() =>
+      expect(h.notice()).toContain('diagnostic record access is disabled')
+    );
+    expect(h.streamCalls).toEqual(['']);
+    h.feed.stop();
   });
 
   it('caps the rows it keeps', async () => {

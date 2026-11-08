@@ -1,11 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { groupRecord, type RecordAct } from '../recordActs';
+import { recordContextRows } from '../recordBuffer';
+import {
+  formatRecordJSON,
+  MAX_RECORD_CAPTURE_BYTES,
+  parseRecordCapture,
+  type ParsedRecordCapture,
+} from '../recordCapture';
 import {
   filterRecord,
+  RECORD_PRECISION_NOTICE,
   type RecordFeedSnapshot,
   type RecordFilter,
   type RecordRow,
 } from '../recordFeed';
+import { behaviorSymbolsOf, type BehaviorSymbolIndex } from './behaviorSymbols';
+import { BehaviorTrace } from './BehaviorTrace';
 import styles from './RecordPanel.module.css';
 import {
   answeredOf,
@@ -34,10 +44,42 @@ import {
  * pages until the server says `more` is false, keeping the newest
  * RECORD_MAX_ROWS beats.
  */
-export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
+export function RecordPanel({ feed: liveFeed }: { feed: RecordFeedSnapshot }) {
   const [filter, setFilter] = useState<RecordFilter>({ act: '', beat: '' });
-  const symbols = useMemo(() => symbolsOf(feed.rows), [feed.rows]);
+  const [imported, setImported] = useState<ParsedRecordCapture | null>(null);
+  const [importError, setImportError] = useState('');
+  const importGeneration = useRef(0);
+  const feed = imported?.feed ?? liveFeed;
+  const context = useMemo(() => recordContextRows(feed), [feed]);
+  const symbols = useMemo(() => symbolsOf(context), [context]);
+  const symbolRows = feed.symbols ?? context;
+  const behaviorSymbols = useMemo(
+    () => behaviorSymbolsOf(symbolRows),
+    [symbolRows]
+  );
+  const records = useMemo(
+    () => new Map(context.map((row) => [row.id, row])),
+    [context]
+  );
   const acts = useMemo(() => groupRecord(feed.rows), [feed.rows]);
+  const openCapture = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    const generation = ++importGeneration.current;
+    try {
+      if (file.size > MAX_RECORD_CAPTURE_BYTES)
+        throw new Error('Capture exceeds32MiB; filter a smaller window.');
+      const parsed = parseRecordCapture(await file.text());
+      if (generation !== importGeneration.current) return;
+      setImported(parsed);
+      setImportError('');
+      setFilter({ act: '', beat: '' });
+    } catch (error) {
+      if (generation === importGeneration.current)
+        setImportError(error instanceof Error ? error.message : String(error));
+    }
+  };
   const narrowed = filter.act.trim() !== '' || filter.beat.trim() !== '';
   const matched = useMemo(
     () => new Set(filterRecord(feed.rows, filter).map((row) => row.id)),
@@ -53,6 +95,28 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
   return (
     <div className={styles.panel}>
       <div className={styles.filters} role="search">
+        <label>
+          <span>Open capture</span>
+          <input
+            type="file"
+            aria-label="Open record capture"
+            accept=".jsonl,.ndjson,.json"
+            onChange={openCapture}
+          />
+        </label>
+        {imported && (
+          <button
+            type="button"
+            onClick={() => {
+              importGeneration.current++;
+              setImported(null);
+              setImportError('');
+              setFilter({ act: '', beat: '' });
+            }}
+          >
+            Return to live records
+          </button>
+        )}
         <label>
           <span>Act</span>
           <input
@@ -88,6 +152,17 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
           {feed.rows.length} beats
         </span>
       </div>
+      {imported && (
+        <p className={styles.notice}>
+          Captured run {imported.session} · {imported.count} records ·{' '}
+          {feed.symbols?.length ?? 0} symbol records
+        </p>
+      )}
+      {importError && (
+        <p className={styles.notice} role="alert">
+          {importError}
+        </p>
+      )}
       {feed.notice && (
         <div className={styles.notice} role="status">
           {feed.notice}
@@ -99,6 +174,8 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
             key={act.key}
             act={act}
             symbols={symbols}
+            behaviorSymbols={behaviorSymbols}
+            records={records}
             matched={narrowed ? matched : undefined}
             onAct={(id) => setFilter({ ...filter, act: id })}
           />
@@ -120,18 +197,22 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
 function ActView({
   act,
   symbols,
+  behaviorSymbols,
+  records,
   matched,
   onAct,
 }: {
   act: RecordAct;
   symbols: ReadonlyMap<string, TableSymbol>;
+  behaviorSymbols: BehaviorSymbolIndex;
+  records: ReadonlyMap<string, RecordRow>;
   matched: ReadonlySet<string> | undefined;
   onAct: (act: string) => void;
 }) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? matched !== undefined;
   const reading = useMemo(() => {
-    if (!act.pick) return undefined;
+    if (!act.pick || act.pick.precisionUnavailable) return undefined;
     const answer = answeredOf(act.pick.fields);
     return answer ? readAnswer(answer, symbols.get(act.pick.id)) : undefined;
   }, [act.pick, symbols]);
@@ -186,6 +267,9 @@ function ActView({
                 row={row}
                 match={matched?.has(row.id)}
                 onAct={onAct}
+                behaviorSymbols={behaviorSymbols}
+                records={records}
+                tableSymbols={symbols}
               />
             ))}
           </ol>
@@ -203,15 +287,26 @@ function RecordRowView({
   row,
   match,
   onAct,
+  behaviorSymbols,
+  records,
+  tableSymbols,
 }: {
   row: RecordRow;
   match: boolean | undefined;
   onAct: (act: string) => void;
+  behaviorSymbols: BehaviorSymbolIndex;
+  records: ReadonlyMap<string, RecordRow>;
+  tableSymbols: ReadonlyMap<string, TableSymbol>;
 }) {
   const [open, setOpen] = useState(false);
   const json = useMemo(
-    () => (open ? JSON.stringify(row.fields ?? {}, null, 2) : ''),
-    [open, row.fields]
+    () =>
+      open
+        ? row.precisionUnavailable
+          ? RECORD_PRECISION_NOTICE
+          : formatRecordJSON(row.fields ?? {})
+        : '',
+    [open, row.fields, row.precisionUnavailable]
   );
   return (
     <li
@@ -248,9 +343,17 @@ function RecordRowView({
         )}
       </div>
       {open && (
-        <pre className={styles.fields} aria-label="Record fields">
-          <code>{json}</code>
-        </pre>
+        <>
+          <BehaviorTrace
+            row={row}
+            symbols={behaviorSymbols}
+            records={records}
+            tableSymbols={tableSymbols}
+          />
+          <pre className={styles.fields} aria-label="Record fields">
+            <code>{json}</code>
+          </pre>
+        </>
       )}
     </li>
   );

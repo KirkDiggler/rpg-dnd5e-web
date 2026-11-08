@@ -13,11 +13,13 @@
  *
  * Pure of React so the reconnect rules are tested without a component.
  */
+import { Code, ConnectError } from '@connectrpc/connect';
 import type { RecordEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_pb';
 import type {
   GetRecordResponse,
   StreamRecordResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
+import { bufferRecordRows } from './recordBuffer';
 
 /** Rows kept, oldest dropped first — the debug feed's existing cap. */
 export const RECORD_MAX_ROWS = 500;
@@ -26,6 +28,8 @@ export const RECORD_MAX_ROWS = 500;
 export const RECORD_PAGE_LIMIT = 200;
 
 export const RECORD_AGED_OUT_NOTICE = 'Older beats aged out of the record.';
+export const RECORD_PRECISION_NOTICE =
+  'Exact numeric precision is unavailable on this live record wire. Use an exact API capture.';
 
 /** One record beat as the panel shows it. */
 export interface RecordRow {
@@ -34,11 +38,17 @@ export interface RecordRow {
   readonly act: string;
   readonly beat: string;
   readonly fields: Readonly<Record<string, unknown>> | undefined;
+  /** Fail closed on the current Struct boundary; a rounded value is not evidence. */
+  readonly precisionUnavailable?: boolean;
 }
 
 export interface RecordFeedSnapshot {
   readonly rows: readonly RecordRow[];
   readonly notice: string | undefined;
+  /** Configuration records have a run lifetime, not the visible row limit. */
+  readonly symbols?: readonly RecordRow[];
+  /** Available dependencies of visible diagnostic records, not a second log. */
+  readonly related?: readonly RecordRow[];
 }
 
 export interface RecordFeedDeps {
@@ -53,6 +63,8 @@ export interface RecordFeedDeps {
   /** Where to resume from; "" is the oldest retained beat. */
   afterId?: string;
   rows?: readonly RecordRow[];
+  symbols?: readonly RecordRow[];
+  related?: readonly RecordRow[];
   /** The notice those rows carried, so a restart's hole stays visible. */
   notice?: string;
 }
@@ -63,6 +75,20 @@ export interface RecordFeed {
   snapshot: () => RecordFeedSnapshot;
 }
 
+function unsafeLiveNumber(value: unknown): boolean {
+  if (typeof value === 'number')
+    return (
+      !Number.isFinite(value) ||
+      (Number.isInteger(value) && !Number.isSafeInteger(value))
+    );
+  if (Array.isArray(value)) return value.some(unsafeLiveNumber);
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.values(value).some(unsafeLiveNumber)
+  );
+}
+
 export function toRecordRow(event: RecordEvent): RecordRow {
   return {
     id: event.id,
@@ -70,34 +96,45 @@ export function toRecordRow(event: RecordEvent): RecordRow {
     act: event.act,
     beat: event.beat,
     fields: event.fields,
+    ...(unsafeLiveNumber(event.fields) ? { precisionUnavailable: true } : {}),
   };
 }
 
 export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
   const controller = new AbortController();
   const signal = controller.signal;
-  let rows: RecordRow[] = [...(deps.rows ?? [])];
-  let lastId = deps.afterId ?? rows[rows.length - 1]?.id ?? '';
+  let buffer = bufferRecordRows({
+    rows: deps.rows ?? [],
+    symbols: deps.symbols,
+    related: deps.related,
+    incoming: [],
+    limit: RECORD_MAX_ROWS,
+  });
+  let lastId = deps.afterId ?? buffer.rows[buffer.rows.length - 1]?.id ?? '';
   let notice: string | undefined = deps.notice;
 
-  const publish = () => deps.onChange({ rows, notice });
+  const publish = () => deps.onChange({ ...buffer, notice });
 
   const append = (events: readonly RecordEvent[]) => {
-    let changed = false;
+    const incoming: RecordRow[] = [];
     for (const event of events) {
       if (lastId !== '' && event.id <= lastId) continue; // already held
-      rows.push(toRecordRow(event));
+      incoming.push(toRecordRow(event));
       lastId = event.id;
-      changed = true;
     }
-    if (rows.length > RECORD_MAX_ROWS) {
-      rows = rows.slice(rows.length - RECORD_MAX_ROWS);
-    }
-    if (changed) publish();
+    if (incoming.length === 0) return;
+    buffer = bufferRecordRows({ ...buffer, incoming, limit: RECORD_MAX_ROWS });
+    publish();
   };
 
   const restart = () => {
-    rows = [];
+    // Exact behavior hashes remain valid across a gap. Legacy tables have
+    // only a latest-per-scope identity, so stale ones cannot cross a restart.
+    buffer = {
+      rows: [],
+      related: [],
+      symbols: buffer.symbols.filter((row) => row.beat === 'behavior_config'),
+    };
     lastId = '';
     notice = RECORD_AGED_OUT_NOTICE;
     publish();
@@ -135,7 +172,15 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
           attempt = 0;
           continue; // reopen from the newest id at once
         }
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof ConnectError &&
+          error.code === Code.PermissionDenied
+        ) {
+          notice = error.rawMessage;
+          publish();
+          return; // a disabled diagnostic surface is not a broken connection
+        }
         // OUR abort is the only one that stops the loop (as in
         // useSessionEventStream). A server or proxy Canceled is a dropped
         // connection like any other: reconnect after the last id.
@@ -162,7 +207,7 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
   return {
     stop: () => controller.abort(),
     lastId: () => lastId,
-    snapshot: () => ({ rows, notice }),
+    snapshot: () => ({ ...buffer, notice }),
   };
 }
 
