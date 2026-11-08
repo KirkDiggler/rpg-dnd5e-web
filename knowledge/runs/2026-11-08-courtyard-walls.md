@@ -24,6 +24,8 @@
 - Read the actual source-built candidate: five masonry looks, twelve atlas packs, 193 exact asset bindings, including the served House Wall05. Its catalog digest is 1f86a2f1ed5a4a2e7265202dd5ea56d938dd8bc91529852b984b23c32d76f7a3. It remains staged-unapproved; no runtime/publication change — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 - Real rebuild revealed one red-channel value differing by one in one brick-image pixel from the historical/live resource; all atlas bindings and other material rows match. Resolve derivation custody before any provider apply; reader acceptance is not artistic/publication acceptance — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 
+- The authored-UV adapter and existing masonry adapter pass 36 focused tests plus types. A real hardware-browser test loads the exact House Wall05 GLB, applies 01_A and 04_C independently, preserves geometry/UVs, and resets Original pixel-exactly. Both production modules and verified source-built image bytes are used; no API calls or persistent viewer. This is renderer evidence, not the missing Studio/native/play integration — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
+
 ## Mistaken
 
 - The initial reader plan allowed empty suggested collections; the agreed provider wire requires a nonempty recommendation list. Corrected the plan/tests: recommendations are not exhaustive permissions, so an uncurated valid atlas material is retained, but malformed recommendation metadata still refuses — [atlas law](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/assets/pack-material-profiles/atlas-provider-design.md).
