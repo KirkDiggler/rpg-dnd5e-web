@@ -89,6 +89,38 @@ describe('courtyard wall model configuration', () => {
     );
   });
 
+  it('retains native wall and prop material choices without changing the rest of the current castle', () => {
+    const opened = readDraftYaml(served);
+    if (!opened.ok) throw Error(opened.refusal);
+    const choice = {
+      surfaceId: 'atlas',
+      materialRef: 'dnd5e:material:fantasy-kingdom:atlas_04_c',
+    };
+    const draft = structuredClone(opened.draft);
+    draft.room.walls![0] = setWallAppearance(draft.room.walls![0], {
+      ...draft.room.walls![0].appearance,
+      materialOverrides: [choice],
+    });
+    draft.scene.items[0].materialOverrides = [{ ...choice }];
+    const stored = parseRoomDocumentJson(
+      stringifyRoomDraft(draft, opened.scope)
+    );
+    const yaml = exportDraftYaml(stored, opened.key);
+    const reopened = readDraftYaml(yaml);
+    if (!reopened.ok) throw Error(reopened.refusal);
+    expect(reopened.draft.room.walls![0].appearance.materialOverrides).toEqual([
+      choice,
+    ]);
+    expect(reopened.draft.scene.items[0].materialOverrides).toEqual([choice]);
+    const actual = parse(yaml);
+    delete actual.room.room.walls[0].appearance.materialOverrides;
+    delete actual.room.scene.items[0].materialOverrides;
+    expect(actual).toEqual(parse(served));
+    delete reopened.draft.room.walls![0].appearance.materialOverrides;
+    delete reopened.draft.scene.items[0].materialOverrides;
+    expect(parse(exportDraftYaml(reopened, opened.key))).toEqual(parse(served));
+  });
+
   it.each([4, 14])(
     'fits the published timber model around a doorway on a %s-unit wall',
     (length) => {

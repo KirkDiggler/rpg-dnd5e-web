@@ -1,6 +1,7 @@
 import { validateRegionPresentation } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { validateActorNames, validateCreaturePalette } from './creaturePalette';
+import { validateMaterialOverrides } from './materialOverrides';
 import { carryUnknownKeys } from './strictShape';
 import type {
   Arrangement,
@@ -188,6 +189,14 @@ function prop(
     id: string(input.id, `${field}.id`, 120),
     kind: 'prop',
     assetRef,
+    ...(input.materialOverrides === undefined
+      ? {}
+      : {
+          materialOverrides: validateMaterialOverrides(
+            input.materialOverrides,
+            `${field}.materialOverrides`
+          ),
+        }),
     label: string(input.label, `${field}.label`, 120),
     transform: transform(
       input.transform,
@@ -223,6 +232,7 @@ const PROP_KEYS = [
   'parentId',
   'supportId',
   'pointLight',
+  'materialOverrides',
 ];
 const GROUP_KEYS = ['id', 'kind', 'label', 'transform', 'parentId'];
 

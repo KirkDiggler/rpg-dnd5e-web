@@ -1,5 +1,12 @@
 /** Consumer-safe projections of Assets' shared material catalog. Image identity is
  * immutable bytes; color space and UV channel belong to the sampling role. */
+/** An authored/captured material identity for one provider-declared scope.
+ * It is not an image path, mesh index or mechanical material declaration. */
+export interface MaterialOverride {
+  surfaceId: string;
+  materialRef: string;
+}
+
 export interface WorldSurfaceImage {
   readonly url: string;
   readonly sha256: string;

@@ -1,5 +1,6 @@
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { isDoorAsset } from './doorBindingEdits';
+import { validateMaterialOverrides } from './materialOverrides';
 import type { RoomPropDeclaration } from './roomDraft';
 import { carryUnknownKeys, objectShape } from './strictShape';
 import {
@@ -11,7 +12,13 @@ import type { WorldPoint } from './types';
 
 /** The wall keys this codec reads; any other is carried (rpg-project#857). */
 const WALL_KEYS = ['id', 'label', 'line', 'appearance', 'blocker', 'openings'];
-const APPEARANCE_KEYS = ['assetRef', 'height', 'thickness', 'elevation'];
+const APPEARANCE_KEYS = [
+  'assetRef',
+  'height',
+  'thickness',
+  'elevation',
+  'materialOverrides',
+];
 const BLOCKER_KEYS = ['footprint', 'blocksMovement', 'blocksLineOfSight'];
 const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'];
 
@@ -34,6 +41,7 @@ export interface StructuralWall extends WallGeometry {
    * carry an attached-door record, and every editor helper must preserve it. */
   openings: readonly StructuralWallOpening[];
   appearance: {
+    materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
     assetRef: string;
     height: number;
     thickness: number;
@@ -194,6 +202,14 @@ export function validateStructuralWalls(input: {
       }),
       appearance: carryUnknownKeys(appearance, APPEARANCE_KEYS, {
         assetRef,
+        ...(appearance.materialOverrides === undefined
+          ? {}
+          : {
+              materialOverrides: validateMaterialOverrides(
+                appearance.materialOverrides,
+                `${location}.appearance.materialOverrides`
+              ),
+            }),
         height: numberAt(
           appearance.height,
           `${location}.appearance.height`,

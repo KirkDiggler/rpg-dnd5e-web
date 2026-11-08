@@ -30,6 +30,8 @@
 
 - Generated and private-preview projections now retain the complete atlas view alongside masonry under the same digest; the pure schema validator is shared by Node/browser boundaries. 123 focused catalog/adapter checks and types pass. The actual 193-binding candidate stages through the existing private preview transaction after matching real model bytes; the live v1 pin remains unchanged — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 
+- Native wall/prop material lists are now typed, validated and detached while carrying unknown authored metadata. The current-castle round-trip keeps both choices and every other source fact; reset restores the original. 109 focused owner/serialization/wall/ground tests and types pass. Studio controls and live renderer plumbing remain outstanding — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
+
 ## Mistaken
 
 - The initial reader plan allowed empty suggested collections; the agreed provider wire requires a nonempty recommendation list. Corrected the plan/tests: recommendations are not exhaustive permissions, so an uncurated valid atlas material is retained, but malformed recommendation metadata still refuses — [atlas law](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/assets/pack-material-profiles/atlas-provider-design.md).

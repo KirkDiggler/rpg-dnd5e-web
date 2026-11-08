@@ -30,6 +30,8 @@ export interface WorldPointLight {
 }
 
 export interface WorldProp {
+  /** Captured visual choices for exact provider-declared material scopes. */
+  materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
   id: string;
   kind: 'prop';
   assetRef: string;

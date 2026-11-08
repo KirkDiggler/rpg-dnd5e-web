@@ -18,6 +18,7 @@ import {
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { validateMaterialOverrides } from './materialOverrides';
 import {
   resizeWallEndpoint,
   transformWall,
@@ -613,7 +614,17 @@ export function setWallAppearance(
   finitePositive(appearance.thickness, 'appearance.thickness');
   finite(appearance.elevation, 'appearance.elevation');
   const next = cloneWall(wall);
-  next.appearance = { ...appearance };
+  next.appearance = {
+    ...appearance,
+    ...(appearance.materialOverrides === undefined
+      ? {}
+      : {
+          materialOverrides: validateMaterialOverrides(
+            appearance.materialOverrides,
+            'wall.appearance.materialOverrides'
+          ),
+        }),
+  };
   return next;
 }
 
