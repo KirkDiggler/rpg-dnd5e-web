@@ -1,11 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import type { CubeCoord } from '../hex-grid/hexMath';
 import {
   beginRoute,
+  continuedWalk,
+  continueRoute,
+  emptyContinuations,
   emptyMovements,
   facingWhileWalking,
   forgetUnsighted,
   isWalking,
+  moveAnswered,
   movementPainted,
   stepArrived,
 } from './moveController';
@@ -170,5 +175,170 @@ describe('isWalking / facingWhileWalking — the end facing waits for the token 
     expect(isWalking(painted)).toBe(false);
     expect(facingWhileWalking(90, painted)).toBe(90);
     expect(facingWhileWalking(90, undefined)).toBe(90);
+  });
+});
+
+describe('moveController — the walk goes on after the answer (rpg-project#890)', () => {
+  const a = { x: 1, y: -1, z: 0 };
+  const b = { x: 2, y: -2, z: 0 };
+  const c = { x: 3, y: -3, z: 0 };
+  const d = { x: 4, y: -4, z: 0 };
+  const e = { x: 5, y: -5, z: 0 };
+  const answer = { route: [a, b], continues: true, through: '01J0000000B' };
+  const walk = (id: string, cells: CubeCoord[], act = 'move:1') => ({
+    id,
+    act,
+    cells,
+  });
+
+  it('continues the walk with an own walk act after through', () => {
+    const state = moveAnswered(emptyContinuations(), 'me', answer);
+
+    const continued = continuedWalk(state, 'me', walk('01J0000000C', [c]));
+
+    expect(continued?.cells).toEqual([c]);
+    expect(continued?.continuations.get('me')).toEqual({
+      after: '01J0000000C',
+      act: 'move:1',
+      walked: [a, b, c],
+    });
+  });
+
+  it('ignores own walk acts at or before through', () => {
+    const state = moveAnswered(emptyContinuations(), 'me', answer);
+
+    expect(continuedWalk(state, 'me', walk('01J0000000B', [a, b]))).toBe(
+      undefined
+    );
+    expect(continuedWalk(state, 'me', walk('01J0000000A', [a]))).toBe(
+      undefined
+    );
+  });
+
+  it('plays only the new cells of a segment that straddles through', () => {
+    const state = moveAnswered(emptyContinuations(), 'me', answer);
+
+    const continued = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000D', [a, b, c, d])
+    );
+
+    expect(continued?.cells).toEqual([c, d]);
+  });
+
+  it('drops the cell a later segment restates as its start', () => {
+    let state = moveAnswered(emptyContinuations(), 'me', answer);
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000C', [a, b, c])
+    )!.continuations;
+
+    const continued = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000E', [c, d, e])
+    );
+
+    expect(continued?.cells).toEqual([d, e]);
+  });
+
+  it('advances past each continued act so the same act never plays twice', () => {
+    let state = moveAnswered(emptyContinuations(), 'me', answer);
+    state = continuedWalk(state, 'me', walk('01J0000000C', [c]))!.continuations;
+
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
+      undefined
+    );
+  });
+
+  it('does not continue with an own walk under another act', () => {
+    let state = moveAnswered(emptyContinuations(), 'me', answer);
+    state = continuedWalk(state, 'me', walk('01J0000000C', [c]))!.continuations;
+
+    expect(continuedWalk(state, 'me', walk('01J0000000D', [d], 'move:2'))).toBe(
+      undefined
+    );
+  });
+
+  it('has no continuation when the answer does not continue', () => {
+    const state = moveAnswered(emptyContinuations(), 'me', {
+      ...answer,
+      continues: false,
+    });
+
+    expect(state.has('me')).toBe(false);
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
+      undefined
+    );
+  });
+
+  it('a second Move answer starts a new journey and clears the continuation', () => {
+    let state = moveAnswered(emptyContinuations(), 'me', answer);
+    state = moveAnswered(state, 'me', {
+      route: [d],
+      continues: false,
+      through: '01J0000000Z',
+    });
+
+    expect(state.has('me')).toBe(false);
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
+      undefined
+    );
+  });
+
+  it('a second continuing answer replaces the first after its own through', () => {
+    let state = moveAnswered(emptyContinuations(), 'me', answer);
+    state = moveAnswered(state, 'me', {
+      route: [d],
+      continues: true,
+      through: '01J0000000Y',
+    });
+
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
+      undefined
+    );
+    expect(
+      continuedWalk(state, 'me', walk('01J0000000Z', [d, e], 'move:2'))?.cells
+    ).toEqual([e]);
+  });
+
+  it('continues an answer that carried no steps from the first own walk', () => {
+    const state = moveAnswered(emptyContinuations(), 'me', {
+      route: [],
+      continues: true,
+      through: '',
+    });
+
+    expect(continuedWalk(state, 'me', walk('01J0000000A', [a]))?.cells).toEqual(
+      [a]
+    );
+  });
+
+  it('appends continued cells to the route still being painted', () => {
+    let state = beginRoute(emptyMovements(), 'me', [a, b]);
+    state = continueRoute(state, 'me', [c, d]);
+
+    expect(state.get('me')).toEqual({
+      route: [a, b, c, d],
+      seq: 2,
+      reached: 0,
+      continuedFrom: 2,
+    });
+  });
+
+  it('walks continued cells as a route of their own once the answer is painted', () => {
+    let state = beginRoute(emptyMovements(), 'me', [a, b]);
+    state = movementPainted(state, 'me', 1, 2);
+    state = continueRoute(state, 'me', [c]);
+
+    expect(state.get('me')).toEqual({ route: [c], seq: 2, reached: 0 });
+  });
+
+  it('ignores an empty continuation', () => {
+    const state = beginRoute(emptyMovements(), 'me', [a]);
+
+    expect(continueRoute(state, 'me', [])).toBe(state);
   });
 });

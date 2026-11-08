@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import type { MoveKind } from '../hex-grid/moveKind';
-import { arrivingWalk } from './arrivingWalk';
+import { arrivingWalk, ownWalk } from './arrivingWalk';
+import type { OwnWalk } from './moveController';
 import type { PresentWalk, WalkPresentationOutcome } from './walkPresentation';
 
 export interface UseWalkPresentationArgs {
@@ -15,6 +16,14 @@ export interface UseWalkPresentationArgs {
     kind?: MoveKind
   ) => number | undefined;
   readonly forgetRoute: (member: string, seq: number) => void;
+  /** The local member's own walk act continuing their answered Move
+   * (rpg-project#890): the sequence and route length to wait on, or undefined
+   * when it continues nothing and so has nothing to present. Absent, own
+   * walks are never presented, as before. */
+  readonly continueOwnWalk?: (
+    member: string,
+    walk: OwnWalk
+  ) => { readonly seq: number; readonly length: number } | undefined;
 }
 export interface UseWalkPresentationResult {
   readonly presentWalk: PresentWalk;
@@ -47,6 +56,7 @@ export function useWalkPresentation({
   canPresent,
   beginRoute,
   forgetRoute,
+  continueOwnWalk,
 }: UseWalkPresentationArgs): UseWalkPresentationResult {
   const scope = useMemo<Scope>(() => ({ session, member }), [session, member]);
   const activeScopeRef = useRef(scope);
@@ -58,8 +68,15 @@ export function useWalkPresentation({
     canPresent,
     beginRoute,
     forgetRoute,
+    continueOwnWalk,
   });
-  inputsRef.current = { liveSighted, canPresent, beginRoute, forgetRoute };
+  inputsRef.current = {
+    liveSighted,
+    canPresent,
+    beginRoute,
+    forgetRoute,
+    continueOwnWalk,
+  };
 
   const finish = useCallback(
     (pending: Pending, outcome: WalkPresentationOutcome): void => {
@@ -77,32 +94,48 @@ export function useWalkPresentation({
         input.complete('cancelled');
         return () => {};
       }
-      const route = arrivingWalk(input.act, member);
       const inputs = inputsRef.current;
+      // The local member's own walk plays only where it continues their
+      // answered Move; every other walk is a journey of its own.
+      const own = ownWalk(input.act, member);
+      const route = own ? undefined : arrivingWalk(input.act, member);
+      const actor = own ? member : route?.member;
       if (
-        !route ||
+        !actor ||
+        (!own && !route) ||
         !inputs.canPresent ||
-        !inputs.liveSighted.has(route.member)
+        !inputs.liveSighted.has(actor)
       ) {
         input.complete('unavailable');
         return () => {};
       }
-      if (pendingRef.current) finish(pendingRef.current, 'cancelled');
-      const seq =
-        route.kind !== 'own'
-          ? inputs.beginRoute(route.member, route.cells, route.kind)
-          : inputs.beginRoute(route.member, route.cells);
-      if (seq === undefined) {
+      if (own && !inputs.continueOwnWalk) {
         input.complete('unavailable');
         return () => {};
       }
+      if (pendingRef.current) finish(pendingRef.current, 'cancelled');
+      let started: { seq: number; length: number } | undefined;
+      if (own) started = inputs.continueOwnWalk!(member, own);
+      else if (route) {
+        const seq =
+          route.kind !== 'own'
+            ? inputs.beginRoute(route.member, route.cells, route.kind)
+            : inputs.beginRoute(route.member, route.cells);
+        started =
+          seq === undefined ? undefined : { seq, length: route.cells.length };
+      }
+      if (started === undefined) {
+        input.complete('unavailable');
+        return () => {};
+      }
+      const { seq } = started;
       const pending: Pending = {
         scope,
-        actor: route.member,
+        actor,
         seq,
-        length: route.cells.length,
+        length: started.length,
         complete: input.complete,
-        discard: () => inputs.forgetRoute(route.member, seq),
+        discard: () => inputs.forgetRoute(actor, seq),
       };
       pendingRef.current = pending;
       return () => {

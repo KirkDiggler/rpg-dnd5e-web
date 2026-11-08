@@ -58,3 +58,66 @@ describe('useMoveController presentation identity', () => {
     });
   });
 });
+
+describe('useMoveController continuing an answered walk (rpg-project#890)', () => {
+  const a = { x: 1, y: -1, z: 0 };
+  const b = { x: 2, y: -2, z: 0 };
+  const c = { x: 3, y: -3, z: 0 };
+
+  it('extends the answer journey with an own walk after through, once', () => {
+    const { result } = renderHook(() =>
+      useMoveController('session-a', 'viewer')
+    );
+    let started: { seq: number; length: number } | undefined;
+    act(() => {
+      result.current.moveAnswered('viewer', {
+        route: [a, b],
+        continues: true,
+        through: '01J0000000B',
+      });
+      result.current.beginRoute('viewer', [a, b]);
+      started = result.current.continueOwnWalk('viewer', {
+        id: '01J0000000C',
+        act: 'move:1',
+        cells: [a, b, c],
+      });
+    });
+    expect(started).toEqual({ seq: 2, length: 3 });
+    expect(result.current.movements.get('viewer')).toEqual({
+      route: [a, b, c],
+      seq: 2,
+      reached: 0,
+      continuedFrom: 2,
+    });
+    act(() => {
+      started = result.current.continueOwnWalk('viewer', {
+        id: '01J0000000C',
+        act: 'move:1',
+        cells: [a, b, c],
+      });
+    });
+    expect(started).toBeUndefined();
+  });
+
+  it('plays no own walk when the answer did not continue', () => {
+    const { result } = renderHook(() =>
+      useMoveController('session-a', 'viewer')
+    );
+    let started: { seq: number; length: number } | undefined;
+    act(() => {
+      result.current.moveAnswered('viewer', {
+        route: [a, b],
+        continues: false,
+        through: '',
+      });
+      result.current.beginRoute('viewer', [a, b]);
+      started = result.current.continueOwnWalk('viewer', {
+        id: '01J0000000C',
+        act: 'move:1',
+        cells: [a, b, c],
+      });
+    });
+    expect(started).toBeUndefined();
+    expect(result.current.movements.get('viewer')?.route).toEqual([a, b]);
+  });
+});

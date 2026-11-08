@@ -26,6 +26,7 @@ vi.mock('@react-three/fiber', () => ({
 import {
   advanceFrame,
   computeMoveStart,
+  continueMove,
   SECONDS_PER_HEX_STEP,
   segmentHeading,
   useHexMovePath,
@@ -367,6 +368,48 @@ describe('advanceFrame', () => {
   });
 });
 
+describe('continueMove (rpg-project#890)', () => {
+  const b: CubeCoord = { x: 1, y: -1, z: 0 };
+  const c: CubeCoord = { x: 2, y: -2, z: 0 };
+  const inFlight: StepState = {
+    points: [{ x: 0, z: 0 }, cubeToWorld(b, HEX_SIZE)],
+    index: 0,
+    elapsed: 0.1,
+  };
+
+  it('appends the new cells to the walk in flight, keeping its progress', () => {
+    const next = continueMove(inFlight, true, 1, [b, c], 1, HEX_SIZE, {
+      x: 0.3,
+      z: 0,
+    });
+    expect(next).toEqual({
+      points: [...inFlight.points, cubeToWorld(c, HEX_SIZE)],
+      index: 0,
+      elapsed: 0.1,
+    });
+  });
+
+  it('walks only the new cells from where the body stands once the walk ended', () => {
+    const at = cubeToWorld(b, HEX_SIZE);
+    const next = continueMove(inFlight, false, 1, [b, c], 1, HEX_SIZE, at);
+    expect(next).toEqual({
+      points: [at, cubeToWorld(c, HEX_SIZE)],
+      index: 0,
+      elapsed: 0,
+    });
+  });
+
+  it('is no continuation without a marker, or for a route it did not start', () => {
+    const at = { x: 0, z: 0 };
+    expect(
+      continueMove(inFlight, true, 1, [b, c], undefined, HEX_SIZE, at)
+    ).toBeUndefined();
+    expect(
+      continueMove(inFlight, true, 3, [b, c], 1, HEX_SIZE, at)
+    ).toBeUndefined();
+  });
+});
+
 describe('useHexMovePath (hook-level regression test)', () => {
   const Y_OFFSET = 0.5;
   const posA: CubeCoord = { x: 0, y: 0, z: 0 };
@@ -378,6 +421,7 @@ describe('useHexMovePath (hook-level regression test)', () => {
     movePath: CubeCoord[] | undefined;
     moveSeq: number | undefined;
     deferPositionReconciliation?: boolean;
+    continuesFrom?: number;
   };
 
   function renderMovePath(
@@ -396,6 +440,7 @@ describe('useHexMovePath (hook-level regression test)', () => {
         movePath,
         moveSeq,
         deferPositionReconciliation,
+        continuesFrom,
       }: Props) =>
         useHexMovePath(
           entityPosition,
@@ -407,7 +452,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
           onHeading,
           onPresentationComplete,
           deferPositionReconciliation,
-          presentation
+          presentation,
+          continuesFrom
         ),
       {
         initialProps: {
@@ -463,6 +509,36 @@ describe('useHexMovePath (hook-level regression test)', () => {
     readySeq = 2;
     tick(SECONDS_PER_HEX_STEP / 2);
     expect(complete).toHaveBeenLastCalledWith(2);
+  });
+
+  it('appends a continued route to the walk in flight and reports each sequence where its own cells end (rpg-project#890)', () => {
+    const complete = vi.fn();
+    const { rerender, groupRef } = renderMovePath(undefined, complete);
+    groupRef.current = new THREE.Group();
+    rerender({ entityPosition: posA, movePath: undefined, moveSeq: undefined });
+    rerender({ entityPosition: posB, movePath: [posB], moveSeq: 1 });
+    tick(SECONDS_PER_HEX_STEP / 2);
+    const midway = groupRef.current.position.x;
+    rerender({
+      entityPosition: posC,
+      movePath: [posB, posC],
+      moveSeq: 2,
+      continuesFrom: 1,
+    });
+    // Keeps its leg and its progress: no turn back to the route's start.
+    tick(0);
+    expect(groupRef.current.position.x).toBeCloseTo(midway);
+    tick(SECONDS_PER_HEX_STEP / 2);
+    expect(complete).toHaveBeenCalledExactlyOnceWith(1);
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posB, HEX_SIZE).x
+    );
+    tick(SECONDS_PER_HEX_STEP);
+    expect(complete).toHaveBeenLastCalledWith(2);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(groupRef.current.position.x).toBeCloseTo(
+      cubeToWorld(posC, HEX_SIZE).x
+    );
   });
 
   it('holds already displayed pixels against a newer snapshot until its queued route starts', () => {

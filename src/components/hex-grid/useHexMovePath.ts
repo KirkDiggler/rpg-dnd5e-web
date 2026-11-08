@@ -169,6 +169,53 @@ export function computeMoveStart(
   return { isGenuineMove: true, nextSeenSeq: moveSeq, points };
 }
 
+/**
+ * THE SAME JOURNEY, GOING ON (rpg-project#890). A genuine move whose route
+ * continues the one this hook last started — `continuesFrom` (the move
+ * controller's `continuedFrom`) equals that route's length — walks only the
+ * cells from `continuesFrom` on. Still painting? They are appended to the walk
+ * in flight, which keeps its leg and its progress, so the body never turns
+ * back to re-walk the cells it already crossed. Already standing? They are
+ * walked from wherever the body is drawn.
+ *
+ * Undefined when the move is not such a continuation; the caller then starts
+ * it from `computeMoveStart`'s points as any other move. Pure, for the same
+ * reason as the functions around it.
+ */
+export function continueMove(
+  step: StepState,
+  inFlight: boolean,
+  startedLength: number | undefined,
+  movePath: readonly CubeCoord[] | undefined,
+  continuesFrom: number | undefined,
+  hexSize: number,
+  current: WorldPoint
+): StepState | undefined {
+  if (
+    continuesFrom === undefined ||
+    !movePath ||
+    startedLength !== continuesFrom ||
+    movePath.length <= continuesFrom
+  )
+    return undefined;
+  const added = movePath
+    .slice(continuesFrom)
+    .map((cell) => cubeToWorld(cell, hexSize));
+  if (inFlight)
+    return {
+      points: [...step.points, ...added],
+      index: step.index,
+      elapsed: step.elapsed,
+    };
+  const startsAtCurrent =
+    added[0]!.x === current.x && added[0]!.z === current.z;
+  return {
+    points: startsAtCurrent ? added : [current, ...added],
+    index: 0,
+    elapsed: 0,
+  };
+}
+
 export interface FrameAdvanceResult {
   /** The lerped world-space position for THIS frame. */
   position: WorldPoint;
@@ -267,7 +314,10 @@ export function useHexMovePath(
   /** A queued/active presented walk owns the already drawn location, not a
    * newer authoritative snapshot. Initial mounting still places normally. */
   deferPositionReconciliation: boolean = false,
-  presentation?: WalkAnimationGate
+  presentation?: WalkAnimationGate,
+  /** The move controller's `continuedFrom`: this route continues the one
+   * last started, from this cell index (`continueMove`). */
+  continuesFrom?: number
 ): UseHexMovePathResult {
   if (
     presentation &&
@@ -298,6 +348,23 @@ export function useHexMovePath(
   const activeMoveSeqRef = useRef<number | undefined>(undefined);
   const displacedMoveRef = useRef(false);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
+  // The route length of the move last started or continued, so a later
+  // sequence can say it continues exactly that route.
+  const startedLengthRef = useRef<number | undefined>(undefined);
+  // Earlier sequences of a continued journey and the point index at which
+  // their own cells are painted. Each still reports its completion there, so
+  // whoever waits on the earlier sequence (the local player's command path)
+  // hears it when its cells are walked, not when the whole journey ends.
+  const boundariesRef = useRef<{ seq: number; at: number }[]>([]);
+  const reportBoundaries = (index: number): void => {
+    while (
+      boundariesRef.current.length > 0 &&
+      boundariesRef.current[0]!.at <= index
+    ) {
+      const { seq } = boundariesRef.current.shift()!;
+      onPresentationCompleteRef.current?.(seq);
+    }
+  };
 
   const destination = cubeToWorld(entityPosition, hexSize);
 
@@ -349,16 +416,48 @@ export function useHexMovePath(
       activeMoveSeqRef.current = undefined;
       displacedMoveRef.current = false;
       stepRef.current = { points: [], index: 0, elapsed: 0 };
+      startedLengthRef.current = undefined;
+      boundariesRef.current = [];
       groupRef.current.position.set(destination.x, yOffset, destination.z);
       setIsMoving(false);
       return;
     }
 
-    stepRef.current = { points: result.points, index: 0, elapsed: 0 };
+    const inFlight =
+      activeMoveSeqRef.current !== undefined &&
+      stepRef.current.index < stepRef.current.points.length - 1;
+    const continued = continueMove(
+      stepRef.current,
+      inFlight,
+      startedLengthRef.current,
+      movePath,
+      continuesFrom,
+      hexSize,
+      current
+    );
+    startedLengthRef.current = movePath?.length;
+    if (continued && inFlight) {
+      // The earlier sequence's cells end where the appended ones begin.
+      boundariesRef.current.push({
+        seq: activeMoveSeqRef.current!,
+        at: stepRef.current.points.length - 1,
+      });
+      stepRef.current = continued;
+      activeMoveSeqRef.current = moveSeq;
+      setIsMoving(true);
+      invalidate();
+      return;
+    }
+    boundariesRef.current = [];
+    stepRef.current = continued ?? {
+      points: result.points,
+      index: 0,
+      elapsed: 0,
+    };
     activeMoveSeqRef.current = moveSeq;
     displacedMoveRef.current = presentationRef.current?.displaced === true;
-    setIsMoving(result.points.length > 1);
-    if (result.points.length <= 1 && moveSeq !== undefined) {
+    setIsMoving(stepRef.current.points.length > 1);
+    if (stepRef.current.points.length <= 1 && moveSeq !== undefined) {
       onPresentationCompleteRef.current?.(moveSeq);
     }
     // Report the first leg's heading. `undefined` for a zero-length leg (the
@@ -379,6 +478,7 @@ export function useHexMovePath(
     invalidate,
     groupRef,
     deferPositionReconciliation,
+    continuesFrom,
   ]);
 
   useFrame((_state, delta) => {
@@ -404,6 +504,7 @@ export function useHexMovePath(
       groupRef.current.position.x = displaced.position.x;
       groupRef.current.position.z = displaced.position.z;
       invalidate();
+      reportBoundaries(s.index);
       if (s.index >= s.points.length - 1) {
         setIsMoving(false);
         activeMoveSeqRef.current = undefined;
@@ -420,6 +521,7 @@ export function useHexMovePath(
     if (advanced.stepComplete) {
       s.index += 1;
       s.elapsed = 0;
+      reportBoundaries(s.index);
       // Once per segment, not once per frame — the heading only changes when
       // the leg does.
       const nextHeading = segmentHeading(s);

@@ -63,6 +63,15 @@ export interface Movement {
   readonly seq: number;
   /** How many cells of `route` the presentation has actually painted. */
   readonly reached: number;
+  /**
+   * Set only when this sequence CONTINUES the journey the previous sequence
+   * was still painting (`continueRoute`): the cells before this index are
+   * that earlier sequence's, already being walked, and only the cells from
+   * here on are new. `useHexMovePath` appends them to the walk in flight
+   * instead of re-walking the route from its start. Absent means the route
+   * is a journey of its own.
+   */
+  readonly continuedFrom?: number;
 }
 
 export type Movements = ReadonlyMap<string, Movement>;
@@ -108,7 +117,10 @@ export function stepArrived(
  * A whole route known at once — the local player's own `MoveResponse.steps`,
  * which is "what ACTUALLY happened" and may be shorter than what was asked
  * for. Always a new journey: the answer to a fresh Move RPC is never a
- * continuation of an older one.
+ * continuation of an older one. The one way a journey goes on after its
+ * answer is `continueRoute`, fed by `continuedWalk` from the member's own
+ * walk acts on the stream (rpg-project#890); nothing else extends a route
+ * that `beginRoute` started.
  *
  * An empty route changes nothing. A move refused at its very first cell
  * returns no steps, and there is no journey to animate or to reconcile.
@@ -128,6 +140,182 @@ export function beginRoute(
     reached: 0,
   });
   return next;
+}
+
+/**
+ * More cells of the SAME journey (rpg-project#890): the local player's walk
+ * going on after its Move answer, cells arriving from their own walk acts on
+ * the stream once `continuedWalk` has trimmed what the answer already
+ * carried.
+ *
+ * Still walking? Then the cells are appended to the route in flight and
+ * `continuedFrom` marks where they start, so the presentation appends them to
+ * the walk it is painting rather than re-walking the route from its first
+ * cell. Already standing still? Then the cells are a route of their own,
+ * walked from wherever the body is drawn, exactly as `stepArrived` starts a
+ * fresh route once the last one is painted.
+ *
+ * The sequence is bumped either way: a sequence that did not change is what
+ * `useHexMovePath` reads as "nothing new to animate". An empty list changes
+ * nothing.
+ */
+export function continueRoute(
+  prev: Movements,
+  member: string,
+  cells: readonly CubeCoord[]
+): Movements {
+  if (cells.length === 0) return prev;
+  const existing = prev.get(member);
+  const inFlight = isWalking(existing);
+  const next = new Map(prev);
+  next.set(member, {
+    route: inFlight ? [...existing!.route, ...cells] : [...cells],
+    ...(inFlight && existing!.kind ? { kind: existing!.kind } : {}),
+    seq: (existing?.seq ?? 0) + 1,
+    reached: inFlight ? existing!.reached : 0,
+    ...(inFlight ? { continuedFrom: existing!.route.length } : {}),
+  });
+  return next;
+}
+
+/**
+ * THE WALK GOES ON AFTER THE ANSWER (rpg-project#879 S1, #890). A Move may
+ * answer with the walker's own steps only up to the point the world's pace
+ * comes due (`MoveResponse.continues`); the step that pays the round, the
+ * raise and the remaining steps run after the answer and reach this client
+ * as the member's own walk acts on the act stream. A `Continuation` is how
+ * the controller knows, per member, that such a walk is still going on and
+ * where on the stream it picks up.
+ *
+ * It is set by `moveAnswered` and nothing else: a continuing answer sets it,
+ * and EVERY answer replaces whatever was there, so a second Move's answer
+ * always starts a new journey and the first walk's continuation is gone.
+ *
+ * Ordering is by act id, compared as strings: the act stream's ids are
+ * record ids, "an ordering key, not a counter", and two are ordered by
+ * comparing them as strings (`Act.id`, protos v1alpha2). Acts sharing an id
+ * are one delivery unit; each carries the unit's id, and a walk act at or
+ * before `after` folds only steps the answer already carried.
+ */
+export interface Continuation {
+  /**
+   * Own walk acts with an id after this one continue the journey. Starts at
+   * the answer's `through` (the record id of its last step; empty when the
+   * answer carried no steps, which every id is after) and advances to each
+   * continued act's id, so the same act can never be played twice.
+   */
+  readonly after: string;
+  /**
+   * The act (`<verb>:<id>`) the continuation belongs to, learned from the
+   * first own walk act after `through`. The walk is one act, and the stream
+   * delivers it whole before any later verb's acts, so a later own walk under
+   * another act (a next Move whose answer has not landed yet) is not this
+   * journey.
+   */
+  readonly act?: string;
+  /** Every cell this journey has walked so far, the answer's first. */
+  readonly walked: readonly CubeCoord[];
+}
+
+export type Continuations = ReadonlyMap<string, Continuation>;
+
+export function emptyContinuations(): Continuations {
+  return new Map();
+}
+
+/** What a Move answer says about the walk going on after it. */
+export interface MoveAnswer {
+  /** The answer's steps, in order (`MoveResponse.steps`). */
+  readonly route: readonly CubeCoord[];
+  /** `MoveResponse.continues`: the walk goes on after the answer. */
+  readonly continues: boolean;
+  /** `MoveResponse.through`: the record id of the last step in `route`. */
+  readonly through: string;
+}
+
+/**
+ * A Move answer arrived for `member`. Any earlier continuation is over —
+ * the server serialises verbs, so a later answer means the earlier walk has
+ * finished — and a continuing answer starts a new one after its `through`.
+ * Returns the same object when nothing changes.
+ */
+export function moveAnswered(
+  prev: Continuations,
+  member: string,
+  answer: MoveAnswer
+): Continuations {
+  if (!answer.continues && !prev.has(member)) return prev;
+  const next = new Map(prev);
+  if (answer.continues)
+    next.set(member, { after: answer.through, walked: [...answer.route] });
+  else next.delete(member);
+  return next;
+}
+
+/** One of the member's own walk acts, as the stream delivered it. */
+export interface OwnWalk {
+  /** `Act.id`: the record id of the last step this act folds. */
+  readonly id: string;
+  /** `Act.act`: the act this walk segment belongs to. */
+  readonly act: string;
+  /** The walk's cells in order (`WalkAct.path`). */
+  readonly cells: readonly CubeCoord[];
+}
+
+/**
+ * The cells of an own walk act that continue `member`'s journey, and the
+ * advanced state; undefined when the act does not continue it (no
+ * continuation, at or before `after`, or another act's walk).
+ *
+ * TRIMMING. An act folds every step of one segment from the segment's first
+ * step, and its id is the LAST step's, so the first act after `through` can
+ * also carry steps the answer already played (a segment that straddles
+ * `through`). A later segment of the same walk restates the cell the last
+ * one left the mover on as its first cell. Both are a prefix of the act's
+ * path that repeats the tail of what was already walked; that prefix is
+ * dropped, keeping at least the act's last cell, which is past `through` by
+ * the act's own id. A server path that doubled back over its own last cells
+ * could be over-trimmed; the body still ends where the server put it,
+ * because the resting position comes from `where`, not from the route.
+ */
+export function continuedWalk(
+  prev: Continuations,
+  member: string,
+  walk: OwnWalk
+): { continuations: Continuations; cells: CubeCoord[] } | undefined {
+  const current = prev.get(member);
+  if (!current) return undefined;
+  if (walk.id <= current.after) return undefined;
+  if (current.act !== undefined && walk.act !== current.act) return undefined;
+  const repeated = repeatedTail(current.walked, walk.cells);
+  const cells = walk.cells.slice(repeated);
+  const next = new Map(prev);
+  next.set(member, {
+    after: walk.id,
+    act: walk.act,
+    walked: [...current.walked, ...cells],
+  });
+  return { continuations: next, cells };
+}
+
+/** The longest prefix of `path`, shorter than `path`, that is the tail of
+ * `walked`. */
+function repeatedTail(
+  walked: readonly CubeCoord[],
+  path: readonly CubeCoord[]
+): number {
+  for (let k = Math.min(walked.length, path.length - 1); k > 0; k--) {
+    const tail = walked.length - k;
+    let same = true;
+    for (let i = 0; i < k && same; i++)
+      same = sameCell(walked[tail + i]!, path[i]!);
+    if (same) return k;
+  }
+  return 0;
+}
+
+function sameCell(a: CubeCoord, b: CubeCoord): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z;
 }
 
 /**

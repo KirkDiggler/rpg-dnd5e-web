@@ -9,6 +9,10 @@
  * Move answer, and feeding it here as well would drive the same walk twice. A
  * local member's compelled or displaced walk IS fed — no Move answer carries
  * a route somebody else decided (rpg-project#825).
+ *
+ * The local member's own walk is read by `ownWalk` instead, and played only
+ * where it continues a Move answer that said the walk goes on
+ * (`moveController.continuedWalk`, rpg-project#890).
  */
 import {
   MoveKind as WireMoveKind,
@@ -17,6 +21,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import type { MoveKind } from '../hex-grid/moveKind';
+import type { OwnWalk } from './moveController';
 import { positionToCube } from './positionBridge';
 
 export interface ArrivingWalk {
@@ -58,4 +63,20 @@ export function arrivingWalk(
   );
   if (cells.length === 0) return undefined;
   return { member: mover, cells, kind };
+}
+
+/**
+ * The local member's OWN walk act (their own legs, not compelled or
+ * displaced), with the act's id and act tag, for `continuedWalk` to decide
+ * whether it continues a Move answer. Undefined for anything else.
+ */
+export function ownWalk(act: Act, member: string): OwnWalk | undefined {
+  if (act.body.case !== 'walk') return undefined;
+  if (!member || act.body.value.mover?.id !== member) return undefined;
+  if (walkMoveKind(act.body.value) !== 'own') return undefined;
+  const cells = act.body.value.path.flatMap((step) =>
+    step.cell ? [positionToCube(step.cell)] : []
+  );
+  if (cells.length === 0) return undefined;
+  return { id: act.id, act: act.act, cells };
 }
