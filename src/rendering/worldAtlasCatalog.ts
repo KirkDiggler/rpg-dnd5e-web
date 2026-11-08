@@ -1,9 +1,47 @@
 import { parseWorldAtlasMetadata } from './worldAtlasCatalogSchema.mjs';
 import type {
+  MaterialOverride,
+  WorldAtlasBinding,
   WorldAtlasCatalog,
   WorldAtlasMaterial,
   WorldSurfaceImage,
 } from './worldMaterialTypes';
+
+export interface ResolvedWorldAtlasMaterials {
+  binding: WorldAtlasBinding;
+  plans: readonly { surfaceId: string; material: WorldAtlasMaterial }[];
+}
+
+/** Resolve captured/authored intent only against the supplied resource catalog.
+ * Absence is Original; explicit missing targets/materials never silently reset. */
+export function resolveWorldAtlasMaterials(input: {
+  assetRef: string;
+  glbSha256: string;
+  overrides?: readonly MaterialOverride[];
+  atlas?: WorldAtlasCatalog;
+}): ResolvedWorldAtlasMaterials | undefined {
+  if (!input.overrides?.length) return undefined;
+  if (!input.atlas) refuse('atlas material catalog is unavailable');
+  const binding = input.atlas.bindings.find(
+    (row) => row.assetRef === input.assetRef
+  );
+  if (!binding || binding.glbSha256 !== input.glbSha256)
+    refuse('binding geometry is unavailable or stale');
+  const seen = new Set<string>();
+  const plans = input.overrides.map((value) => {
+    if (seen.has(value.surfaceId)) refuse('duplicate selected scope');
+    seen.add(value.surfaceId);
+    if (!binding.surfaces.some((surface) => surface.id === value.surfaceId))
+      refuse(`selected scope is unavailable: ${value.surfaceId}`);
+    const material = input.atlas!.materials.find(
+      (row) => row.ref === value.materialRef
+    );
+    if (!material)
+      refuse(`selected material is unavailable: ${value.materialRef}`);
+    return { surfaceId: value.surfaceId, material };
+  });
+  return { binding, plans };
+}
 
 function refuse(reason: string): never {
   throw Error(`World atlas catalog: ${reason}`);

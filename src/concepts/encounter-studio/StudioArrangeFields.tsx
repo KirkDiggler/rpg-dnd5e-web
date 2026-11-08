@@ -47,7 +47,9 @@ export type ArrangeFieldKey =
   | 'endZ'
   | 'finishA'
   | 'finishB';
-export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
+export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>> & {
+  materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
+};
 export interface ArrangeField {
   key: ArrangeFieldKey;
   label: string;
@@ -359,6 +361,9 @@ export function arrangeIntent(
       return {
         kind: 'scene-edit',
         target: selection.target,
+        ...(draft.materialOverrides !== undefined
+          ? { materialOverrides: draft.materialOverrides }
+          : {}),
         ...(draft.x !== undefined ||
         draft.y !== undefined ||
         draft.z !== undefined
@@ -381,6 +386,8 @@ export function arrangeIntent(
       for (const key of ['height', 'thickness', 'elevation'] as const)
         if (draft[key] !== undefined) appearance[key] = number(key);
       if (draft.assetRef !== undefined) appearance.assetRef = draft.assetRef;
+      if (draft.materialOverrides !== undefined)
+        appearance.materialOverrides = draft.materialOverrides;
       return {
         kind: 'wall-edit',
         target: selection.target,

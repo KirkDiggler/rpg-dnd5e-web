@@ -1,6 +1,7 @@
 import type { RegionPresentation, RegionResolution } from './authoringRegions';
 import { castMemberOf, type CastMember } from './cast';
 import { authoredActorName, setActorName } from './creaturePalette';
+import { validateMaterialOverrides } from './materialOverrides';
 import { regionsAtCell } from './regionAtCell';
 import { resolveRegions } from './regionBoundaryGeometry';
 import {
@@ -167,6 +168,7 @@ export interface StudioSceneArrangeEdit {
     readonly radians: number;
   };
   readonly heightScale?: number;
+  readonly materialOverrides?: readonly import('@/rendering/worldMaterialTypes').MaterialOverride[];
 }
 
 export interface StudioWallArrangeEdit {
@@ -522,6 +524,20 @@ export function applyStudioSceneArrange(
       throw new Error('The selection has no height-scalable props.');
     next = setSelectionHeight(next, ids, intent.heightScale);
   }
+  if (intent.materialOverrides !== undefined) {
+    if (roots.length !== 1 || !next.items.some((item) => item.id === roots[0]))
+      throw new Error('Select exactly one prop for a texture pack.');
+    const overrides = validateMaterialOverrides(
+      intent.materialOverrides,
+      'prop.materialOverrides'
+    );
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.id === roots[0] ? { ...item, materialOverrides: overrides } : item
+      ),
+    };
+  }
   return next;
 }
 
@@ -594,9 +610,9 @@ export function applyStudioWallArrange(
   if (intent.appearance) {
     const appearance = { ...next.appearance, ...intent.appearance };
     if (
-      (
-        Object.keys(next.appearance) as (keyof StructuralWall['appearance'])[]
-      ).some((key) => appearance[key] !== next.appearance[key])
+      (Object.keys(appearance) as (keyof StructuralWall['appearance'])[]).some(
+        (key) => appearance[key] !== next.appearance[key]
+      )
     )
       next = setWallAppearance(next, appearance);
   }

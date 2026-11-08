@@ -337,6 +337,7 @@ export function StructuralWallSurfacePieces({
                 >
                   <WorldPropModel
                     entry={entry}
+                    materialOverrides={wall.appearance.materialOverrides}
                     plainWallFit={
                       capable
                         ? {

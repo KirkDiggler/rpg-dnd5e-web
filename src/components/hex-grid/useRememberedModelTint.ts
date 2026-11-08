@@ -3,6 +3,10 @@ import {
   type RegionLightingMaterialBinding,
 } from '@/rendering/regionLightingMaterials';
 import {
+  applyWorldAtlasMaterials,
+  type WorldAtlasMaterialsInput,
+} from '@/rendering/worldAtlasMaterials';
+import {
   applyWorldSurfaceMaterials,
   type WorldSurfaceMaterialsInput,
 } from '@/rendering/worldSurfaceMaterials';
@@ -21,7 +25,8 @@ export function useRememberedModelTint(
   receiver: 'lit' | 'workspace-basic' = 'lit',
   surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>,
   /** The remembered multiply tint; defaults to `REMEMBERED_TINT`. */
-  rememberedTint?: THREE.Color
+  rememberedTint?: THREE.Color,
+  atlas?: Pick<WorldAtlasMaterialsInput, 'glbSha256' | 'binding' | 'selections'>
 ): void {
   // Courses created while a previous treatment is mounted can inherit one of
   // its clones. Retain weak provenance, not retired meshes or owned resources.
@@ -43,6 +48,17 @@ export function useRememberedModelTint(
       surfaces && assetRef
         ? applyWorldSurfaceMaterials({ root, assetRef, ...surfaces })
         : undefined;
+    let atlasFinish: ReturnType<typeof applyWorldAtlasMaterials> | undefined;
+    try {
+      if (atlas) {
+        if (!assetRef)
+          throw Error('Atlas treatment requires an asset reference.');
+        atlasFinish = applyWorldAtlasMaterials({ root, assetRef, ...atlas });
+      }
+    } catch (error) {
+      finish?.dispose();
+      throw error;
+    }
     const originals = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
     const created = new Set<THREE.Material>();
     const treated = new Map<THREE.Material, THREE.Material>();
@@ -85,6 +101,7 @@ export function useRememberedModelTint(
         mesh.material = source;
       });
       created.forEach((material) => material.dispose());
+      atlasFinish?.dispose();
       finish?.dispose();
     };
     try {
@@ -119,5 +136,6 @@ export function useRememberedModelTint(
     receiver,
     surfaces,
     rememberedTint,
+    atlas,
   ]);
 }

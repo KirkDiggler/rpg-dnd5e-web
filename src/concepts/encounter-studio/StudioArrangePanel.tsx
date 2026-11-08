@@ -1,5 +1,6 @@
 import { paletteNameForRef } from '@/author/paletteData';
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
+import { resolveWorldAsset } from '@/generated/worldAssetCatalog';
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { castMemberOf } from '../world-building/cast';
@@ -23,6 +24,7 @@ import type {
   StudioArrangeSelection,
   StudioSocialSection,
 } from './studioSession';
+import { StudioTexturePackControls } from './StudioTexturePackControls';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
 import { StudioWallConstraints } from './StudioWallConstraints';
 import { StudioWallFinishes } from './StudioWallFinishes';
@@ -119,6 +121,18 @@ function SelectedArrange({
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
+  const textureOwner =
+    selection.kind === 'wall'
+      ? {
+          ...selection.appearance,
+          assetRef: draft.assetRef ?? selection.appearance.assetRef,
+        }
+      : selection.kind === 'scene' && selection.rootCount === 1
+        ? session.document.draft.scene.items.find(
+            (item) => item.id === selection.rootIds[0]
+          )
+        : undefined;
+  const textureCatalog = session.wallEditing.finishes?.catalog;
   const preview =
     (selection.kind === 'scene' ||
       selection.kind === 'wall' ||
@@ -364,6 +378,20 @@ function SelectedArrange({
               draft={draft}
               onChange={(patch) => {
                 setDraft((previous) => ({ ...previous, ...patch }));
+                setError(null);
+              }}
+            />
+          )}
+          {textureOwner && textureCatalog && (
+            <StudioTexturePackControls
+              assetRef={textureOwner.assetRef}
+              glbSha256={resolveWorldAsset(textureOwner.assetRef)?.glbSha256}
+              catalog={textureCatalog}
+              values={
+                draft.materialOverrides ?? textureOwner.materialOverrides ?? []
+              }
+              onChange={(materialOverrides) => {
+                setDraft((previous) => ({ ...previous, materialOverrides }));
                 setError(null);
               }}
             />

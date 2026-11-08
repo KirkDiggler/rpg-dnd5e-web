@@ -32,8 +32,11 @@
 
 - Native wall/prop material lists are now typed, validated and detached while carrying unknown authored metadata. The current-castle round-trip keeps both choices and every other source fact; reset restores the original. 109 focused owner/serialization/wall/ground tests and types pass. Studio controls and live renderer plumbing remain outstanding — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 
+- Texture controls stage per-owner pack choices through existing Arrange Apply/Cancel; the shared model leaf resolves supplied refs, loads immutable atlas pixels and applies owned treatment before memory/lighting. Snapshot/reveal render adapters validate and copy the new wire values. Focused product checks pass (101 tests), plus types/lint; actual joined UI/play verification remains next — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
+
 ## Mistaken
 
+- Adding a material list exposed two shallow/absent-key edit assumptions: setWallAppearance shared the caller list, and Arrange compared only old appearance keys. Tests first caught both; owner validation now detaches lists and Apply detects new fields — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 - The initial reader plan allowed empty suggested collections; the agreed provider wire requires a nonempty recommendation list. Corrected the plan/tests: recommendations are not exhaustive permissions, so an uncurated valid atlas material is retained, but malformed recommendation metadata still refuses — [atlas law](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/assets/pack-material-profiles/atlas-provider-design.md).
 - The earlier isolated stack and state files were already absent; restart refused before mutation. Created a fresh isolated stack rather than claiming the old run resumed; operator :3030 and Lab :3180 were not changed — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 - A private SSR fixture-capture attempt hit the API client's browser-only window dependency. Captured through the normal browser-like test environment instead; no production workaround. Initial screenshots were too early for model/camera settling and were replaced by inspected settled views — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).

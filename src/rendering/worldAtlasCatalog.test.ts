@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorldAtlasPreview } from './worldAtlasCatalog';
+import {
+  parseWorldAtlasPreview,
+  resolveWorldAtlasMaterials,
+} from './worldAtlasCatalog';
 import {
   createPinnedWorldMaterialCatalog,
   parseWorldMaterialPreview,
@@ -59,6 +62,49 @@ function fixture() {
   };
 }
 describe('private atlas preview boundary', () => {
+  it('resolves explicit owner choices and refuses missing/stale targets rather than falling back', () => {
+    const atlas = parseWorldAtlasPreview(fixture(), {
+      [ref]: { glbSha256: sha },
+    });
+    const overrides = [
+      { surfaceId: 'atlas', materialRef: atlas.materials[0].ref },
+    ];
+    const input = { assetRef: ref, glbSha256: sha, overrides, atlas };
+    const selected = resolveWorldAtlasMaterials(input)!;
+    expect(selected.binding).toEqual(atlas.bindings[0]);
+    expect(selected.plans).toEqual([
+      { surfaceId: 'atlas', material: atlas.materials[0] },
+    ]);
+    expect(
+      resolveWorldAtlasMaterials({ ...input, overrides: [] })
+    ).toBeUndefined();
+    expect(() =>
+      resolveWorldAtlasMaterials({ ...input, atlas: undefined })
+    ).toThrow(/unavailable/i);
+    expect(() =>
+      resolveWorldAtlasMaterials({ ...input, glbSha256: 'd'.repeat(64) })
+    ).toThrow(/geometry/i);
+    expect(() =>
+      resolveWorldAtlasMaterials({
+        ...input,
+        overrides: [...overrides, ...overrides],
+      })
+    ).toThrow(/duplicate/i);
+    expect(() =>
+      resolveWorldAtlasMaterials({
+        ...input,
+        overrides: [
+          { surfaceId: 'missing', materialRef: overrides[0].materialRef },
+        ],
+      })
+    ).toThrow(/scope/i);
+    expect(() =>
+      resolveWorldAtlasMaterials({
+        ...input,
+        overrides: [{ surfaceId: 'atlas', materialRef: 'missing' }],
+      })
+    ).toThrow(/material/i);
+  });
   it('retains the complete authored-UV view bound to current geometry', () => {
     const raw = fixture();
     expect(parseWorldAtlasPreview(raw, { [ref]: { glbSha256: sha } })).toEqual(
