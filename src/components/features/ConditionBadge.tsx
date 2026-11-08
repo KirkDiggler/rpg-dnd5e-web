@@ -74,7 +74,8 @@ function getSubtitle(data: ConditionData | undefined): string | null {
   if (!data) return null;
 
   if (isRagingData(data)) {
-    return `+${data.damage_bonus}`;
+    // A binding is not an assessed benefit. The server's effect rows own that answer.
+    return null;
   }
 
   if (isSneakAttackData(data)) {
@@ -108,11 +109,9 @@ function getTooltip(
   // Add rich data details to tooltip
   if (data) {
     if (isRagingData(data)) {
-      parts.push(`+${data.damage_bonus} melee damage`);
-      parts.push(
-        `Active for ${data.turns_active} turn${data.turns_active === 1 ? '' : 's'}`
-      );
-      parts.push('Resistance: B/P/S');
+      const turns = data.runtime.bag.turns_active;
+      parts.push(`Active for ${turns} turn${turns === 1 ? '' : 's'}`);
+      // Description comes from condition.notes; no client-authored Rage rules.
     } else if (isSneakAttackData(data)) {
       parts.push(`+${data.damage_dice}d6 damage`);
       parts.push('Requires advantage or adjacent ally');
