@@ -5,6 +5,7 @@ import {
   verifyOwnedResourceFiles,
   verifyRuntimeImage,
 } from './runtime-image-resources.mjs';
+import { parseWorldAtlasMetadata } from './world-atlas-catalog.mjs';
 
 const IMAGE_ROLES = ['baseColor', 'normal', 'metallicRoughness', 'occlusion'];
 const IMAGE_KEYS = ['file', 'sha256', 'sizeBytes', 'width', 'height'];
@@ -47,7 +48,7 @@ function pattern(value, regex, path) {
  * consumer schema/resource checks. No publication, copying, generated live pin,
  * or acceptance is implied by success. Only the material subtree is inspected.
  * @param {{catalogPath: string, modelRoot: string}} input
- * @returns {{catalogSha256: string, materials: import('../src/rendering/worldMaterialTypes').WorldSurfaceMaterial[]}}
+ * @returns {import('../src/rendering/worldMaterialTypes').WorldMaterialResources}
  */
 export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
   if (lstatSync(catalogPath).isSymbolicLink()) fail('catalog symlink refused');
@@ -57,32 +58,51 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
   )
     fail('model root must be a real directory');
   const bytes = readFileSync(catalogPath);
+  const document = JSON.parse(bytes.toString('utf8'));
+  const version = document?.schemaVersion;
+  if (version !== 1 && version !== 2) fail('unsupported schema');
   const catalog = object(
-    JSON.parse(bytes.toString('utf8')),
-    ['schemaVersion', 'materials'],
+    document,
+    version === 2
+      ? ['schemaVersion', 'materials', 'collections', 'bindings']
+      : ['schemaVersion', 'materials'],
     [],
     'catalog'
   );
-  if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.materials))
-    fail('unsupported schema or materials');
+  if (!Array.isArray(catalog.materials)) fail('unsupported materials');
   const refs = new Set(),
     images = new Map();
-  const materials = catalog.materials.map((raw, index) => {
+  const materials = [],
+    atlasMaterials = [];
+  catalog.materials.forEach((raw, index) => {
     const path = `materials[${index}]`;
+    const atlas =
+      raw && typeof raw === 'object' && Object.hasOwn(raw, 'mapping');
+    if (atlas && version !== 2) fail(`${path}: atlas rows require schema2`);
     const row = object(
       raw,
-      [
-        'ref',
-        'displayName',
-        'family',
-        'baseColor',
-        'normal',
-        'repeatMeters',
-        'normalScale',
-        'roughness',
-        'metalness',
-      ],
-      ['metallicRoughness', 'occlusion'],
+      atlas
+        ? [
+            'ref',
+            'displayName',
+            'family',
+            'mapping',
+            'baseColor',
+            'normal',
+            'emissive',
+          ]
+        : [
+            'ref',
+            'displayName',
+            'family',
+            'baseColor',
+            'normal',
+            'repeatMeters',
+            'normalScale',
+            'roughness',
+            'metalness',
+          ],
+      atlas ? [] : ['metallicRoughness', 'occlusion'],
       path
     );
     const ref = pattern(
@@ -103,16 +123,35 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
       ref,
       displayName: row.displayName,
       family: pattern(row.family, /^[a-z][a-z0-9-]{0,63}$/, `${path}.family`),
-      repeatMeters: pair(row.repeatMeters, `${path}.repeatMeters`, true),
-      normalScale: pair(row.normalScale, `${path}.normalScale`),
-      roughness: finite(row.roughness, `${path}.roughness`),
-      metalness: finite(row.metalness, `${path}.metalness`),
     };
-    for (const key of ['roughness', 'metalness'])
-      if (result[key] < 0 || result[key] > 1)
-        fail(`${path}.${key} must be in 0..1`);
+    if (atlas) {
+      if (
+        row.mapping !== 'authored-uv' ||
+        row.normal !== null ||
+        row.emissive !== null
+      )
+        fail(
+          `${path}: atlas choices require authored-uv and explicit null normal/emissive`
+        );
+      Object.assign(result, {
+        mapping: 'authored-uv',
+        normal: null,
+        emissive: null,
+      });
+    } else {
+      Object.assign(result, {
+        repeatMeters: pair(row.repeatMeters, `${path}.repeatMeters`, true),
+        normalScale: pair(row.normalScale, `${path}.normalScale`),
+        roughness: finite(row.roughness, `${path}.roughness`),
+        metalness: finite(row.metalness, `${path}.metalness`),
+      });
+      for (const key of ['roughness', 'metalness'])
+        if (result[key] < 0 || result[key] > 1)
+          fail(`${path}.${key} must be in 0..1`);
+    }
     for (const role of IMAGE_ROLES) {
-      if (!Object.hasOwn(row, role)) continue;
+      if (!Object.hasOwn(row, role) || (atlas && role !== 'baseColor'))
+        continue;
       const at = `${path}.${role}`;
       const image = object(row[role], IMAGE_KEYS, [], at);
       const sha256 = pattern(image.sha256, /^[0-9a-f]{64}$/, `${at}.sha256`);
@@ -136,13 +175,29 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
         height: image.height,
       };
     }
-    return result;
+    (atlas ? atlasMaterials : materials).push(result);
   });
+  const atlasMetadata =
+    version === 2
+      ? parseWorldAtlasMetadata({
+          collections: catalog.collections,
+          bindings: catalog.bindings,
+          atlasRefs: new Set(atlasMaterials.map((row) => row.ref)),
+        })
+      : undefined;
   for (const image of images.values()) verifyRuntimeImage({ modelRoot, image });
   verifyOwnedResourceFiles({
     modelRoot,
     subtree: 'world-materials',
     expected: images,
   });
-  return { catalogSha256: digest(bytes), materials };
+  return version === 2
+    ? {
+        schemaVersion: 2,
+        catalogSha256: digest(bytes),
+        materials,
+        atlasMaterials,
+        ...atlasMetadata,
+      }
+    : { catalogSha256: digest(bytes), materials };
 }

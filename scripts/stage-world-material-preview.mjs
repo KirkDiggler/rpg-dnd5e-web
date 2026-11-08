@@ -52,6 +52,10 @@ export function stageWorldMaterialPreview({
   )
     throw new Error('Refusing to replace an unowned preview directory.');
   const parsed = readWorldMaterialCatalog({ catalogPath, modelRoot });
+  if (parsed.schemaVersion === 2)
+    throw new Error(
+      'Schema2 preview requires the atlas consumer projection upgrade.'
+    );
   const source = JSON.parse(readFileSync(worldCatalogPath, 'utf8'));
   if (source.schemaVersion !== 1 || !Array.isArray(source.assets))
     throw new Error('Invalid candidate world catalog.');

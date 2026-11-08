@@ -9,6 +9,8 @@
 - Reuse Assets fe6b5ee rather than re-ingest the house kit or re-approve published resources; this branch stacks on ground c3af7c0d to keep the approved baseline — [plan](https://github.com/KirkDiggler/rpg-project/blob/a841036/ideas/courtyard-walls/plan.md).
 - Keep model/default-look native parity separate from the existing Studio-only alternate finishes; do not turn this into the universal material-editor design — [appearance handoff](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1268).
 
+- Reuse the existing schema2 authored-UV collection/bindings for 01_A–04_C; the operator corrected my masonry-face interpretation. Independent A/B stays required but deferred, and mixed feature/door wall sections follow selectable textures — [direction](https://github.com/KirkDiggler/rpg-project/issues/895#issuecomment-6726761156).
+
 ## Found
 
 - Ten new contract cases failed on the old consumer pin: six missing solid house-wall choices, a missing moving-leaf exclusion example, and three missing masonry resources. Normal catalog regeneration makes the focused 144-test set pass; no production helper changes were needed — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
@@ -18,8 +20,13 @@
 
 - Native Studio import → Save a copy → Play renders Castle Wall Fit01 and House Wall05; actual fetched GLB hashes match the merged provider. The fighter was moved normally beside the timber frontage for the early look; settled Studio/play screenshots were inspected with no page exceptions — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 
+- Strict mixed-catalog reader passes 100 focused reader/generator/sync/preview checks and types. It keeps masonry/atlas typed views under one digest; still-unupgraded generation and preview paths explicitly refuse v2 rather than silently publish only masonry — [atlas plan](https://github.com/KirkDiggler/rpg-project/blob/design/867-courtyard-ground/ideas/courtyard-walls/atlas-implementation.md).
+- Read the actual source-built candidate: five masonry looks, twelve atlas packs, 193 exact asset bindings, including the served House Wall05. Its catalog digest is 1f86a2f1ed5a4a2e7265202dd5ea56d938dd8bc91529852b984b23c32d76f7a3. It remains staged-unapproved; no runtime/publication change — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
+- Real rebuild revealed one red-channel value differing by one in one brick-image pixel from the historical/live resource; all atlas bindings and other material rows match. Resolve derivation custody before any provider apply; reader acceptance is not artistic/publication acceptance — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
+
 ## Mistaken
 
+- The initial reader plan allowed empty suggested collections; the agreed provider wire requires a nonempty recommendation list. Corrected the plan/tests: recommendations are not exhaustive permissions, so an uncurated valid atlas material is retained, but malformed recommendation metadata still refuses — [atlas law](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/assets/pack-material-profiles/atlas-provider-design.md).
 - The earlier isolated stack and state files were already absent; restart refused before mutation. Created a fresh isolated stack rather than claiming the old run resumed; operator :3030 and Lab :3180 were not changed — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 - A private SSR fixture-capture attempt hit the API client's browser-only window dependency. Captured through the normal browser-like test environment instead; no production workaround. Initial screenshots were too early for model/camera settling and were replaced by inspected settled views — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
 - Initial sync invocation assumed an executable shell script; the repository invokes it with bash. Corrected the command, without changing permissions or tooling — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
