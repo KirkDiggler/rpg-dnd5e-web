@@ -17,16 +17,24 @@ interface BaseConditionData {
 }
 
 /**
- * Raging condition data - active rage state
- * From: rpg-toolkit/rulebooks/dnd5e/conditions/raging.go
+ * Current composed Raging data from conditions/composed_data.go.
+ * Bindings stay opaque: this reader never derives a bonus or class level.
  */
-export interface RagingData extends BaseConditionData {
-  damage_bonus: number;
-  level: number;
-  source: string; // Ref string format: "dnd5e:features:rage"
-  turns_active: number;
-  was_hit_this_turn: boolean;
-  did_attack_this_turn: boolean;
+export interface RagingData {
+  ref: 'dnd5e:conditions:raging';
+  member_id: string;
+  origin: { ref: string; entity_id: string };
+  bindings: Record<string, unknown>;
+  runtime: {
+    state: string;
+    bag: {
+      turns_active: number;
+      round_activated: number;
+      saw_turn_end: boolean;
+      was_hit_this_turn: boolean;
+      did_attack_this_turn: boolean;
+    };
+  };
 }
 
 /**
@@ -104,8 +112,43 @@ export type ConditionData =
 /**
  * Type guards for condition data
  */
-export function isRagingData(data: ConditionData): data is RagingData {
-  return 'damage_bonus' in data && 'turns_active' in data;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function nonnegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+export function isRagingData(data: unknown): data is RagingData {
+  if (!isRecord(data) || data.ref !== 'dnd5e:conditions:raging') return false;
+  const { origin, runtime } = data;
+  if (
+    !nonemptyString(data.member_id) ||
+    !isRecord(origin) ||
+    !isRecord(data.bindings)
+  )
+    return false;
+  if (!nonemptyString(origin.ref) || !nonemptyString(origin.entity_id))
+    return false;
+  if (
+    !isRecord(runtime) ||
+    !nonemptyString(runtime.state) ||
+    !isRecord(runtime.bag)
+  )
+    return false;
+  const bag = runtime.bag;
+  return (
+    nonnegativeInteger(bag.turns_active) &&
+    nonnegativeInteger(bag.round_activated) &&
+    typeof bag.saw_turn_end === 'boolean' &&
+    typeof bag.was_hit_this_turn === 'boolean' &&
+    typeof bag.did_attack_this_turn === 'boolean'
+  );
 }
 
 export function isUnarmoredDefenseData(
@@ -157,7 +200,11 @@ export function parseConditionData(
 
   try {
     const jsonStr = new TextDecoder().decode(conditionData);
-    return JSON.parse(jsonStr) as ConditionData;
+    const data: unknown = JSON.parse(jsonStr);
+    if (!isRecord(data)) return undefined;
+    if (data.ref === 'dnd5e:conditions:raging' && !isRagingData(data))
+      return undefined;
+    return data as unknown as ConditionData;
   } catch {
     console.warn('Failed to parse condition data:', conditionData);
     return undefined;
