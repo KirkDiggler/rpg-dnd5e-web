@@ -11,8 +11,11 @@ import {
   forgetUnsighted,
   isWalking,
   moveAnswered,
+  moveDispatched,
+  moveFailed,
   movementPainted,
   stepArrived,
+  type Continuations,
 } from './moveController';
 
 describe('moveController — a remote actor moving', () => {
@@ -190,14 +193,18 @@ describe('moveController — the walk goes on after the answer (rpg-project#890)
     act,
     cells,
   });
+  const answered = (
+    state: Continuations,
+    given: typeof answer,
+    member = 'me'
+  ) => moveAnswered(state, member, given).continuations;
+  const start = () => answered(emptyContinuations(), answer);
 
   it('continues the walk with an own walk act after through', () => {
-    const state = moveAnswered(emptyContinuations(), 'me', answer);
+    const continued = continuedWalk(start(), 'me', walk('01J0000000C', [c]));
 
-    const continued = continuedWalk(state, 'me', walk('01J0000000C', [c]));
-
-    expect(continued?.cells).toEqual([c]);
-    expect(continued?.continuations.get('me')).toEqual({
+    expect(continued.cells).toEqual([c]);
+    expect(continued.continuations.get('me')).toMatchObject({
       after: '01J0000000C',
       act: 'move:1',
       walked: [a, b, c],
@@ -205,35 +212,30 @@ describe('moveController — the walk goes on after the answer (rpg-project#890)
   });
 
   it('ignores own walk acts at or before through', () => {
-    const state = moveAnswered(emptyContinuations(), 'me', answer);
-
-    expect(continuedWalk(state, 'me', walk('01J0000000B', [a, b]))).toBe(
-      undefined
-    );
-    expect(continuedWalk(state, 'me', walk('01J0000000A', [a]))).toBe(
-      undefined
-    );
+    expect(
+      continuedWalk(start(), 'me', walk('01J0000000B', [a, b])).cells
+    ).toEqual([]);
+    expect(
+      continuedWalk(start(), 'me', walk('01J0000000A', [a])).cells
+    ).toEqual([]);
   });
 
   it('plays only the new cells of a segment that straddles through', () => {
-    const state = moveAnswered(emptyContinuations(), 'me', answer);
-
     const continued = continuedWalk(
-      state,
+      start(),
       'me',
       walk('01J0000000D', [a, b, c, d])
     );
 
-    expect(continued?.cells).toEqual([c, d]);
+    expect(continued.cells).toEqual([c, d]);
   });
 
   it('drops the cell a later segment restates as its start', () => {
-    let state = moveAnswered(emptyContinuations(), 'me', answer);
-    state = continuedWalk(
-      state,
+    const state = continuedWalk(
+      start(),
       'me',
       walk('01J0000000C', [a, b, c])
-    )!.continuations;
+    ).continuations;
 
     const continued = continuedWalk(
       state,
@@ -241,79 +243,219 @@ describe('moveController — the walk goes on after the answer (rpg-project#890)
       walk('01J0000000E', [c, d, e])
     );
 
-    expect(continued?.cells).toEqual([d, e]);
+    expect(continued.cells).toEqual([d, e]);
   });
 
   it('advances past each continued act so the same act never plays twice', () => {
-    let state = moveAnswered(emptyContinuations(), 'me', answer);
-    state = continuedWalk(state, 'me', walk('01J0000000C', [c]))!.continuations;
+    const state = continuedWalk(
+      start(),
+      'me',
+      walk('01J0000000C', [c])
+    ).continuations;
 
-    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
-      undefined
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c])).cells).toEqual(
+      []
     );
   });
 
   it('does not continue with an own walk under another act', () => {
-    let state = moveAnswered(emptyContinuations(), 'me', answer);
-    state = continuedWalk(state, 'me', walk('01J0000000C', [c]))!.continuations;
+    const state = continuedWalk(
+      start(),
+      'me',
+      walk('01J0000000C', [c])
+    ).continuations;
 
-    expect(continuedWalk(state, 'me', walk('01J0000000D', [d], 'move:2'))).toBe(
-      undefined
-    );
+    expect(
+      continuedWalk(state, 'me', walk('01J0000000D', [d], 'move:2')).cells
+    ).toEqual([]);
   });
 
   it('has no continuation when the answer does not continue', () => {
-    const state = moveAnswered(emptyContinuations(), 'me', {
+    const state = answered(emptyContinuations(), {
       ...answer,
       continues: false,
     });
 
-    expect(state.has('me')).toBe(false);
-    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
-      undefined
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c])).cells).toEqual(
+      []
     );
   });
 
   it('a second Move answer starts a new journey and clears the continuation', () => {
-    let state = moveAnswered(emptyContinuations(), 'me', answer);
-    state = moveAnswered(state, 'me', {
+    const state = answered(start(), {
       route: [d],
       continues: false,
       through: '01J0000000Z',
     });
 
-    expect(state.has('me')).toBe(false);
-    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
-      undefined
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c])).cells).toEqual(
+      []
     );
   });
 
   it('a second continuing answer replaces the first after its own through', () => {
-    let state = moveAnswered(emptyContinuations(), 'me', answer);
-    state = moveAnswered(state, 'me', {
+    const state = answered(start(), {
       route: [d],
       continues: true,
       through: '01J0000000Y',
     });
 
-    expect(continuedWalk(state, 'me', walk('01J0000000C', [c]))).toBe(
-      undefined
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c])).cells).toEqual(
+      []
     );
     expect(
-      continuedWalk(state, 'me', walk('01J0000000Z', [d, e], 'move:2'))?.cells
+      continuedWalk(state, 'me', walk('01J0000000Z', [d, e], 'move:2')).cells
     ).toEqual([e]);
   });
 
   it('continues an answer that carried no steps from the first own walk', () => {
-    const state = moveAnswered(emptyContinuations(), 'me', {
+    const state = answered(emptyContinuations(), {
       route: [],
       continues: true,
       through: '',
     });
 
-    expect(continuedWalk(state, 'me', walk('01J0000000A', [a]))?.cells).toEqual(
-      [a]
+    expect(continuedWalk(state, 'me', walk('01J0000000A', [a])).cells).toEqual([
+      a,
+    ]);
+  });
+
+  // Review finding 1: the first step pays the round, so the answer has no
+  // steps and no through, while the last journey's segments are still queued.
+  it('a continuing answer with no steps never adopts the previous journey act', () => {
+    let state = moveDispatched(start(), 'me');
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000C', [c], 'move:old')
+    ).continuations;
+    state = answered(state, { route: [], continues: true, through: '' });
+
+    const old = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000D', [c, d], 'move:old')
     );
+    expect(old.cells).toEqual([]);
+    const fresh = continuedWalk(
+      old.continuations,
+      'me',
+      walk('01J0000000E', [e], 'move:new')
+    );
+    expect(fresh.cells).toEqual([e]);
+  });
+
+  it('an own walk seen with no Move in flight and no walk going on is never adopted later', () => {
+    let state = answered(emptyContinuations(), {
+      ...answer,
+      continues: false,
+    });
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000C', [c], 'move:done')
+    ).continuations;
+    state = answered(moveDispatched(state, 'me'), {
+      route: [],
+      continues: true,
+      through: '',
+    });
+
+    expect(
+      continuedWalk(state, 'me', walk('01J0000000D', [d], 'move:done')).cells
+    ).toEqual([]);
+  });
+
+  // Review finding 2: the stream can deliver the walk before its answer.
+  it('holds own acts that arrive before the answer and replays those after through', () => {
+    let state = moveDispatched(emptyContinuations(), 'me');
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000D', [a, b, c, d])
+    ).continuations;
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000B', [a, b])
+    ).continuations;
+
+    const result = moveAnswered(state, 'me', answer);
+
+    expect(result.cells).toEqual([c, d]);
+    expect(result.continuations.get('me')).toMatchObject({
+      after: '01J0000000D',
+      act: 'move:1',
+      held: [],
+      inFlight: false,
+    });
+  });
+
+  it('with no through, replays only the last act held, never an older walk held before it', () => {
+    let state = moveDispatched(emptyContinuations(), 'me');
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000C', [c], 'move:old')
+    ).continuations;
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000D', [d], 'move:new')
+    ).continuations;
+
+    const result = moveAnswered(state, 'me', {
+      route: [],
+      continues: true,
+      through: '',
+    });
+
+    expect(result.cells).toEqual([d]);
+  });
+
+  it('a held act that does not continue the answer is dropped', () => {
+    let state = moveDispatched(emptyContinuations(), 'me');
+    state = continuedWalk(state, 'me', walk('01J0000000C', [c])).continuations;
+
+    const result = moveAnswered(state, 'me', { ...answer, continues: false });
+
+    expect(result.cells).toEqual([]);
+    expect(
+      continuedWalk(result.continuations, 'me', walk('01J0000000D', [d])).cells
+    ).toEqual([]);
+  });
+
+  it('a failed Move drops what it held', () => {
+    let state = moveDispatched(emptyContinuations(), 'me');
+    state = continuedWalk(
+      state,
+      'me',
+      walk('01J0000000C', [c], 'move:x')
+    ).continuations;
+    state = moveFailed(state, 'me');
+    expect(state.get('me')).toMatchObject({ inFlight: false, held: [] });
+
+    const result = moveAnswered(moveDispatched(state, 'me'), 'me', {
+      route: [],
+      continues: true,
+      through: '',
+    });
+    expect(result.cells).toEqual([]);
+    expect(
+      continuedWalk(
+        result.continuations,
+        'me',
+        walk('01J0000000D', [d], 'move:x')
+      ).cells
+    ).toEqual([]);
+  });
+
+  it('keeps playing the current journey while the next Move is in flight', () => {
+    const state = moveDispatched(start(), 'me');
+
+    expect(continuedWalk(state, 'me', walk('01J0000000C', [c])).cells).toEqual([
+      c,
+    ]);
   });
 
   it('appends continued cells to the route still being painted', () => {

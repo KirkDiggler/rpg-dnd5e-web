@@ -578,14 +578,20 @@ function SessionEncounterScope({
 
   // Every accepted Move answer: its steps begin a new journey, and the
   // controller learns whether the walk goes on from the stream after the
-  // answer's `through` (rpg-project#890).
-  const { beginRoute: beginMoveRoute, moveAnswered } = moves;
+  // answer's `through`. Own acts that reach it while the Move is in flight
+  // are held for the answer (rpg-project#890).
+  const { answerMove, moveDispatched, moveFailed } = moves;
   const answerLocalMove = useCallback(
-    (answer: MoveAnswer) => {
-      moveAnswered(member, answer);
-      beginMoveRoute(member, answer.route);
-    },
-    [beginMoveRoute, moveAnswered, member]
+    (answer: MoveAnswer) => answerMove(member, answer),
+    [answerMove, member]
+  );
+  const localMoveDispatched = useCallback(
+    () => moveDispatched(member),
+    [moveDispatched, member]
+  );
+  const localMoveFailed = useCallback(
+    () => moveFailed(member),
+    [moveFailed, member]
   );
 
   const otherMembers = useMemo(
@@ -634,7 +640,9 @@ function SessionEncounterScope({
     handleStaleMoveRefusal,
     isMoveAuthorityFresh,
     handleMoveAccepted,
-    answerLocalMove
+    answerLocalMove,
+    localMoveDispatched,
+    localMoveFailed
   );
 
   // A movement is something the viewer WATCHES happen, so it lives only as

@@ -70,12 +70,11 @@ describe('useMoveController continuing an answered walk (rpg-project#890)', () =
     );
     let started: { seq: number; length: number } | undefined;
     act(() => {
-      result.current.moveAnswered('viewer', {
+      result.current.answerMove('viewer', {
         route: [a, b],
         continues: true,
         through: '01J0000000B',
       });
-      result.current.beginRoute('viewer', [a, b]);
       started = result.current.continueOwnWalk('viewer', {
         id: '01J0000000C',
         act: 'move:1',
@@ -105,12 +104,11 @@ describe('useMoveController continuing an answered walk (rpg-project#890)', () =
     );
     let started: { seq: number; length: number } | undefined;
     act(() => {
-      result.current.moveAnswered('viewer', {
+      result.current.answerMove('viewer', {
         route: [a, b],
         continues: false,
         through: '',
       });
-      result.current.beginRoute('viewer', [a, b]);
       started = result.current.continueOwnWalk('viewer', {
         id: '01J0000000C',
         act: 'move:1',
@@ -119,5 +117,35 @@ describe('useMoveController continuing an answered walk (rpg-project#890)', () =
     });
     expect(started).toBeUndefined();
     expect(result.current.movements.get('viewer')?.route).toEqual([a, b]);
+  });
+
+  it('appends own acts that arrived before the answer once it lands', () => {
+    const { result } = renderHook(() =>
+      useMoveController('session-a', 'viewer')
+    );
+    let early: { seq: number; length: number } | undefined;
+    act(() => {
+      result.current.moveDispatched('viewer');
+      early = result.current.continueOwnWalk('viewer', {
+        id: '01J0000000C',
+        act: 'move:1',
+        cells: [a, b, c],
+      });
+    });
+    expect(early).toBeUndefined();
+    expect(result.current.movements.has('viewer')).toBe(false);
+    act(() => {
+      result.current.answerMove('viewer', {
+        route: [a, b],
+        continues: true,
+        through: '01J0000000B',
+      });
+    });
+    expect(result.current.movements.get('viewer')).toEqual({
+      route: [a, b, c],
+      seq: 2,
+      reached: 0,
+      continuedFrom: 2,
+    });
   });
 });

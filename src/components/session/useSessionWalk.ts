@@ -142,7 +142,12 @@ export function useSessionWalk(
    * later answer always ends an earlier walk's continuation. This hook keeps
    * the command path — the RPC, refusals, `busy` — and owns no animation
    * state. */
-  onAnswered: (answer: MoveAnswer) => void = () => {}
+  onAnswered: (answer: MoveAnswer) => void = () => {},
+  /** A Move is about to be sent: the controller holds own walk acts that
+   * reach it before the answer does (rpg-project#890). */
+  onDispatched: () => void = () => {},
+  /** The Move failed with no answer: nothing held is its walk. */
+  onFailed: () => void = () => {}
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -154,6 +159,10 @@ export function useSessionWalk(
   // `walkTo`'s dependency list.
   const onAnsweredRef = useRef(onAnswered);
   onAnsweredRef.current = onAnswered;
+  const onDispatchedRef = useRef(onDispatched);
+  onDispatchedRef.current = onDispatched;
+  const onFailedRef = useRef(onFailed);
+  onFailedRef.current = onFailed;
   // True only between an answer's route beginning and its painting: the one
   // window in which a painted report from the local player is THIS walk's.
   // A continuation's later painting, or an older walk finishing while the
@@ -213,6 +222,7 @@ export function useSessionWalk(
       setNotYourTurn(false);
 
       let accepted = false;
+      onDispatchedRef.current();
       void (async () => {
         try {
           const response = await sessionClient.move({
@@ -265,7 +275,10 @@ export function useSessionWalk(
             setMoveError(formatMoveError(err));
           }
           // A throw after acceptance is not a refusal: the server walked.
-          if (!accepted) outcome?.refused();
+          if (!accepted) {
+            onFailedRef.current();
+            outcome?.refused();
+          }
           setBusy(false);
         }
       })();

@@ -321,6 +321,48 @@ describe('useSessionWalk', () => {
     expect(result.current.busy).toBe(true);
   });
 
+  it('tells the controller a Move is in flight before it is answered, and when it fails (rpg-project#890)', async () => {
+    let answer: (value: unknown) => void = () => {};
+    hoisted.moveFn.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+    );
+    const answered = vi.fn();
+    const dispatched = vi.fn();
+    const failed = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        '',
+        undefined,
+        undefined,
+        undefined,
+        answered,
+        dispatched,
+        failed
+      )
+    );
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    expect(dispatched).toHaveBeenCalledOnce();
+    expect(answered).not.toHaveBeenCalled();
+    await act(async () => {
+      answer({ steps: [] });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+    expect(failed).not.toHaveBeenCalled();
+
+    hoisted.moveFn.mockRejectedValueOnce(new Error('no doorway'));
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    await waitFor(() => expect(failed).toHaveBeenCalledOnce());
+    expect(dispatched).toHaveBeenCalledTimes(2);
+  });
+
   it('releases busy on the answer walk painting once, never on a later painted report', async () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],

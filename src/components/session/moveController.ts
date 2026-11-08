@@ -184,12 +184,16 @@ export function continueRoute(
  * comes due (`MoveResponse.continues`); the step that pays the round, the
  * raise and the remaining steps run after the answer and reach this client
  * as the member's own walk acts on the act stream. A `Continuation` is how
- * the controller knows, per member, that such a walk is still going on and
- * where on the stream it picks up.
+ * the controller knows, per member, whether such a walk is going on, where on
+ * the stream it picks up, and which own acts can never belong to it.
  *
- * It is set by `moveAnswered` and nothing else: a continuing answer sets it,
- * and EVERY answer replaces whatever was there, so a second Move's answer
- * always starts a new journey and the first walk's continuation is gone.
+ * Its life follows the member's Moves. `moveDispatched` opens a window in
+ * which own acts that continue nothing are HELD rather than dropped: the
+ * stream can deliver the new walk's first acts before its answer resolves.
+ * `moveAnswered` (or `moveFailed`) closes it. Every answer replaces the
+ * continuation, so a second Move's answer always starts a new journey, and
+ * the replaced journey's act joins `excluded`, so a later continuation never
+ * adopts it — even one whose `through` is empty.
  *
  * Ordering is by act id, compared as strings: the act stream's ids are
  * record ids, "an ordering key, not a counter", and two are ordered by
@@ -198,23 +202,35 @@ export function continueRoute(
  * before `after` folds only steps the answer already carried.
  */
 export interface Continuation {
+  /** True while the last answer said the walk goes on after it. */
+  readonly continues: boolean;
   /**
    * Own walk acts with an id after this one continue the journey. Starts at
-   * the answer's `through` (the record id of its last step; empty when the
-   * answer carried no steps, which every id is after) and advances to each
-   * continued act's id, so the same act can never be played twice.
+   * the answer's `through`, the resume point the answer covers (empty only
+   * when the answer named none, which every id is after), and advances to
+   * each continued act's id, so the same act can never be played twice.
    */
   readonly after: string;
   /**
    * The act (`<verb>:<id>`) the continuation belongs to, learned from the
-   * first own walk act after `through`. The walk is one act, and the stream
-   * delivers it whole before any later verb's acts, so a later own walk under
-   * another act (a next Move whose answer has not landed yet) is not this
-   * journey.
+   * first own walk act it plays. The walk is one act, so a later own walk
+   * under another act is not this journey.
    */
   readonly act?: string;
   /** Every cell this journey has walked so far, the answer's first. */
   readonly walked: readonly CubeCoord[];
+  /**
+   * Acts known to belong to an EARLIER journey: the act of every replaced
+   * continuation, and own acts seen while no Move was in flight. Refused
+   * while `act` is still unbound, which is what keeps a continuing answer
+   * with an empty `through` from adopting an older walk's queued acts.
+   */
+  readonly excluded: readonly string[];
+  /** True between `moveDispatched` and the answer or the failure. */
+  readonly inFlight: boolean;
+  /** Own acts that arrived while the Move was in flight and continued
+   * nothing yet, in arrival order, for the answer to replay. */
+  readonly held: readonly OwnWalk[];
 }
 
 export type Continuations = ReadonlyMap<string, Continuation>;
@@ -223,33 +239,36 @@ export function emptyContinuations(): Continuations {
   return new Map();
 }
 
+/** How many earlier acts a member's state remembers as excluded. */
+const EXCLUDED_KEPT = 16;
+
+const NO_CONTINUATION: Continuation = {
+  continues: false,
+  after: '',
+  walked: [],
+  excluded: [],
+  inFlight: false,
+  held: [],
+};
+
+function excludeActs(
+  excluded: readonly string[],
+  acts: readonly (string | undefined)[]
+): string[] {
+  const next = [...excluded];
+  for (const act of acts)
+    if (act !== undefined && act !== '' && !next.includes(act)) next.push(act);
+  return next.slice(-EXCLUDED_KEPT);
+}
+
 /** What a Move answer says about the walk going on after it. */
 export interface MoveAnswer {
   /** The answer's steps, in order (`MoveResponse.steps`). */
   readonly route: readonly CubeCoord[];
   /** `MoveResponse.continues`: the walk goes on after the answer. */
   readonly continues: boolean;
-  /** `MoveResponse.through`: the record id of the last step in `route`. */
+  /** `MoveResponse.through`: the record id the answer covers through. */
   readonly through: string;
-}
-
-/**
- * A Move answer arrived for `member`. Any earlier continuation is over —
- * the server serialises verbs, so a later answer means the earlier walk has
- * finished — and a continuing answer starts a new one after its `through`.
- * Returns the same object when nothing changes.
- */
-export function moveAnswered(
-  prev: Continuations,
-  member: string,
-  answer: MoveAnswer
-): Continuations {
-  if (!answer.continues && !prev.has(member)) return prev;
-  const next = new Map(prev);
-  if (answer.continues)
-    next.set(member, { after: answer.through, walked: [...answer.route] });
-  else next.delete(member);
-  return next;
 }
 
 /** One of the member's own walk acts, as the stream delivered it. */
@@ -262,10 +281,105 @@ export interface OwnWalk {
   readonly cells: readonly CubeCoord[];
 }
 
+/** The state after one own act, and the cells it adds to the journey (empty
+ * when it continues nothing, including when it is held). */
+export interface ContinuedWalk {
+  readonly continuations: Continuations;
+  readonly cells: CubeCoord[];
+}
+
+/**
+ * `member` sent a Move. Own acts that continue nothing from now until its
+ * answer are held for the answer to replay. The current continuation stays
+ * in force meanwhile: the body may still be walking the last journey, and
+ * its acts keep playing.
+ */
+export function moveDispatched(
+  prev: Continuations,
+  member: string
+): Continuations {
+  const current = prev.get(member) ?? NO_CONTINUATION;
+  return new Map(prev).set(member, { ...current, inFlight: true, held: [] });
+}
+
+/** `member`'s Move failed with no answer: nothing it held is its walk. */
+export function moveFailed(prev: Continuations, member: string): Continuations {
+  const current = prev.get(member);
+  if (!current?.inFlight) return prev;
+  return new Map(prev).set(member, {
+    ...current,
+    inFlight: false,
+    held: [],
+    excluded: excludeActs(
+      current.excluded,
+      current.held.map((walk) => walk.act)
+    ),
+  });
+}
+
+/**
+ * A Move answer arrived for `member`. Any earlier continuation is over — the
+ * server serialises verbs, so a later answer means the earlier walk has
+ * finished — and its act is excluded from the new one. A continuing answer
+ * replays the acts held while it was in flight (id order) through the same
+ * rule `continuedWalk` applies; the cells they add are returned for the
+ * caller to append after the answer's route. When `through` is empty the
+ * held acts cannot be placed by id, so only the last act tag among them can
+ * be this walk's: earlier tags are excluded. A non-continuing answer drops
+ * what it held and excludes it.
+ */
+export function moveAnswered(
+  prev: Continuations,
+  member: string,
+  answer: MoveAnswer
+): ContinuedWalk {
+  const current = prev.get(member) ?? NO_CONTINUATION;
+  const held = [...current.held].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+  let excluded = excludeActs(current.excluded, [current.act]);
+  if (!answer.continues) {
+    excluded = excludeActs(
+      excluded,
+      held.map((walk) => walk.act)
+    );
+    const next = new Map(prev).set(member, {
+      ...NO_CONTINUATION,
+      excluded,
+    });
+    return { continuations: next, cells: [] };
+  }
+  if (answer.through === '' && held.length > 0) {
+    const last = held.at(-1)!.act;
+    excluded = excludeActs(
+      excluded,
+      held.filter((walk) => walk.act !== last).map((walk) => walk.act)
+    );
+  }
+  let state: Continuations = new Map(prev).set(member, {
+    continues: true,
+    after: answer.through,
+    walked: [...answer.route],
+    excluded,
+    inFlight: false,
+    held: [],
+  });
+  const cells: CubeCoord[] = [];
+  for (const walk of held) {
+    const continued = continuedWalk(state, member, walk);
+    state = continued.continuations;
+    cells.push(...continued.cells);
+  }
+  return { continuations: state, cells };
+}
+
 /**
  * The cells of an own walk act that continue `member`'s journey, and the
- * advanced state; undefined when the act does not continue it (no
- * continuation, at or before `after`, or another act's walk).
+ * advanced state. No cells when the act does not continue it: no
+ * continuation, at or before `after`, another act's walk, or an excluded
+ * act. While a Move is in flight such an act is held for its answer; with
+ * none in flight and no continuation going on, its act is remembered as an
+ * earlier journey's.
  *
  * TRIMMING. An act folds every step of one segment from the segment's first
  * step, and its id is the LAST step's, so the first act after `through` can
@@ -274,23 +388,47 @@ export interface OwnWalk {
  * one left the mover on as its first cell. Both are a prefix of the act's
  * path that repeats the tail of what was already walked; that prefix is
  * dropped, keeping at least the act's last cell, which is past `through` by
- * the act's own id. A server path that doubled back over its own last cells
- * could be over-trimmed; the body still ends where the server put it,
- * because the resting position comes from `where`, not from the route.
+ * the act's own id. The longest matching prefix wins, so a path that doubled
+ * back over its own last cells could be over-trimmed; atlas paths never
+ * revisit a cell, and the body still ends where the server put it, because
+ * the resting position comes from `where`, not from the route.
  */
 export function continuedWalk(
   prev: Continuations,
   member: string,
   walk: OwnWalk
-): { continuations: Continuations; cells: CubeCoord[] } | undefined {
-  const current = prev.get(member);
-  if (!current) return undefined;
-  if (walk.id <= current.after) return undefined;
-  if (current.act !== undefined && walk.act !== current.act) return undefined;
+): ContinuedWalk {
+  const current = prev.get(member) ?? NO_CONTINUATION;
+  const continues =
+    current.continues &&
+    walk.id > current.after &&
+    (current.act !== undefined
+      ? walk.act === current.act
+      : !current.excluded.includes(walk.act));
+  if (!continues) {
+    if (current.inFlight)
+      return {
+        continuations: new Map(prev).set(member, {
+          ...current,
+          held: [...current.held, walk],
+        }),
+        cells: [],
+      };
+    if (!current.continues && !current.excluded.includes(walk.act))
+      return {
+        continuations: new Map(prev).set(member, {
+          ...current,
+          excluded: excludeActs(current.excluded, [walk.act]),
+        }),
+        cells: [],
+      };
+    return { continuations: prev, cells: [] };
+  }
   const repeated = repeatedTail(current.walked, walk.cells);
   const cells = walk.cells.slice(repeated);
   const next = new Map(prev);
   next.set(member, {
+    ...current,
     after: walk.id,
     act: walk.act,
     walked: [...current.walked, ...cells],

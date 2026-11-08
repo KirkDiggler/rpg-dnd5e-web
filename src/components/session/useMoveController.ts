@@ -10,6 +10,8 @@ import {
   forgetRoute,
   forgetUnsighted,
   moveAnswered,
+  moveDispatched,
+  moveFailed,
   movementPainted,
   stepArrived,
   type Continuations,
@@ -34,9 +36,16 @@ export interface UseMoveControllerResult {
   ) => void;
   readonly forgetUnsighted: (sighted: ReadonlySet<string>) => void;
   readonly forgetRoute: (member: string, seq: number) => void;
-  /** A Move answer for `member` landed: records whether its walk goes on
-   * after the answer (`moveController.moveAnswered`). Not rendered state. */
-  readonly moveAnswered: (member: string, answer: MoveAnswer) => void;
+  /** `member` sent a Move: own acts that continue nothing are held until its
+   * answer (`moveController.moveDispatched`). */
+  readonly moveDispatched: (member: string) => void;
+  /** `member`'s Move failed with no answer: what it held is dropped. */
+  readonly moveFailed: (member: string) => void;
+  /** A Move answer for `member` landed: its steps begin a new journey, the
+   * controller records whether the walk goes on after it, and own acts held
+   * while it was in flight that continue it are appended
+   * (`moveController.moveAnswered`). */
+  readonly answerMove: (member: string, answer: MoveAnswer) => void;
   /** One of `member`'s own walk acts off the stream. When it continues their
    * answered walk, its new cells extend the journey (`continueRoute`) and the
    * exact sequence and route length to wait on are returned; undefined when
@@ -142,22 +151,40 @@ export function useMoveController(
     },
     [update]
   );
-  const answered = useCallback(
-    (actor: string, answer: MoveAnswer) => {
+  const dispatched = useCallback(
+    (actor: string) => {
       if (stateRef.current.scope !== scope) return;
-      continuationsRef.current = moveAnswered(
+      continuationsRef.current = moveDispatched(
         continuationsRef.current,
-        actor,
-        answer
+        actor
       );
     },
     [scope]
+  );
+  const failed = useCallback(
+    (actor: string) => {
+      if (stateRef.current.scope !== scope) return;
+      continuationsRef.current = moveFailed(continuationsRef.current, actor);
+    },
+    [scope]
+  );
+  const answered = useCallback(
+    (actor: string, answer: MoveAnswer) => {
+      if (stateRef.current.scope !== scope) return;
+      const result = moveAnswered(continuationsRef.current, actor, answer);
+      continuationsRef.current = result.continuations;
+      begin(actor, answer.route);
+      if (result.cells.length > 0)
+        allocate(actor, (previous) =>
+          continueRoute(previous, actor, result.cells)
+        );
+    },
+    [allocate, begin, scope]
   );
   const continueOwn = useCallback(
     (actor: string, walk: OwnWalk) => {
       if (stateRef.current.scope !== scope) return undefined;
       const continued = continuedWalk(continuationsRef.current, actor, walk);
-      if (!continued) return undefined;
       continuationsRef.current = continued.continuations;
       if (continued.cells.length === 0) return undefined;
       const seq = allocate(actor, (previous) =>
@@ -178,9 +205,22 @@ export function useMoveController(
       movementPainted: painted,
       forgetUnsighted: forget,
       forgetRoute: discard,
-      moveAnswered: answered,
+      moveDispatched: dispatched,
+      moveFailed: failed,
+      answerMove: answered,
       continueOwnWalk: continueOwn,
     }),
-    [movements, begin, step, painted, forget, discard, answered, continueOwn]
+    [
+      movements,
+      begin,
+      step,
+      painted,
+      forget,
+      discard,
+      dispatched,
+      failed,
+      answered,
+      continueOwn,
+    ]
   );
 }
