@@ -165,7 +165,7 @@ describe('useSessionWalk', () => {
   });
 
   it('reports successful Move acceptance before animation completion', async () => {
-    const routeBegan = vi.fn();
+    const answered = vi.fn();
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
     });
@@ -181,7 +181,7 @@ describe('useSessionWalk', () => {
         undefined,
         () => true,
         onMoveAccepted,
-        routeBegan
+        answered
       )
     );
 
@@ -189,7 +189,7 @@ describe('useSessionWalk', () => {
 
     await waitFor(() => expect(onMoveAccepted).toHaveBeenCalledOnce());
     expect(result.current.busy).toBe(true);
-    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
   });
 
   it('a resolved Move hands the returned steps to the move controller and jumps display position to the last step, staying busy', async () => {
@@ -199,7 +199,7 @@ describe('useSessionWalk', () => {
         { position: { x: 2, y: -1 }, seq: 6n },
       ],
     });
-    const routeBegan = vi.fn();
+    const answered = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -211,17 +211,21 @@ describe('useSessionWalk', () => {
         undefined,
         undefined,
         undefined,
-        routeBegan
+        answered
       )
     );
 
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
 
-    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
-    expect(routeBegan).toHaveBeenCalledWith([
-      { x: 1, y: -1, z: 0 },
-      { x: 2, y: -1, z: -1 },
-    ]);
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+    expect(answered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: [
+          { x: 1, y: -1, z: 0 },
+          { x: 2, y: -1, z: -1 },
+        ],
+      })
+    );
     expect(result.current.displayPosition).toEqual({ x: 2, y: -1, z: -1 });
     // Still busy — released only once onWalkAnimationComplete fires.
     expect(result.current.busy).toBe(true);
@@ -234,7 +238,7 @@ describe('useSessionWalk', () => {
         stopReason,
         steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
       });
-      const routeBegan = vi.fn();
+      const answered = vi.fn();
       const { result } = renderHook(() =>
         useSessionWalk(
           'enc-1',
@@ -246,19 +250,21 @@ describe('useSessionWalk', () => {
           undefined,
           undefined,
           undefined,
-          routeBegan
+          answered
         )
       );
       act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
-      await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
-      expect(routeBegan).toHaveBeenCalledWith([{ x: 1, y: -1, z: 0 }]);
+      await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+      expect(answered).toHaveBeenCalledWith(
+        expect.objectContaining({ route: [{ x: 1, y: -1, z: 0 }] })
+      );
       expect(result.current.moveError).toBe(stopReason || null);
     }
   );
 
   it('a Move RPC that returns zero steps clears busy without animating', async () => {
     hoisted.moveFn.mockResolvedValue({ steps: [] });
-    const routeBegan = vi.fn();
+    const answered = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -270,12 +276,125 @@ describe('useSessionWalk', () => {
         undefined,
         undefined,
         undefined,
-        routeBegan
+        answered
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(routeBegan).not.toHaveBeenCalled();
+    // Still reported, so a later answer always ends an earlier continuation.
+    expect(answered).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ route: [] })
+    );
+  });
+
+  it('hands the controller a continuing answer with its through, and is no error (rpg-project#890)', async () => {
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
+      continues: true,
+      through: '01J0000000B',
+      status: 4, // MOVEMENT_STATUS_CONTINUING
+      stopReason: '',
+    });
+    const answered = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        '',
+        undefined,
+        undefined,
+        undefined,
+        answered
+      )
+    );
+    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+    expect(answered).toHaveBeenCalledWith({
+      route: [{ x: 1, y: -1, z: 0 }],
+      continues: true,
+      through: '01J0000000B',
+    });
+    expect(result.current.moveError).toBeNull();
+    expect(result.current.busy).toBe(true);
+  });
+
+  it('tells the controller a Move is in flight before it is answered, and when it fails (rpg-project#890)', async () => {
+    let answer: (value: unknown) => void = () => {};
+    hoisted.moveFn.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+    );
+    const answered = vi.fn();
+    const dispatched = vi.fn();
+    const failed = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        '',
+        undefined,
+        undefined,
+        undefined,
+        answered,
+        dispatched,
+        failed
+      )
+    );
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    expect(dispatched).toHaveBeenCalledOnce();
+    expect(answered).not.toHaveBeenCalled();
+    await act(async () => {
+      answer({ steps: [] });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+    expect(failed).not.toHaveBeenCalled();
+
+    hoisted.moveFn.mockRejectedValueOnce(new Error('no doorway'));
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    await waitFor(() => expect(failed).toHaveBeenCalledOnce());
+    expect(dispatched).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases busy on the answer walk painting once, never on a later painted report', async () => {
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
+      continues: true,
+      through: '01J0000000B',
+    });
+    const refetchWhere = vi.fn(() => Promise.resolve());
+    const answered = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        refetchWhere,
+        '',
+        undefined,
+        undefined,
+        undefined,
+        answered
+      )
+    );
+    // A painted report before any answer (an older walk ending) is ignored.
+    act(() => result.current.onWalkAnimationComplete());
+    expect(refetchWhere).not.toHaveBeenCalled();
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    act(() => result.current.onWalkAnimationComplete());
+    expect(refetchWhere).not.toHaveBeenCalled();
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
+    act(() => result.current.onWalkAnimationComplete());
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(refetchWhere).toHaveBeenCalledOnce();
   });
 
   it('a Move RPC failure sets moveError and clears busy, no crash', async () => {
@@ -362,7 +481,7 @@ describe('useSessionWalk', () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
     });
-    const routeBegan = vi.fn();
+    const answered = vi.fn();
     let resolveRefetch: () => void = () => {};
     const refetchWhere = vi.fn(
       () =>
@@ -381,11 +500,11 @@ describe('useSessionWalk', () => {
         undefined,
         undefined,
         undefined,
-        routeBegan
+        answered
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
-    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
+    await waitFor(() => expect(answered).toHaveBeenCalledOnce());
 
     act(() => result.current.onWalkAnimationComplete());
     expect(refetchWhere).toHaveBeenCalledTimes(1);
