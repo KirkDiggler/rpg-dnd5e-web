@@ -52,44 +52,56 @@ export function stageWorldMaterialPreview({
   )
     throw new Error('Refusing to replace an unowned preview directory.');
   const parsed = readWorldMaterialCatalog({ catalogPath, modelRoot });
-  if (parsed.schemaVersion === 2)
-    throw new Error(
-      'Schema2 preview requires the atlas consumer projection upgrade.'
-    );
   const source = JSON.parse(readFileSync(worldCatalogPath, 'utf8'));
   if (source.schemaVersion !== 1 || !Array.isArray(source.assets))
     throw new Error('Invalid candidate world catalog.');
+  const verifyGeometry = (row) => {
+    const expected = assets[row.ref];
+    if (
+      !expected ||
+      row.glbSha256 !== expected.glbSha256 ||
+      row.file !== expected.url.slice('/models/synty/'.length)
+    )
+      throw new Error(
+        `Candidate geometry differs from pinned asset ${row.ref}.`
+      );
+    const bytes = readFileSync(file(runtimeRoot, row.file));
+    if (
+      hash(bytes) !== expected.glbSha256 ||
+      bytes.length !== expected.sizeBytes
+    )
+      throw new Error(`Runtime GLB differs for ${row.ref}.`);
+    return expected;
+  };
   const surfaces = source.assets
     .filter((row) => Object.hasOwn(row, 'surfaces'))
     .map((row) => {
-      const expected = assets[row.ref];
-      if (
-        !expected ||
-        row.glbSha256 !== expected.glbSha256 ||
-        row.file !== expected.url.slice('/models/synty/'.length)
-      )
-        throw new Error(
-          `Candidate geometry differs from pinned asset ${row.ref}.`
-        );
-      const bytes = readFileSync(file(runtimeRoot, row.file));
-      if (
-        hash(bytes) !== expected.glbSha256 ||
-        bytes.length !== expected.sizeBytes
-      )
-        throw new Error(`Runtime GLB differs for ${row.ref}.`);
+      verifyGeometry(row);
       return {
         assetRef: row.ref,
         glbSha256: row.glbSha256,
         bindings: parseSurfaces(row.surfaces, row.ref),
       };
     });
+  if (parsed.schemaVersion === 2) {
+    for (const binding of parsed.bindings) {
+      const matches = source.assets.filter(
+        (row) => row.ref === binding.assetRef
+      );
+      if (matches.length !== 1 || matches[0].glbSha256 !== binding.glbSha256)
+        throw new Error(
+          `Atlas binding geometry differs for ${binding.assetRef}.`
+        );
+      verifyGeometry(matches[0]);
+    }
+  }
   if (
-    !surfaces.length ||
+    (!surfaces.length && parsed.schemaVersion !== 2) ||
     new Set(surfaces.map((s) => s.assetRef)).size !== surfaces.length
   )
     throw new Error('Expected unique enrolled preview assets.');
   const images = new Map();
-  const materials = parsed.materials.map((row) => {
+  const previewMaterial = (row) => {
     const result = { ...row };
     for (const role of [
       'baseColor',
@@ -112,12 +124,22 @@ export function stageWorldMaterialPreview({
       };
     }
     return result;
-  });
+  };
+  const materials = parsed.materials.map(previewMaterial);
   const catalog = {
     kind: 'candidate',
     catalogSha256: parsed.catalogSha256,
     materials,
     surfaces,
+    ...(parsed.schemaVersion === 2
+      ? {
+          atlas: {
+            materials: parsed.atlasMaterials.map(previewMaterial),
+            collections: parsed.collections,
+            bindings: parsed.bindings,
+          },
+        }
+      : {}),
   };
   mkdirSync(dirname(outputRoot), { recursive: true });
   const stage = mkdtempSync(

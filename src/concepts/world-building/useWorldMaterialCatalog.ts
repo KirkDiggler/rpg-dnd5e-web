@@ -1,5 +1,8 @@
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import {
+  GENERATED_WORLD_ATLAS_BINDINGS,
+  GENERATED_WORLD_ATLAS_MATERIALS,
+  GENERATED_WORLD_MATERIAL_COLLECTIONS,
   GENERATED_WORLD_MATERIAL_PROVIDER,
   GENERATED_WORLD_MATERIALS,
 } from '@/generated/worldMaterialCatalog';
@@ -25,6 +28,15 @@ export function useWorldMaterialCatalog(): WorldMaterialCatalogState {
       provider: GENERATED_WORLD_MATERIAL_PROVIDER,
       materials: GENERATED_WORLD_MATERIALS,
       assets: GENERATED_WORLD_ASSETS,
+      ...(GENERATED_WORLD_ATLAS_MATERIALS.length
+        ? {
+            atlas: {
+              materials: GENERATED_WORLD_ATLAS_MATERIALS,
+              collections: GENERATED_WORLD_MATERIAL_COLLECTIONS,
+              bindings: GENERATED_WORLD_ATLAS_BINDINGS,
+            },
+          }
+        : {}),
     });
     return catalog
       ? {

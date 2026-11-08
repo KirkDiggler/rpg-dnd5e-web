@@ -1,8 +1,13 @@
 import {
+  GENERATED_WORLD_ASSETS,
   resolveWorldAsset,
   type GeneratedWorldAsset,
 } from '@/generated/worldAssetCatalog';
-import type { WorldSurfaceMaterial } from './worldMaterialTypes';
+import { parseWorldAtlasPreview } from './worldAtlasCatalog';
+import type {
+  WorldAtlasCatalog,
+  WorldSurfaceMaterial,
+} from './worldMaterialTypes';
 export interface WorldSurfaceAsset {
   assetRef: string;
   glbSha256: string;
@@ -16,6 +21,7 @@ export interface WorldMaterialCatalog {
   catalogSha256: string;
   materials: readonly WorldSurfaceMaterial[];
   surfaces: readonly WorldSurfaceAsset[];
+  atlas?: WorldAtlasCatalog;
 }
 
 /** Join independently pinned material resources and world surface declarations.
@@ -25,12 +31,13 @@ export function createPinnedWorldMaterialCatalog(input: {
   provider: { readonly commit: string; readonly catalogSha256: string | null };
   materials: readonly WorldSurfaceMaterial[];
   assets: Readonly<Record<string, GeneratedWorldAsset>>;
+  atlas?: WorldAtlasCatalog;
 }): WorldMaterialCatalog | null {
   const { provider, materials, assets } = input;
   if (!/^[a-f0-9]{40}$/.test(provider.commit))
     throw new Error('Invalid material provider pin.');
   if (provider.catalogSha256 === null) {
-    if (materials.length)
+    if (materials.length || input.atlas)
       throw new Error('Absent material catalog cannot carry resources.');
     return null;
   }
@@ -41,6 +48,7 @@ export function createPinnedWorldMaterialCatalog(input: {
     providerCommit: provider.commit,
     catalogSha256: provider.catalogSha256,
     materials,
+    ...(input.atlas ? { atlas: input.atlas } : {}),
     surfaces: Object.values(assets)
       .filter((asset) => asset.surfaces)
       .map((asset) => ({
@@ -149,5 +157,10 @@ export function parseWorldMaterialPreview(
       targets.add(key);
     }
   }
-  return input;
+  return Object.hasOwn(input, 'atlas')
+    ? {
+        ...input,
+        atlas: parseWorldAtlasPreview(input.atlas, GENERATED_WORLD_ASSETS),
+      }
+    : input;
 }

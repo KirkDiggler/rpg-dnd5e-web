@@ -1,13 +1,16 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWorldMaterialCatalogModule } from './generate-world-material-catalog.mjs';
 import { stageWorldMaterialPreview } from './stage-world-material-preview.mjs';
@@ -79,34 +82,76 @@ describe('shared authored-UV material catalog', () => {
     expect(() => readWorldMaterialCatalog(f)).toThrow(/hash|digest|PNG/i);
   });
 
-  it('keeps v1 generation from silently publishing a partial v2 catalog', () => {
-    const f = fixture();
-    expect(() =>
-      renderWorldMaterialCatalogModule({
-        commit: 'a'.repeat(40),
-        catalog: readV2(f),
-      })
-    ).toThrow(/schema2.*generation/i);
+  it('generates all typed views under the same source digest without losing atlas records', async () => {
+    const f = fixture(),
+      catalog = readV2(f);
+    const source = renderWorldMaterialCatalogModule({
+      commit: 'a'.repeat(40),
+      catalog,
+    });
+    const js = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ESNext },
+    }).outputText;
+    const module = await import(
+      'data:text/javascript;base64,' + Buffer.from(js).toString('base64')
+    );
+    expect(module.GENERATED_WORLD_MATERIALS).toEqual(catalog.materials);
+    expect(module.GENERATED_WORLD_ATLAS_MATERIALS).toEqual(
+      catalog.atlasMaterials
+    );
+    expect(module.GENERATED_WORLD_MATERIAL_COLLECTIONS).toEqual(
+      catalog.collections
+    );
+    expect(module.GENERATED_WORLD_ATLAS_BINDINGS).toEqual(catalog.bindings);
+    expect(module.GENERATED_WORLD_MATERIAL_PROVIDER.catalogSha256).toBe(
+      catalog.catalogSha256
+    );
   });
 
-  it('keeps the v1 preview boundary from silently dropping v2 atlas records', () => {
+  it('stages complete atlas metadata and refuses stale geometry without replacing the prior preview', () => {
     const f = fixture();
-    const outputRoot = join(f.root, 'world-material-preview');
-    const worldCatalogPath = join(f.root, 'world.json');
+    const outputRoot = join(f.root, 'world-material-preview'),
+      worldCatalogPath = join(f.root, 'world.json');
+    const bytes = Buffer.from('hash-bound model fixture');
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    const file = 'world-assets/env/test/house_wall_05.glb';
+    mkdirSync(dirname(join(f.modelRoot, file)), { recursive: true });
+    writeFileSync(join(f.modelRoot, file), bytes);
+    f.binding.glbSha256 = sha;
+    f.save();
+    const asset = {
+      ref: f.binding.assetRef,
+      glbSha256: sha,
+      file,
+      sizeBytes: bytes.length,
+    };
     writeFileSync(
       worldCatalogPath,
-      JSON.stringify({ schemaVersion: 1, assets: [] })
+      JSON.stringify({ schemaVersion: 1, assets: [asset] })
     );
-    expect(() =>
-      stageWorldMaterialPreview({
-        ...f,
-        worldCatalogPath,
-        runtimeRoot: f.modelRoot,
-        outputRoot,
-        assets: {},
-      })
-    ).toThrow(/schema2.*preview/i);
-    expect(existsSync(outputRoot)).toBe(false);
+    const assets = { [asset.ref]: { ...asset, url: `/models/synty/${file}` } };
+    const input = {
+      ...f,
+      worldCatalogPath,
+      runtimeRoot: f.modelRoot,
+      outputRoot,
+      assets,
+    };
+    stageWorldMaterialPreview(input);
+    const saved = readFileSync(join(outputRoot, 'catalog.json'), 'utf8');
+    const catalog = JSON.parse(saved);
+    expect(catalog.atlas.bindings).toEqual([f.binding]);
+    expect(catalog.atlas.collections).toEqual([f.collection]);
+    expect(catalog.atlas.materials[0].baseColor.url).toBe(
+      `/world-material-preview/images/${f.atlas.baseColor.sha256}.png?v=${f.atlas.baseColor.sha256}`
+    );
+    expect(
+      existsSync(join(outputRoot, 'images', `${f.atlas.baseColor.sha256}.png`))
+    ).toBe(true);
+    f.binding.glbSha256 = 'd'.repeat(64);
+    f.save();
+    expect(() => stageWorldMaterialPreview(input)).toThrow(/geometry|binding/i);
+    expect(readFileSync(join(outputRoot, 'catalog.json'), 'utf8')).toBe(saved);
   });
 
   const malformed: [string, (f: Fixture) => void][] = [

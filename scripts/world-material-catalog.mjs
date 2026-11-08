@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
+import { parseWorldAtlasMetadata } from '../src/rendering/worldAtlasCatalogSchema.mjs';
 import {
   MAX_IMAGE_PIXELS,
   verifyOwnedResourceFiles,
   verifyRuntimeImage,
 } from './runtime-image-resources.mjs';
-import { parseWorldAtlasMetadata } from './world-atlas-catalog.mjs';
 
 const IMAGE_ROLES = ['baseColor', 'normal', 'metallicRoughness', 'occlusion'];
 const IMAGE_KEYS = ['file', 'sha256', 'sizeBytes', 'width', 'height'];

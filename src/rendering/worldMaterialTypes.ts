@@ -60,6 +60,13 @@ export interface WorldAtlasBinding {
   readonly surfaces: readonly WorldAtlasSurface[];
 }
 
+/** Authored-UV view of the same shared material catalog. */
+export interface WorldAtlasCatalog {
+  readonly materials: readonly WorldAtlasMaterial[];
+  readonly collections: readonly WorldMaterialCollection[];
+  readonly bindings: readonly WorldAtlasBinding[];
+}
+
 /** Typed views of one source document and digest. A v1 result retains its
  * earlier shape; v2 must be explicitly handled before generation/publication. */
 export type WorldMaterialResources = {

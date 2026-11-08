@@ -40,7 +40,7 @@ function references(value, known, path) {
 
 /** Typed metadata views of the same material catalog, never a second source.
  * @param {{collections: unknown, bindings: unknown, atlasRefs: Set<string>}} input
- * @returns {{collections: import('../src/rendering/worldMaterialTypes').WorldMaterialCollection[], bindings: import('../src/rendering/worldMaterialTypes').WorldAtlasBinding[]}}
+ * @returns {{collections: import('./worldMaterialTypes').WorldMaterialCollection[], bindings: import('./worldMaterialTypes').WorldAtlasBinding[]}}
  */
 export function parseWorldAtlasMetadata({ collections, bindings, atlasRefs }) {
   if (!atlasRefs.size) fail('schema2 must include atlas choices');
