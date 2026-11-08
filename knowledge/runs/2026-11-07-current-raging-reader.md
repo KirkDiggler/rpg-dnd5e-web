@@ -12,6 +12,7 @@
 
 ## Found
 
+- Authorized merge-out preflight merged current dev, preserving its landed movement work and published proto v0.1.260 (generated d83fdfa5). Only package.json/lockfile conflicted; the newer released SDK was retained, not downgraded to v0.1.259. Fresh npm ci and full ci-check passed — [SDK pin](../../package-lock.json).
 - After generated SDK adoption and source preservation, complete npm run ci-check passed in 593.16 seconds; format/lint/types/build and the full test suite remained enabled — [gate](../../scripts/ci-check.sh).
 - After SDK adoption, two new projection/rendering tests failed because source IDs were dropped; direct preservation made them pass. Four focused reader/projection/render suites passed (92 tests) and type checking passed — [projection tests](../../src/components/session/combat-experience/actionTooltip.test.ts).
 

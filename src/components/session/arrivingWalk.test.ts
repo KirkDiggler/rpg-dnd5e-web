@@ -6,7 +6,7 @@ import {
   PartyKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
-import { arrivingWalk } from './arrivingWalk';
+import { arrivingWalk, ownWalk } from './arrivingWalk';
 
 function walk(
   mover: string,
@@ -89,5 +89,35 @@ describe('arrivingWalk', () => {
         'alice'
       )
     ).toBeUndefined();
+  });
+});
+
+describe('ownWalk (rpg-project#890)', () => {
+  const walkAct = (mover: string, kind: MoveKind) =>
+    create(ActSchema, {
+      id: '01J0000000C',
+      act: 'move:1',
+      body: {
+        case: 'walk',
+        value: {
+          mover: { kind: PartyKind.MEMBER, id: mover },
+          path: [{ cell: { x: 1, y: 0 } }],
+          kind,
+        },
+      },
+    });
+
+  it('reads the local member own walk with its id and act', () => {
+    expect(ownWalk(walkAct('me', MoveKind.OWN), 'me')).toEqual({
+      id: '01J0000000C',
+      act: 'move:1',
+      cells: [{ x: 1, y: -1, z: 0 }],
+    });
+  });
+
+  it('is nothing for someone else, or a walk the member did not choose', () => {
+    expect(ownWalk(walkAct('guard', MoveKind.OWN), 'me')).toBeUndefined();
+    expect(ownWalk(walkAct('me', MoveKind.COMPELLED), 'me')).toBeUndefined();
+    expect(ownWalk(walkAct('me', MoveKind.DISPLACED), 'me')).toBeUndefined();
   });
 });
