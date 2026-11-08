@@ -2,15 +2,40 @@
 import type { WorldSurfaceMaterial } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: '44ade03e1336a8ff747ab4a052b5998677ef4781',
+  commit: 'fe6b5ee22c43f4ab01d2c295c3fd09cb5e587241',
   catalogSha256:
-    '79ee1ca52c356038669cadbf710c83f8648bd514482ffc23abc36de53ece3224' as
+    'e059808cadc19dd2c44f2dbdfeec65b20d54cb848491b886879e3bafb60895bd' as
       | string
       | null,
 });
 
 export const GENERATED_WORLD_MATERIALS: readonly WorldSurfaceMaterial[] =
   Object.freeze([
+    {
+      ref: 'dnd5e:material:fantasy-kingdom:wall_brick_01',
+      displayName: 'Brick',
+      family: 'masonry',
+      repeatMeters: [3.2995567884187116, 3.2995567884187116],
+      normalScale: [1, 1],
+      roughness: 0.5,
+      metalness: 0,
+      baseColor: {
+        url: '/models/synty/world-materials/images/1466f3684b97ecdc509732766f6311b8e341548840442916bc56753f26e81088.png?v=1466f3684b97ecdc509732766f6311b8e341548840442916bc56753f26e81088',
+        sha256:
+          '1466f3684b97ecdc509732766f6311b8e341548840442916bc56753f26e81088',
+        sizeBytes: 45092,
+        width: 512,
+        height: 512,
+      },
+      normal: {
+        url: '/models/synty/world-materials/images/1523b0cb57b91e5f34fb00d4dcc06096c2b43eeed6a76583bbafd2622c2ec66e.png?v=1523b0cb57b91e5f34fb00d4dcc06096c2b43eeed6a76583bbafd2622c2ec66e',
+        sha256:
+          '1523b0cb57b91e5f34fb00d4dcc06096c2b43eeed6a76583bbafd2622c2ec66e',
+        sizeBytes: 66554,
+        width: 512,
+        height: 512,
+      },
+    },
     {
       ref: 'dnd5e:material:fantasy-kingdom:wall_dungeon_01',
       displayName: 'Small gray masonry',
@@ -37,6 +62,31 @@ export const GENERATED_WORLD_MATERIALS: readonly WorldSurfaceMaterial[] =
       },
     },
     {
+      ref: 'dnd5e:material:fantasy-kingdom:wall_evil_01',
+      displayName: 'Evil masonry',
+      family: 'masonry',
+      repeatMeters: [3.2995567884187116, 3.2995567884187116],
+      normalScale: [1, 1],
+      roughness: 0.5,
+      metalness: 0,
+      baseColor: {
+        url: '/models/synty/world-materials/images/219b8b8150ec5f9e204a84bc23fe26f1b9acff7bb70745b9289ff0f1efdd40a3.png?v=219b8b8150ec5f9e204a84bc23fe26f1b9acff7bb70745b9289ff0f1efdd40a3',
+        sha256:
+          '219b8b8150ec5f9e204a84bc23fe26f1b9acff7bb70745b9289ff0f1efdd40a3',
+        sizeBytes: 28111,
+        width: 512,
+        height: 512,
+      },
+      normal: {
+        url: '/models/synty/world-materials/images/2bb9f69392372b0a5b90b4c66736b95156364de8763449968386d5f64a378b92.png?v=2bb9f69392372b0a5b90b4c66736b95156364de8763449968386d5f64a378b92',
+        sha256:
+          '2bb9f69392372b0a5b90b4c66736b95156364de8763449968386d5f64a378b92',
+        sizeBytes: 129248,
+        width: 512,
+        height: 512,
+      },
+    },
+    {
       ref: 'dnd5e:material:fantasy-kingdom:wall_large_brick_01',
       displayName: 'Large gray masonry',
       family: 'masonry',
@@ -57,6 +107,31 @@ export const GENERATED_WORLD_MATERIALS: readonly WorldSurfaceMaterial[] =
         sha256:
           '582ffa44ff1723697084a60893cd622d3119420979ae0deecdb342a7cfd4a61a',
         sizeBytes: 64353,
+        width: 512,
+        height: 512,
+      },
+    },
+    {
+      ref: 'dnd5e:material:fantasy-kingdom:wall_stucco_01',
+      displayName: 'Stucco',
+      family: 'masonry',
+      repeatMeters: [3.2995567884187116, 3.2995567884187116],
+      normalScale: [1, 1],
+      roughness: 0.5,
+      metalness: 0,
+      baseColor: {
+        url: '/models/synty/world-materials/images/e5c4da7dbbb2fecfe3a68b5b42420beb81822e8fe6e346600fb06a905ba91887.png?v=e5c4da7dbbb2fecfe3a68b5b42420beb81822e8fe6e346600fb06a905ba91887',
+        sha256:
+          'e5c4da7dbbb2fecfe3a68b5b42420beb81822e8fe6e346600fb06a905ba91887',
+        sizeBytes: 11877,
+        width: 512,
+        height: 512,
+      },
+      normal: {
+        url: '/models/synty/world-materials/images/c4c6ea964cbc44db353e9f56b8d0a04abcc953bafe41be17384cecfa17659be5.png?v=c4c6ea964cbc44db353e9f56b8d0a04abcc953bafe41be17384cecfa17659be5',
+        sha256:
+          'c4c6ea964cbc44db353e9f56b8d0a04abcc953bafe41be17384cecfa17659be5',
+        sizeBytes: 17236,
         width: 512,
         height: 512,
       },
