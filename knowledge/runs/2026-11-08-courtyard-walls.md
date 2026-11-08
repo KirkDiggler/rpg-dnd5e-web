@@ -11,6 +11,8 @@
 
 - Reuse the existing schema2 authored-UV collection/bindings for 01_A–04_C; the operator corrected my masonry-face interpretation. Independent A/B stays required but deferred, and mixed feature/door wall sections follow selectable textures — [direction](https://github.com/KirkDiggler/rpg-project/issues/895#issuecomment-6726761156).
 
+- Adopt the operator-merged/generated proto v0.1.262 (generated commit c23b703c7d2bc42fc181c5bd9587b1c9104d999c); package and lock move together and type checking passes. No other merge authorization is inferred — [wire PR](https://github.com/KirkDiggler/rpg-api-protos/pull/425).
+
 ## Found
 
 - Ten new contract cases failed on the old consumer pin: six missing solid house-wall choices, a missing moving-leaf exclusion example, and three missing masonry resources. Normal catalog regeneration makes the focused 144-test set pass; no production helper changes were needed — [S3](https://github.com/KirkDiggler/rpg-project/issues/895).
