@@ -161,3 +161,71 @@ describe('walk presentation completion bridge', () => {
     expect(complete).toHaveBeenCalledExactlyOnceWith('unavailable');
   });
 });
+
+describe('the local member own walk continues an answered Move (rpg-project#890)', () => {
+  const ownWalking = create(ActSchema, {
+    session: 'session-a',
+    id: '01J0000000C',
+    act: 'move:1',
+    family: Family.ACT,
+    body: {
+      case: 'walk',
+      value: {
+        mover: { kind: PartyKind.MEMBER, id: 'viewer' },
+        path: [{ cell: { x: 1, y: 0 } }, { cell: { x: 2, y: 0 } }],
+      },
+    },
+  });
+  const render = (
+    continueOwnWalk?: (
+      member: string,
+      walk: unknown
+    ) => { seq: number; length: number } | undefined
+  ) => {
+    const beginRoute = vi.fn(() => 1);
+    const hook = renderHook(() =>
+      useWalkPresentation({
+        session: 'session-a',
+        member: 'viewer',
+        liveSighted: new Set(['viewer']),
+        canPresent: true,
+        beginRoute,
+        forgetRoute: vi.fn(),
+        continueOwnWalk,
+      })
+    );
+    return { ...hook, beginRoute };
+  };
+
+  it('extends the journey and waits for the whole extended route to paint', () => {
+    const continueOwnWalk = vi.fn(() => ({ seq: 7, length: 4 }));
+    const complete = vi.fn();
+    const { result, beginRoute } = render(continueOwnWalk);
+    act(() => {
+      result.current.presentWalk({ act: ownWalking, complete });
+    });
+    expect(beginRoute).not.toHaveBeenCalled();
+    expect(continueOwnWalk).toHaveBeenCalledExactlyOnceWith('viewer', {
+      id: '01J0000000C',
+      act: 'move:1',
+      cells: [
+        { x: 1, y: -1, z: 0 },
+        { x: 2, y: -2, z: 0 },
+      ],
+    });
+    act(() => result.current.movementPainted('viewer', 7, 2));
+    expect(complete).not.toHaveBeenCalled();
+    act(() => result.current.movementPainted('viewer', 7, 4));
+    expect(complete).toHaveBeenCalledExactlyOnceWith('painted');
+  });
+
+  it('an own walk that continues nothing is not presented', () => {
+    const complete = vi.fn();
+    const { result, beginRoute } = render(() => undefined);
+    act(() => {
+      result.current.presentWalk({ act: ownWalking, complete });
+    });
+    expect(beginRoute).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledExactlyOnceWith('unavailable');
+  });
+});
