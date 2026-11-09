@@ -15,6 +15,23 @@ import {
   parseConditionData,
 } from './conditionData';
 
+const composedRaging = {
+  ref: 'dnd5e:conditions:raging',
+  member_id: 'char-123',
+  origin: { ref: 'dnd5e:features:rage', entity_id: 'char-123' },
+  bindings: { damage_bonus: { barbarian_level: true } },
+  runtime: {
+    state: 'raging',
+    bag: {
+      turns_active: 3,
+      round_activated: 4,
+      saw_turn_end: true,
+      was_hit_this_turn: true,
+      did_attack_this_turn: false,
+    },
+  },
+};
+
 describe('conditionData', () => {
   describe('parseConditionData', () => {
     it('returns undefined for undefined input', () => {
@@ -30,21 +47,14 @@ describe('conditionData', () => {
       expect(parseConditionData(bytes)).toBeUndefined();
     });
 
-    it('parses raging condition data', () => {
-      const json = JSON.stringify({
-        character_id: 'char-123',
-        damage_bonus: 2,
-        level: 1,
-        source: 'dnd5e:features:rage',
-        turns_active: 3,
-        was_hit_this_turn: true,
-        did_attack_this_turn: false,
-      });
+    it('parses current composed Raging without cached class fields', () => {
+      const json = JSON.stringify(composedRaging);
       const bytes = new TextEncoder().encode(json);
       const result = parseConditionData(bytes);
 
       expect(result).toBeDefined();
-      expect(result!.character_id).toBe('char-123');
+      expect(result).toMatchObject({ member_id: 'char-123' });
+      expect(isRagingData(result!)).toBe(true);
     });
 
     it('parses sneak attack condition data', () => {
@@ -59,6 +69,22 @@ describe('conditionData', () => {
       expect(result).toBeDefined();
     });
 
+    it.each([null, 3, 'raging', []])(
+      'refuses non-object condition JSON: %s',
+      (value) => {
+        expect(
+          parseConditionData(new TextEncoder().encode(JSON.stringify(value)))
+        ).toBeUndefined();
+      }
+    );
+
+    it('does not pass malformed current Raging on to other duck-typed readers', () => {
+      const bad = { ...composedRaging, runtime: null, monk_level: 20 };
+      expect(
+        parseConditionData(new TextEncoder().encode(JSON.stringify(bad)))
+      ).toBeUndefined();
+    });
+
     it('parses minimal base condition data', () => {
       const json = JSON.stringify({
         character_id: 'char-789',
@@ -67,22 +93,34 @@ describe('conditionData', () => {
       const result = parseConditionData(bytes);
 
       expect(result).toBeDefined();
-      expect(result!.character_id).toBe('char-789');
+      expect(result).toMatchObject({ character_id: 'char-789' });
     });
   });
 
   describe('type guards', () => {
-    it('isRagingData detects raging by damage_bonus + turns_active', () => {
-      const data = {
-        character_id: 'c1',
-        damage_bonus: 2,
-        level: 1,
-        source: 'dnd5e:features:rage',
-        turns_active: 0,
-        was_hit_this_turn: false,
-        did_attack_this_turn: false,
-      };
-      expect(isRagingData(data)).toBe(true);
+    it('isRagingData recognizes the canonical ref and current runtime shape', () => {
+      expect(isRagingData(composedRaging)).toBe(true);
+    });
+
+    it('does not recognize old cached-bonus data as current Raging', () => {
+      expect(
+        isRagingData({ character_id: 'c1', damage_bonus: 2, turns_active: 3 })
+      ).toBe(false);
+    });
+
+    it.each([
+      { ...composedRaging, ref: 'example:conditions:raging' },
+      { ...composedRaging, runtime: null },
+      { ...composedRaging, runtime: { state: 'raging', bag: {} } },
+      {
+        ...composedRaging,
+        runtime: {
+          ...composedRaging.runtime,
+          bag: { ...composedRaging.runtime.bag, turns_active: '3' },
+        },
+      },
+    ])('refuses mismatched or incomplete current runtime data', (data) => {
+      expect(isRagingData(data)).toBe(false);
     });
 
     it('isRagingData returns false for non-raging data', () => {

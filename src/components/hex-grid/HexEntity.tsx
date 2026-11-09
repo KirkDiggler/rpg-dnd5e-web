@@ -205,6 +205,9 @@ export interface HexEntityProps {
   moveSeq?: number;
   /** How the body moves — authoritative, never inferred from the path. */
   moveKind?: MoveKind;
+  /** The move controller's `continuedFrom`: this route continues the walk
+   * in flight from this cell index (rpg-project#890). */
+  moveContinuesFrom?: number;
   /** Presentation-only completion for this entity's exact move sequence. */
   onMovementPresentationComplete?: (entityId: string, moveSeq: number) => void;
   deferPositionReconciliation?: boolean;
@@ -428,6 +431,7 @@ export function HexEntity({
   movePath,
   moveSeq,
   moveKind = 'own',
+  moveContinuesFrom,
   onMovementPresentationComplete,
   deferPositionReconciliation = false,
   seenFacingDegrees,
@@ -532,7 +536,8 @@ export function HexEntity({
         (walkingReadiness.current.scope === activityScope &&
           walkingReadiness.current.moveSeq === seq &&
           walkingReadiness.current.ready),
-    }
+    },
+    remembered ? undefined : moveContinuesFrom
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as

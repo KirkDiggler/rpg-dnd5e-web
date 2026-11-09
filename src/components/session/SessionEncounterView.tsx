@@ -140,7 +140,7 @@ import type {
   LocalWorldDieWitnessPlan,
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
-import { isWalking } from './moveController';
+import { isWalking, type MoveAnswer } from './moveController';
 import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
 import {
@@ -576,9 +576,22 @@ function SessionEncounterScope({
     []
   );
 
-  const beginLocalRoute = useCallback(
-    (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
-    [moves, member]
+  // Every accepted Move answer: its steps begin a new journey, and the
+  // controller learns whether the walk goes on from the stream after the
+  // answer's `through`. Own acts that reach it while the Move is in flight
+  // are held for the answer (rpg-project#890).
+  const { answerMove, moveDispatched, moveFailed } = moves;
+  const answerLocalMove = useCallback(
+    (answer: MoveAnswer) => answerMove(member, answer),
+    [answerMove, member]
+  );
+  const localMoveDispatched = useCallback(
+    () => moveDispatched(member),
+    [moveDispatched, member]
+  );
+  const localMoveFailed = useCallback(
+    () => moveFailed(member),
+    [moveFailed, member]
   );
 
   const otherMembers = useMemo(
@@ -627,7 +640,9 @@ function SessionEncounterScope({
     handleStaleMoveRefusal,
     isMoveAuthorityFresh,
     handleMoveAccepted,
-    beginLocalRoute
+    answerLocalMove,
+    localMoveDispatched,
+    localMoveFailed
   );
 
   // A movement is something the viewer WATCHES happen, so it lives only as
@@ -678,6 +693,7 @@ function SessionEncounterScope({
     canPresent: canPresentMovement,
     beginRoute: moves.beginRoute,
     forgetRoute: moves.forgetRoute,
+    continueOwnWalk: moves.continueOwnWalk,
   });
 
   const publicMemberNames = useMemo(

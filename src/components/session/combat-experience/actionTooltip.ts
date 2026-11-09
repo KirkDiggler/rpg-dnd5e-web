@@ -65,6 +65,8 @@ export type EffectTone =
 
 export interface ActionEffectLine {
   id: string;
+  /** Supplied source entity identity; absent means unspecified, not the recipient. */
+  sourceId?: string;
   name: string;
   description: string;
   state: EffectState;
@@ -136,6 +138,7 @@ function effectLine(row: EffectRow, answer?: TargetEffect): ActionEffectLine {
   const tone = effectTone(state, row.participation);
   return {
     id: row.id,
+    ...(row.sourceId ? { sourceId: row.sourceId } : {}),
     name: row.name,
     description: row.description,
     state,

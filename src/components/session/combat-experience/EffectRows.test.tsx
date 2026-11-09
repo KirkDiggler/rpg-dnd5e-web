@@ -18,6 +18,14 @@ const line = (overrides: Partial<ActionEffectLine>): ActionEffectLine => ({
 });
 
 describe('EffectRows', () => {
+  it('retains supplied provenance on the rendered row without inventing a source label', () => {
+    render(<EffectRows lines={[{ ...line({}), sourceId: 'ring-17' }]} />);
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'data-effect-source-id',
+      'ring-17'
+    );
+    expect(screen.queryByText('ring-17')).toBeNull();
+  });
   it('renders all four states with reasons', () => {
     render(
       <EffectRows
