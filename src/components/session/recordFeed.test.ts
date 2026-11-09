@@ -23,7 +23,7 @@ function beat(id: string, name = 'moved', act = 'move:01HF'): RecordEvent {
     beat: name,
     act,
     at: 1n,
-    fields: { beat: name },
+    fieldsJson: new TextEncoder().encode(JSON.stringify({ beat: name })),
   });
 }
 function eventMsg(id: string): StreamRecordResponse {
@@ -100,17 +100,40 @@ function harness(
 }
 
 describe('recordFeed', () => {
-  it('marks live Struct integers outside the exact range rather than claiming fidelity', () => {
+  it('reads exact raw JSON, never the approximate Struct projection', () => {
     const record = beat('A1', 'behavior_config');
-    record.fields = {
-      schema: 1,
-      config: 'wide',
-      configuration: { count: 9007199254740992 },
-    };
-    expect(toRecordRow(record).precisionUnavailable).toBe(true);
-    record.fields = { value: 0, flag: false, label: '' };
-    expect(toRecordRow(record).precisionUnavailable).toBeUndefined();
+    record.fieldsJson = new TextEncoder().encode(
+      '{"value":9007199254740993,"zero":0,"flag":false,"label":""}'
+    );
+    record.fields = { value: 9007199254740992, zero: 99 };
+    const row = toRecordRow(record);
+    expect(row.fields).toEqual({
+      value: 9007199254740993n,
+      zero: 0,
+      flag: false,
+      label: '',
+    });
+    expect(row.fieldsUnavailable).toBeUndefined();
   });
+
+  it.each([
+    new Uint8Array(),
+    new Uint8Array([255]),
+    new TextEncoder().encode('{broken'),
+    new TextEncoder().encode('null'),
+    new TextEncoder().encode('[1,2]'),
+  ])(
+    'keeps unavailable raw payload explicit without Struct fallback: %s',
+    (fieldsJson) => {
+      const record = beat('A1');
+      record.fieldsJson = fieldsJson;
+      record.fields = { plausible: true };
+      const row = toRecordRow(record);
+      expect(row.id).toBe('A1');
+      expect(row.fields).toBeUndefined();
+      expect(row.fieldsUnavailable).toMatch(/payload/i);
+    }
+  );
   it('opens from the oldest retained beat', async () => {
     const h = harness([scripted([eventMsg('A1'), eventMsg('A2')], 'hold')]);
     await vi.waitFor(() => expect(h.ids()).toEqual(['A1', 'A2']));
@@ -282,7 +305,9 @@ describe('recordFeed', () => {
       item: { case: 'event', value: beat('A0000', 'answered') },
     });
     const decision = beat('A0001', 'behavior_decision');
-    decision.fields = { beat: 'behavior_decision', pick_record: 'A0000' };
+    decision.fieldsJson = new TextEncoder().encode(
+      JSON.stringify({ beat: 'behavior_decision', pick_record: 'A0000' })
+    );
     const messages = [
       pick,
       create(StreamRecordResponseSchema, {

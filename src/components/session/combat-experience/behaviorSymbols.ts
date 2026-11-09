@@ -3,7 +3,7 @@ import {
   isRecordObject,
   parseRecordJSON,
 } from '../recordCapture';
-import { RECORD_PRECISION_NOTICE, type RecordRow } from '../recordFeed';
+import type { RecordRow } from '../recordFeed';
 
 export interface MachineTransitionSymbol {
   on: string;
@@ -158,7 +158,7 @@ export function behaviorSymbolsOf(
     const id = string(row.fields?.config) || row.id;
     if (problems.has(id)) continue;
     try {
-      if (row.precisionUnavailable) throw new Error(RECORD_PRECISION_NOTICE);
+      if (row.fieldsUnavailable) throw new Error(row.fieldsUnavailable);
       if (!row.fields) throw new Error('Configuration fields unavailable.');
       const config = configurationOf(row.fields);
       const prior = configurations.get(config.id);
@@ -327,8 +327,8 @@ export function readBehaviorTrace(input: {
     warnings: [],
     roles: [],
   };
-  if (row.precisionUnavailable) {
-    out.warnings.push(RECORD_PRECISION_NOTICE);
+  if (row.fieldsUnavailable) {
+    out.warnings.push(row.fieldsUnavailable);
     return out;
   }
   if (!fields || fields.schema !== 1) {
@@ -433,8 +433,7 @@ export function readBehaviorTrace(input: {
   const pickID = string(fields.pick_record);
   if (pickID) {
     const picked = records.get(pickID);
-    if (picked?.precisionUnavailable)
-      out.warnings.push(RECORD_PRECISION_NOTICE);
+    if (picked?.fieldsUnavailable) out.warnings.push(picked.fieldsUnavailable);
     else if (picked?.beat === 'answered') out.pick = picked;
     else
       out.warnings.push(

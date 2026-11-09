@@ -1,3 +1,5 @@
+import { create } from '@bufbuild/protobuf';
+import { RecordEventSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_pb';
 import { describe, expect, it } from 'vitest';
 import captured from './fixtures/machine-inspection-capture.jsonl?raw';
 import {
@@ -5,6 +7,7 @@ import {
   parseRecordCapture,
   parseRecordJSON,
 } from './recordCapture';
+import { toRecordRow } from './recordFeed';
 
 const header = JSON.stringify({
   schema: 1,
@@ -35,6 +38,26 @@ function event(
 }
 
 describe('recordCapture', () => {
+  it('gives the same exact values to live and captured readers', () => {
+    const raw = '{"value":9007199254740993,"zero":0,"flag":false,"label":""}';
+    const live = toRecordRow(
+      create(RecordEventSchema, {
+        id: 'A1',
+        act: '',
+        at: 3n,
+        beat: 'test',
+        fieldsJson: new TextEncoder().encode(raw),
+        fields: { value: 9007199254740992 },
+      })
+    );
+    const capture = parseRecordCapture(
+      header +
+        '\n' +
+        `{"schema":1,"kind":"record","capture":"test","session":"run","id":"A1","act":"","at":3,"beat":"test","fields":${raw}}`
+    );
+    expect(live).toEqual(capture.feed.rows[0]);
+    expect(live.fields?.value).toBe(9007199254740993n);
+  });
   it('reads actual API output, including configuration symbols and work correlation', () => {
     const result = parseRecordCapture(captured);
     expect(result.session).toBe('35327bdc-61a0-452a-b3b3-c1953e0cb428');

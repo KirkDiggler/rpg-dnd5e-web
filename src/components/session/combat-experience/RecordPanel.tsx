@@ -9,7 +9,6 @@ import {
 } from '../recordCapture';
 import {
   filterRecord,
-  RECORD_PRECISION_NOTICE,
   type RecordFeedSnapshot,
   type RecordFilter,
   type RecordRow,
@@ -212,7 +211,7 @@ function ActView({
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? matched !== undefined;
   const reading = useMemo(() => {
-    if (!act.pick || act.pick.precisionUnavailable) return undefined;
+    if (!act.pick || act.pick.fieldsUnavailable) return undefined;
     const answer = answeredOf(act.pick.fields);
     return answer ? readAnswer(answer, symbols.get(act.pick.id)) : undefined;
   }, [act.pick, symbols]);
@@ -302,11 +301,11 @@ function RecordRowView({
   const json = useMemo(
     () =>
       open
-        ? row.precisionUnavailable
-          ? RECORD_PRECISION_NOTICE
+        ? row.fieldsUnavailable
+          ? row.fieldsUnavailable
           : formatRecordJSON(row.fields ?? {})
         : '',
-    [open, row.fields, row.precisionUnavailable]
+    [open, row.fields, row.fieldsUnavailable]
   );
   return (
     <li

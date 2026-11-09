@@ -39,9 +39,9 @@ not prove earlier history is present. Mixed sessions, conflicting IDs, malformed
 JSON and unsupported schemas refuse; captures above32MiB require a smaller
 session/time window rather than silently truncating input.
 
-Captured wide integers are parsed and rendered exactly. The current live
-protobuf Struct boundary cannot guarantee that precision; precision-lost live
-records are explicitly unavailable rather than shown as rounded evidence.
-R9 on project#902 selects a lossless raw-byte field; its reviewed proto provider
-must publish before the client can adopt it. Until then, this limitation does
-not change the raw API capture or make it acceptable to guess a value.
+Live and captured wide integers use the same lossless parser and renderer.
+The live reader uses `RecordEvent.fields_json` from published proto v0.1.263;
+it never falls back to the deprecated approximate Struct. Empty, malformed
+UTF-8/JSON and non-object raw payloads keep the record identity but report their
+fields unavailable. A plausible legacy projection does not substitute for
+missing exact evidence.

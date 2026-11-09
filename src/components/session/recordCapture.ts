@@ -1,10 +1,6 @@
 import { parse, stringify } from 'yaml';
-import { bufferRecordRows } from './recordBuffer';
-import {
-  RECORD_MAX_ROWS,
-  type RecordFeedSnapshot,
-  type RecordRow,
-} from './recordFeed';
+import { bufferRecordRows, RECORD_MAX_ROWS } from './recordBuffer';
+import type { RecordFeedSnapshot, RecordRow } from './recordFeed';
 
 export const MAX_RECORD_CAPTURE_BYTES = 32 * 1024 * 1024;
 const MAX_RECORD_DEPTH = 128;

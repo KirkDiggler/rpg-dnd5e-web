@@ -1,5 +1,8 @@
 import type { RecordFeedSnapshot, RecordRow } from './recordFeed';
 
+/** Visible record rows are bounded independently of configuration symbols. */
+export const RECORD_MAX_ROWS = 500;
+
 export interface RecordBufferInput {
   rows: readonly RecordRow[];
   symbols?: readonly RecordRow[];

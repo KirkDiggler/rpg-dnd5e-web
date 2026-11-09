@@ -82,20 +82,21 @@ describe('behavior symbols and actual outcomes', () => {
     );
   });
 
-  it('declines precision-lost live symbols and decisions while the wire decision is open', () => {
+  it('declines unavailable raw symbols and decisions rather than using approximate values', () => {
     const { rows, symbols, records } = fixture();
     const symbol = rows.find((row) => row.beat === 'behavior_config')!;
     expect(
-      behaviorSymbolsOf([{ ...symbol, precisionUnavailable: true }])
-        .configurations.size
+      behaviorSymbolsOf([
+        { ...symbol, fieldsUnavailable: 'Raw payload unavailable' },
+      ]).configurations.size
     ).toBe(0);
     const row = rows.find((row) => row.beat === 'behavior_decision')!;
     const reading = readBehaviorTrace({
-      row: { ...row, precisionUnavailable: true },
+      row: { ...row, fieldsUnavailable: 'Raw payload unavailable' },
       symbols,
       records,
     });
-    expect(reading?.warnings.join(' ')).toMatch(/precision/i);
+    expect(reading?.warnings.join(' ')).toMatch(/payload.*unavailable/i);
     expect(reading?.roles).toEqual([]);
   });
 

@@ -19,17 +19,14 @@ import type {
   GetRecordResponse,
   StreamRecordResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
-import { bufferRecordRows } from './recordBuffer';
-
-/** Rows kept, oldest dropped first — the debug feed's existing cap. */
-export const RECORD_MAX_ROWS = 500;
+import { bufferRecordRows, RECORD_MAX_ROWS } from './recordBuffer';
+import { isRecordObject, parseRecordJSON } from './recordCapture';
+export { RECORD_MAX_ROWS } from './recordBuffer';
 
 /** GetRecord page size while catching up after a lag. */
 export const RECORD_PAGE_LIMIT = 200;
 
 export const RECORD_AGED_OUT_NOTICE = 'Older beats aged out of the record.';
-export const RECORD_PRECISION_NOTICE =
-  'Exact numeric precision is unavailable on this live record wire. Use an exact API capture.';
 
 /** One record beat as the panel shows it. */
 export interface RecordRow {
@@ -38,8 +35,8 @@ export interface RecordRow {
   readonly act: string;
   readonly beat: string;
   readonly fields: Readonly<Record<string, unknown>> | undefined;
-  /** Fail closed on the current Struct boundary; a rounded value is not evidence. */
-  readonly precisionUnavailable?: boolean;
+  /** Missing/malformed raw evidence is explicit; Struct is never a fallback. */
+  readonly fieldsUnavailable?: string;
 }
 
 export interface RecordFeedSnapshot {
@@ -75,29 +72,30 @@ export interface RecordFeed {
   snapshot: () => RecordFeedSnapshot;
 }
 
-function unsafeLiveNumber(value: unknown): boolean {
-  if (typeof value === 'number')
-    return (
-      !Number.isFinite(value) ||
-      (Number.isInteger(value) && !Number.isSafeInteger(value))
-    );
-  if (Array.isArray(value)) return value.some(unsafeLiveNumber);
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    Object.values(value).some(unsafeLiveNumber)
-  );
-}
-
 export function toRecordRow(event: RecordEvent): RecordRow {
-  return {
+  const identity = {
     id: event.id,
     at: event.at,
     act: event.act,
     beat: event.beat,
-    fields: event.fields,
-    ...(unsafeLiveNumber(event.fields) ? { precisionUnavailable: true } : {}),
   };
+  try {
+    if (!event.fieldsJson.length)
+      throw new Error('Raw record payload unavailable; no Struct fallback.');
+    const raw = new TextDecoder('utf-8', { fatal: true }).decode(
+      event.fieldsJson
+    );
+    const fields = parseRecordJSON(raw);
+    if (!isRecordObject(fields))
+      throw new Error('Raw record payload is not a JSON object.');
+    return { ...identity, fields };
+  } catch (error) {
+    return {
+      ...identity,
+      fields: undefined,
+      fieldsUnavailable: `Record payload unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {

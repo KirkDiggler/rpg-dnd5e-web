@@ -217,7 +217,7 @@ export function symbolsOf(
   const latest = new Map<string, TableSymbol>();
   const out = new Map<string, TableSymbol>();
   for (const row of rows) {
-    if (!row.fields || row.precisionUnavailable) continue;
+    if (!row.fields || row.fieldsUnavailable) continue;
     if (row.beat === 'table') {
       const table = tableOf(row.fields);
       latest.set(scopeOf(table.creature, table.option, table.key), table);
