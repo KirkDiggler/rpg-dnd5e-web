@@ -1,8 +1,15 @@
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useWorldMaterialCatalog } from './useWorldMaterialCatalog';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Each case represents a new application load. Resource promises and generated
+// snapshots intentionally remain shared between hook consumers within that load.
+beforeEach(() => vi.resetModules());
+async function mountCatalog() {
+  const { useWorldMaterialCatalog } = await import('./useWorldMaterialCatalog');
+  return renderHook(useWorldMaterialCatalog);
+}
 const pinned = vi.hoisted(() => ({
   provider: { commit: 'c'.repeat(40), catalogSha256: null as string | null },
   materials: [] as WorldSurfaceMaterial[],
@@ -10,6 +17,9 @@ const pinned = vi.hoisted(() => ({
 vi.mock('@/generated/worldMaterialCatalog', () => ({
   GENERATED_WORLD_MATERIAL_PROVIDER: pinned.provider,
   GENERATED_WORLD_MATERIALS: pinned.materials,
+  GENERATED_WORLD_ATLAS_MATERIALS: [],
+  GENERATED_WORLD_MATERIAL_COLLECTIONS: [],
+  GENERATED_WORLD_ATLAS_BINDINGS: [],
 }));
 const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const image = {
@@ -61,7 +71,7 @@ afterEach(() => {
   pinned.materials.length = 0;
 });
 describe('explicit development material catalog loader', () => {
-  it('uses pinned material records in production and joins only declared faces without fetching', () => {
+  it('uses pinned material records in production and joins only declared faces without fetching', async () => {
     vi.stubEnv('MODE', 'production');
     vi.stubEnv('VITE_WORLD_MATERIAL_PREVIEW', '0');
     const fetch = vi.fn();
@@ -81,7 +91,7 @@ describe('explicit development material catalog loader', () => {
         url: `/models/synty/world-materials/images/${source.normal.sha256}.png?v=${source.normal.sha256}`,
       },
     });
-    const { result } = renderHook(useWorldMaterialCatalog);
+    const { result } = await mountCatalog();
     expect(result.current.status).toBe('ready');
     expect(result.current.catalog?.kind).toBe('pinned');
     expect(result.current.catalog?.providerCommit).toBe(pinned.provider.commit);
@@ -101,12 +111,12 @@ describe('explicit development material catalog loader', () => {
   });
   it.each(['production', 'test'])(
     'does not fetch private candidates in %s even with the flag present',
-    (mode) => {
+    async (mode) => {
       vi.stubEnv('MODE', mode);
       vi.stubEnv('VITE_WORLD_MATERIAL_PREVIEW', '1');
       const fetch = vi.fn();
       vi.stubGlobal('fetch', fetch);
-      const { result } = renderHook(useWorldMaterialCatalog);
+      const { result } = await mountCatalog();
       expect(result.current.status).toBe('unavailable');
       expect(fetch).not.toHaveBeenCalled();
     }
@@ -118,7 +128,7 @@ describe('explicit development material catalog loader', () => {
       .fn()
       .mockResolvedValue(new Response(JSON.stringify(candidate())));
     vi.stubGlobal('fetch', fetch);
-    const { result } = renderHook(useWorldMaterialCatalog);
+    const { result } = await mountCatalog();
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.catalog?.kind).toBe('candidate');
     expect(result.current.message).toMatch(/not a published/);
@@ -149,7 +159,7 @@ describe('explicit development material catalog loader', () => {
         })
       )
     );
-    const { result } = renderHook(useWorldMaterialCatalog);
+    const { result } = await mountCatalog();
     await waitFor(() => expect(result.current.status).toBe('error'));
     expect(result.current.catalog).toBeNull();
   });

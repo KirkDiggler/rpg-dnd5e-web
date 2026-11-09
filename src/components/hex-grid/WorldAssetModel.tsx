@@ -676,9 +676,9 @@ function LoadedAtlasWorldAssetModel({
       selections: (JSON.parse(planKey) as typeof resolved.plans).map(
         (plan, i) => ({ ...plan, texture: textures[i] })
       ),
-      // Texture UUIDs and plan values own this resource treatment, not pointer renders.
-       
     }),
+    // Texture UUIDs and plan values own this treatment, not pointer renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [props.glbSha256, resolved.binding, planKey, textureKey]
   );
   return <LoadedWorldAssetModel {...props} atlasTreatment={atlasTreatment} />;
