@@ -42,5 +42,6 @@ session/time window rather than silently truncating input.
 Captured wide integers are parsed and rendered exactly. The current live
 protobuf Struct boundary cannot guarantee that precision; precision-lost live
 records are explicitly unavailable rather than shown as rounded evidence.
-The lossless live-wire decision is tracked as R9 on project#902. That limitation
-does not change the raw API capture or make it acceptable to guess a value.
+R9 on project#902 selects a lossless raw-byte field; its reviewed proto provider
+must publish before the client can adopt it. Until then, this limitation does
+not change the raw API capture or make it acceptable to guess a value.

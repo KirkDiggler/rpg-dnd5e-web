@@ -225,12 +225,13 @@ export function readGuardTrace(input: {
   const tracedChildren = Array.isArray(trace?.children) ? trace.children : [];
   let observed: string | undefined;
   if (status !== 'not evaluated' && trace?.read === true) {
-    observed =
-      trace.known !== true
-        ? 'unknown'
-        : trace.scalar !== true
-          ? 'known value is not representable'
-          : formatRecordJSON(trace.value);
+    if (trace.known !== true) observed = 'unknown';
+    else if (trace.scalar !== true)
+      observed = 'known value is not representable';
+    else if (!Object.hasOwn(trace, 'value') || !capturedScalar(trace.value)) {
+      status = 'unavailable';
+      observed = 'captured scalar unavailable';
+    } else observed = formatRecordJSON(trace.value);
   }
   return {
     label: guardLabel(input.symbol),
@@ -245,6 +246,21 @@ export function readGuardTrace(input: {
       })
     ),
   };
+}
+
+function capturedScalar(value: unknown): boolean {
+  return (
+    typeof value === 'boolean' ||
+    typeof value === 'string' ||
+    typeof value === 'bigint' ||
+    (typeof value === 'number' && Number.isSafeInteger(value))
+  );
+}
+
+function unavailableGuard(guard: GuardReading): boolean {
+  return (
+    guard.status === 'unavailable' || guard.children.some(unavailableGuard)
+  );
 }
 
 export interface TransitionReading {
@@ -397,6 +413,11 @@ export function readBehaviorTrace(input: {
         acts: transition.do ?? [],
       };
     });
+    if (transitions.some((transition) => unavailableGuard(transition.guard))) {
+      out.warnings.push(
+        `Captured observation unavailable for role ${value.id}; trace is incomplete.`
+      );
+    }
     out.roles.push({
       id: value.id,
       ref: symbol?.recipe.ref ?? '',

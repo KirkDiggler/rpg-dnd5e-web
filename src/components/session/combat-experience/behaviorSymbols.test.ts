@@ -151,6 +151,68 @@ describe('behavior symbols and actual outcomes', () => {
     expect(symbols.configurations.size).toBe(0);
   });
 
+  it('reports a missing recorded scalar instead of inventing null from the real capture', () => {
+    const lines = investigationCapture
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const decision = lines.find(
+      (line) => line.id === '01M6YKP9ZX7TMK0QDABXXJ0WGZ'
+    );
+    delete decision.fields.outcomes[0].step.transitions[0].guard.value;
+    const rows = recordContextRows(
+      parseRecordCapture(lines.map((line) => JSON.stringify(line)).join('\n'))
+        .feed
+    );
+    const records = new Map(rows.map((row) => [row.id, row]));
+    const reading = readBehaviorTrace({
+      row: records.get(decision.id)!,
+      symbols: behaviorSymbolsOf(rows),
+      records,
+    });
+    expect(reading?.roles[0].transitions[0].guard.status).toBe('unavailable');
+    expect(reading?.roles[0].transitions[0].guard.observed).not.toBe('null');
+    expect(reading?.warnings.join(' ')).toMatch(/observation.*unavailable/i);
+  });
+
+  it.each(
+    [null, {}, [], 1.5, NaN, 9007199254740992].map((value) => ({ value }))
+  )('refuses malformed known scalar evidence %j', ({ value }) => {
+    const result = readGuardTrace({
+      symbol: { fact: { name: 'value', op: 'eq', value: 0 } },
+      trace: {
+        evaluated: true,
+        verdict: 'applies',
+        read: true,
+        known: true,
+        scalar: true,
+        value,
+        children: [],
+      },
+    });
+    expect(result.status).toBe('unavailable');
+  });
+
+  it.each([0, false, '', 9007199254740993n])(
+    'retains a supplied captured scalar %s',
+    (value) => {
+      const result = readGuardTrace({
+        symbol: { fact: { name: 'value', op: 'eq', value } },
+        trace: {
+          evaluated: true,
+          verdict: 'applies',
+          read: true,
+          known: true,
+          scalar: true,
+          value,
+          children: [],
+        },
+      });
+      expect(result.status).toBe('matched');
+      expect(result.observed).not.toMatch(/unavailable/);
+    }
+  );
+
   it('shows an actual unknown verdict rather than treating it as a false guard', () => {
     const symbol = { fact: { name: 'known', op: 'eq', value: true } };
     const trace = {
