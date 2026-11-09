@@ -41,6 +41,7 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import { hasGroundAppearance } from './regionGroundTiles';
 import { RegionLabels3D, type RegionLabel3D } from './RegionLabels3D';
 import type { RegionLightingProjection } from './regionLighting';
 import { layoutRepeatedProps } from './repeatPlacement';
@@ -57,6 +58,7 @@ import {
   type RoomMonsterBinding,
   type RoomMonsterPlacement,
   type RoomPropDeclaration,
+  type RoomRegion,
 } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
@@ -147,6 +149,8 @@ export interface WorldBuildingViewportProps {
     intentEpoch?: number;
     /** The floor: the union of the authored regions (rpg-project#725). */
     floorCells: readonly RoomHexCell[];
+    /** Appearance only; these regions do not supply a second floor universe. */
+    groundRegions?: readonly RoomRegion[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;
     onConcealmentCellPick?: (cell: RoomHexCell) => void;
@@ -507,41 +511,43 @@ function RoomAuthoringDeclarations({
   const fillGeometry = useMemo(() => createWalkableHexFillGeometry(), []);
   useEffect(() => () => fillGeometry.dispose(), [fillGeometry]);
   const rectangular = rectangleOf(authoring.workspace) !== null;
+  const showWalkableFill = !hasGroundAppearance(authoring.groundRegions ?? []);
   return (
     <group name="room-authored-declarations">
-      {rectangular ? (
-        <WorkspaceCellOverlay
-          name="room-walkable-cells"
-          cells={authoring.floorCells}
-          geometry={fillGeometry}
-          y={DUNGEON_SURFACE_Y + 0.018}
-          color="#34d399"
-          opacity={0.34}
-        />
-      ) : (
-        authoring.floorCells.map((cell) => {
-          const center = cubeToWorld(
-            { x: cell.q, y: -cell.q - cell.r, z: cell.r },
-            HEX_SIZE
-          );
-          return (
-            <mesh
-              key={`${cell.q},${cell.r}`}
-              name={`room-walkable-${cell.q}-${cell.r}`}
-              position={[center.x, DUNGEON_SURFACE_Y + 0.018, center.z]}
-              geometry={fillGeometry}
-              raycast={() => null}
-            >
-              <meshBasicMaterial
-                color="#34d399"
-                transparent
-                opacity={0.34}
-                depthWrite={false}
-              />
-            </mesh>
-          );
-        })
-      )}
+      {showWalkableFill &&
+        (rectangular ? (
+          <WorkspaceCellOverlay
+            name="room-walkable-cells"
+            cells={authoring.floorCells}
+            geometry={fillGeometry}
+            y={DUNGEON_SURFACE_Y + 0.018}
+            color="#34d399"
+            opacity={0.34}
+          />
+        ) : (
+          authoring.floorCells.map((cell) => {
+            const center = cubeToWorld(
+              { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+              HEX_SIZE
+            );
+            return (
+              <mesh
+                key={`${cell.q},${cell.r}`}
+                name={`room-walkable-${cell.q}-${cell.r}`}
+                position={[center.x, DUNGEON_SURFACE_Y + 0.018, center.z]}
+                geometry={fillGeometry}
+                raycast={() => null}
+              >
+                <meshBasicMaterial
+                  color="#34d399"
+                  transparent
+                  opacity={0.34}
+                  depthWrite={false}
+                />
+              </mesh>
+            );
+          })
+        ))}
       {rectangular
         ? Object.entries(authoring.concealments ?? {}).map(([id, spec]) => (
             <WorkspaceCellOverlay
@@ -1309,6 +1315,7 @@ export function WorldSceneContents(
       {props.roomAuthoring && (
         <WorkspaceFloorUnderlay
           workspace={workspace!}
+          regions={props.roomAuthoring.groundRegions}
           visualLighting={visualLighting}
         />
       )}

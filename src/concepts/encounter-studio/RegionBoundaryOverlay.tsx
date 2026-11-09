@@ -43,10 +43,12 @@ const RegionShapes = memo(function RegionShapes({
   resolutions,
   colours,
   selectedId,
+  showFill,
 }: {
   resolutions: readonly RegionResolution[];
   colours?: ReadonlyMap<string, string>;
   selectedId?: string;
+  showFill: boolean;
 }): React.JSX.Element {
   const shapes = useMemo(
     () =>
@@ -72,7 +74,7 @@ const RegionShapes = memo(function RegionShapes({
               data-region-fill={shape.id}
               d={shape.fill}
               fill={colour}
-              fillOpacity={REGION_FILL_OPACITY}
+              fillOpacity={showFill ? REGION_FILL_OPACITY : 0}
               stroke="none"
             />
             <path
@@ -100,11 +102,14 @@ export function RegionBoundaryOverlay({
   colours,
   selectedId,
   transform,
+  showFill = true,
 }: {
   resolutions: readonly RegionResolution[];
   colours?: ReadonlyMap<string, string>;
   selectedId?: string;
   transform?: string;
+  /** Keep outlines/selection without tinting authored ground appearances. */
+  showFill?: boolean;
 }): React.JSX.Element {
   return (
     <g
@@ -117,6 +122,7 @@ export function RegionBoundaryOverlay({
         resolutions={resolutions}
         colours={colours}
         selectedId={selectedId}
+        showFill={showFill}
       />
     </g>
   );

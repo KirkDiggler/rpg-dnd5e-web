@@ -4,6 +4,7 @@ import {
   decodeRoomDocumentJson,
   encodeRoomDocument,
 } from '@/compositions/roomDocument';
+import type { GroundCatalog } from '@/rendering/groundCatalog';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
@@ -127,6 +128,16 @@ import { cellsBounds, contentBounds } from './overviewFrame';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
+
+const groundPreview = vi.hoisted(() => ({
+  catalog: null as GroundCatalog | null,
+}));
+vi.mock('@/components/session/useGroundCatalog', () => ({
+  useGroundCatalog: () =>
+    groundPreview.catalog
+      ? { status: 'ready', catalog: groundPreview.catalog }
+      : { status: 'error', message: 'Ground preview not installed' },
+}));
 
 const materialPreview = vi.hoisted(() => ({
   catalog: null as WorldMaterialCatalog | null,
@@ -281,6 +292,7 @@ class TestPointerEvent extends MouseEvent {
 }
 let source: CompositionSource;
 beforeEach(() => {
+  groundPreview.catalog = null;
   vi.clearAllMocks();
   gate.state = 'gate-off';
   boundary.latest = null;
@@ -1183,6 +1195,149 @@ describe('right-angle wall editing through the real owner', () => {
   });
 });
 
+describe('region ground through the real Studio owner', () => {
+  it('commits atomic paint, persists it, supports undo/redo and rejects stale or unavailable intents', () => {
+    const grass = 'dnd5e:ground:fantasy-kingdom:grass_01';
+    const dirt = 'dnd5e:ground:fantasy-kingdom:dirt_01';
+    const hash = 'a'.repeat(64);
+    groundPreview.catalog = {
+      schemaVersion: 1,
+      styles: [grass, dirt].map((ref) => ({
+        ref,
+        displayName: ref === grass ? 'Grass' : 'Dirt',
+        diffuse: `ground/images/${hash}.png`,
+        sha256: hash,
+        width: 2048,
+        height: 2048,
+        worldUnitsPerRepeat: 6,
+      })),
+    };
+    const storage = new MemoryStorage(seed());
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          home: 'build',
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const region = session.document.draft.room.regions.find(
+      (r) => regionCells(r).length >= 2
+    )!;
+    const painted = regionCells(region).slice(0, 2);
+    const original = session.document;
+    const stale = session.groundEditing;
+    act(() =>
+      expect(session.groundEditing.setBase(region.id, grass)).toBe(true)
+    );
+    act(() => expect(stale.paint(region.id, painted, dirt)).toBe(false));
+    const withBase = session.document;
+    const writes = storage.roomWrites();
+    act(() =>
+      expect(session.groundEditing.paint(region.id, painted, dirt)).toBe(true)
+    );
+    const withPaint = session.document;
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(
+      withPaint.draft.room.regions.find((r) => r.id === region.id)?.ground
+    ).toMatchObject({ baseRef: grass, paint: [{ ref: dirt }] });
+    expect(cellOwners(withPaint.draft)).toEqual(cellOwners(original.draft));
+    expect(withPaint.scope).toEqual(original.scope);
+    act(() => session.undo());
+    expect(session.document).toEqual(withBase);
+    act(() => session.redo());
+    expect(session.document).toEqual(withPaint);
+    act(() =>
+      expect(session.groundEditing.setBase(region.id, 'unavailable')).toBe(
+        false
+      )
+    );
+    expect(session.document).toEqual(withPaint);
+    const restored = decodeSingleRoomDungeon(
+      exportDraftYaml(session.document, 'ground-test')
+    ).draft;
+    expect(
+      restored.room.regions.find((r) => r.id === region.id)?.ground
+    ).toEqual(
+      withPaint.draft.room.regions.find((r) => r.id === region.id)?.ground
+    );
+  });
+  it('paints and erases through real Layout gestures without repainting floor ownership', async () => {
+    const grass = 'dnd5e:ground:fantasy-kingdom:grass_01';
+    const dirt = 'dnd5e:ground:fantasy-kingdom:dirt_01';
+    const hash = 'a'.repeat(64);
+    groundPreview.catalog = {
+      schemaVersion: 1,
+      styles: [grass, dirt].map((ref) => ({
+        ref,
+        displayName: ref === grass ? 'Grass' : 'Dirt',
+        diffuse: `ground/images/${hash}.png`,
+        sha256: hash,
+        width: 2048,
+        height: 2048,
+        worldUnitsPerRepeat: 6,
+      })),
+    };
+    const original = seed();
+    const region = original.draft.room.regions.find(
+      (r) => regionCells(r).length >= 2
+    )!;
+    const [first, second] = regionCells(region);
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Build'));
+    switchTo('Layout');
+    fireEvent.click(
+      screen.getByRole('radio', { name: `Paint into ${region.name}` })
+    );
+    fireEvent.click(button(`Edit region ${region.name}`));
+    fireEvent.change(screen.getByLabelText('Base ground'), {
+      target: { value: grass },
+    });
+    fireEvent.change(screen.getByLabelText('Ground paint appearance'), {
+      target: { value: dirt },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Paint ground' }));
+    const writes = storage.roomWrites();
+    gesture(first, second);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(cellOwners(storage.document().draft)).toEqual(
+      cellOwners(original.draft)
+    );
+    const ground = storage
+      .document()
+      .draft.room.regions.find((r) => r.id === region.id)?.ground;
+    expect(
+      surface()
+        .querySelector(`[data-region-fill="${region.id}"]`)
+        ?.getAttribute('fill-opacity')
+    ).toBe('0');
+    expect(ground?.baseRef).toBe(grass);
+    expect(ground?.paint?.[0].ref).toBe(dirt);
+    expect(
+      surface()
+        .querySelector(`[data-ground-cell="${first.q},${first.r}"]`)
+        ?.getAttribute('data-ground-ref')
+    ).toBe(dirt);
+    fireEvent.click(screen.getByRole('button', { name: 'Erase ground paint' }));
+    gesture(first);
+    expect(
+      surface()
+        .querySelector(`[data-ground-cell="${first.q},${first.r}"]`)
+        ?.getAttribute('data-ground-ref')
+    ).toBe(grass);
+  });
+});
+
 describe('Studio authoring homes through the real owner', () => {
   it('fences hidden 3D mutations and old callbacks across homes while table commits still use shared history', () => {
     const storage = new MemoryStorage(seed());
@@ -1831,9 +1986,9 @@ describe('Encounter Studio joined document boundary', () => {
     storage.failWrites = true;
     gesture(zero, two);
     expect(cells()).toEqual(['0,0', '2,0']);
-    expect(screen.getByRole('status').textContent).toBe(
-      'Room save failed — draft kept in memory'
-    );
+    expect(
+      screen.getAllByRole('status').map((node) => node.textContent)
+    ).toContain('Room save failed — draft kept in memory');
     expect(screen.getByText(/storage quota test failure/)).not.toBeNull();
     switchTo('3D');
     expect(viewport().roomAuthoring?.floorCells).toEqual([zero, two]);

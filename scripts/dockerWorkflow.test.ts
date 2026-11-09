@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { PNG } from 'pngjs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { withoutGitLocalEnvironment } from './testGitEnvironment';
@@ -141,11 +142,18 @@ async function makeFixture() {
     'generate-world-material-catalog.mjs',
     'generate-world-asset-catalog.mjs',
     'world-material-catalog.mjs',
+    'runtime-image-resources.mjs',
+    'generate-ground-catalog.mjs',
   ])
     await writeFile(
       join(webRoot, 'scripts', name),
       await readFile(join(repoRoot, 'scripts', name))
     );
+  await put(join(webRoot, 'package.json'), JSON.stringify({ type: 'module' }));
+  await put(
+    join(webRoot, 'src/rendering/groundCatalog.ts'),
+    await readFile(join(repoRoot, 'src/rendering/groundCatalog.ts'))
+  );
   await writeFile(
     join(webRoot, '.prettierrc'),
     await readFile(join(repoRoot, '.prettierrc'))
@@ -241,8 +249,69 @@ async function makeFixture() {
     { env: gitEnvironment }
   );
 
+  // Ground owns a third distinct pin: packaging must fetch it independently.
+  const groundBytes = PNG.sync.write({
+    width: 1,
+    height: 1,
+    data: Buffer.from([80, 120, 30, 255]),
+  });
+  const groundFile = `ground/images/${hash(groundBytes)}.png`;
+  const groundCatalog = {
+    schemaVersion: 1,
+    styles: [
+      {
+        ref: 'dnd5e:ground:test:grass',
+        displayName: 'Grass',
+        diffuse: groundFile,
+        sha256: hash(groundBytes),
+        width: 1,
+        height: 1,
+        worldUnitsPerRepeat: 6,
+      },
+    ],
+  };
+  await put(join(syntyRoot, groundFile), groundBytes);
+  await put(
+    join(syntyRoot, 'ground/manifest.json'),
+    JSON.stringify(groundCatalog)
+  );
+  await execFileAsync('git', ['add', '.'], {
+    cwd: providerRoot,
+    env: gitEnvironment,
+  });
+  await execFileAsync(
+    'git',
+    ['commit', '--quiet', '-m', 'ground publication'],
+    { cwd: providerRoot, env: gitEnvironment }
+  );
+  await execFileAsync(
+    join(webRoot, 'node_modules/.bin/tsx'),
+    [
+      join(webRoot, 'scripts/generate-ground-catalog.mjs'),
+      '--provider-root',
+      providerRoot,
+      '--output',
+      join(webRoot, 'src/generated/groundCatalogProvider.ts'),
+    ],
+    { env: gitEnvironment }
+  );
+  const laterGround = PNG.sync.write({
+    width: 1,
+    height: 1,
+    data: Buffer.from([200, 120, 30, 255]),
+  });
+  const laterGroundFile = `ground/images/${hash(laterGround)}.png`;
+  await rm(join(syntyRoot, groundFile));
+  await put(join(syntyRoot, laterGroundFile), laterGround);
+  groundCatalog.styles[0].diffuse = laterGroundFile;
+  groundCatalog.styles[0].sha256 = hash(laterGround);
+  await put(
+    join(syntyRoot, 'ground/manifest.json'),
+    JSON.stringify(groundCatalog)
+  );
+
   // The shallow clone starts at a later HEAD. Only the workflow's explicit
-  // fetch makes the old pin available, and the material pin owns ABSENCE.
+  // fetch makes the old pins available, and the material pin owns ABSENCE.
   await put(
     join(syntyRoot, 'world-assets', 'crypt-wall.glb'),
     'later-head-world'
@@ -290,6 +359,9 @@ exec "$REAL_GIT" "$@"
     webRoot,
     itemFile,
     itemBytes,
+    groundFile,
+    groundBytes,
+    laterGroundFile,
     env: {
       ...gitEnvironment,
       ASSETS_READ_TOKEN: 'fixture-token',
@@ -324,6 +396,41 @@ afterEach(async () => {
 });
 
 describe('production Docker private runtime packaging', () => {
+  it('checks generated pins independently of the calling directory and its ignore rules', async () => {
+    const fixture = await makeFixture();
+    await runAssetStep(await assetStepScript(), fixture, 'fixture-token');
+    const metadata = await readFile(
+      join(fixture.webRoot, 'src/generated/groundCatalogProvider.ts')
+    );
+    const outside = dirname(fixture.webRoot);
+    await put(join(outside, '.prettierignore'), 'web/**\n');
+    await execFileAsync(
+      'sh',
+      [
+        join(fixture.webRoot, 'scripts/sync-game-assets.sh'),
+        '--pinned-runtime',
+      ],
+      {
+        cwd: outside,
+        env: {
+          ...gitEnvironment,
+          RPG_GAME_ASSETS_PATH: fixture.providerRoot,
+          RPG_WEB_ROOT: fixture.webRoot,
+          ASSETS_SYNC_SKIP_UPDATE: '1',
+        },
+      }
+    );
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'src/generated/groundCatalogProvider.ts')
+      )
+    ).toEqual(metadata);
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'public/models/synty', fixture.groundFile)
+      )
+    ).toEqual(fixture.groundBytes);
+  });
   it('fails instead of building without the required provider secret', async () => {
     const script = await assetStepScript();
     const fixture = await makeFixture();
@@ -343,6 +450,16 @@ describe('production Docker private runtime packaging', () => {
     const fixture = await makeFixture();
 
     await runAssetStep(script, fixture, 'fixture-token');
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'public/models/synty', fixture.groundFile)
+      )
+    ).toEqual(fixture.groundBytes);
+    expect(
+      await exists(
+        join(fixture.webRoot, 'public/models/synty', fixture.laterGroundFile)
+      )
+    ).toBe(false);
     expect(
       await readFile(
         join(fixture.webRoot, 'public/models/synty', fixture.itemFile)

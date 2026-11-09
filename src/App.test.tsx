@@ -305,6 +305,11 @@ function createAppStudioSession(): EncounterStudioSession {
       disarm: vi.fn(),
       pick: vi.fn(() => true),
     },
+    groundEditing: {
+      catalog: { status: 'idle' },
+      setBase: vi.fn(() => true),
+      paint: vi.fn(() => true),
+    },
     regionEditing: {
       resolutions: [],
       createRegion: vi.fn(() => true),

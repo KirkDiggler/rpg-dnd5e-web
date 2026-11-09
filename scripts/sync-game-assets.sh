@@ -13,6 +13,8 @@
 #   --world-assets --check  validate the world runtime/catalog without changes
 #   --world-materials       mirror only the material subtree and generate its catalog
 #   --world-materials --check validate that catalog and its material resources
+#   --ground                mirror only ground and generate its exact provider pin
+#   --ground --check        validate the installed ground unit without writes
 #
 # Flags:
 #   --allow-provider-bump   adopt provider HEAD when it differs from the commit the
@@ -39,6 +41,7 @@ set -e
 RUNTIME_ASSETS_ONLY=0
 WORLD_ASSETS_ONLY=0
 WORLD_MATERIALS_ONLY=0
+GROUND_ONLY=0
 CHECK_ONLY=0
 PINNED_RUNTIME=0
 ALLOW_PROVIDER_BUMP=${RPG_ASSETS_ALLOW_PROVIDER_BUMP:-0}
@@ -48,6 +51,7 @@ for ARG in "$@"; do
     --pinned-runtime) PINNED_RUNTIME=1 ;;
     --world-assets) WORLD_ASSETS_ONLY=1 ;;
     --world-materials) WORLD_MATERIALS_ONLY=1 ;;
+    --ground) GROUND_ONLY=1 ;;
     --check) CHECK_ONLY=1 ;;
     --allow-provider-bump) ALLOW_PROVIDER_BUMP=1 ;;
     *)
@@ -60,19 +64,23 @@ if [ "$WORLD_ASSETS_ONLY" = "1" ] && [ "$WORLD_MATERIALS_ONLY" = "1" ]; then
   echo "ERROR: choose either --world-assets or --world-materials" >&2
   exit 2
 fi
-if [ "$RUNTIME_ASSETS_ONLY" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ] || [ "$PINNED_RUNTIME" = "1" ]; }; then
+if [ "$GROUND_ONLY" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ]; }; then
+  echo "ERROR: choose one ground, world-asset or material owner" >&2
+  exit 2
+fi
+if [ "$RUNTIME_ASSETS_ONLY" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$GROUND_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ] || [ "$PINNED_RUNTIME" = "1" ]; }; then
   echo "ERROR: --runtime-assets cannot be combined with other modes" >&2
   exit 2
 fi
-if [ "$PINNED_RUNTIME" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ]; }; then
+if [ "$PINNED_RUNTIME" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$GROUND_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ]; }; then
   echo "ERROR: --pinned-runtime cannot be combined with other modes" >&2
   exit 2
 fi
-if [ "$CHECK_ONLY" = "1" ] && [ "$WORLD_ASSETS_ONLY" != "1" ] && [ "$WORLD_MATERIALS_ONLY" != "1" ]; then
-  echo "ERROR: --check requires --world-assets or --world-materials" >&2
+if [ "$CHECK_ONLY" = "1" ] && [ "$WORLD_ASSETS_ONLY" != "1" ] && [ "$WORLD_MATERIALS_ONLY" != "1" ] && [ "$GROUND_ONLY" != "1" ]; then
+  echo "ERROR: --check requires --world-assets, --world-materials or --ground" >&2
   exit 2
 fi
-if [ "$ALLOW_PROVIDER_BUMP" = "1" ] && { [ "$RUNTIME_ASSETS_ONLY" = "1" ] || [ "$PINNED_RUNTIME" = "1" ] || [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ]; }; then
+if [ "$ALLOW_PROVIDER_BUMP" = "1" ] && { [ "$RUNTIME_ASSETS_ONLY" = "1" ] || [ "$PINNED_RUNTIME" = "1" ] || [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$GROUND_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ]; }; then
   echo "ERROR: --allow-provider-bump applies only to the default catalog sync" >&2
   exit 2
 fi
@@ -91,6 +99,9 @@ MATERIAL_CATALOG_OUTPUT="$WEB_ROOT/src/generated/worldMaterialCatalog.ts"
 MATERIAL_GENERATOR="$SCRIPT_DIR/generate-world-material-catalog.mjs"
 ITEM_CATALOG_OUTPUT="$WEB_ROOT/src/generated/itemThumbnailCatalog.ts"
 ITEM_GENERATOR="$SCRIPT_DIR/generate-item-thumbnail-catalog.mjs"
+GROUND_CATALOG_OUTPUT="$WEB_ROOT/src/generated/groundCatalogProvider.ts"
+GROUND_GENERATOR="$SCRIPT_DIR/generate-ground-catalog.mjs"
+GROUND_RUNNER="$SCRIPT_DIR/../node_modules/.bin/tsx"
 
 # A committed catalog records the exact provider commit it was generated from.
 # That commit is the pin: the mirror has to reproduce it, and only an explicit
@@ -157,6 +168,11 @@ NPC_PIN=$(catalog_commit "$NPC_CATALOG_OUTPUT")
 WORLD_PIN=$(catalog_commit "$WORLD_CATALOG_OUTPUT")
 MATERIAL_PIN=$(catalog_commit "$MATERIAL_CATALOG_OUTPUT")
 ITEM_PIN=$(catalog_commit "$ITEM_CATALOG_OUTPUT")
+GROUND_PIN=$(catalog_commit "$GROUND_CATALOG_OUTPUT")
+if [ -f "$GROUND_CATALOG_OUTPUT" ] && [ -z "$GROUND_PIN" ]; then
+  echo "ERROR: ground catalog must carry an exact provider pin" >&2
+  exit 1
+fi
 if [ -f "$ITEM_CATALOG_OUTPUT" ] && [ -z "$ITEM_PIN" ]; then
   echo "ERROR: item thumbnail catalog must carry an exact provider pin" >&2
   exit 1
@@ -166,8 +182,8 @@ if [ -f "$MATERIAL_CATALOG_OUTPUT" ] && [ -z "$MATERIAL_PIN" ]; then
   exit 1
 fi
 echo "Resolved clean rpg-game-assets provider checkout at $ASSETS_HEAD"
-if [ -n "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN" ]; then
-  echo "Committed catalogs pin provider: customization ${CHARACTER_PIN:-none}, NPC appearance ${NPC_PIN:-none}, world ${WORLD_PIN:-none}, materials ${MATERIAL_PIN:-none}"
+if [ -n "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN$GROUND_PIN" ]; then
+  echo "Committed catalogs pin provider: customization ${CHARACTER_PIN:-none}, NPC appearance ${NPC_PIN:-none}, world ${WORLD_PIN:-none}, materials ${MATERIAL_PIN:-none}, ground ${GROUND_PIN:-none}"
 else
   echo "Committed catalogs carry no provider pin yet"
 fi
@@ -195,38 +211,49 @@ sync_runtime_root() {
     "$SRC/" "$DEST/"
 }
 
-# Material adoption owns only its subtree and generated catalog. Validate the
-# complete provider unit before rsync, then the installed bytes before moving
-# the tracked pin. An absent catalog explicitly mirrors an empty owned subtree.
-if [ "$WORLD_MATERIALS_ONLY" = "1" ]; then
-  MATERIAL_SRC="$ASSETS_DIR/harness/models/synty/world-materials"
-  MATERIAL_ROOT="$WEB_ROOT/public/models/synty"
-  MATERIAL_DEST="$MATERIAL_ROOT/world-materials"
-  for ENTRY in "$WEB_ROOT/public" "$WEB_ROOT/public/models" "$MATERIAL_ROOT" "$MATERIAL_DEST"; do
+# Image-owner adoption validates before touching its scoped mirror, then checks
+# installed bytes before moving the tracked pin. Absence owns an empty subtree.
+if [ "$WORLD_MATERIALS_ONLY" = "1" ] || [ "$GROUND_ONLY" = "1" ]; then
+  RESOURCE_LABEL=material
+  RESOURCE_SUBTREE=world-materials
+  RESOURCE_GENERATOR=$MATERIAL_GENERATOR
+  RESOURCE_OUTPUT=$MATERIAL_CATALOG_OUTPUT
+  RESOURCE_RUNNER=node
+  if [ "$GROUND_ONLY" = "1" ]; then
+    RESOURCE_LABEL=ground
+    RESOURCE_SUBTREE=ground
+    RESOURCE_GENERATOR=$GROUND_GENERATOR
+    RESOURCE_OUTPUT=$GROUND_CATALOG_OUTPUT
+    RESOURCE_RUNNER=$GROUND_RUNNER
+  fi
+  RESOURCE_SRC="$ASSETS_DIR/harness/models/synty/$RESOURCE_SUBTREE"
+  RESOURCE_ROOT="$WEB_ROOT/public/models/synty"
+  RESOURCE_DEST="$RESOURCE_ROOT/$RESOURCE_SUBTREE"
+  for ENTRY in "$WEB_ROOT/public" "$WEB_ROOT/public/models" "$RESOURCE_ROOT" "$RESOURCE_DEST"; do
     if [ -L "$ENTRY" ] || { [ -e "$ENTRY" ] && [ ! -d "$ENTRY" ]; }; then
-      echo "ERROR: material runtime root must be a real directory: $ENTRY" >&2
+      echo "ERROR: $RESOURCE_LABEL runtime root must be a real directory: $ENTRY" >&2
       exit 1
     fi
   done
   if [ "$CHECK_ONLY" = "1" ]; then
-    node "$MATERIAL_GENERATOR" --provider-root "$ASSETS_DIR" --runtime-root "$MATERIAL_ROOT" --output "$MATERIAL_CATALOG_OUTPUT" --check
+    "$RESOURCE_RUNNER" "$RESOURCE_GENERATOR" --provider-root "$ASSETS_DIR" --runtime-root "$RESOURCE_ROOT" --output "$RESOURCE_OUTPUT" --check
     exit 0
   fi
-  mkdir -p "$(dirname "$MATERIAL_CATALOG_OUTPUT")"
-  MATERIAL_STAGE=$(mktemp "$WEB_ROOT/src/generated/.world-materials.XXXXXX")
-  MATERIAL_EMPTY=$(mktemp -d "${TMPDIR:-/tmp}/rpg-empty-materials.XXXXXX")
-  trap 'rm -f "$MATERIAL_STAGE"; rmdir "$MATERIAL_EMPTY"' EXIT HUP INT TERM
-  node "$MATERIAL_GENERATOR" --provider-root "$ASSETS_DIR" --output "$MATERIAL_STAGE"
-  if [ -d "$MATERIAL_SRC" ]; then
-    sync_runtime_root "$MATERIAL_SRC" "$MATERIAL_DEST"
+  mkdir -p "$(dirname "$RESOURCE_OUTPUT")"
+  RESOURCE_STAGE=$(mktemp "$WEB_ROOT/src/generated/.$RESOURCE_SUBTREE.XXXXXX")
+  RESOURCE_EMPTY=$(mktemp -d "${TMPDIR:-/tmp}/rpg-empty-$RESOURCE_SUBTREE.XXXXXX")
+  trap 'rm -f "$RESOURCE_STAGE"; rmdir "$RESOURCE_EMPTY"' EXIT HUP INT TERM
+  "$RESOURCE_RUNNER" "$RESOURCE_GENERATOR" --provider-root "$ASSETS_DIR" --output "$RESOURCE_STAGE"
+  if [ -d "$RESOURCE_SRC" ]; then
+    sync_runtime_root "$RESOURCE_SRC" "$RESOURCE_DEST"
   else
-    sync_runtime_root "$MATERIAL_EMPTY" "$MATERIAL_DEST"
+    sync_runtime_root "$RESOURCE_EMPTY" "$RESOURCE_DEST"
   fi
-  node "$MATERIAL_GENERATOR" --provider-root "$ASSETS_DIR" --runtime-root "$MATERIAL_ROOT" --output "$MATERIAL_STAGE"
-  mv -f "$MATERIAL_STAGE" "$MATERIAL_CATALOG_OUTPUT"
-  rmdir "$MATERIAL_EMPTY"
+  "$RESOURCE_RUNNER" "$RESOURCE_GENERATOR" --provider-root "$ASSETS_DIR" --runtime-root "$RESOURCE_ROOT" --output "$RESOURCE_STAGE"
+  mv -f "$RESOURCE_STAGE" "$RESOURCE_OUTPUT"
+  rmdir "$RESOURCE_EMPTY"
   trap - EXIT HUP INT TERM
-  echo "Done. material resources and their exact generated pin are current."
+  echo "Done. $RESOURCE_LABEL resources and their exact generated pin are current."
   exit 0
 fi
 
@@ -314,8 +341,8 @@ PINNED_MIRROR_ROOT=
 # describe. Each catalog governs its own subtree, so the mirror is a union:
 # pinned subtrees from their own commits and everything else from the clean
 # provider checkout. Nothing here touches the provider worktree or its HEAD.
-if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$MATERIAL_PIN$ITEM_PIN" ]; }; then
-  if [ -z "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN$ITEM_PIN" ]; then
+if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$MATERIAL_PIN$ITEM_PIN$GROUND_PIN" ]; }; then
+  if [ -z "$CHARACTER_PIN$NPC_PIN$WORLD_PIN$MATERIAL_PIN$ITEM_PIN$GROUND_PIN" ]; then
     echo "ERROR: --pinned-runtime needs a committed catalog that pins a provider commit" >&2
     echo "       Establish one deliberately with: npm run assets:sync:bump" >&2
     exit 1
@@ -337,11 +364,11 @@ if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$
   }
 
   # Default customization/NPC adoption still owns only those catalogs; preserve
-  # the separately adopted material pin rather than copying new HEAD materials
+  # separately adopted material/item/ground pins rather than copying HEAD bytes
   # behind unchanged metadata. Explicit --runtime-assets retains its HEAD meaning.
-  UNION_PINS="$MATERIAL_PIN $ITEM_PIN"
+  UNION_PINS="$MATERIAL_PIN $ITEM_PIN $GROUND_PIN"
   if [ "$PINNED_RUNTIME" = "1" ]; then
-    UNION_PINS="$CHARACTER_PIN $NPC_PIN $WORLD_PIN $MATERIAL_PIN $ITEM_PIN"
+    UNION_PINS="$CHARACTER_PIN $NPC_PIN $WORLD_PIN $MATERIAL_PIN $ITEM_PIN $GROUND_PIN"
   fi
   NEEDS_UNION=0
   for PIN in $UNION_PINS; do
@@ -375,8 +402,9 @@ if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$
     }
 
     # Catalog-to-subtree contract: customization and NPC appearance each own one
-    # subtree; the world catalog owns world-assets and its thumbnails. Every other synty entry and
-    # the custom dice roots carry no committed pin and stay at provider HEAD.
+    # subtree; the world catalog owns world-assets and its thumbnails. Material,
+    # item-thumbnail and ground owners retain their independent pins in either
+    # catalog-sync mode. Other entries and custom dice stay at provider HEAD.
     if [ "$PINNED_RUNTIME" = "1" ]; then
       overlay_pinned_subtree "$CHARACTER_PIN" characters
       overlay_pinned_subtree "$NPC_PIN" npcs
@@ -385,6 +413,7 @@ if [ "$PINNED_RUNTIME" = "1" ] || { [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$
     fi
     overlay_pinned_subtree "$MATERIAL_PIN" world-materials 1
     overlay_pinned_subtree "$ITEM_PIN" thumbnails/items
+    overlay_pinned_subtree "$GROUND_PIN" ground 1
   fi
 fi
 
@@ -405,6 +434,12 @@ verify_item_pin() {
   fi
 }
 verify_item_pin "$SYNTY_SRC"
+verify_ground_pin() {
+  if [ "$RUNTIME_ASSETS_ONLY" != "1" ] && [ -n "$GROUND_PIN" ]; then
+    "$GROUND_RUNNER" "$GROUND_GENERATOR" --provider-root "$ASSETS_DIR" --check-pin "$GROUND_PIN" --runtime-root "$1" --output "$GROUND_CATALOG_OUTPUT"
+  fi
+}
+verify_ground_pin "$SYNTY_SRC"
 
 # Preflight the complete approved boundary before rsync --delete can mutate
 # either destination. Runtime roots and required dice files must be real
@@ -482,6 +517,7 @@ NODE
   sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
   verify_material_pin "$SYNTY_DEST"
   verify_item_pin "$SYNTY_DEST"
+  verify_ground_pin "$SYNTY_DEST"
   if [ "$PINNED_RUNTIME" = "1" ]; then
     echo "Done. public/models/{synty,custom-dice}/ reproduce the subtrees pinned by the committed catalogs."
   else
@@ -538,6 +574,7 @@ sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
 verify_material_pin "$SYNTY_DEST"
 verify_item_pin "$SYNTY_DEST"
+verify_ground_pin "$SYNTY_DEST"
 "$NPC_CATALOG_RUNNER" "$NPC_CATALOG_GENERATOR" \
   --provider-root "$ASSETS_DIR" \
   --selection "$NPC_SELECTION" \

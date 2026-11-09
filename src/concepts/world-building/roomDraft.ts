@@ -23,6 +23,11 @@ import {
 } from './creatureStates';
 import { loadDungeonSource, saveDungeonSource } from './dungeonSources';
 import { requiresRead } from './predicateNot';
+import {
+  pruneRegionGround,
+  validateRegionGround,
+  type RegionGround,
+} from './regionGround';
 import { fromRows, rowCellCount, toRows, type RoomCellRow } from './regionRuns';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
@@ -263,6 +268,8 @@ export interface RoomRegion {
   id: string;
   name: string;
   lighting: RoomLighting;
+  /** Optional base and explicit paint; absence retains the existing floor. */
+  ground?: RegionGround;
   /** Pointy-top axial cells as canonical row runs (`regionRuns.ts`). */
   cells: RoomCellRow[];
 }
@@ -591,7 +598,11 @@ function withOwners(
     const rows = toRows(byRegion.get(region.id)!);
     if (JSON.stringify(rows) === JSON.stringify(region.cells)) return region;
     changed = true;
-    return { ...region, cells: rows };
+    const ground = pruneRegionGround(region.ground, byRegion.get(region.id)!);
+    const nextRegion: RoomRegion = { ...region, cells: rows };
+    if (ground === undefined) delete nextRegion.ground;
+    else nextRegion.ground = ground;
+    return nextRegion;
   });
   if (!changed) return draft;
   return { ...draft, room: { ...draft.room, regions: next } };
@@ -1423,7 +1434,7 @@ function validateCoordinateFrame(frame: Record<string, unknown>): void {
   }
 }
 
-const REGION_KEYS = ['id', 'name', 'lighting', 'cells'] as const;
+const REGION_KEYS = ['id', 'name', 'lighting', 'cells', 'ground'] as const;
 /** The coordinate frame and room keys this codec reads; any other is carried
  * (rpg-project#857). */
 const FRAME_KEYS = [
@@ -1511,6 +1522,11 @@ function validateRegions(value: unknown): RoomRegion[] {
     return carryUnknownKeys(input, REGION_KEYS, {
       id: input.id,
       name: input.name,
+      ...(Object.hasOwn(input, 'ground')
+        ? {
+            ground: validateRegionGround(input.ground, cells, `${path}.ground`),
+          }
+        : {}),
       lighting: carryUnknownKeys(lighting, ['intensity'], { intensity }),
       cells: rows.map((row) => ({
         r: row.r,

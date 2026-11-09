@@ -33,6 +33,8 @@
     "world-assets:check": "bash scripts/sync-game-assets.sh --world-assets --check",
     "world-materials:sync": "sh scripts/sync-game-assets.sh --world-materials",
     "world-materials:check": "sh scripts/sync-game-assets.sh --world-materials --check",
+    "ground:sync": "sh scripts/sync-game-assets.sh --ground",
+    "ground:check": "sh scripts/sync-game-assets.sh --ground --check",
     "assets:provider-pins": "node scripts/asset-provider-pins.mjs",
     "props:sync": "npm run assets:sync:bump && node scripts/generate-prop-catalog.mjs",
     "props:check": "node scripts/generate-prop-catalog.mjs --check",

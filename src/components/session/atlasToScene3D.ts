@@ -94,6 +94,7 @@ import {
   litWeight,
   type CellKnowledge,
 } from './cellKnowledge';
+import { groundRefsForAtlas } from './groundAppearance';
 import { positionToCube, worldPositionOf } from './positionBridge';
 import {
   applyPropPresentations,
@@ -174,6 +175,8 @@ export interface SceneExit3D {
 
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
+  /** Explicitly resolved ground looks on already-delivered floor cells. */
+  groundRefs?: ReadonlyMap<string, string>;
   props: SceneProp3D[];
   /** Supplied render records, not an authored scene or a visibility calculation. */
   propPresentations?: readonly PropPresentation[];
@@ -727,6 +730,7 @@ export function buildScene3D(
 
   return {
     floorTiles,
+    groundRefs: groundRefsForAtlas(atlas.regions, new Set(floorTiles.keys())),
     props,
     archetypes,
     lighting,

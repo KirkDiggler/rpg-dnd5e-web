@@ -323,6 +323,34 @@ middleware, never a production build. Candidate geometry must match the pinned
 GLB. A working preview is not appearance/scale acceptance or publication. These
 settings are Studio-only; no permitted Play layout or proto delivery is implied.
 
+## Region ground (rpg-project#874)
+
+`room.room.regions[].ground` optionally carries a `baseRef` and explicit
+`paint:[{ref,cells}]`, using the same canonical row runs as region cells.
+Absence retains existing ground. Painting assigns an appearance only to existing
+cells of the active region, never changes their owner, and does not create floor.
+A region base change preserves explicit paint, including paint equal to the old
+base. Erasing paint restores that region's current base. Floor erasure or transfer
+prunes departing-region paint; ordinary history restores the whole earlier draft.
+
+The base picker and Layout ground paint/erase use the current document owner's
+mutation guards and one transaction per change/stroke. Missing explicit styles
+remain explicit and visibly unavailable; no stone fallback repairs them. The
+shared flat surface uses absolute-world texture phase. Authoring outlines and
+grid remain, while fill tints do not recolor authored ground. No actor elevation,
+terrain-following movement, material-derived mechanics or background audio is
+introduced. JSON/YAML persistence retains the base/paint distinction.
+
+Ground candidate previews use an explicitly configured verified mount from
+private staging, not copies in public build input. It serves development and
+explicit `bench` preview mode only; ordinary production preview does not mount
+private staging. Normal delivery is the independently pinned ground subtree,
+validated by the existing asset-sync path and identified by generated provider
+commit/manifest digest metadata. Runtime metadata must match that digest;
+only a dev/bench preview may explicitly override it. A development pin is not
+proof of a merged release. Publication, recipient-specific Play delivery and
+final visual acceptance remain separate gates, tracked by the slice.
+
 ## Regions are the floor (rpg-project#725)
 
 The floor is the union of `room.room.regions`: each region is `{id, name,

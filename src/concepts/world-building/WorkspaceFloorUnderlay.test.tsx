@@ -2,6 +2,7 @@ import type { DungeonShellFloorProfile } from '@/rendering/dungeonShellManifest'
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import type { RoomRegion } from './roomDraft';
 
 const textureState = vi.hoisted(() => ({
   base: undefined as THREE.Texture | undefined,
@@ -9,12 +10,17 @@ const textureState = vi.hoisted(() => ({
   pending: new Promise<never>(() => {}),
 }));
 
+function readFixtureTexture() {
+  if (textureState.mode === 'pending') throw textureState.pending;
+  if (textureState.mode === 'error') throw new Error('texture failed');
+  return textureState.base;
+}
 vi.mock('@react-three/drei', () => ({
-  useTexture: vi.fn(() => {
-    if (textureState.mode === 'pending') throw textureState.pending;
-    if (textureState.mode === 'error') throw new Error('texture failed');
-    return textureState.base;
-  }),
+  useTexture: vi.fn(readFixtureTexture),
+}));
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: readFixtureTexture,
 }));
 
 vi.mock('@/components/session/useDungeonShellCatalog', () => ({
@@ -31,6 +37,26 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
           },
         },
       },
+    },
+  }),
+}));
+
+vi.mock('@/components/session/useGroundCatalog', () => ({
+  useGroundCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      schemaVersion: 1,
+      styles: [
+        {
+          ref: 'dnd5e:ground:fantasy-kingdom:grass_01',
+          displayName: 'Grass',
+          diffuse: `ground/images/${'a'.repeat(64)}.png`,
+          sha256: 'a'.repeat(64),
+          width: 2048,
+          height: 2048,
+          worldUnitsPerRepeat: 6,
+        },
+      ],
     },
   }),
 }));
@@ -55,6 +81,33 @@ beforeAll(() => {
 });
 
 describe('workspace floor underlay', () => {
+  it('replaces the old underlay with region-resolved ground rather than stacking surfaces', async () => {
+    textureState.mode = 'ready';
+    textureState.base = new THREE.Texture();
+    const regions: RoomRegion[] = [
+      {
+        id: 'court',
+        name: 'Court',
+        lighting: { intensity: 1 },
+        cells: [{ r: 0, q: [[0, 1]] }],
+        ground: { baseRef: 'dnd5e:ground:fantasy-kingdom:grass_01' },
+      },
+    ];
+    const view = await ReactThreeTestRenderer.create(
+      <WorkspaceFloorUnderlay
+        workspace={centeredRoomWorkspace(3, 3)}
+        regions={regions}
+      />
+    );
+    const ground = view.scene.findByProps({
+      name: 'ground-style-dnd5e:ground:fantasy-kingdom:grass_01',
+    }).instance as THREE.Mesh;
+    expect(ground.geometry.getAttribute('position').count).toBe(12);
+    expect(
+      view.scene.findAllByProps({ name: 'workspace-floor-underlay' })
+    ).toHaveLength(0);
+    await view.unmount();
+  });
   it('batches rectangle cells and disposes geometry replacements without retiring the still-live texture', async () => {
     textureState.mode = 'ready';
     const base = new THREE.Texture();

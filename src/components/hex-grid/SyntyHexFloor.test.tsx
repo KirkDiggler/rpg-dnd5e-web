@@ -5,10 +5,37 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { DungeonShellFloorProfile } from '../../rendering/dungeonShellManifest';
 
-const useTextureMock = vi.hoisted(() => vi.fn(() => new THREE.Texture()));
+const useTextureMock = vi.hoisted(() =>
+  vi.fn<(url: string) => THREE.Texture>(() => new THREE.Texture())
+);
+
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: (_loader: unknown, url: string) => useTextureMock(url),
+}));
 
 vi.mock('@react-three/drei', () => ({
   useTexture: useTextureMock,
+  Html: () => null,
+}));
+vi.mock('@/components/session/useGroundCatalog', () => ({
+  useGroundCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      schemaVersion: 1,
+      styles: [
+        {
+          ref: 'dnd5e:ground:fantasy-kingdom:grass_01',
+          displayName: 'Grass',
+          diffuse: `ground/images/${'a'.repeat(64)}.png`,
+          sha256: 'a'.repeat(64),
+          width: 2048,
+          height: 2048,
+          worldUnitsPerRepeat: 6,
+        },
+      ],
+    },
+  }),
 }));
 
 import { watchZoneCells } from '@/components/session/watchZoneCells';
@@ -109,6 +136,27 @@ function isCloseTo(a: THREE.Color, b: THREE.Color): boolean {
 }
 
 describe('SyntyHexFloor surface placement', () => {
+  it('replaces styled cells with the shared level ground without stacking the old tile', async () => {
+    const ref = 'dnd5e:ground:fantasy-kingdom:grass_01';
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        groundRefs={new Map([['0,0,0', ref]])}
+        hexSize={1}
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'floor-tile-0,0,0' })
+    ).toHaveLength(0);
+    expect(
+      renderer.scene.findAllByProps({ name: 'floor-tile-1,-1,0' })
+    ).toHaveLength(1);
+    const mesh = renderer.scene.findByProps({ name: `ground-style-${ref}` })
+      .instance as THREE.Mesh;
+    expect(mesh.position.y).toBe(DUNGEON_SURFACE_Y);
+    expect(mesh.geometry.getAttribute('position').count).toBe(6);
+    await renderer.unmount();
+  });
   it('renders its flat tiles at the dungeon surface height', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <SyntyHexFloor floorTiles={tiles([0, 0, 0])} hexSize={1} />

@@ -28,6 +28,7 @@ import {
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
 import { StudioCheckRows } from './StudioCheckRows';
+import { StudioGroundControls } from './StudioGroundControls';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
 import type {
@@ -858,7 +859,16 @@ function RegionView({
       activeRegionId={activeRegionId}
       onMakeActive={onMakeActive}
       extras={
-        <StudioRegionFinishes region={arrange.region} session={session} />
+        <>
+          <StudioGroundControls
+            region={arrange.region}
+            catalog={session.groundEditing.catalog}
+            onSetBase={(ref) =>
+              session.groundEditing.setBase(arrange.region.id, ref)
+            }
+          />
+          <StudioRegionFinishes region={arrange.region} session={session} />
+        </>
       }
     />
   );

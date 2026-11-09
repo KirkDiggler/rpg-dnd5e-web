@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { availableParallelism } from 'node:os';
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
+import { groundPreviewPlugin } from './scripts/groundPreviewPlugin';
 import { itemArtPreviewPlugin } from './scripts/itemArtPreviewPlugin';
 import { worldMaterialPreviewPlugin } from './scripts/worldMaterialPreviewPlugin';
 
@@ -37,6 +38,7 @@ export default defineConfig({
       resolve(__dirname, '.local/world-material-preview')
     ),
     itemArtPreviewPlugin(resolve(__dirname, '.local/item-art-preview')),
+    groundPreviewPlugin(process.env.RPG_GROUND_PREVIEW_ROOT),
   ],
   define: {
     __BUILD_ID__: JSON.stringify(buildId()),
