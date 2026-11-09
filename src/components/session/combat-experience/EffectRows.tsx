@@ -36,6 +36,7 @@ export function EffectRows({
           className={styles.effectRow}
           role="listitem"
           data-effect-tone={line.tone}
+          data-effect-source-id={line.sourceId}
         >
           <span className={styles.effectRowHead}>
             <strong className={styles.effectName}>{line.name}</strong>

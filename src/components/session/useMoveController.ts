@@ -3,12 +3,21 @@ import type { CubeCoord } from '../hex-grid/hexMath';
 import type { MoveKind } from '../hex-grid/moveKind';
 import {
   beginRoute,
+  continuedWalk,
+  continueRoute,
+  emptyContinuations,
   emptyMovements,
   forgetRoute,
   forgetUnsighted,
+  moveAnswered,
+  moveDispatched,
+  moveFailed,
   movementPainted,
   stepArrived,
+  type Continuations,
+  type MoveAnswer,
   type Movements,
+  type OwnWalk,
 } from './moveController';
 
 export interface UseMoveControllerResult {
@@ -27,6 +36,24 @@ export interface UseMoveControllerResult {
   ) => void;
   readonly forgetUnsighted: (sighted: ReadonlySet<string>) => void;
   readonly forgetRoute: (member: string, seq: number) => void;
+  /** `member` sent a Move: own acts that continue nothing are held until its
+   * answer (`moveController.moveDispatched`). */
+  readonly moveDispatched: (member: string) => void;
+  /** `member`'s Move failed with no answer: what it held is dropped. */
+  readonly moveFailed: (member: string) => void;
+  /** A Move answer for `member` landed: its steps begin a new journey, the
+   * controller records whether the walk goes on after it, and own acts held
+   * while it was in flight that continue it are appended
+   * (`moveController.moveAnswered`). */
+  readonly answerMove: (member: string, answer: MoveAnswer) => void;
+  /** One of `member`'s own walk acts off the stream. When it continues their
+   * answered walk, its new cells extend the journey (`continueRoute`) and the
+   * exact sequence and route length to wait on are returned; undefined when
+   * it continues nothing (rpg-project#890). */
+  readonly continueOwnWalk: (
+    member: string,
+    walk: OwnWalk
+  ) => { readonly seq: number; readonly length: number } | undefined;
 }
 
 interface Scope {
@@ -54,9 +81,14 @@ export function useMoveController(
   }));
   const stateRef = useRef(state);
   const sequencesRef = useRef(new Map<string, number>());
+  // Where each member's answered walk picks up on the stream. A ref, not
+  // state: nothing renders from it; it only decides which own walk acts
+  // extend a journey. Scoped with everything else here.
+  const continuationsRef = useRef<Continuations>(emptyContinuations());
   if (stateRef.current.scope !== scope) {
     stateRef.current = { scope, movements: EMPTY_MOVEMENTS };
     sequencesRef.current = new Map();
+    continuationsRef.current = emptyContinuations();
   }
   const update = useCallback(
     (change: (current: Movements) => Movements): Movements | undefined => {
@@ -119,6 +151,51 @@ export function useMoveController(
     },
     [update]
   );
+  const dispatched = useCallback(
+    (actor: string) => {
+      if (stateRef.current.scope !== scope) return;
+      continuationsRef.current = moveDispatched(
+        continuationsRef.current,
+        actor
+      );
+    },
+    [scope]
+  );
+  const failed = useCallback(
+    (actor: string) => {
+      if (stateRef.current.scope !== scope) return;
+      continuationsRef.current = moveFailed(continuationsRef.current, actor);
+    },
+    [scope]
+  );
+  const answered = useCallback(
+    (actor: string, answer: MoveAnswer) => {
+      if (stateRef.current.scope !== scope) return;
+      const result = moveAnswered(continuationsRef.current, actor, answer);
+      continuationsRef.current = result.continuations;
+      begin(actor, answer.route);
+      if (result.cells.length > 0)
+        allocate(actor, (previous) =>
+          continueRoute(previous, actor, result.cells)
+        );
+    },
+    [allocate, begin, scope]
+  );
+  const continueOwn = useCallback(
+    (actor: string, walk: OwnWalk) => {
+      if (stateRef.current.scope !== scope) return undefined;
+      const continued = continuedWalk(continuationsRef.current, actor, walk);
+      continuationsRef.current = continued.continuations;
+      if (continued.cells.length === 0) return undefined;
+      const seq = allocate(actor, (previous) =>
+        continueRoute(previous, actor, continued.cells)
+      );
+      const movement = stateRef.current.movements.get(actor);
+      if (seq === undefined || movement?.seq !== seq) return undefined;
+      return { seq, length: movement.route.length };
+    },
+    [allocate, scope]
+  );
   const movements = state.scope === scope ? state.movements : EMPTY_MOVEMENTS;
   return useMemo(
     () => ({
@@ -128,7 +205,22 @@ export function useMoveController(
       movementPainted: painted,
       forgetUnsighted: forget,
       forgetRoute: discard,
+      moveDispatched: dispatched,
+      moveFailed: failed,
+      answerMove: answered,
+      continueOwnWalk: continueOwn,
     }),
-    [movements, begin, step, painted, forget, discard]
+    [
+      movements,
+      begin,
+      step,
+      painted,
+      forget,
+      discard,
+      dispatched,
+      failed,
+      answered,
+      continueOwn,
+    ]
   );
 }

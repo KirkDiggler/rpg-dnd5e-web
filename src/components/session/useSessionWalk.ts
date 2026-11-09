@@ -31,6 +31,16 @@
  * callback fires — never released early — so a `GetWhere` still in flight
  * from BEFORE this move can't land afterward and snap the display back to
  * a stale position (see the effect below).
+ *
+ * THE WALK MAY GO ON AFTER THE ANSWER (rpg-project#879 S1, #890). A Move can
+ * answer with only the steps up to the point the world's pace comes due
+ * (`MoveResponse.continues`); the rest arrives as this member's own walk acts
+ * on the stream, which the move controller plays as a continuation of the
+ * same journey. This hook only reports the answer (`onAnswered`) and keeps
+ * `busy` exactly as before: released once the ANSWER's steps are painted and
+ * `GetWhere` reconciles, never held for the continuation. The server
+ * serialises verbs itself (a next verb waits for the world to finish), so
+ * holding input here would only make the player wait twice.
  */
 import { sessionClient } from '@/api/client';
 import type { CubeCoord } from '@/components/hex-grid/hexMath';
@@ -39,6 +49,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasApproach, findAtlasBump, findAtlasPath } from './atlasPath';
 import { isStaleDeclarationRefusal } from './combat-experience/selection';
+import type { MoveAnswer } from './moveController';
 import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
 
@@ -84,7 +95,10 @@ export interface UseSessionWalkResult {
    * Takes no sequence: `busy` already admits exactly one walk at a time,
    * so a completion arriving while busy IS this walk. The sequence itself
    * now belongs to `moveController.ts`, which keeps one counter for every
-   * actor rather than one per feed. */
+   * actor rather than one per feed. A report outside the window between an
+   * answer's route beginning and its first painted report is ignored: it is
+   * a continuation's or an older walk's, never the Move `busy` is holding
+   * for. */
   onWalkAnimationComplete: () => void;
   /** Walk up to a body and into his cell (`findAtlasBump`, rpg-project#835
    * R8): the server refuses the last step and writes the bump. The same
@@ -121,11 +135,19 @@ export function useSessionWalk(
    * state is published. The route uses this boundary to revoke stale command
    * authority and queue Turn/Afford reconciliation. */
   onMoveAccepted?: () => void,
-  /** Hands the move's REAL steps to the shared move controller, which owns
-   * the route and its sequence for every actor alike (rpg-dnd5e-web#961).
-   * This hook keeps the command path — the RPC, refusals, `busy` — and no
-   * longer owns any animation state. */
-  onRouteBegan: (route: readonly CubeCoord[]) => void = () => {}
+  /** Hands every accepted Move answer to the shared move controller: the
+   * move's REAL steps, which it owns as the route and its sequence for every
+   * actor alike (rpg-dnd5e-web#961), and whether the walk goes on after the
+   * answer (rpg-project#890). Called for an answer with no steps too, so a
+   * later answer always ends an earlier walk's continuation. This hook keeps
+   * the command path — the RPC, refusals, `busy` — and owns no animation
+   * state. */
+  onAnswered: (answer: MoveAnswer) => void = () => {},
+  /** A Move is about to be sent: the controller holds own walk acts that
+   * reach it before the answer does (rpg-project#890). */
+  onDispatched: () => void = () => {},
+  /** The Move failed with no answer: nothing held is its walk. */
+  onFailed: () => void = () => {}
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -135,8 +157,17 @@ export function useSessionWalk(
   const [notYourTurn, setNotYourTurn] = useState(false);
   // Read through a ref so a caller passing an inline closure cannot churn
   // `walkTo`'s dependency list.
-  const onRouteBeganRef = useRef(onRouteBegan);
-  onRouteBeganRef.current = onRouteBegan;
+  const onAnsweredRef = useRef(onAnswered);
+  onAnsweredRef.current = onAnswered;
+  const onDispatchedRef = useRef(onDispatched);
+  onDispatchedRef.current = onDispatched;
+  const onFailedRef = useRef(onFailed);
+  onFailedRef.current = onFailed;
+  // True only between an answer's route beginning and its painting: the one
+  // window in which a painted report from the local player is THIS walk's.
+  // A continuation's later painting, or an older walk finishing while the
+  // next Move is still in flight, must not release that Move's `busy`.
+  const awaitingPaintRef = useRef(false);
 
   // GetWhere is the source of truth. While idle, the display position
   // tracks it directly; while a walk is in flight (or its follow-up
@@ -186,10 +217,12 @@ export function useSessionWalk(
       const requestPath = path.slice(1).map(cubeToPosition);
 
       setBusy(true);
+      awaitingPaintRef.current = false;
       setMoveError(null);
       setNotYourTurn(false);
 
       let accepted = false;
+      onDispatchedRef.current();
       void (async () => {
         try {
           const response = await sessionClient.move({
@@ -209,6 +242,13 @@ export function useSessionWalk(
             .map((step) => positionToCube(step.position!));
           outcome?.accepted(steps.at(-1) ?? null);
           if (response.stopReason) setMoveError(response.stopReason);
+          // MOVEMENT_STATUS_CONTINUING is neither an error nor a stop: the
+          // walk goes on from the stream, and `stopReason` is empty.
+          onAnsweredRef.current({
+            route: steps,
+            continues: response.continues,
+            through: response.through,
+          });
 
           if (steps.length === 0) {
             // The walk did not move at all (e.g. the very first step was
@@ -220,7 +260,7 @@ export function useSessionWalk(
           }
 
           setDisplayPosition(steps[steps.length - 1]!);
-          onRouteBeganRef.current(steps);
+          awaitingPaintRef.current = true;
           // busy stays true — released by onWalkAnimationComplete once
           // the presentation finishes AND GetWhere reconciles.
         } catch (err) {
@@ -235,7 +275,10 @@ export function useSessionWalk(
             setMoveError(formatMoveError(err));
           }
           // A throw after acceptance is not a refusal: the server walked.
-          if (!accepted) outcome?.refused();
+          if (!accepted) {
+            onFailedRef.current();
+            outcome?.refused();
+          }
           setBusy(false);
         }
       })();
@@ -284,7 +327,8 @@ export function useSessionWalk(
   );
 
   const onWalkAnimationComplete = useCallback(() => {
-    if (!busy) return;
+    if (!busy || !awaitingPaintRef.current) return;
+    awaitingPaintRef.current = false;
     void (async () => {
       try {
         await refetchWhere();

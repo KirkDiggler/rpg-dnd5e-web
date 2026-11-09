@@ -338,6 +338,34 @@ const withEffects = (
   });
 
 describe('effect rows', () => {
+  it('preserves source identity through target answers and held rows without rekeying', () => {
+    const declaration = withEffects({
+      effects: [create(EffectRowSchema, { ...alpha, sourceId: 'ring-17' })],
+      candidates: [
+        create(TargetCandidateSchema, {
+          member: 'target-3',
+          effects: [
+            create(TargetEffectSchema, {
+              id: alpha.id,
+              state: EffectState.APPLIES,
+            }),
+          ],
+          heldEffects: [
+            create(EffectRowSchema, { ...beta, sourceId: 'caster-9' }),
+          ],
+        }),
+      ],
+    });
+    expect(effectLinesFor(declaration, 'target-3')[0]).toMatchObject({
+      id: alpha.id,
+      sourceId: 'ring-17',
+      state: EffectState.APPLIES,
+    });
+    expect(heldEffectLinesFor(declaration, 'target-3')[0]).toMatchObject({
+      id: beta.id,
+      sourceId: 'caster-9',
+    });
+  });
   it('projects effect rows verbatim', () => {
     const tooltip = buildActionTooltip(withEffects());
     expect(tooltip.effects).toEqual([
