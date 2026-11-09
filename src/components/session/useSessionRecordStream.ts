@@ -58,6 +58,8 @@ export function useSessionRecordStream(
       },
       retryDelayMs,
       rows: prior.rows,
+      symbols: prior.symbols,
+      related: prior.related,
       notice: prior.notice,
     });
     return () => feed.stop();
