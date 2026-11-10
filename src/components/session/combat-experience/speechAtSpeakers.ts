@@ -4,7 +4,8 @@
  *
  * A creature's answer that speaks to the viewer — the answer to their own
  * line (`answer-to-your-line`) or the line a barrier says when they bump him
- * (`answer-to-your-bump`) — shows as speech above the speaker, for as long as
+ * (`answer-to-your-bump`), or his hail when they walk up (`line-to-you`) —
+ * shows as speech above the speaker, for as long as
  * its notice is on screen. Nothing here decides who heard what: only rows the
  * toast policy already toasts, from acts the server sent, can speak.
  */
@@ -14,6 +15,7 @@ import type { CombatExperienceStoryExchange } from './types';
 const SPEECH_CASES: ReadonlySet<ToastCase> = new Set<ToastCase>([
   'answer-to-your-line',
   'answer-to-your-bump',
+  'line-to-you',
 ]);
 
 /** Each speaker's line on screen, by member id; the newest line wins. */

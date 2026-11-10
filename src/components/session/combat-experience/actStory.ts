@@ -229,11 +229,18 @@ export function buildActStory(
     });
     lastGroup = group;
   }
-  // One line, one toast: under a tag whose answer speaks to the viewer who
-  // bumped, the voice they also hear (`heard-sound`) does not toast again.
+  // One line, one toast: under a tag whose answer speaks to the viewer (the
+  // line a barrier says when bumped, a guard's hail), the anonymous voice
+  // they also hear (`heard-sound`) for that same line does not toast again.
+  // Tied by the act tag both acts carry, never by timing or text; the log
+  // keeps both rows.
   const spokenTags = new Set(
     story
-      .filter((row) => row.toastRule?.case === 'answer-to-your-bump')
+      .filter(
+        (row) =>
+          row.toastRule?.case === 'answer-to-your-bump' ||
+          row.toastRule?.case === 'line-to-you'
+      )
       .map((row) => row.group)
   );
   for (const [i, row] of story.entries()) {
