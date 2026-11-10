@@ -5191,6 +5191,7 @@ describe('S0 one selection across the homes', () => {
       'Intel',
       'Endings',
       'Concealments',
+      'Interactions',
       'Scenarios',
       'Facts',
     ]);
