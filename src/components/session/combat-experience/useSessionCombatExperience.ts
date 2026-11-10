@@ -59,7 +59,8 @@ import {
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
-import { speakLine, speakLinesFor } from './speakOptions';
+import { speakAddressOf, type HailFocus } from './speakAddress';
+import { sameSpeakTarget, speakLine, speakLinesFor } from './speakOptions';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -229,6 +230,11 @@ export interface UseSessionCombatExperienceResult {
   onStrike: (target: string) => void;
   /** Speak to a creature from its menu (rpg-project#872 D3). */
   onSpeakTo: (subject: string) => void;
+  /**
+   * The guard whose hail last opened the reply panel (rpg-project#923), for
+   * the camera to centre on once per opening. Null when no address stands.
+   */
+  hailFocus: HailFocus | null;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -451,6 +457,23 @@ export function useSessionCombatExperience({
     walked: boolean;
     arrived: boolean;
   } | null>(null);
+  /**
+   * THE HAIL (rpg-project#923). `hailDismissedRef` is the address the player
+   * closed (Escape or any cancel), kept only while that address stands
+   * without a break, so the panel does not spring back at him; in memory
+   * only, so a reload while addressed opens it again. `hailOpenRef` is the
+   * panel the hail itself opened, so the address ending closes it and only
+   * it. `standingAddressKeyRef` lets a cancel name the address it closes.
+   */
+  const hailDismissedRef = useRef<string | null>(null);
+  const hailOpenRef = useRef<{
+    key: string;
+    declarationId: string;
+    guard: string;
+  } | null>(null);
+  const standingAddressKeyRef = useRef<string | null>(null);
+  const hailSequenceRef = useRef(0);
+  const [hailFocus, setHailFocus] = useState<HailFocus | null>(null);
   const approachArgRef = useRef(approach);
   approachArgRef.current = approach;
   const reactInFlightRef = useRef(false);
@@ -481,6 +504,12 @@ export function useSessionCombatExperience({
     carryWorldMovementRef.current = false;
     approachRef.current = null;
     strikeRef.current = null;
+    // A cancel while a guard addresses this member closes his hail for as
+    // long as that address stands (rpg-project#923).
+    if (standingAddressKeyRef.current !== null) {
+      hailDismissedRef.current = standingAddressKeyRef.current;
+    }
+    hailOpenRef.current = null;
     setInteraction(EMPTY_INTERACTION);
     setTargeting(false);
   }, [setInteraction]);
@@ -1918,6 +1947,132 @@ export function useSessionCombatExperience({
     [member, setInteraction]
   );
 
+  /**
+   * THE HAIL OPENS THE PANEL (rpg-project#923). A fresh offer whose Speak row
+   * carries `address` arms that row on the addressing guard, exactly the state
+   * a Speak click and a click on him would leave, so the panel is the one the
+   * player already knows and a manual Speak is untouched.
+   *
+   * IT OPENS ONLY WHEN THE CLIENT IS IDLE ON THE WORLD CLOCK: the world clock,
+   * fresh authority, nothing armed (a free-roam walk arms nothing; Move is
+   * selected only on a turn), no cast option tray, no command in flight, no post-roll
+   * window, and no Speak approach or strike walk still waiting to settle. A
+   * choice the player is in the middle of is never yanked; the hail waits
+   * and opens once he is idle, while the address still stands.
+   *
+   * IT OPENS ONCE PER ADDRESS. A cancel while addressed (Escape, the close
+   * button) keeps it closed while that guard and interaction keep addressing
+   * him; a fresh offer without the address forgets that, so leaving and
+   * coming back is hailed again. Saying a line is not a cancel: when the next
+   * offer still carries the address, the panel opens on the guard's
+   * remaining lines.
+   *
+   * IT CLOSES WHEN THE ADDRESS ENDS, but only the panel the hail opened and
+   * only while it still shows that guard: a player who stepped back to the
+   * target list or chose something else keeps what he chose.
+   *
+   * Declared after the coherence check and the approach and strike settles,
+   * so on one commit it reads the state they leave and its write is the last.
+   */
+  const standingAddress = useMemo(
+    () => speakAddressOf(declarations),
+    [declarations]
+  );
+  useEffect(() => {
+    if (!authorityFresh) return;
+    const opened = hailOpenRef.current;
+    // Read at this render, before any teardown this commit queued: the panel
+    // the player was looking at when the offer changed.
+    const showingHail =
+      opened !== null &&
+      interaction.armedDeclarationId === opened.declarationId &&
+      sameSpeakTarget(interaction.speakTarget, {
+        case: 'memberId',
+        value: opened.guard,
+      });
+    // The hail's panel rendered and the player has since moved on (a line
+    // said, the target list, another verb): what shows now is his choice.
+    if (opened && !showingHail) hailOpenRef.current = null;
+
+    if (!standingAddress) {
+      standingAddressKeyRef.current = null;
+      hailDismissedRef.current = null;
+      hailOpenRef.current = null;
+      setHailFocus(null);
+      if (showingHail) {
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
+      }
+      return;
+    }
+
+    standingAddressKeyRef.current = standingAddress.key;
+    if (
+      hailDismissedRef.current !== null &&
+      hailDismissedRef.current !== standingAddress.key
+    ) {
+      hailDismissedRef.current = null;
+    }
+    if (hailDismissedRef.current === standingAddress.key) return;
+
+    const current = interactionRef.current;
+    const guard: SpeakTarget = {
+      case: 'memberId',
+      value: standingAddress.guard,
+    };
+    if (
+      current.armedDeclarationId === standingAddress.declaration.id &&
+      sameSpeakTarget(current.speakTarget, guard)
+    ) {
+      return;
+    }
+    const idle =
+      clock === ClockKind.WORLD &&
+      current.armedDeclarationId === null &&
+      current.optionDeclarationId == null &&
+      !attackInFlightRef.current &&
+      !activateInFlightRef.current &&
+      !castInFlightRef.current &&
+      !speakInFlightRef.current &&
+      !reactInFlightRef.current &&
+      !deathSaveInFlightRef.current &&
+      !endTurnInFlightRef.current &&
+      rollWindow === null &&
+      approachRef.current === null &&
+      strikeRef.current === null;
+    if (!idle) return;
+    if (
+      !standingAddress.declaration.available ||
+      speakLinesFor(standingAddress.declaration, guard).length === 0
+    ) {
+      return;
+    }
+    carryWorldMovementRef.current = false;
+    hailOpenRef.current = {
+      key: standingAddress.key,
+      declarationId: standingAddress.declaration.id,
+      guard: standingAddress.guard,
+    };
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      armedDeclarationId: standingAddress.declaration.id,
+      speakTarget: guard,
+    });
+    setTargeting(true);
+    hailSequenceRef.current += 1;
+    setHailFocus({
+      key: `hail\u0000${standingAddress.key}\u0000${hailSequenceRef.current}`,
+      guard: standingAddress.guard,
+    });
+  }, [
+    authorityFresh,
+    clock,
+    interaction,
+    rollWindow,
+    setInteraction,
+    standingAddress,
+  ]);
+
   // runActivate is held in a ref so onSelectDeclaration can call it without
   // taking it as a dependency: the two are mutually recursive through the
   // dock's single onSelect handler, and threading the callback through would
@@ -2594,6 +2749,7 @@ export function useSessionCombatExperience({
       onApproachTarget,
       onStrike,
       onSpeakTo,
+      hailFocus,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2631,6 +2787,7 @@ export function useSessionCombatExperience({
       onApproachTarget,
       onStrike,
       onSpeakTo,
+      hailFocus,
       onConfirmTargets,
       pacing.notice,
       pacing.monsterTurnIds,
