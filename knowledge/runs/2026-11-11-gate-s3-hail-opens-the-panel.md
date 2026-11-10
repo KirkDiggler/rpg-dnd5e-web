@@ -8,6 +8,7 @@ Slice [rpg-project#923](https://github.com/KirkDiggler/rpg-project/issues/923) o
 - The hail centres the camera on the guard through the keyed presentation focus a monster's turn start uses — [rpg-dnd5e-web#1407](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1407).
 - The studio's Encounter home gains Interactions, with "Hails within N cells" bounded 1 to 3, and a served-castle round trip that keeps `approach` and `on: approached` — [rpg-dnd5e-web#1407](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1407).
 - The guard's hail line toasts to the hailed player as speech at him (`line-to-you`), read off `TableAnswer.to` (protos v0.1.266), and his anonymous voice under the same act tag does not toast a second time — [rpg-dnd5e-web#1407](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1407).
+- The served-castle fixture is refreshed to rpg-api `83a487a8` ([rpg-api#1222](https://github.com/KirkDiggler/rpg-api/pull/1222)). The hail round trip now runs on the castle's own `approach` and `on: approached` rows — [rpg-dnd5e-web#1407](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1407).
 
 ## Decided
 
