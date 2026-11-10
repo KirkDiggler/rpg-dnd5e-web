@@ -24,9 +24,9 @@ function fixture() {
   return worldAtlasFixture(root);
 }
 type Fixture = ReturnType<typeof fixture>;
-function readV2(f: Fixture) {
+function readV3(f: Fixture) {
   const result = readWorldMaterialCatalog(f);
-  if (result.schemaVersion !== 2) throw Error('Expected schema2 projection');
+  if (result.schemaVersion !== 3) throw Error('Expected schema3 projection');
   return result;
 }
 afterEach(() =>
@@ -38,8 +38,8 @@ afterEach(() =>
 describe('shared authored-UV material catalog', () => {
   it('retains masonry and exposes the atlas collection and exact bound scope from one catalog', () => {
     const f = fixture();
-    const result = readV2(f);
-    expect(result.schemaVersion).toBe(2);
+    const result = readV3(f);
+    expect(result.schemaVersion).toBe(3);
     expect(result.materials.map((m) => m.ref)).toEqual([f.masonry.ref]);
     expect(result.materials[0].normalScale).toEqual([1, 1]);
     expect(result.atlasMaterials).toEqual([
@@ -69,8 +69,8 @@ describe('shared authored-UV material catalog', () => {
     const uncurated = { ...f.atlas, ref: 'dnd5e:material:test:other_atlas' };
     f.document.materials.push(uncurated);
     f.save();
-    expect(readV2(f).atlasMaterials.map((m) => m.ref)).toContain(uncurated.ref);
-    expect(readV2(f).collections).toEqual([f.collection]);
+    expect(readV3(f).atlasMaterials.map((m) => m.ref)).toContain(uncurated.ref);
+    expect(readV3(f).collections).toEqual([f.collection]);
   });
 
   it('verifies atlas image bytes through the same resource boundary as masonry', () => {
@@ -84,7 +84,7 @@ describe('shared authored-UV material catalog', () => {
 
   it('generates all typed views under the same source digest without losing atlas records', async () => {
     const f = fixture(),
-      catalog = readV2(f);
+      catalog = readV3(f);
     const source = renderWorldMaterialCatalogModule({
       commit: 'a'.repeat(40),
       catalog,
@@ -156,13 +156,13 @@ describe('shared authored-UV material catalog', () => {
 
   const malformed: [string, (f: Fixture) => void][] = [
     [
-      'incomplete v2 envelope',
+      'incomplete v3 envelope',
       (f) => {
         Reflect.deleteProperty(f.document, 'bindings');
       },
     ],
     [
-      'v2 data labeled v1',
+      'v3 data labeled v1',
       (f) => {
         f.document.schemaVersion = 1;
       },
@@ -170,7 +170,7 @@ describe('shared authored-UV material catalog', () => {
     [
       'unknown version',
       (f) => {
-        f.document.schemaVersion = 3;
+        f.document.schemaVersion = 4;
       },
     ],
     [

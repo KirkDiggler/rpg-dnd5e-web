@@ -54,6 +54,7 @@ function catalog(): WorldMaterialCatalogState {
                   magFilter: 9728,
                   minFilter: 9984,
                 },
+                compatibleFamilies: ['atlas'],
                 suggestedCollections: [
                   'dnd5e:material-collection:test:main_atlas',
                 ],

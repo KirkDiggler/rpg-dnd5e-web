@@ -60,10 +60,10 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
   const bytes = readFileSync(catalogPath);
   const document = JSON.parse(bytes.toString('utf8'));
   const version = document?.schemaVersion;
-  if (version !== 1 && version !== 2) fail('unsupported schema');
+  if (version !== 1 && version !== 3) fail('unsupported schema');
   const catalog = object(
     document,
-    version === 2
+    version === 3
       ? ['schemaVersion', 'materials', 'collections', 'bindings']
       : ['schemaVersion', 'materials'],
     [],
@@ -78,7 +78,7 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     const path = `materials[${index}]`;
     const atlas =
       raw && typeof raw === 'object' && Object.hasOwn(raw, 'mapping');
-    if (atlas && version !== 2) fail(`${path}: atlas rows require schema2`);
+    if (atlas && version !== 3) fail(`${path}: atlas rows require schema3`);
     const row = object(
       raw,
       atlas
@@ -178,11 +178,12 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     (atlas ? atlasMaterials : materials).push(result);
   });
   const atlasMetadata =
-    version === 2
+    version === 3
       ? parseWorldAtlasMetadata({
           collections: catalog.collections,
           bindings: catalog.bindings,
           atlasRefs: new Set(atlasMaterials.map((row) => row.ref)),
+          atlasFamilies: new Set(atlasMaterials.map((row) => row.family)),
         })
       : undefined;
   for (const image of images.values()) verifyRuntimeImage({ modelRoot, image });
@@ -191,9 +192,9 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     subtree: 'world-materials',
     expected: images,
   });
-  return version === 2
+  return version === 3
     ? {
-        schemaVersion: 2,
+        schemaVersion: 3,
         catalogSha256: digest(bytes),
         materials,
         atlasMaterials,
