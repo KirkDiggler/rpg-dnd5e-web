@@ -1353,8 +1353,8 @@ function validateApproaches(
 
 /** `requires` (rpg-project#922): ONE requirement as a mapping, or a
  * non-empty LIST of them that must all hold — the engine's
- * `RequiresSpec.UnmarshalYAML`. The spelling is kept as written. A list's
- * items are judged at `requires[i]`, as the engine names them. */
+ * `RequiresSpec.UnmarshalYAML`. The spelling is kept as written. A longer
+ * list's items are judged at `requires[i]`, as the engine names them. */
 function validateOptionRequires(
   value: unknown,
   path: string
@@ -1365,8 +1365,13 @@ function validateOptionRequires(
         path,
         'this requires lists nothing — write a predicate, or drop the requires'
       );
+    // The engine names a list of one by `requires`, a longer list's items by
+    // `requires[i]` (`optionRequirements`).
     return value.map((item, index) =>
-      validateOptionRequirement(item, `${path}[${index}]`)
+      validateOptionRequirement(
+        item,
+        value.length > 1 ? `${path}[${index}]` : path
+      )
     );
   }
   if (!isMapping(value))

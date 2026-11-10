@@ -94,12 +94,14 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
     expect(saved.split('\n')).toHaveLength(served.split('\n').length);
   });
 
+  // The served castle's gate now holds by `posts:` (rpg-api#1218); the S1c
+  // fixture still carries the `states:` shape this case covers.
   it('a state with an invented future field imports and round-trips, through an edit too', () => {
-    const text = served.replace(
+    const text = posts.replace(
       '          posted:\n            blocks: true\n',
       '          posted:\n            foo: 1\n            blocks: true\n'
     );
-    expect(text).not.toBe(served);
+    expect(text).not.toBe(posts);
     const result = read(text);
     expect(exportDraftYaml(result, result.key)).toBe(text);
     const states = result.draft.room.monsterBindings!['gate-1'].states!;
@@ -120,133 +122,186 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
    * whether the draft itself holds it (`true`) or only the file splice does
    * (`false`: the fixed play contract, and a region's cell rows, which the
    * studio rebuilds from cells). */
-  const LEVELS: [string, string, string, boolean][] = [
-    ['the root', 'key: ', 'zz: 1\nkey: ', true],
-    ['the play contract', 'play:\n', 'play:\n  zz: 1\n', false],
+  const LEVELS: [string, string, string, boolean, string][] = [
+    ['the root', 'key: ', 'zz: 1\nkey: ', true, served],
+    ['the play contract', 'play:\n', 'play:\n  zz: 1\n', false, served],
     [
       'the coordinate frame',
       '  coordinateFrame:\n',
       '  coordinateFrame:\n    zz: 1\n',
       true,
+      served,
     ],
     [
       'the room',
       '    implicitRegionId: room-1-region\n',
       '    implicitRegionId: room-1-region\n    zz: 1\n',
       true,
+      served,
     ],
     [
       'a stat block',
       '  guard:\n    base: dnd5e:monsters:human\n',
       '  guard:\n    zz: 1\n    base: dnd5e:monsters:human\n',
       true,
+      served,
     ],
-    ['a bundle', '  pursuer:\n', '  pursuer:\n    zz: 1\n', true],
+    ['a bundle', '  pursuer:\n', '  pursuer:\n    zz: 1\n', true, served],
     [
       'a table row',
       '        toward: { at: { q: 10, r: -19 } }\n',
       '        toward: { at: { q: 10, r: -19 } }\n        zz: 1\n',
       true,
+      posts,
     ],
     [
       'a row’s cell',
       'toward: { at: { q: 10, r: -19 } }',
       'toward: { at: { q: 10, r: -19, zz: 1 } }',
       true,
+      posts,
     ],
     [
       'a faction',
       '  - id: garrison\n    mind: captain\n',
       '  - id: garrison\n    zz: 1\n    mind: captain\n',
       true,
+      served,
     ],
-    ['a disposition', '  - between:\n', '  - zz: 1\n    between:\n', true],
+    [
+      'a disposition',
+      '  - between:\n',
+      '  - zz: 1\n    between:\n',
+      true,
+      served,
+    ],
     [
       'an intel record',
       '  - id: cooks-ledger\n',
       '  - id: cooks-ledger\n    zz: 1\n',
       true,
+      served,
     ],
     [
       'an exit',
       '  - id: postern\n    cell:\n',
       '  - id: postern\n    zz: 1\n    cell:\n',
       true,
+      served,
     ],
     [
       'an ending',
       '  - id: king-slain\n',
       '  - id: king-slain\n    zz: 1\n',
       true,
+      served,
     ],
     [
       'a scene item',
       '      - id: altar\n',
       '      - id: altar\n        zz: 1\n',
       true,
+      served,
     ],
     [
       'a prop declaration',
       '      altar:\n        blocksMovement: true\n',
       '      altar:\n        zz: 1\n        blocksMovement: true\n',
       true,
+      served,
     ],
     [
       'a wall',
       '      - id: gate-wall\n',
       '      - id: gate-wall\n        zz: 1\n',
       true,
+      served,
     ],
     [
       'a region',
       '      - id: room-1-region\n',
       '      - id: room-1-region\n        zz: 1\n',
       true,
+      served,
     ],
     [
       'a placement',
       '      - id: pedlar\n',
       '      - id: pedlar\n        zz: 1\n',
       true,
+      served,
     ],
-    ['a binding', '      gate-1:\n', '      gate-1:\n        zz: 1\n', true],
+    [
+      'a binding',
+      '      gate-1:\n',
+      '      gate-1:\n        zz: 1\n',
+      true,
+      served,
+    ],
     [
       'a state',
       '          posted:\n            blocks: true\n',
       '          posted:\n            zz: 1\n            blocks: true\n',
       true,
+      posts,
     ],
     [
       'a transition',
       '              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }\n',
       '              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned, zz: 1 }\n',
       true,
+      posts,
     ],
     [
       'a holds.at cell',
-      'at: [{ q: -3, r: 7 }, { q: -4, r: 7 }] }',
-      'at: [{ q: -3, r: 7, zz: 1 }, { q: -4, r: 7 }] }',
+      'at: [{ q: -3, r: 7 }, { q: -4, r: 7 }]',
+      'at: [{ q: -3, r: 7, zz: 1 }, { q: -4, r: 7 }]',
       true,
+      posts,
     ],
     [
       'an option',
       '          - id: troupe\n',
       '          - id: troupe\n            zz: 1\n',
       true,
+      served,
     ],
     [
       'a door binding',
       '    doorBindings:\n      gate-wall-door:\n',
       '    doorBindings:\n      gate-wall-door:\n        zz: 1\n',
       true,
+      served,
+    ],
+    // The served castle's own shapes since rpg-api#1218.
+    [
+      'a post',
+      '          posted:\n            door: gate-wall-door\n',
+      '          posted:\n            zz: 1\n            door: gate-wall-door\n',
+      true,
+      served,
+    ],
+    [
+      'an interaction state',
+      '        warned-guest:\n          transitions:\n',
+      '        warned-guest:\n          zz: 1\n          transitions:\n',
+      true,
+      served,
+    ],
+    [
+      'an option’s advance',
+      '              failure: guest-failed\n',
+      '              failure: guest-failed\n              zz: 1\n',
+      true,
+      served,
     ],
   ];
 
   it.each(LEVELS)(
     'an unknown field on %s imports and is written back byte for byte',
-    (_level, anchor, carried, inDraft) => {
-      expect(served).toContain(anchor);
-      const text = served.replace(anchor, carried);
+    (_level, anchor, carried, inDraft, fixture) => {
+      expect(fixture).toContain(anchor);
+      const text = fixture.replace(anchor, carried);
       const result = read(text);
       expect(exportDraftYaml(result, result.key)).toBe(text);
       if (!inDraft) return;
@@ -311,8 +366,8 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
       room.doorBindings!['gate-wall-door'],
       'open'
     )!;
-    const captain = room.monsterBindings!.captain;
-    const options = captain.options!.map((o) =>
+    const gate1 = room.monsterBindings!['gate-1'];
+    const options = gate1.options!.map((o) =>
       o.id === 'troupe' ? patchOption(o, { say: 'We play tonight.' }) : o
     );
     const draft = {
@@ -322,7 +377,7 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
         doorBindings: { ...room.doorBindings, 'gate-wall-door': door },
         monsterBindings: {
           ...room.monsterBindings,
-          captain: normalizeBinding({ ...captain, options })!,
+          'gate-1': normalizeBinding({ ...gate1, options })!,
         },
       },
     };
@@ -333,7 +388,7 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
     expect(gate).toMatchObject({ zz: 1 });
     expect(gate).not.toHaveProperty('closed');
     expect(
-      saved.room.room.monsterBindings.captain.options.find(
+      saved.room.room.monsterBindings['gate-1'].options.find(
         (o: { id: string }) => o.id === 'troupe'
       )
     ).toMatchObject({ zz: 2, say: 'We play tonight.' });
@@ -486,56 +541,42 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
 /**
  * THE ENTRANCE REMEMBERS (rpg-project#922, Gate S2 of #769): the compiler now
  * reads a `requires` LIST, an `{ interaction: { id, in } }` requirement, an
- * option's `advance`, and a root `interactions:` map. The studio loads all of
- * it, says it, edits around it, and writes it back as written.
+ * option's `advance`, and a root `interactions:` map, and the served castle
+ * (rpg-api#1218) authors all four. The studio loads it, edits around it, and
+ * writes it back as written.
  */
 describe('the entrance-remembers grammar loads and writes back (rpg-project#922)', () => {
-  const ROOT_INTERACTIONS = `interactions:
-  front-gate:
-    recipe:
-      ref: site:interactions:front-gate
-      initial: fresh
-      states:
-        fresh:
-          transitions:
-            - { on: guest-failed, to: warned-guest, reason: the guest claim failed }
-            - { on: troupe-failed, to: warned-troupe }
-            - { on: admitted, to: admitted }
-        warned-guest:
-          transitions:
-            - { on: troupe-failed, to: arrested }
-            - { on: admitted, to: admitted }
-        warned-troupe:
-          transitions:
-            - { on: guest-failed, to: arrested }
-            - { on: admitted, to: admitted }
-        admitted: { terminal: true }
-        arrested: { terminal: true }
-`;
+  /** The castle's own text for each new form, cut from the fixture. */
+  const between = (from: string, to: string) => {
+    const start = served.indexOf(from);
+    return served.slice(start, served.indexOf(to, start));
+  };
+  const ROOT_INTERACTIONS = between(
+    '\ninteractions:\n',
+    '\nbehaviorDefinitions:\n'
+  );
   const TROUPE_REQUIRES = `            requires:
               - fact: feast-tonight
               - interaction:
                   id: front-gate
                   in: [fresh, warned-guest]
-            advance: { interaction: front-gate, success: admitted, failure: troupe-failed }
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
 `;
+  // The castle authors no `not` of an interaction; the captain's stand-aside
+  // gets one here, withheld once the party is arrested.
   const STAND_ASIDE_REQUIRES = `            requires:
               not:
                 interaction: { id: front-gate, in: [arrested] }
 `;
-  const gate = served
-    .replace('room:\n', `${ROOT_INTERACTIONS}room:\n`)
-    .replace(
-      '            requires:\n              fact: feast-tonight\n',
-      TROUPE_REQUIRES
-    )
-    .replace(
-      '            say: Stand aside or bleed.\n',
-      `            say: Stand aside or bleed.\n${STAND_ASIDE_REQUIRES}`
-    );
+  const gate = served.replace(
+    '            say: Stand aside or bleed.\n',
+    `            say: Stand aside or bleed.\n${STAND_ASIDE_REQUIRES}`
+  );
 
-  /** The parts of a parsed file this grammar touches. */
-  const grammarOf = (doc: {
+  type Parsed = {
     interactions: unknown;
     room: {
       room: {
@@ -545,50 +586,53 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
         >;
       };
     };
-  }) => {
-    const options = doc.room.room.monsterBindings.captain.options!;
-    const troupe = options.find((o) => o.id === 'troupe')!;
-    const standAside = options.find((o) => o.id === 'stand-aside')!;
-    return {
-      interactions: doc.interactions,
-      troupeRequires: troupe.requires,
-      troupeAdvance: troupe.advance,
-      standAsideRequires: standAside.requires,
-    };
   };
+  /** The parts of a parsed file this grammar touches, on every gate speaker. */
+  const grammarOf = (doc: Parsed) => ({
+    interactions: doc.interactions,
+    speakers: ['gate-1', 'gate-2', 'captain'].map((speaker) =>
+      doc.room.room.monsterBindings[speaker].options!.map((o) => ({
+        id: o.id,
+        requires: o.requires,
+        advance: o.advance,
+      }))
+    ),
+  });
 
-  it('the fixture carries every new form', () => {
-    for (const piece of [
-      ROOT_INTERACTIONS,
-      TROUPE_REQUIRES,
-      STAND_ASIDE_REQUIRES,
-    ])
-      expect(gate).toContain(piece);
-    expect(grammarOf(parse(gate))).toEqual({
-      interactions: expect.objectContaining({
-        'front-gate': expect.anything(),
-      }),
-      troupeRequires: [
+  it('the served castle carries every new form', () => {
+    expect(ROOT_INTERACTIONS).toContain('  front-gate:\n');
+    expect(served.split(TROUPE_REQUIRES)).toHaveLength(4);
+    expect(gate).toContain(STAND_ASIDE_REQUIRES);
+    const captain = parse(gate).room.room.monsterBindings.captain.options;
+    const option = (id: string) =>
+      captain.find((o: { id: string }) => o.id === id);
+    expect(option('troupe')).toMatchObject({
+      requires: [
         { fact: 'feast-tonight' },
         { interaction: { id: 'front-gate', in: ['fresh', 'warned-guest'] } },
       ],
-      troupeAdvance: {
+      advance: {
         interaction: 'front-gate',
         success: 'admitted',
         failure: 'troupe-failed',
       },
-      standAsideRequires: {
-        not: { interaction: { id: 'front-gate', in: ['arrested'] } },
-      },
+    });
+    expect(option('guest').requires).toEqual([
+      { interaction: { id: 'front-gate', in: ['fresh', 'warned-troupe'] } },
+    ]);
+    expect(option('stand-aside').requires).toEqual({
+      not: { interaction: { id: 'front-gate', in: ['arrested'] } },
     });
   });
 
-  it('imports, keeps the list as a list, and an unedited download is byte-identical', () => {
+  it('imports, keeps each list as a list, and an unedited download is byte-identical', () => {
+    for (const text of [served, gate]) {
+      const result = read(text);
+      expect(exportDraftYaml(result, result.key)).toBe(text);
+    }
     const result = read(gate);
-    expect(exportDraftYaml(result, result.key)).toBe(gate);
-    const troupe = result.draft.room.monsterBindings!.captain.options!.find(
-      (o) => o.id === 'troupe'
-    )!;
+    const options = result.draft.room.monsterBindings!.captain.options!;
+    const troupe = options.find((o) => o.id === 'troupe')!;
     expect(troupe.requires).toEqual([
       { fact: 'feast-tonight' },
       { interaction: { id: 'front-gate', in: ['fresh', 'warned-guest'] } },
@@ -598,6 +642,9 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
       success: 'admitted',
       failure: 'troupe-failed',
     });
+    expect(options.find((o) => o.id === 'guest')!.requires).toEqual([
+      { interaction: { id: 'front-gate', in: ['fresh', 'warned-troupe'] } },
+    ]);
   });
 
   it('an unrelated edit and an edit of the gated line keep requires, interaction, advance and interactions byte for byte', () => {
@@ -625,12 +672,9 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
       '            q: 1',
       '            say: We play tonight.',
     ]);
-    for (const piece of [
-      ROOT_INTERACTIONS,
-      TROUPE_REQUIRES,
-      STAND_ASIDE_REQUIRES,
-    ])
-      expect(saved).toContain(piece);
+    expect(saved).toContain(ROOT_INTERACTIONS);
+    expect(saved.split(TROUPE_REQUIRES)).toHaveLength(4);
+    expect(saved).toContain(STAND_ASIDE_REQUIRES);
     // It re-parses, and re-imports with the same grammar.
     expect(grammarOf(parse(saved))).toEqual(grammarOf(parse(gate)));
     const again = read(saved);
@@ -649,46 +693,56 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     expect(grammarOf(parse(canonical))).toEqual(grammarOf(parse(gate)));
   });
 
+  // Each edit lands on gate-1's troupe, its options[1], the first in the file.
   it.each([
     [
       'a two-key predicate in the list',
       '              - fact: feast-tonight\n',
       '              - { fact: feast-tonight, holds: lute }\n',
-      'options[0].requires[0]: an option requires one or a list of',
+      'gate-1 options[1].requires[0]: an option requires one or a list of',
     ],
     [
       'an interaction naming no state',
       '                  in: [fresh, warned-guest]\n',
       '                  in: []\n',
-      'options[0].requires[1].interaction: an interaction predicate lists no state',
+      'gate-1 options[1].requires[1].interaction: an interaction predicate lists no state',
     ],
     [
       'an interaction naming no id',
-      '                  id: front-gate\n',
-      '',
-      'options[0].requires[1].interaction: an interaction predicate does not say which interaction',
+      '                  id: front-gate\n                  in: [fresh, warned-guest]\n',
+      '                  in: [fresh, warned-guest]\n',
+      'gate-1 options[1].requires[1].interaction: an interaction predicate does not say which interaction',
     ],
     [
       'an interaction with an unknown key',
-      '                  id: front-gate\n',
-      '                  id: front-gate\n                  at: gate\n',
-      'options[0].requires[1].interaction.at: field at not found',
+      '                  id: front-gate\n                  in: [fresh, warned-guest]\n',
+      '                  id: front-gate\n                  at: gate\n                  in: [fresh, warned-guest]\n',
+      'gate-1 options[1].requires[1].interaction.at: field at not found',
+    ],
+    [
+      'an empty requires list',
+      TROUPE_REQUIRES,
+      '            requires: []\n',
+      'gate-1 options[1].requires: this requires lists nothing — write a predicate, or drop the requires',
     ],
   ])('%s is refused as the compiler refuses it', (_name, from, to, refusal) => {
-    expect(gate).toContain(from);
-    const result = readDraftYaml(gate.replace(from, to));
+    expect(served).toContain(from);
+    const result = readDraftYaml(served.replace(from, to));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.refusal).toContain(refusal);
   });
 
-  it('an empty requires list is refused as the compiler refuses it', () => {
+  it('a list of one is named as the engine names it, without an index', () => {
     const result = readDraftYaml(
-      gate.replace(TROUPE_REQUIRES, '            requires: []\n')
+      served.replace(
+        '                  in: [fresh, warned-troupe]\n',
+        '                  in: []\n'
+      )
     );
     expect(result.ok).toBe(false);
     if (!result.ok)
       expect(result.refusal).toContain(
-        'this requires lists nothing — write a predicate, or drop the requires'
+        'gate-1 options[0].requires.interaction: an interaction predicate lists no state'
       );
   });
 });
