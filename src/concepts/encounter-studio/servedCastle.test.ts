@@ -14,6 +14,10 @@ import {
   forgetDungeonSources,
 } from '../world-building/dungeonSources';
 import {
+  interactionApproach,
+  setInteractionApproach,
+} from '../world-building/interactionApproach';
+import {
   normalizeBinding,
   setMonsterFaction,
   setMonsterTemper,
@@ -744,5 +748,114 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
       expect(result.refusal).toContain(
         'gate-1 options[0].requires.interaction: an interaction predicate lists no state'
       );
+  });
+});
+
+/**
+ * THE GUARD OPENS THE CONVERSATION (rpg-project#923, Gate S3 of #769): an
+ * interaction's `approach: { within: N }` and a machine's `on: approached`
+ * row. The served fixture predates both, so this input adds them where the
+ * castle will carry them (the fixture refresh from the api head follows):
+ * the distance on `front-gate`, the hail row on gate-1's post.
+ */
+describe('the hail grammar loads, edits and writes back (rpg-project#923)', () => {
+  const APPROACH = '    approach: { within: 2 }\n';
+  const HAIL_ROW = `            - on: approached
+              do:
+                - pick: approached
+              reason: hailed the visitor
+`;
+  const FRONT_GATE = '  front-gate:\n    recipe:\n';
+  const GATE_1_BARRED = `            - on: barred
+              to: challenged
+              do:
+                - pick: barred
+                - anchor: true
+              reason: walked into him
+`;
+  const hailed = served
+    .replace(FRONT_GATE, `  front-gate:\n${APPROACH}    recipe:\n`)
+    .replace(GATE_1_BARRED, `${GATE_1_BARRED}${HAIL_ROW}`);
+
+  type Parsed = {
+    interactions: Record<string, { approach?: unknown; recipe: unknown }>;
+    behaviorDefinitions: unknown;
+  };
+
+  it('the input carries both new forms, once each', () => {
+    expect(served.split(FRONT_GATE)).toHaveLength(2);
+    expect(hailed).toContain(APPROACH);
+    expect(hailed.split(HAIL_ROW)).toHaveLength(2);
+    const doc = parse(hailed) as Parsed;
+    expect(doc.interactions['front-gate'].approach).toEqual({ within: 2 });
+  });
+
+  it('imports, reads the distance, and an unedited download is byte-identical', () => {
+    const result = read(hailed);
+    expect(interactionApproach(result.scope, 'front-gate')).toBe(2);
+    expect(exportDraftYaml(result, result.key)).toBe(hailed);
+  });
+
+  it('changing the distance rewrites its own line and nothing else', () => {
+    const result = read(hailed);
+    const scope = setInteractionApproach(result.scope, 'front-gate', 1);
+    const saved = exportDraftYaml({ draft: result.draft, scope }, result.key);
+    expect(changedLines(hailed, saved)).toEqual([
+      '    approach: { within: 1 }',
+    ]);
+    expect(saved).toContain(HAIL_ROW);
+    const again = read(saved);
+    expect(interactionApproach(again.scope, 'front-gate')).toBe(1);
+    expect(exportDraftYaml(again, again.key)).toBe(saved);
+  });
+
+  it('a distance authored where there was none keeps the recipe and the hail row', () => {
+    const plain = hailed.replace(APPROACH, '');
+    const result = read(plain);
+    expect(interactionApproach(result.scope, 'front-gate')).toBeUndefined();
+    const scope = setInteractionApproach(result.scope, 'front-gate', 2);
+    const saved = exportDraftYaml({ draft: result.draft, scope }, result.key);
+    const before = parse(plain) as Parsed;
+    const after = parse(saved) as Parsed;
+    expect(after.interactions['front-gate']).toEqual({
+      ...before.interactions['front-gate'],
+      approach: { within: 2 },
+    });
+    expect(after.behaviorDefinitions).toEqual(before.behaviorDefinitions);
+    expect(saved).toContain(HAIL_ROW);
+  });
+
+  it('clearing the distance drops the approach and keeps the interaction', () => {
+    const result = read(hailed);
+    const scope = setInteractionApproach(result.scope, 'front-gate', null);
+    const saved = exportDraftYaml({ draft: result.draft, scope }, result.key);
+    const after = parse(saved) as Parsed;
+    expect(after.interactions['front-gate']).not.toHaveProperty('approach');
+    expect(after.interactions['front-gate'].recipe).toEqual(
+      (parse(hailed) as Parsed).interactions['front-gate'].recipe
+    );
+  });
+
+  it('a draft restored from storage still writes the distance and the hail row', () => {
+    const result = read(hailed);
+    const restored = parseRoomDocumentJson(
+      stringifyRoomDraft(
+        { ...result.draft, sourceRef: undefined },
+        result.scope
+      )
+    );
+    const canonical = parse(exportDraftYaml(restored, result.key)) as Parsed;
+    const original = parse(hailed) as Parsed;
+    expect(canonical.interactions).toEqual(original.interactions);
+    expect(canonical.behaviorDefinitions).toEqual(original.behaviorDefinitions);
+  });
+
+  it.each([0, 4, 1.5])('refuses a distance of %s', (within) => {
+    const result = read(hailed);
+    expect(() =>
+      setInteractionApproach(result.scope, 'front-gate', within)
+    ).toThrow(
+      'interactions.front-gate.approach.within: A hail distance is a whole number of cells from 1 to 3'
+    );
   });
 });
