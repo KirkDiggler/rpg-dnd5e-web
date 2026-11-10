@@ -3120,86 +3120,103 @@ export function OptionsEditor({
                 onAdd={() => commit(addOptionApproach(option))}
               />
             </div>
-            <label>
-              <span>Requires</span>
-              <select
-                aria-label={`Line ${n} requires for ${owner}`}
-                value={requiresChoiceNow}
-                onChange={(event) => {
-                  const choice = event.target.value as RequiresChoice;
-                  commit(
-                    patchOption(option, {
-                      requires: requiresOf(
-                        choice,
-                        choice.endsWith('holds') ? (holdable[0] ?? '') : ''
-                      ),
-                    })
-                  );
-                }}
+            {requiresChoiceNow === 'listed' ? (
+              // A list, or an interaction read (rpg-project#922): shown and
+              // carried as written; this slice edits neither.
+              <p
+                className="wb-help"
+                data-testid={`option-requires-listed-${of}`}
               >
-                {REQUIRES_FORMS.map((form) => (
-                  <option
-                    key={form.value}
-                    value={form.value}
-                    disabled={
-                      form.value.endsWith('holds') &&
-                      holdable.length === 0 &&
-                      requiresForm !== 'holds'
-                    }
+                Requires{requiresGate(option.requires)} — edit these in the
+                file.
+              </p>
+            ) : (
+              <>
+                <label>
+                  <span>Requires</span>
+                  <select
+                    aria-label={`Line ${n} requires for ${owner}`}
+                    value={requiresChoiceNow}
+                    onChange={(event) => {
+                      const choice = event.target.value as Exclude<
+                        RequiresChoice,
+                        'listed'
+                      >;
+                      commit(
+                        patchOption(option, {
+                          requires: requiresOf(
+                            choice,
+                            choice.endsWith('holds') ? (holdable[0] ?? '') : ''
+                          ),
+                        })
+                      );
+                    }}
                   >
-                    {form.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {requiresForm === 'fact' && (
-              <label>
-                <span>Fact</span>
-                <input
-                  aria-label={`Line ${n} requires fact for ${owner}`}
-                  value={requiresId(option.requires)}
-                  onChange={(event) =>
-                    commit(
-                      patchOption(option, {
-                        requires: requiresOf(
-                          negated ? 'not-fact' : 'fact',
-                          event.target.value
-                        ),
-                      })
-                    )
-                  }
-                />
-              </label>
-            )}
-            {requiresForm === 'holds' && (
-              <label>
-                <span>Prop</span>
-                <select
-                  aria-label={`Line ${n} requires prop for ${owner}`}
-                  value={heldId ?? ''}
-                  onChange={(event) =>
-                    commit(
-                      patchOption(option, {
-                        requires: requiresOf(
-                          negated ? 'not-holds' : 'holds',
-                          event.target.value
-                        ),
-                      })
-                    )
-                  }
-                >
-                  {heldId !== undefined && !holdable.includes(heldId) && (
-                    <option value={heldId}>
-                      {heldId || '(none)'} — nobody can pick it up
-                    </option>
-                  )}
-                  {holdable.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                    {REQUIRES_FORMS.map((form) => (
+                      <option
+                        key={form.value}
+                        value={form.value}
+                        disabled={
+                          form.value.endsWith('holds') &&
+                          holdable.length === 0 &&
+                          requiresForm !== 'holds'
+                        }
+                      >
+                        {form.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {requiresForm === 'fact' && (
+                  <label>
+                    <span>Fact</span>
+                    <input
+                      aria-label={`Line ${n} requires fact for ${owner}`}
+                      value={requiresId(option.requires)}
+                      onChange={(event) =>
+                        commit(
+                          patchOption(option, {
+                            requires: requiresOf(
+                              negated ? 'not-fact' : 'fact',
+                              event.target.value
+                            ),
+                          })
+                        )
+                      }
+                    />
+                  </label>
+                )}
+                {requiresForm === 'holds' && (
+                  <label>
+                    <span>Prop</span>
+                    <select
+                      aria-label={`Line ${n} requires prop for ${owner}`}
+                      value={heldId ?? ''}
+                      onChange={(event) =>
+                        commit(
+                          patchOption(option, {
+                            requires: requiresOf(
+                              negated ? 'not-holds' : 'holds',
+                              event.target.value
+                            ),
+                          })
+                        )
+                      }
+                    >
+                      {heldId !== undefined && !holdable.includes(heldId) && (
+                        <option value={heldId}>
+                          {heldId || '(none)'} — nobody can pick it up
+                        </option>
+                      )}
+                      {holdable.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
             )}
             {holdable.length === 0 && (
               <p className="wb-help" data-testid={`option-no-holdable-${of}`}>

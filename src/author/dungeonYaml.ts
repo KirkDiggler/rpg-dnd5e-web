@@ -22,6 +22,7 @@
 
 import {
   validateOptions,
+  type OptionRequiresShape as OptionRequires,
   type OptionShape,
 } from '@/concepts/world-building/answerTableShape';
 import { parseRef, refSlug } from '@/utils/refs';
@@ -2366,10 +2367,8 @@ function optionLines(options: OptionShape[], indent: string): string[] {
       lines.push(
         `${indent}    check: [${option.check.map(fmtApproach).join(', ')}]`
       );
-    if (option.requires !== undefined) {
-      const [form, id] = Object.entries(option.requires)[0] as [string, string];
-      lines.push(`${indent}    requires: { ${form}: ${scalar(id)} }`);
-    }
+    if (option.requires !== undefined)
+      lines.push(`${indent}    requires: ${requiresText(option.requires)}`);
     for (const verdict of ['success', 'failure'] as const) {
       const rows = option[verdict];
       if (rows === undefined) continue;
@@ -2386,6 +2385,17 @@ function optionLines(options: OptionShape[], indent: string): string[] {
     }
   }
   return lines;
+}
+
+/** An option's `requires` as the file writes it (rpg-project#922): a list as
+ * a list, a single mapping as a mapping, each requirement in flow form. */
+function requiresText(r: OptionRequires): string {
+  if (Array.isArray(r)) return `[${r.map(requiresText).join(', ')}]`;
+  if ('not' in r) return `{ not: ${requiresText(r.not)} }`;
+  if ('fact' in r) return `{ fact: ${scalar(r.fact)} }`;
+  if ('holds' in r) return `{ holds: ${scalar(r.holds)} }`;
+  const { id, in: states } = r.interaction;
+  return `{ interaction: { id: ${scalar(id)}, in: [${states.map(scalar).join(', ')}] } }`;
 }
 
 /** One answer table in BLOCK form, at the indentation of its `on:` key. A map
