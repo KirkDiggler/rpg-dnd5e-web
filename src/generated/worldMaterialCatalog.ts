@@ -7,9 +7,9 @@ import type {
 } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: '6345db54c6779dda3512f6cb1e4884a7d1a7a4ce',
+  commit: '8e9c518c6a8ba2aefff98a7e5b59a77a8931a2dc',
   catalogSha256:
-    '1f86a2f1ed5a4a2e7265202dd5ea56d938dd8bc91529852b984b23c32d76f7a3' as
+    '47317921e30bef460446599745f60c445646dd6f337bac434d1abe293e74b5ea' as
       | string
       | null,
 });
@@ -378,6 +378,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -402,6 +403,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -426,6 +428,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -450,6 +453,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -474,6 +478,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -498,6 +503,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -522,6 +528,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -546,6 +553,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -570,6 +578,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -594,6 +603,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -618,6 +628,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -642,6 +653,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -666,6 +678,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -690,6 +703,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -714,6 +728,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -738,6 +753,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -762,6 +778,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -786,6 +803,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -810,6 +828,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -834,6 +853,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -858,6 +878,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -882,6 +903,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -906,6 +928,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -930,6 +953,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -954,6 +978,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -978,6 +1003,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1002,6 +1028,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1026,6 +1053,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1050,6 +1078,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1074,6 +1103,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1098,6 +1128,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1122,6 +1153,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1146,6 +1178,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1170,6 +1203,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1194,6 +1228,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1218,6 +1253,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1242,6 +1278,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1266,6 +1303,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1290,6 +1328,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1314,6 +1353,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1338,6 +1378,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1362,6 +1403,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1386,6 +1428,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1410,6 +1453,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1434,6 +1478,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1458,6 +1503,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1482,6 +1528,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1506,6 +1553,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1530,6 +1578,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1554,6 +1603,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1578,6 +1628,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1602,6 +1653,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1626,6 +1678,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1650,6 +1703,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1674,6 +1728,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1698,6 +1753,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1722,6 +1778,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1746,6 +1803,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1770,6 +1828,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1794,6 +1853,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1818,6 +1878,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1842,6 +1903,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1866,6 +1928,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1890,6 +1953,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1914,6 +1978,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1938,6 +2003,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1962,6 +2028,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -1986,6 +2053,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2010,6 +2078,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2034,6 +2103,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2058,6 +2128,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2082,6 +2153,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2106,6 +2178,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2130,6 +2203,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2154,6 +2228,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2178,6 +2253,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2202,6 +2278,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2226,6 +2303,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2250,6 +2328,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2274,6 +2353,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2298,6 +2378,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2322,6 +2403,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2346,6 +2428,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2370,6 +2453,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2394,6 +2478,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2418,6 +2503,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2442,6 +2528,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2466,6 +2553,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2490,6 +2578,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2514,6 +2603,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2538,6 +2628,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2562,6 +2653,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2586,6 +2678,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2610,6 +2703,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2634,6 +2728,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2658,6 +2753,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2682,6 +2778,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2706,6 +2803,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2730,6 +2828,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2754,6 +2853,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2778,6 +2878,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2802,6 +2903,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2826,6 +2928,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2850,6 +2953,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2874,6 +2978,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2898,6 +3003,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2922,6 +3028,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2946,6 +3053,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2970,6 +3078,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -2994,6 +3103,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3018,6 +3128,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3042,6 +3153,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3066,6 +3178,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3090,6 +3203,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3114,6 +3228,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3138,6 +3253,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3162,6 +3278,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3186,6 +3303,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3210,6 +3328,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3234,6 +3353,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3258,6 +3378,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3282,6 +3403,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3306,6 +3428,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3330,6 +3453,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3354,6 +3478,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3378,6 +3503,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3402,6 +3528,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3426,6 +3553,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3450,6 +3578,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3474,6 +3603,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3498,6 +3628,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3522,6 +3653,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3546,6 +3678,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3570,6 +3703,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3594,6 +3728,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3618,6 +3753,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3642,6 +3778,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3666,6 +3803,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3690,6 +3828,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3714,6 +3853,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3738,6 +3878,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3762,6 +3903,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3786,6 +3928,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3810,6 +3953,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3834,6 +3978,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3858,6 +4003,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3882,6 +4028,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3906,6 +4053,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3930,6 +4078,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3954,6 +4103,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -3978,6 +4128,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4002,6 +4153,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4026,6 +4178,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4050,6 +4203,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4074,6 +4228,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4098,6 +4253,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4122,6 +4278,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4146,6 +4303,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4170,6 +4328,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4194,6 +4353,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4218,6 +4378,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4242,6 +4403,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4266,6 +4428,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4290,6 +4453,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4314,6 +4478,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4338,6 +4503,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4362,6 +4528,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4386,6 +4553,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4410,6 +4578,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4434,6 +4603,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4458,6 +4628,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4482,6 +4653,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4506,6 +4678,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4530,6 +4703,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4554,6 +4728,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4578,6 +4753,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4602,6 +4778,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4626,6 +4803,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4650,6 +4828,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4674,6 +4853,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4698,6 +4878,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4722,6 +4903,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4746,6 +4928,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4770,6 +4953,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4794,6 +4978,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4818,6 +5003,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4842,6 +5028,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4866,6 +5053,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4890,6 +5078,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4914,6 +5103,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4938,6 +5128,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4962,6 +5153,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -4986,6 +5178,7 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             magFilter: 9728,
             minFilter: 9984,
           },
+          compatibleFamilies: ['kingdom-main-atlas'],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
