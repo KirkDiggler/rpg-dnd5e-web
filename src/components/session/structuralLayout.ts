@@ -36,6 +36,7 @@ import type {
   StructuralWallOpening,
   StructuralWallSurface,
 } from '@/concepts/world-building/structuralWalls';
+import { copyMaterialOverrides } from '@/rendering/materialOverrides';
 import type {
   AtlasStructuralDoor,
   AtlasStructuralWall,
@@ -135,6 +136,10 @@ export function structuralWallSurfaceFromAtlas(
     );
   }
   const path = `wall ${wall.id}`;
+  const materialOverrides = copyMaterialOverrides(
+    wall.materialOverrides ?? [],
+    `${path}.materialOverrides`
+  );
   const start = scenePointFromFeet(wall.from, `${path}.from`, scale);
   const end = scenePointFromFeet(wall.to, `${path}.to`, scale);
   const length = Math.hypot(end.x - start.x, end.z - start.z);
@@ -178,7 +183,13 @@ export function structuralWallSurfaceFromAtlas(
     line: { start, end },
     // The ref rides through verbatim; the shared leaf names a missing catalog
     // asset at the wall itself rather than this adapter inventing a model.
-    appearance: { assetRef: wall.ref, height, thickness, elevation },
+    appearance: {
+      assetRef: wall.ref,
+      height,
+      thickness,
+      elevation,
+      ...(materialOverrides.length ? { materialOverrides } : {}),
+    },
     openings,
   };
 }

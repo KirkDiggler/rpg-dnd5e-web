@@ -151,6 +151,10 @@ async function makeFixture() {
     );
   await put(join(webRoot, 'package.json'), JSON.stringify({ type: 'module' }));
   await put(
+    join(webRoot, 'src/rendering/worldAtlasCatalogSchema.mjs'),
+    await readFile(join(repoRoot, 'src/rendering/worldAtlasCatalogSchema.mjs'))
+  );
+  await put(
     join(webRoot, 'src/rendering/groundCatalog.ts'),
     await readFile(join(repoRoot, 'src/rendering/groundCatalog.ts'))
   );

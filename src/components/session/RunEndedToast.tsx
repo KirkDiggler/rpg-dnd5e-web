@@ -16,7 +16,7 @@
  * modal's primary action kept its place and lost its power to interrupt.
  */
 import { EndingResult } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-import { useEffect, useState } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
 import {
   endingDetail,
@@ -26,13 +26,7 @@ import {
   runOutcome,
 } from './runEnding';
 
-export function RunEndedToast({
-  ending,
-  result = EndingResult.UNSPECIFIED,
-  carrierLine,
-  companionsLine,
-  onLeave,
-}: {
+interface RunEndedToastProps {
   ending: string;
   /** The result the ending declares, read off the ended entry
    *  (rpg-project#733). Unspecified for an ending that states none and for a
@@ -45,16 +39,28 @@ export function RunEndedToast({
    *  never invented: a run that ended another way had no carrier. */
   carrierLine?: string;
   onLeave: () => void;
-}) {
+}
+
+/** Each ending owns its state synchronously, like SessionEncounterScope.
+ * A passive reset must not overwrite a dismissal made after DOM commit. */
+export function RunEndedToast(props: RunEndedToastProps): ReactElement {
+  return <RunEndedToastScope key={props.ending} {...props} />;
+}
+
+function RunEndedToastScope({
+  ending,
+  result = EndingResult.UNSPECIFIED,
+  carrierLine,
+  companionsLine,
+  onLeave,
+}: RunEndedToastProps): ReactElement | null {
   const [dismissed, setDismissed] = useState(false);
   const [faded, setFaded] = useState(false);
 
   useEffect(() => {
-    setDismissed(false);
-    setFaded(false);
     const timer = setTimeout(() => setFaded(true), RUN_ENDED_TOAST_MS);
     return () => clearTimeout(timer);
-  }, [ending]);
+  }, []);
 
   if (dismissed) return null;
 

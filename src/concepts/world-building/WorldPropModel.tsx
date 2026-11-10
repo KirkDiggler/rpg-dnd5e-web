@@ -14,6 +14,7 @@ import type { WorldBuildingCatalogEntry } from './catalog';
 
 export interface WorldPropModelProps {
   entry: WorldBuildingCatalogEntry;
+  materialOverrides?: WorldAssetModelProps['materialOverrides'];
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
@@ -44,6 +45,7 @@ export interface WorldPropModelProps {
  */
 export function WorldPropModel({
   entry,
+  materialOverrides,
   position,
   rotationY,
   heightScale = 1,
@@ -60,7 +62,9 @@ export function WorldPropModel({
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
   if (
-    (surfaceSelections?.length || surfacePlans?.length) &&
+    (surfaceSelections?.length ||
+      surfacePlans?.length ||
+      materialOverrides?.length) &&
     entry.source !== 'generated'
   )
     throw new Error(
@@ -72,6 +76,7 @@ export function WorldPropModel({
   return entry.source === 'generated' ? (
     <WorldAssetModel
       assetRef={entry.ref}
+      materialOverrides={materialOverrides}
       plainWallFit={plainWallFit}
       surfaceSelections={surfaceSelections}
       surfacePlans={surfacePlans}

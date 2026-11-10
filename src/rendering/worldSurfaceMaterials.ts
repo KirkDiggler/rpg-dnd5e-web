@@ -66,7 +66,7 @@ function refuse(assetRef: string, id: string, message: string): never {
 }
 export function resolveWorldSurfaceTargets(
   root: THREE.Object3D,
-  binding: Binding,
+  binding: Pick<Binding, 'id' | 'node' | 'material'>,
   assetRef: string
 ): WorldSurfaceTarget[] {
   const fail = (message: string): never =>

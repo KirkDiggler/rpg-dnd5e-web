@@ -11,12 +11,21 @@ import {
 } from '@/rendering/plainWallFit';
 import { propVisualScale } from '@/rendering/propVisualScale';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import { useWorldMaterialCatalog } from '@/rendering/useWorldMaterialCatalog';
 import {
   applyWallSurfaceCharts,
   type WallSurfaceChart,
 } from '@/rendering/wallSurfaceCharts';
+import {
+  resolveWorldAtlasMaterials,
+  type ResolvedWorldAtlasMaterials,
+} from '@/rendering/worldAtlasCatalog';
+import type { WorldAtlasMaterialsInput } from '@/rendering/worldAtlasMaterials';
 import type { WorldSurfaceAsset } from '@/rendering/worldMaterialCatalog';
-import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
+import type {
+  MaterialOverride,
+  WorldSurfaceMaterial,
+} from '@/rendering/worldMaterialTypes';
 import {
   createWorldSurfaceSampler,
   resolveWorldSurfaceTargets,
@@ -60,6 +69,7 @@ export type WorldAssetModelDiagnostic =
 export interface WorldAssetModelProps {
   /** A promoted exact ref. Family refs and unknown exact refs never fall back. */
   assetRef: string;
+  materialOverrides?: readonly MaterialOverride[];
   position: [number, number, number];
   rotationY?: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
@@ -314,8 +324,15 @@ function LoadedWorldAssetModel({
   surfaces,
   surfaceSelections,
   surfaceCharts,
+  atlasTreatment,
 }: {
   assetRef: string;
+  glbSha256: string;
+  materialOverrides?: readonly MaterialOverride[];
+  atlasTreatment?: Pick<
+    WorldAtlasMaterialsInput,
+    'glbSha256' | 'binding' | 'selections'
+  >;
   url: string;
   boundsMeters: [number, number, number];
   roles: NonNullable<GeneratedWorldAsset['roles']> | undefined;
@@ -395,7 +412,8 @@ function LoadedWorldAssetModel({
     assetRef,
     'lit',
     surfaceTreatment,
-    rememberedTint
+    rememberedTint,
+    atlasTreatment
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -639,6 +657,51 @@ function LoadedWorldAssetModel({
   );
 }
 
+function LoadedAtlasWorldAssetModel({
+  resolved,
+  ...props
+}: React.ComponentProps<typeof LoadedWorldAssetModel> & {
+  resolved: ResolvedWorldAtlasMaterials;
+}): React.JSX.Element {
+  const textures = useLoader(
+    THREE.TextureLoader,
+    resolved.plans.map((plan) => plan.material.baseColor.url)
+  );
+  const planKey = JSON.stringify(resolved.plans),
+    textureKey = textures.map((texture) => texture.uuid).join(',');
+  const atlasTreatment = useMemo(
+    () => ({
+      glbSha256: props.glbSha256,
+      binding: resolved.binding,
+      selections: (JSON.parse(planKey) as typeof resolved.plans).map(
+        (plan, i) => ({ ...plan, texture: textures[i] })
+      ),
+    }),
+    // Texture UUIDs and plan values own this treatment, not pointer renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.glbSha256, resolved.binding, planKey, textureKey]
+  );
+  return <LoadedWorldAssetModel {...props} atlasTreatment={atlasTreatment} />;
+}
+
+function AtlasWorldAssetModel(
+  props: React.ComponentProps<typeof LoadedWorldAssetModel>
+): React.JSX.Element | null {
+  const catalog = useWorldMaterialCatalog();
+  if (catalog.status === 'loading') return null;
+  const resolved = resolveWorldAtlasMaterials({
+    assetRef: props.assetRef,
+    glbSha256: props.glbSha256,
+    overrides: props.materialOverrides,
+    atlas: catalog.catalog?.atlas,
+  });
+  return resolved ? (
+    <LoadedAtlasWorldAssetModel {...props} resolved={resolved} />
+  ) : (
+    <LoadedWorldAssetModel {...props} />
+  );
+}
+
 function PreparedWorldAssetModel({
   plans,
   ...props
@@ -703,8 +766,11 @@ function PreparedWorldAssetModel({
     });
     return () => samplers.forEach((texture) => texture.dispose());
   }, [selections]);
+  const Model = props.materialOverrides?.length
+    ? AtlasWorldAssetModel
+    : LoadedWorldAssetModel;
   return (
-    <LoadedWorldAssetModel
+    <Model
       {...props}
       surfaceSelections={selections}
       surfaceCharts={plans.map((plan) => plan.chart)}
@@ -722,6 +788,7 @@ function PreparedWorldAssetModel({
  */
 export function WorldAssetModel({
   assetRef,
+  materialOverrides,
   position,
   rotationY = 0,
   onBoundsMeasured,
@@ -756,11 +823,15 @@ export function WorldAssetModel({
     );
   const Component = surfacePlans?.length
     ? PreparedWorldAssetModel
-    : LoadedWorldAssetModel;
+    : materialOverrides?.length
+      ? AtlasWorldAssetModel
+      : LoadedWorldAssetModel;
   return (
     <Component
       plans={surfacePlans ?? []}
       assetRef={assetRef}
+      glbSha256={asset.glbSha256}
+      materialOverrides={materialOverrides}
       url={asset.url}
       boundsMeters={asset.boundsMeters}
       roles={asset.roles}

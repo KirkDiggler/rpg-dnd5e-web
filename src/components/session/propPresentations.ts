@@ -1,4 +1,5 @@
 import type { WorldProp } from '@/concepts/world-building/types';
+import { copyMaterialOverrides } from '@/rendering/materialOverrides';
 import { clone } from '@bufbuild/protobuf';
 import {
   PropPresentationSchema,
@@ -12,6 +13,10 @@ export function assertPropPresentation(p: PropPresentation): void {
   const fail = (why: string): never => {
     throw new Error(`Invalid prop presentation ${p.id || '(no id)'}: ${why}`);
   };
+  copyMaterialOverrides(
+    p.materialOverrides ?? [],
+    `prop ${p.id}.materialOverrides`
+  );
   if (!p.id || !p.ref || !p.origin)
     fail('identity, ref and origin are required');
   const numbers = [
@@ -115,6 +120,9 @@ export function propPresentationItem(
       rotationY: (-p.facingDegrees * Math.PI) / 180,
     },
     heightScale: p.heightScale,
+    ...(p.materialOverrides?.length
+      ? { materialOverrides: copyMaterialOverrides(p.materialOverrides) }
+      : {}),
     pointLight: light
       ? {
           enabled: light.enabled,
