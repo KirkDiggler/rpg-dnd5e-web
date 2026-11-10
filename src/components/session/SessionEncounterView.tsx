@@ -163,7 +163,7 @@ import {
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
 import { useDungeonScene } from './useDungeonScene';
-import { useMonsterTurnFocus } from './useMonsterTurnFocus';
+import { hailTurnFocus, useMonsterTurnFocus } from './useMonsterTurnFocus';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
@@ -832,6 +832,14 @@ function SessionEncounterScope({
     // server's approach cell, planned on the same map every walk uses.
     walkToApproach: walkToCell,
   });
+  // ONE CAMERA PATH (rpg-project#923): the guard's hail centres the view
+  // through the keyed presentation focus a monster's turn start uses. The
+  // hail wins while it stands; it is the viewer's own conversation.
+  const hailCamera = useMemo(
+    () => hailTurnFocus(combat.hailFocus, otherMembers),
+    [combat.hailFocus, otherMembers]
+  );
+  const cameraPresentationFocus = hailCamera ?? monsterCamera.focus;
   // THE DIAL (rpg-project#872 D2), remembered per browser. Off, no offers
   // reach the map and a creature click behaves exactly as before.
   const clickToActOn = useDialValues()[CLICK_TO_ACT_DIAL] === 'on';
@@ -2234,7 +2242,7 @@ function SessionEncounterScope({
                     touchPinchEnabled
                     touchRotateEnabled
                     focusRequest={focusRequest}
-                    monsterTurnFocus={monsterCamera.focus}
+                    monsterTurnFocus={cameraPresentationFocus}
                     // The dungeon's own starting facing, read from the ATLAS
                     // and nowhere else (rpg-project#374: rpg-api reads it from
                     // the atlas mirror only, and there is no second source

@@ -58,6 +58,7 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioPlayButton, StudioPublish } from './StudioPublish';
 import {
@@ -93,6 +94,7 @@ const ENCOUNTER_SECTIONS = {
   intel: 'Intel',
   endings: 'Endings',
   concealments: 'Concealments',
+  interactions: 'Interactions',
   scenarios: 'Scenarios',
   facts: 'Facts',
 } as const;
@@ -1536,6 +1538,7 @@ function StudioSurface({
                 'intel',
                 'endings',
                 'concealments',
+                'interactions',
                 'scenarios',
                 'facts',
               ] as const
@@ -1595,6 +1598,9 @@ function StudioSurface({
               onArmMembers={armConcealment}
               onOpenIntel={() => setEncounterSection('intel')}
             />
+          )}
+          {home === 'encounter' && encounterSection === 'interactions' && (
+            <StudioInteractions session={session} />
           )}
           {home === 'encounter' && encounterSection === 'scenarios' && (
             <StudioScenarios document={session.document} />

@@ -332,6 +332,10 @@ export interface EncounterStudioSession {
   commitTables(tables: SiteScope['tables']): boolean;
   /** The root `bundles:` (rpg-project#670), one undoable transaction. */
   commitBundles(bundles: SiteScope['bundles']): boolean;
+  /** One interaction's hail distance (rpg-project#923), or null to remove
+   * it, one undoable transaction. Refused, with the notice naming why, for
+   * a distance outside 1 to Speak reach or an interaction not authored. */
+  commitInteractionApproach(id: string, within: number | null): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

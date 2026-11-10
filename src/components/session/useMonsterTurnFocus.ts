@@ -56,3 +56,22 @@ export function useMonsterTurnFocus({
     onTurnBeat,
   };
 }
+
+/**
+ * THE HAIL TAKES FOCUS (rpg-project#923): the camera centres on the guard
+ * whose hail opened the reply panel, through the same keyed presentation
+ * focus a monster's turn start uses, read off the same observer testimony.
+ * Not behind the follow-monster-turns dial: the hail is the player's own
+ * conversation, not someone else's turn. A guard this viewer does not
+ * currently see centres nothing.
+ */
+export function hailTurnFocus(
+  hail: { readonly key: string; readonly guard: string } | null,
+  sightings: readonly SightedMember[]
+): MonsterTurnFocus | null {
+  if (!hail) return null;
+  const sighting = sightings.find(
+    (item) => item.subject === hail.guard && !item.remembered
+  );
+  return sighting ? { key: hail.key, position: sighting.position } : null;
+}

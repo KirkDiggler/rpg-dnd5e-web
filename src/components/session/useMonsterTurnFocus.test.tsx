@@ -6,7 +6,7 @@ import {
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import type { SightedMember } from './sightingEntities';
-import { useMonsterTurnFocus } from './useMonsterTurnFocus';
+import { hailTurnFocus, useMonsterTurnFocus } from './useMonsterTurnFocus';
 
 const monster: SightedMember = {
   subject: 'guard',
@@ -85,4 +85,22 @@ it('stops automatic focus immediately when disabled or sight is lost', () => {
   view.rerender(props);
   act(() => setDial('followMonsterTurns', 'off'));
   expect(view.result.current.focus).toBeNull();
+});
+
+it('the hail centres on the guard this viewer sees, through the same keyed focus (rpg-project#923)', () => {
+  // Off: the hail is the viewer's own conversation, not a monster's turn.
+  setDial('followMonsterTurns', 'off');
+  expect(hailTurnFocus({ key: 'hail:1', guard: 'guard' }, [monster])).toEqual({
+    key: 'hail:1',
+    position: { x: 3, y: -3, z: 0 },
+  });
+  expect(
+    hailTurnFocus({ key: 'hail:1', guard: 'guard' }, [
+      { ...monster, remembered: true },
+    ])
+  ).toBeNull();
+  expect(
+    hailTurnFocus({ key: 'hail:1', guard: 'someone' }, [monster])
+  ).toBeNull();
+  expect(hailTurnFocus(null, [monster])).toBeNull();
 });
