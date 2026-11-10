@@ -17,7 +17,12 @@ import {
   NOT_HOLDS_FROM_THE_START_REFUSAL,
   NOT_OF_NOT_REFUSAL,
   OPTION_REQUIRES_FORMS,
+  requiresChoice,
+  requiresFacts,
+  requiresGate,
+  requiresSentence,
   waitedNotRefusal,
+  type OptionRequires,
 } from './predicateNot';
 import { predicateSentence } from './predicateSentence';
 import { readBackOf } from './readBack';
@@ -308,5 +313,78 @@ describe('the requires picker offers “unless”', () => {
 
     fireEvent.change(picker, { target: { value: 'fact' } });
     expect(latest?.options?.[0]?.requires).toEqual({ fact: '' });
+  });
+});
+
+/** The entrance remembers (rpg-project#922): a `requires` list and an
+ * interaction read are shown, carried, and said — not edited — by the
+ * picker, the readout and the Read back. */
+describe('a requires list and an interaction read are shown and carried', () => {
+  const fixture = decodeWorldBuilderV4Site();
+  const scope: SiteScope = {
+    factions: fixture.factions,
+    dispositions: fixture.dispositions,
+  };
+  const goblin = fixture.draft.room.monsterDeclarations.find(
+    (monster) => monster.id === 'goblin-1'
+  )!;
+  const requires: OptionRequires = [
+    { fact: 'feast-tonight' },
+    { interaction: { id: 'front-gate', in: ['fresh', 'warned-guest'] } },
+  ];
+  const troupe: OptionShape = {
+    id: 'troupe',
+    say: 'We are the troupe.',
+    check: [{ ability: 'performance', dc: 13 }],
+    requires,
+  };
+
+  it('the helpers read every requirement, in order', () => {
+    expect(requiresChoice(requires)).toBe('listed');
+    expect(
+      requiresChoice({ not: { interaction: { id: 'front-gate', in: ['x'] } } })
+    ).toBe('listed');
+    expect(requiresChoice({ fact: 'f' })).toBe('fact');
+    expect(requiresFacts(requires)).toEqual(['feast-tonight']);
+    expect(requiresGate(requires)).toBe(
+      ' · requires fact feast-tonight · requires front-gate in fresh|warned-guest'
+    );
+    expect(requiresSentence(requires, (id) => id)).toBe(
+      'Offered to a speaker who knows feast-tonight. Offered while front-gate is fresh or warned-guest.'
+    );
+  });
+
+  it('the picker shows the list read-only, and a say edit keeps it', () => {
+    let latest: RoomMonsterBinding | undefined;
+    function Creature() {
+      const [binding, setBinding] = useState<RoomMonsterBinding | undefined>({
+        options: [troupe],
+      });
+      return (
+        <CreatureOrders
+          scope={scope}
+          monster={goblin}
+          room={fixture.draft.room}
+          binding={binding}
+          onOrdersChange={(next) => {
+            setBinding(next);
+            latest = next;
+          }}
+        />
+      );
+    }
+    render(<Creature />);
+    expect(screen.queryByLabelText('Line 1 requires for goblin-1')).toBeNull();
+    expect(
+      screen.getByTestId('option-requires-listed-line 1 of goblin-1')
+        .textContent
+    ).toContain('requires front-gate in fresh|warned-guest');
+    fireEvent.change(screen.getByLabelText('Line 1 for goblin-1'), {
+      target: { value: 'We play tonight.' },
+    });
+    expect(latest?.options?.[0]).toMatchObject({
+      say: 'We play tonight.',
+      requires,
+    });
   });
 });

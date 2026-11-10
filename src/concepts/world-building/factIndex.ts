@@ -17,7 +17,7 @@ import type { AnswerTableShape, OptionShape } from './answerTableShape';
 import { wordRowsOf } from './bundles';
 import { walkFacts } from './factWalk';
 import { documentPlacementNames } from './placementNames';
-import { requiresRead } from './predicateNot';
+import { requiresFacts } from './predicateNot';
 import { sideName } from './predicateSentence';
 import type { RoomDraftDocument } from './roomDraft';
 import { stepPredicate, untilSteps } from './siteScope';
@@ -91,10 +91,8 @@ export function factIndexOf(
         label: `${owner}: ${option.id}`,
         target,
       };
-      if (option.requires) {
-        const gate = requiresRead(option.requires);
-        if ('fact' in gate) read(gate.fact, { ...use, kind: 'requires' });
-      }
+      for (const fact of requiresFacts(option.requires))
+        read(fact, { ...use, kind: 'requires' });
       for (const entry of [
         ...(option.success ?? []),
         ...(option.failure ?? []),

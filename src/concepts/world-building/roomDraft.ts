@@ -22,7 +22,7 @@ import {
   type CreatureStates,
 } from './creatureStates';
 import { loadDungeonSource, saveDungeonSource } from './dungeonSources';
-import { requiresRead } from './predicateNot';
+import { requirementPath, requirementsOf, requiresRead } from './predicateNot';
 import {
   pruneRegionGround,
   validateRegionGround,
@@ -1385,14 +1385,18 @@ function requireOptionHoldings(
   const check = (owner: string, options: RoomOption[] | undefined) => {
     for (const [index, option] of (options ?? []).entries()) {
       if (option.requires === undefined) continue;
-      // A `not` of a holding names its prop one level down (rpg-project#719).
-      const read = requiresRead(option.requires);
-      if (!('holds' in read)) continue;
-      const refusal = optionHoldsRefusal(read.holds, props);
-      const at =
-        'not' in option.requires ? 'requires.not.holds' : 'requires.holds';
-      if (refusal)
-        throw new Error(`${owner} options[${index}].${at}: ${refusal}`);
+      const requires = option.requires;
+      for (const [i, one] of requirementsOf(requires).entries()) {
+        // A `not` of a holding names its prop one level down (rpg-project#719).
+        const read = requiresRead(one);
+        if (!('holds' in read)) continue;
+        const refusal = optionHoldsRefusal(read.holds, props);
+        const at = `${requirementPath(requires, i)}.${
+          'not' in one ? 'not.holds' : 'holds'
+        }`;
+        if (refusal)
+          throw new Error(`${owner} options[${index}].${at}: ${refusal}`);
+      }
     }
   };
   for (const [id, binding] of Object.entries(monsterBindings ?? {}))

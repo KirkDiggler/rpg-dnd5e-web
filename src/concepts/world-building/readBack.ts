@@ -35,7 +35,7 @@ import {
   type OrdersSource,
 } from './layeredOrders';
 import { documentPlacementNames } from './placementNames';
-import { requiresId, requiresRead, requiresSentence } from './predicateNot';
+import { requiresFacts, requiresSentence } from './predicateNot';
 import {
   dispositionSentence,
   possessive,
@@ -392,8 +392,7 @@ function optionSentence(
     parts.push(
       requiresSentence(option.requires, (id) => propName(document, id))
     );
-    const gate = requiresRead(option.requires);
-    if ('fact' in gate) facts.push(gate.fact);
+    facts.push(...requiresFacts(option.requires));
   }
   parts.push(
     option.check === undefined
@@ -506,8 +505,7 @@ function optionFacts(
   reads: Set<string>
 ) {
   for (const option of options ?? []) {
-    if (option.requires && 'fact' in requiresRead(option.requires))
-      reads.add(requiresId(option.requires));
+    for (const fact of requiresFacts(option.requires)) reads.add(fact);
     for (const row of [...(option.success ?? []), ...(option.failure ?? [])])
       if (row.fact !== undefined) writes.add(row.fact);
   }
