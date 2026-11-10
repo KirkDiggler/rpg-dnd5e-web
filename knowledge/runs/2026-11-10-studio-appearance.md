@@ -19,6 +19,8 @@ Work [Project #919](https://github.com/KirkDiggler/rpg-project/issues/919), impl
 
 - Full local `npm run ci-check` passes formatting, lint, types, build and tests: 10,223 passed / five skipped, 793 files / one skipped. Detailed test log `/tmp/rpg-dnd5e-web-ci-check.ZdNbKZ/tests.log` confirms the counts despite the npm-log notice in the wrapper output; this is the reader/model checkpoint, not the final feature gate — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
 
+- First bounded panel preview wires the shared fields into the real Arrange owner: NPC looks now stage behind Apply/Cancel like wall/prop choices; existing nonappearance pickers retain their policy. Focused owner/model/integration checks: 221 passed; types and scoped lint pass. A single hardware-browser load/render check has no page exceptions. Human usability/appearance feedback is the next gate; masonry playback is explicitly labeled unfinished — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
+
 ## Mistaken
 
 - The first reader checkpoint could not typecheck the still-generated schema2 bindings against required compatibility metadata. Actual source-bound provider publication and ordinary sync resolve it; no unsafe cast, hand-edited generated module or fictitious provider SHA is used — [provider PR](https://github.com/KirkDiggler/rpg-game-assets/pull/345).

@@ -618,6 +618,99 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(joined.session.document.draft.room.partyStart?.q).toBe(1);
   });
 
+  it('shows the same Appearance area when a prop has no published material controls', () => {
+    const joined = owner();
+    joined.selectScene(['studio-decoration']);
+    expect(screen.getByRole('group', { name: 'Appearance' })).toBeTruthy();
+    expect(
+      screen.getByText('This asset has no published material choices.')
+    ).toBeTruthy();
+  });
+
+  it('stages atlas choices on one prop through Apply Cancel and history', async () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.scene.items.find(
+      (item) => item.id === 'studio-decoration'
+    )!.assetRef = 'dnd5e:props:fantasy-kingdom:chair_fancy_01';
+    const joined = owner(document);
+    joined.selectScene(['studio-decoration']);
+    await screen.findByLabelText('Texture pack');
+    const before = joined.session.document;
+    const pack = 'dnd5e:material:fantasy-kingdom:atlas_04_c';
+    change('Texture pack', pack);
+    expect(joined.session.document).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(token('Texture pack')).toBe('');
+    change('Texture pack', pack);
+    apply();
+    expect(
+      joined.session.document.draft.scene.items.find(
+        (item) => item.id === 'studio-decoration'
+      )!.materialOverrides
+    ).toEqual([{ surfaceId: 'atlas', materialRef: pack }]);
+    expect(
+      joined.session.document.draft.scene.items.filter(
+        (item) => item.id !== 'studio-decoration'
+      )
+    ).toEqual(
+      before.draft.scene.items.filter((item) => item.id !== 'studio-decoration')
+    );
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    joined.selectScene(['studio-decoration']);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset Texture pack' }));
+    apply();
+    expect(
+      joined.session.document.draft.scene.items.find(
+        (item) => item.id === 'studio-decoration'
+      )!.materialOverrides
+    ).toEqual([]);
+  });
+
+  it('stages paired masonry finishes without changing wall geometry', async () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.room.walls![0].appearance.assetRef =
+      'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
+    const joined = owner(document);
+    joined.selectWall();
+    await screen.findByLabelText('Wall finish (both sides)');
+    const before = joined.session.document;
+    const brick = 'dnd5e:material:fantasy-kingdom:wall_brick_01';
+    change('Wall finish (both sides)', brick);
+    expect(joined.session.document).toBe(before);
+    expect(
+      screen.getAllByText('Included in selected pack').length
+    ).toBeGreaterThan(0);
+    apply();
+    expect(
+      joined.session.document.draft.scene.wallFinishes!['studio-wall']
+    ).toEqual({ 'positive-z': brick, 'negative-z': brick });
+    expect(joined.session.document.draft.room).toEqual(before.draft.room);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reset Wall finish (both sides)' })
+    );
+    apply();
+    expect(joined.session.document.draft.scene.wallFinishes).toBeUndefined();
+  });
+
+  it('stages the shared appearance choice and Cancel leaves the real owner untouched', () => {
+    const joined = owner();
+    joined.selectActor();
+    const before = joined.session.document;
+    const writes = joined.writes();
+    change('NPC appearance', 'dnd5e:npcs:kingdom:merchant-01');
+    expect(joined.session.document).toBe(before);
+    expect(joined.writes()).toBe(writes);
+    expect(joined.calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(joined.session.document).toBe(before);
+    expect(screen.getByRole('group', { name: 'Appearance' })).toBeTruthy();
+  });
+
   it('saves appearance through the real owner once, with undo/redo and no rules or faction changes', () => {
     const joined = owner();
     joined.selectActor();
@@ -628,11 +721,13 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const writes = joined.writes();
     const family = 'dnd5e:npcs:kingdom:merchant-01';
     const look = 'dnd5e:npcs:kingdom:merchant-01-style-03-b';
-    // Each look picker applies on change as its own transaction (S5-Q1).
     change('NPC appearance', family);
-    change('Style', '03');
-    change('Skin palette', 'B');
-    expect(joined.calls).toHaveLength(3);
+    change('Style', `${family}-style-03-a`);
+    change('Skin palette', look);
+    expect(joined.calls).toHaveLength(0);
+    expect(joined.writes()).toBe(writes);
+    apply();
+    expect(joined.calls).toHaveLength(1);
     expect(joined.calls.at(-1)).toEqual({
       kind: 'actor-start',
       target: { kind: 'actor', id: 'goblin-1' },
@@ -645,7 +740,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
           Object.keys(call).sort().join() === 'appearanceRef,kind,target'
       )
     ).toBe(true);
-    expect(joined.writes()).toBe(writes + 3);
+    expect(joined.writes()).toBe(writes + 1);
     const chosen = joined.session.document.draft.room.monsterDeclarations.find(
       (actor) => actor.id === 'goblin-1'
     )!;
@@ -662,19 +757,14 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       )?.appearanceRef
     ).toBe(look);
     act(() => joined.session.undo());
-    act(() => joined.session.undo());
-    act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
     act(() => joined.session.redo());
-    act(() => joined.session.redo());
-    act(() => joined.session.redo());
-    expect(token('NPC appearance')).toBe(family);
-    expect(token('Style')).toBe('03');
-    expect(token('Skin palette')).toBe('B');
+    expect(token('NPC appearance')).toBe(look);
+    expect(token('Style')).toBe(look);
+    expect(token('Skin palette')).toBe(look);
     change('NPC appearance', '');
-    expect((screen.getByLabelText('Style') as HTMLSelectElement).disabled).toBe(
-      true
-    );
+    expect(screen.queryByLabelText('Style')).toBeNull();
+    apply();
     expect(
       joined.session.document.draft.room.monsterDeclarations.find(
         (actor) => actor.id === 'goblin-1'
@@ -699,6 +789,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       const joined = owner();
       joined.selectActor();
       change('NPC appearance', 'dnd5e:npcs:goblin:prisoner-02');
+      apply();
       const before = joined.session.document;
       const writes = joined.writes();
       const activity = `dnd5e:activities:${name}`;
@@ -733,6 +824,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       act(() => joined.session.redo());
       expect(token('Default activity')).toBe(activity);
       change('NPC appearance', 'dnd5e:npcs:goblin:warrior-male-01');
+      apply();
       expect(token('Default activity')).toBe(activity);
       expect(
         screen.getByRole('option', { name: `Unavailable: ${activity}` })
@@ -768,6 +860,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const joined = owner();
     joined.selectActor();
     change('NPC appearance', `dnd5e:npcs:kingdom:${body}`);
+    apply();
     const select = screen.getByLabelText(
       'Default activity'
     ) as HTMLSelectElement;
