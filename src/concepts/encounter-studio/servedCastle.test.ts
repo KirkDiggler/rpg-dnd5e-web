@@ -754,38 +754,26 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
 /**
  * THE GUARD OPENS THE CONVERSATION (rpg-project#923, Gate S3 of #769): an
  * interaction's `approach: { within: N }` and a machine's `on: approached`
- * row. The served fixture predates both, so this input adds them where the
- * castle will carry them (the fixture refresh from the api head follows):
- * the distance on `front-gate`, the hail row on gate-1's post.
+ * row, as the served castle (rpg-api 83a487a8) authors them: the distance on
+ * `front-gate`, a hail row on each gate guard's and the captain's machine.
  */
 describe('the hail grammar loads, edits and writes back (rpg-project#923)', () => {
   const APPROACH = '    approach: { within: 2 }\n';
   const HAIL_ROW = `            - on: approached
               do:
                 - pick: approached
-              reason: hailed the visitor
 `;
-  const FRONT_GATE = '  front-gate:\n    recipe:\n';
-  const GATE_1_BARRED = `            - on: barred
-              to: challenged
-              do:
-                - pick: barred
-                - anchor: true
-              reason: walked into him
-`;
-  const hailed = served
-    .replace(FRONT_GATE, `  front-gate:\n${APPROACH}    recipe:\n`)
-    .replace(GATE_1_BARRED, `${GATE_1_BARRED}${HAIL_ROW}`);
+  const hailed = served;
 
   type Parsed = {
     interactions: Record<string, { approach?: unknown; recipe: unknown }>;
     behaviorDefinitions: unknown;
   };
 
-  it('the input carries both new forms, once each', () => {
-    expect(served.split(FRONT_GATE)).toHaveLength(2);
-    expect(hailed).toContain(APPROACH);
-    expect(hailed.split(HAIL_ROW)).toHaveLength(2);
+  it('the served castle carries both new forms', () => {
+    expect(hailed.split(APPROACH)).toHaveLength(2);
+    // gate-1, gate-2, the captain, and the post that shares his machine.
+    expect(hailed.split(HAIL_ROW).length - 1).toBeGreaterThanOrEqual(3);
     const doc = parse(hailed) as Parsed;
     expect(doc.interactions['front-gate'].approach).toEqual({ within: 2 });
   });

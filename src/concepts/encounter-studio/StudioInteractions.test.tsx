@@ -8,14 +8,15 @@ import { readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { StudioInteractions } from './StudioInteractions';
 
+/** The served castle authors `front-gate` with `approach: { within: 2 }`;
+ * null takes the approach away, anything else replaces it. */
 function castle(approach: string | null) {
-  const text =
-    approach === null
-      ? served
-      : served.replace(
-          '  front-gate:\n    recipe:\n',
-          `  front-gate:\n    approach: ${approach}\n    recipe:\n`
-        );
+  const authored = '    approach: { within: 2 }\n';
+  if (!served.includes(authored)) throw new Error('the castle lost its hail');
+  const text = served.replace(
+    authored,
+    approach === null ? '' : `    approach: ${approach}\n`
+  );
   const read = readDraftYaml(text);
   if (!read.ok) throw new Error(read.refusal);
   return { draft: read.draft, scope: read.scope };
