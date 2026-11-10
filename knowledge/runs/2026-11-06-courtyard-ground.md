@@ -19,6 +19,8 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 ## Found
 
+- Adopted the actual merged ground provider877de99a96475787cb8106998c5e2a9f2e0eb2bc through normal scoped sync/check; only provider commit identity changed, while the ground manifest and all resources remain the reviewed bytes. Operator authorized the ordered merge chain, not deployment — [provider merge](https://github.com/KirkDiggler/rpg-game-assets/pull/342).
+
 - Missing-contract test run failed on the absent `regionGround` import; after implementation the five focused files pass 130 tests and TypeScript checks pass — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 - Existing region owner edits retain unknown fields unchanged, so ground needs explicit pruning to avoid orphan paint after floor edits — [S2 plan](https://github.com/KirkDiggler/rpg-project/pull/875).
 - The play-wiring complete Web gate passed with 9969 tests and five skips; the earlier native Studio checks proved base-preserving paint, pointer paint/erase, undo/redo, YAML export and browser reload without a mutating server request — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).

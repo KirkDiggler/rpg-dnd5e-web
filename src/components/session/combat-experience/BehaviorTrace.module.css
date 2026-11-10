@@ -1,0 +1,58 @@
+.trace {
+  border-left: 2px solid var(--sc-line, #778d96);
+  margin: 0.5rem 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.trace h4,
+.trace h5 {
+  margin: 0.3rem 0;
+}
+.trace p {
+  margin: 0.25rem 0;
+}
+.trace small {
+  font-weight: normal;
+  opacity: 0.7;
+}
+.trace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  max-height: 24rem;
+  overflow: auto;
+}
+.trace summary {
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+.roles {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+.role {
+  border-top: 1px solid var(--sc-line, #52616a);
+  padding: 0.5rem 0;
+}
+.guard ul {
+  padding-left: 1rem;
+}
+.guard [data-verdict='matched'] {
+  color: #9ed6ad;
+}
+.guard [data-verdict='rejected'] {
+  color: #e6b4a3;
+}
+.guard [data-verdict='unknown'],
+.warning {
+  color: #e2ca90;
+}
+.guard [data-verdict='not evaluated'] {
+  opacity: 0.65;
+}
+.picker {
+  border-top: 1px solid var(--sc-line, #52616a);
+  padding-top: 0.4rem;
+}
