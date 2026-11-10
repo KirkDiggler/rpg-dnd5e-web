@@ -21,6 +21,9 @@ Work [Project #919](https://github.com/KirkDiggler/rpg-project/issues/919), impl
 
 - First bounded panel preview wires the shared fields into the real Arrange owner: NPC looks now stage behind Apply/Cancel like wall/prop choices; existing nonappearance pickers retain their policy. Focused owner/model/integration checks: 221 passed; types and scoped lint pass. A single hardware-browser load/render check has no page exceptions. Human usability/appearance feedback is the next gate; masonry playback is explicitly labeled unfinished — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
 
+- The operator accepted the panel preview (“looks good”); do not repeat that visual approval. The publication gate passes 10,227 tests / five skipped, plus formatting, lint, types and build. Masonry play/cold-host acceptance remains separate — [operator look](https://github.com/KirkDiggler/rpg-project/issues/919#issuecomment-6775787958).
+
 ## Mistaken
 
+- The first panel publication gate found an inspector test still sending the retired style token instead of choosing its visible option. Updated the test to select by label and assert the exact resulting appearance plus sibling isolation. That test edit initially used a Playwright-only `exact` option in Testing Library; typecheck caught it. Removed the option, ran typecheck before the next full gate, then confirmed the complete gate green — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
 - The first reader checkpoint could not typecheck the still-generated schema2 bindings against required compatibility metadata. Actual source-bound provider publication and ordinary sync resolve it; no unsafe cast, hand-edited generated module or fictitious provider SHA is used — [provider PR](https://github.com/KirkDiggler/rpg-game-assets/pull/345).

@@ -783,9 +783,11 @@ describe('StudioInspector', () => {
       const document = createGuardCastDocument();
       const session = castSession(document, 'gate-1');
       inspector(session);
-      fireEvent.change(within(region()).getByLabelText('Style'), {
-        target: { value: '02' },
-      });
+      const style = within(region()).getByLabelText('Style');
+      const choice = within(style).getByRole('option', {
+        name: '02',
+      }) as HTMLOptionElement;
+      fireEvent.change(style, { target: { value: choice.value } });
       fireEvent.click(within(region()).getByRole('button', { name: 'Apply' }));
       expect(session.commitArrange).toHaveBeenCalledTimes(1);
       const intent = vi.mocked(session.commitArrange).mock
@@ -796,8 +798,8 @@ describe('StudioInspector', () => {
       });
       const next = applyStudioActorArrange(document.draft, intent);
       const [first, second] = next.room.monsterDeclarations;
-      expect(first!.appearanceRef).not.toBe(
-        'dnd5e:npcs:kingdom:soldier-male-01'
+      expect(first!.appearanceRef).toBe(
+        'dnd5e:npcs:kingdom:soldier-male-01-style-02-a'
       );
       expect(second).toEqual(document.draft.room.monsterDeclarations[1]);
     });
