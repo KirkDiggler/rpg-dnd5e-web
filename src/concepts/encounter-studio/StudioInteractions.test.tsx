@@ -26,7 +26,11 @@ function renderForm(approach: string | null) {
   const commitInteractionApproach = vi.fn(() => true);
   render(
     <StudioInteractions
-      session={{ document: castle(approach), commitInteractionApproach }}
+      session={{
+        document: castle(approach),
+        commitInteractionApproach,
+        commitInteractionOutcomes: vi.fn(() => true),
+      }}
     />
   );
   const field = screen.getByLabelText(

@@ -29,10 +29,10 @@ export const NOT_HOLDS_FROM_THE_START_REFUSAL =
   'and waited for only on a stance a pair can turn away from';
 
 /** `optionRequiresForms`: what an option may require (rpg-project#922: one
- * or a list, and the interaction form). */
+ * or a list, and the interaction form; rpg-project#928: recognition). */
 export const OPTION_REQUIRES_FORMS =
   'an option requires one or a list of { fact: <id> }, { holds: <prop id> }, ' +
-  '{ interaction: { id, in: [<state>] } }, or { not: } one of them';
+  '{ interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them';
 
 /** `interactionForm`: the interaction predicate's own sentence. */
 export const INTERACTION_FORM =
@@ -60,9 +60,22 @@ export interface InteractionRead {
   interaction: { id: string; in: string[] };
 }
 
+/** The creature spoken to holds a topic about the speaker (rpg-project#928):
+ * he recognises them. The topic is the author's; whether any interaction's
+ * outcome grants it, and whether the line is a creature's, is the compiler's
+ * to judge at Save & Play. The studio carries it and says it. */
+export interface RecognizedRead {
+  recognized: string;
+}
+
 /** What one requirement reads: a fact the speaker knows, a prop they carry,
- * or the state of the run's interaction. */
-export type OptionRead = { fact: string } | { holds: string } | InteractionRead;
+ * the state of the run's interaction, or whether the one spoken to
+ * recognises the speaker. */
+export type OptionRead =
+  | { fact: string }
+  | { holds: string }
+  | InteractionRead
+  | RecognizedRead;
 
 /** One requirement: a read, or `not` around one. */
 export type OptionRequirement = OptionRead | { not: OptionRead };
@@ -119,7 +132,7 @@ export function requiresChoice(r: OptionRequires | undefined): RequiresChoice {
   if (r === undefined) return '';
   if (Array.isArray(r)) return 'listed';
   const read = requiresRead(r);
-  if ('interaction' in read) return 'listed';
+  if ('interaction' in read || 'recognized' in read) return 'listed';
   const form = 'fact' in read ? 'fact' : 'holds';
   return 'not' in r ? `not-${form}` : form;
 }
@@ -168,6 +181,10 @@ function requirementSentence(
     return 'not' in r
       ? `Offered unless ${interactionWords(read)}.`
       : `Offered while ${interactionWords(read)}.`;
+  if ('recognized' in read)
+    return 'not' in r
+      ? `Offered unless the one spoken to recognises the speaker as ${read.recognized}.`
+      : `Offered while the one spoken to recognises the speaker as ${read.recognized}.`;
   if ('not' in r)
     return 'fact' in read
       ? `Offered unless the speaker knows ${read.fact}.`
@@ -195,7 +212,9 @@ function requirementGate(r: OptionRequirement): string {
       ? `fact ${read.fact}`
       : 'holds' in read
         ? `holding ${read.holds}`
-        : `${read.interaction.id} in ${read.interaction.in.join('|')}`;
+        : 'recognized' in read
+          ? `recognized ${read.recognized}`
+          : `${read.interaction.id} in ${read.interaction.in.join('|')}`;
   return 'not' in r ? `unless ${what}` : `requires ${what}`;
 }
 
