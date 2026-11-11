@@ -54,7 +54,10 @@ import {
   isMultiMemberDeclaration,
   toggleMemberTarget,
 } from './memberTargeting';
+import { reactionWindowDeclaration } from './reactionWindow';
 import {
+  CONVERSATION_MOVED_ON_MESSAGE,
+  isMovedOnRefusal,
   isStaleDeclarationRefusal,
   selectCombatExperience,
   staleDeclarationMessage,
@@ -268,6 +271,26 @@ export interface UseSessionCombatExperienceResult {
     run: readonly Act[],
     metadata: ActDeliveryMetadata
   ) => void;
+}
+
+/**
+ * What an authority refresh leaves of the current interaction when nothing
+ * else carries it: an open Speak panel is carried (rpg-project#924), every
+ * other armed offer is dropped. Asked of the last-good declarations, because
+ * the armed id was minted by them.
+ */
+function conversationOf(
+  current: CombatExperiencePresentationState,
+  declarations: readonly Declaration[]
+): CombatExperiencePresentationState {
+  if (current.conversationSelected) return current;
+  if (current.armedDeclarationId === null) return EMPTY_INTERACTION;
+  const armed = declarations.filter(
+    (declaration) => declaration.id === current.armedDeclarationId
+  );
+  return armed.length === 1 && armed[0]!.verb === Verb.SPEAK
+    ? { ...current, conversationSelected: true }
+    : EMPTY_INTERACTION;
 }
 
 function uniqueCurrentDeclaration(
@@ -542,6 +565,18 @@ export function useSessionCombatExperience({
     memberNames: presentationMemberNames,
     memberRoles: presentationMemberRoles,
   });
+  // A ROLL WINDOW CLOSED FOR THE VIEWER WITHOUT AN ANSWER (rpg-project#924):
+  // the holder walked out of reach, or the conversation released the hold,
+  // and nothing was spent. The numbers go with it once a FRESH Afford — read
+  // after the beat that revoked authority, so never the gap the comment on
+  // `receivedRollWindow` warns about — poses no window at all; otherwise the
+  // stale d20 would keep the client looking busy and block the hail.
+  useEffect(() => {
+    if (!authorityFresh || receivedRollWindow === null) return;
+    if (reactionWindowDeclaration(declarations)) return;
+    setReceivedRollWindow(null);
+  }, [authorityFresh, declarations, receivedRollWindow]);
+
   const rollWindow = useMemo<CombatExperienceRollWindow | null>(() => {
     const received = receivedRollWindow;
     if (!received || received.session !== session) return null;
@@ -612,10 +647,38 @@ export function useSessionCombatExperience({
           }
         : current.movementSelected
           ? current
-          : EMPTY_INTERACTION
+          : // A Speak approach owns its own re-arm (`approachRef`); the
+            // conversation is carried only when no walk is settling it.
+            approachRef.current
+            ? EMPTY_INTERACTION
+            : conversationOf(current, declarationsRef.current)
     );
-    setTargeting(false);
+    setTargeting(interactionRef.current.conversationSelected === true);
   }, [invalidateAuthoritySnapshots, setInteraction]);
+
+  /**
+   * Re-open the conversation on `target` from the next fresh offer, with a
+   * quiet notice (rpg-project#924). Used when Speak is refused because the
+   * conversation moved on: the panel stays on screen showing the last-good
+   * lines, and re-reads them the moment Turn/Afford are current again.
+   */
+  const reopenConversation = useCallback(
+    (declarationId: string, target: SpeakTarget, notice: string): void => {
+      if (!mountedRef.current) return;
+      authorityRef.current = { ...authorityRef.current, fresh: false };
+      invalidateAuthoritySnapshots();
+      setInteraction({
+        ...EMPTY_INTERACTION,
+        armedDeclarationId: declarationId,
+        speakTarget: target,
+        conversationSelected: true,
+        changedOptionNotice: notice,
+      });
+      setTargeting(true);
+      scheduleRefresh(['turn', 'afford']);
+    },
+    [invalidateAuthoritySnapshots, scheduleRefresh, setInteraction]
+  );
 
   const recoverStaleDeclaration = useCallback(
     (declarationId: string, verb: Verb, target?: string) => {
@@ -707,6 +770,51 @@ export function useSessionCombatExperience({
   }, [authorityFresh, declarations]);
 
   const { armedIsCurrent, presentationState } = useMemo(() => {
+    if (interaction.conversationSelected) {
+      // THE OPEN CONVERSATION IS CARRIED, like Move (rpg-project#924). While
+      // authority is being re-read the panel keeps the last-good lines on
+      // screen (display only: `armedSpeak` sends nothing until it is fresh).
+      // Once fresh it binds to the one current Speak offer and keeps the same
+      // target when that target still has lines, else steps back to the
+      // target list; with no Speak offer the panel closes. The notice, if
+      // any, rides along.
+      if (!authorityFresh) {
+        return { armedIsCurrent: true, presentationState: interaction };
+      }
+      const speaks = declarations.filter(
+        (declaration) =>
+          declaration.verb === Verb.SPEAK &&
+          declaration.targetKind === TargetKind.MEMBER &&
+          declaration.available &&
+          declaration.id.length > 0
+      );
+      const speak =
+        speaks.length === 1 && actsOnThisClock(clock, active, member)
+          ? speaks[0]!
+          : undefined;
+      return {
+        armedIsCurrent: speak !== undefined,
+        presentationState: speak
+          ? {
+              ...EMPTY_INTERACTION,
+              armedDeclarationId: speak.id,
+              speakTarget:
+                interaction.speakTarget &&
+                speakLinesFor(speak, interaction.speakTarget).length > 0
+                  ? interaction.speakTarget
+                  : null,
+              // Kept: the next revocation (the act after this one) carries
+              // the panel again. A render can still see the old `fresh`
+              // between the revocation and the re-read.
+              conversationSelected: true,
+              changedOptionNotice: interaction.changedOptionNotice,
+            }
+          : {
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: interaction.changedOptionNotice,
+            },
+      };
+    }
     if (interaction.movementSelected) {
       // Movement is a chosen interaction mode, not ownership of one snapshot's
       // selector. Keep it selected while routine Turn/Afford refreshes are in
@@ -807,6 +915,40 @@ export function useSessionCombatExperience({
             },
     };
   }, [active, authorityFresh, clock, declarations, interaction, member]);
+
+  // Bind a carried conversation to the fresh offer the coherence check read
+  // (or close it when there is none), only when that changes what is armed
+  // or who is spoken to. Declared before the hail so, on one commit, the hail
+  // sees the rebound panel rather than the carry.
+  useEffect(() => {
+    if (!interaction.conversationSelected || !authorityFresh) return;
+    if (
+      presentationState.armedDeclarationId === interaction.armedDeclarationId &&
+      (presentationState.speakTarget ?? null) ===
+        (interaction.speakTarget ?? null)
+    ) {
+      return;
+    }
+    const opened = hailOpenRef.current;
+    if (
+      opened &&
+      opened.declarationId === interaction.armedDeclarationId &&
+      presentationState.armedDeclarationId !== null
+    ) {
+      hailOpenRef.current = {
+        ...opened,
+        declarationId: presentationState.armedDeclarationId,
+      };
+    }
+    setInteraction(presentationState);
+    setTargeting(presentationState.armedDeclarationId !== null);
+  }, [
+    authorityFresh,
+    interaction.armedDeclarationId,
+    interaction.conversationSelected,
+    presentationState,
+    setInteraction,
+  ]);
 
   useEffect(() => {
     const remappedMovement =
@@ -965,8 +1107,10 @@ export function useSessionCombatExperience({
       // which is exactly the state a reaction window is NOT in: the mover
       // holds the turn and the fight is frozen on this viewer's answer. The
       // freshness gate stays — an answer echoed from a stale Afford is still
-      // a stale selector, and the server refuses it — and so does the TURN
-      // clock, because no window is posed on the world clock.
+      // a stale selector, and the server refuses it. A window is posed on
+      // either clock now: in free roam a player's own waiting roll (a spoken
+      // check) is a REACT row beside a live panel (rpg-project#924), so the
+      // answer is not gated on the turn clock.
       const answeringWindow = candidate.verb === Verb.REACT;
       // EVERY ROW AFFORD SENDS ON THE WORLD CLOCK IS OFFERED TO THIS MEMBER
       // (rpg-project#785). The world clock has no turn to be out of; the
@@ -979,7 +1123,7 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         !authorityRef.current.fresh ||
         (answeringWindow
-          ? clockNow !== ClockKind.TURN
+          ? clockNow !== ClockKind.TURN && clockNow !== ClockKind.WORLD
           : !actsOnThisClock(clockNow, authorityRef.current.active, member))
       ) {
         return;
@@ -1036,8 +1180,13 @@ export function useSessionCombatExperience({
         )
           return;
         reactInFlightRef.current = true;
-        setInteraction(EMPTY_INTERACTION);
-        setTargeting(false);
+        // IN FREE ROAM THE PANEL BESIDE THE WINDOW IS LIVE (rpg-project#924):
+        // answering one's own waiting roll does not close an open
+        // conversation; the refresh after the answer carries it.
+        if (clockNow !== ClockKind.WORLD) {
+          setInteraction(EMPTY_INTERACTION);
+          setTargeting(false);
+        }
         void (async () => {
           try {
             await react({
@@ -1056,7 +1205,19 @@ export function useSessionCombatExperience({
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } catch (error) {
             if (!mountedRef.current) return;
-            if (isStaleDeclarationRefusal(error)) {
+            if (isMovedOnRefusal(error)) {
+              // THE HOLD IS GONE (rpg-project#924): the roll this answered
+              // was released before the answer landed. Nothing was spent;
+              // not an error — re-read the offer with a quiet notice.
+              // An open conversation beside it is carried, not closed.
+              setReceivedRollWindow(null);
+              invalidateAuthority();
+              setInteraction((now) => ({
+                ...now,
+                changedOptionNotice: CONVERSATION_MOVED_ON_MESSAGE,
+              }));
+              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+            } else if (isStaleDeclarationRefusal(error)) {
               recoverStaleDeclaration(current.id, Verb.REACT);
             } else {
               // Ambiguous either way: the answer may have committed and
@@ -1464,13 +1625,24 @@ export function useSessionCombatExperience({
       const declaration = armedSpeak();
       if (!declaration) return;
       const target = interactionRef.current.speakTarget;
-      if (!target || !speakLine(declaration, target, optionId)) return;
+      if (!target) return;
+      const line = speakLine(declaration, target, optionId);
+      // A PENDING LINE IS NEVER SENT (rpg-project#924). The panel draws it
+      // disabled; this is the same rule asked of the current offer, so a
+      // click from a render the hold has since reached sends nothing.
+      if (!line || line.pending) return;
       setInteraction(EMPTY_INTERACTION);
       setTargeting(false);
       speakInFlightRef.current = true;
       void (async () => {
         try {
-          await speak({ session, member, target, optionId });
+          await speak({
+            session,
+            member,
+            target,
+            optionId,
+            revision: line.revision,
+          });
           if (!mountedRef.current) return;
           // NOTHING IS READ OFF THE RESPONSE. The roll reaches every witness,
           // the actor included, on the `spoke` beat; what the creature does
@@ -1479,6 +1651,20 @@ export function useSessionCombatExperience({
           scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
         } catch (error) {
           if (!mountedRef.current) return;
+          // THE CONVERSATION MOVED ON (rpg-project#924), not an error.
+          // ABORTED: the line was offered at a revision the interaction has
+          // advanced past. FAILED_PRECONDITION: another speaker's waiting
+          // roll holds the line this client believed free. Nothing was
+          // spent either way; the panel re-opens on the same target from the
+          // next fresh offer, where the line comes back current or pending.
+          if (isMovedOnRefusal(error) || isStaleDeclarationRefusal(error)) {
+            reopenConversation(
+              declaration.id,
+              target,
+              CONVERSATION_MOVED_ON_MESSAGE
+            );
+            return;
+          }
           // A refusal at the door — the target cannot perceive the actor, or
           // the option was withdrawn (`ErrNoOption`) — is shown as one. The
           // request names no selector, so there is no stale id to recover.
@@ -1500,6 +1686,7 @@ export function useSessionCombatExperience({
       armedSpeak,
       invalidateAuthority,
       member,
+      reopenConversation,
       scheduleRefresh,
       session,
       setInteraction,

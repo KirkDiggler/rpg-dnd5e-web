@@ -19,7 +19,36 @@ import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enu
  * AN UNAVAILABLE LINE IS NOT SHOWN. The offer already gated it (a `requires`
  * the actor does not meet), and drawing it greyed would tell the player a
  * line exists that their character has no way to know about.
+ *
+ * A PENDING LINE IS SHOWN, AND NEVER SENT (rpg-project#924). `pending` says a
+ * speaker's waiting roll holds the line. It arrives with `available` false
+ * and `SHORTFALL_REASON_LINE_RESERVED`, but it is not a gated line: the
+ * player qualifies and the line frees itself once the roll is decided. So
+ * every reader here lists an available OR pending row (the player can see the
+ * conversation is waiting) and the panel draws it as waiting. The waiting
+ * state keys on `pending` alone, never on `pending_on_member_id` or on the
+ * shortfall reason.
  */
+
+/** Whether a row is drawn: the player may say it now, or will once it frees. */
+function shown(option: SpeakOption): boolean {
+  return (option.available || option.pending) && option.optionId.length > 0;
+}
+
+/**
+ * The label a waiting line carries: the holder by name when the server named
+ * one the client knows, else no name at all. The id is never shown raw — a
+ * holder the viewer cannot place is "a roll", not a string of hex.
+ */
+export function speakLineWaitingLabel(
+  option: SpeakOption,
+  memberNames: ReadonlyMap<string, string>
+): string {
+  const holder = option.pendingOnMemberId
+    ? memberNames.get(option.pendingOnMemberId)
+    : undefined;
+  return holder ? `Waiting on ${holder}'s roll` : 'Waiting on a roll';
+}
 
 /** The row's target, unwrapped of the empty arm, or null for a malformed row. */
 function targetOf(option: SpeakOption): SpeakTarget | null {
@@ -42,8 +71,8 @@ export function sameSpeakTarget(
 }
 
 /**
- * The lines the actor may say to one target: that target's AVAILABLE rows,
- * in the order the server sent them.
+ * The lines drawn for one target: that target's AVAILABLE or PENDING rows,
+ * in the order the server sent them. A pending row is drawn, never sent.
  */
 export function speakLinesFor(
   declaration: Declaration | null | undefined,
@@ -51,17 +80,14 @@ export function speakLinesFor(
 ): SpeakOption[] {
   if (!declaration || !target) return [];
   return declaration.speakOptions.filter(
-    (option) =>
-      option.available &&
-      option.optionId.length > 0 &&
-      sameSpeakTarget(targetOf(option), target)
+    (option) => shown(option) && sameSpeakTarget(targetOf(option), target)
   );
 }
 
 /**
- * Every target with at least one available line, each once, in first-seen
- * order. A target whose every line is gated is not listed: there is nothing
- * the player could say to it.
+ * Every target with at least one available or pending line, each once, in
+ * first-seen order. A target whose every line is gated is not listed: there
+ * is nothing the player could say to it.
  */
 export function speakTargetsOf(
   declaration: Declaration | null | undefined
@@ -69,7 +95,7 @@ export function speakTargetsOf(
   if (!declaration) return [];
   const targets: SpeakTarget[] = [];
   for (const option of declaration.speakOptions) {
-    if (!option.available || option.optionId.length === 0) continue;
+    if (!shown(option)) continue;
     const target = targetOf(option);
     if (!target) continue;
     if (!targets.some((seen) => sameSpeakTarget(seen, target))) {
@@ -80,7 +106,8 @@ export function speakTargetsOf(
 }
 
 /**
- * The one available row for this target and option id, or undefined. Exactly
+ * The one drawn row for this target and option id, or undefined (the caller
+ * refuses to send a pending one). Exactly
  * one, never the first of several: a duplicated pair is a producer defect and
  * the client must not guess which of them the player meant.
  */

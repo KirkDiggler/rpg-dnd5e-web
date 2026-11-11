@@ -30,6 +30,17 @@ export interface CombatExperiencePresentationState {
    * without changing the player's chosen interaction mode.
    */
   movementSelected?: boolean;
+  /**
+   * An open Speak panel carried across an authority refresh (rpg-project#924).
+   *
+   * Set only while Turn/Afford are being re-read: the panel keeps showing the
+   * last-good offer (display only — nothing can be sent until authority is
+   * fresh), then binds to the one current Speak offer on the same target, so
+   * another speaker's roll starting or settling re-reads the open panel
+   * instead of closing it. Kept while the panel stays open, so the next
+   * revocation carries it again; cleared with the panel.
+   */
+  conversationSelected?: boolean;
   /** Ordered cast targets; absent on legacy fixtures and unrelated verbs. */
   selectedCandidateMembers?: readonly string[];
   /**
