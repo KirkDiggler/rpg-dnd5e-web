@@ -7085,7 +7085,7 @@ describe('Save and Play through the real owner (S6)', () => {
       .textContent!;
   };
 
-  it('the shared wall panel states that this preview does not yet verify playback', () => {
+  it('the shared wall panel distinguishes wall choices from unapplied region defaults', () => {
     installFinishPreview();
     const draft = finishRoomFixture();
     delete draft.scene.mapLabels;
@@ -7095,7 +7095,7 @@ describe('Save and Play through the real owner (S6)', () => {
     selectWall(storage, storage.document().draft.room.walls![0]);
     expect(screen.getByRole('group', { name: 'Appearance' })).toBeTruthy();
     expect(
-      screen.getByText(/Wall-finish playback integration is still in progress/)
+      screen.getByText(/Region defaults without a wall binding/)
     ).toBeTruthy();
   });
 

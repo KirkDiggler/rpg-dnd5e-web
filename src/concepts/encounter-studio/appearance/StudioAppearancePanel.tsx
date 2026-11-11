@@ -155,8 +155,8 @@ export function StudioAppearancePanel({
       {hasBoth && (
         <p className="es-help">
           A/B markers identify the faces and follow the wall when it rotates.
-          Wall-finish playback integration is still in progress; this preview
-          verifies Studio editing.
+          Choices belong to this wall. Region defaults without a wall binding
+          remain unapplied.
         </p>
       )}
     </fieldset>
