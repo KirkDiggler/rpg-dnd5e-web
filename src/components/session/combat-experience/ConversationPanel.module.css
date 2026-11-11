@@ -95,3 +95,24 @@
   color: #edf3f7;
   background: #202c39;
 }
+/* A line a speaker's waiting roll holds (rpg-project#924): drawn, never sent.
+   Its own look, not a greyed-out "unavailable" row — the line is still the
+   player's to say once the roll settles, and the caption says whose roll. */
+.panel .choice[data-speak-pending] {
+  border-style: dashed;
+  border-color: #6b5a2e;
+  background: transparent;
+  color: #b9c3cc;
+  cursor: progress;
+}
+.panel .choice[data-speak-pending]:hover {
+  background: transparent;
+  border-color: #6b5a2e;
+}
+.waiting {
+  display: block;
+  margin-top: 4px;
+  color: #e3c06a;
+  font-size: 11px;
+  font-style: italic;
+}

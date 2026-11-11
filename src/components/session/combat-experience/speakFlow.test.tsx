@@ -11,11 +11,14 @@
  * walk finding.
  */
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import {
   ClockKind,
   DeclarationSchema,
   MemberKind,
   ParticipantSchema,
+  ReactChoice,
+  ReactionRefSchema,
   Slot,
   SpeakOptionSchema,
   Standing,
@@ -33,12 +36,15 @@ import { useSessionCombatExperience } from './useSessionCombatExperience';
 const hoisted = vi.hoisted(() => ({
   speakFn: vi.fn(),
   attackFn: vi.fn(),
+  scheduleRefresh: vi.fn(),
+  reactFn: vi.fn(),
 }));
 
 vi.mock('@/api/client', () => ({
   sessionClient: {
     speak: hoisted.speakFn,
     attack: hoisted.attackFn,
+    react: hoisted.reactFn,
   },
 }));
 
@@ -61,6 +67,7 @@ const names = new Map([
   ['bard-1', 'Standre'],
   ['front-goblin', 'Goblin'],
   ['cook-3', 'Cook'],
+  ['rogue-2', 'Vex'],
 ]);
 
 /**
@@ -100,6 +107,8 @@ function speakDeclaration(slot = Slot.UNSPECIFIED): Declaration {
         optionId: 'threat',
         line: 'Move, or be moved.',
         available: true,
+        interactionId: 'gate-talk',
+        revision: 4n,
       }),
       create(SpeakOptionSchema, {
         target: { case: 'memberId', value: 'cook-3' },
@@ -124,22 +133,24 @@ function Harness({
   declarations,
   clock = ClockKind.WORLD,
   active = '',
+  authorityFresh = true,
 }: {
   declarations: readonly Declaration[];
   clock?: ClockKind;
   active?: string;
+  authorityFresh?: boolean;
 }) {
   latest = useSessionCombatExperience({
     session: 'front-room',
     member: 'bard-1',
     clock,
     active,
-    authorityFresh: true,
+    authorityFresh,
     memberNames: names,
     participants: [bard, goblin],
     declarations,
     invalidateAuthoritySnapshots: () => {},
-    scheduleRefresh: () => {},
+    scheduleRefresh: hoisted.scheduleRefresh,
   });
   const state = latest.presentationState;
   return (
@@ -181,6 +192,9 @@ beforeEach(() => {
   hoisted.speakFn.mockResolvedValue({});
   hoisted.attackFn.mockReset();
   hoisted.attackFn.mockResolvedValue({});
+  hoisted.scheduleRefresh.mockReset();
+  hoisted.reactFn.mockReset();
+  hoisted.reactFn.mockResolvedValue({});
 });
 
 describe('arming Speak on the world clock (R3)', () => {
@@ -271,7 +285,7 @@ describe('the line step', () => {
     ]);
   });
 
-  it('sends session, member, target and option — and no selector', async () => {
+  it('sends session, member, target, option and the offered revision — and no selector', async () => {
     const declaration = speakDeclaration();
     render(<Harness declarations={[declaration]} />);
     act(() => latest.onSelectDeclaration(declaration));
@@ -291,6 +305,7 @@ describe('the line step', () => {
       member: 'bard-1',
       target: { case: 'memberId', value: 'front-goblin' },
       optionId: 'threat',
+      revision: 4n,
     });
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed').textContent).toBe('none');
@@ -314,6 +329,7 @@ describe('the line step', () => {
       member: 'bard-1',
       target: { case: 'propId', value: 'altar-1' },
       optionId: 'pray',
+      revision: 0n,
     });
   });
 
@@ -430,5 +446,181 @@ describe('Speak on the turn clock', () => {
     });
 
     expect(hoisted.speakFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
+  /** The goblin's lines with `threat` held by another speaker's waiting roll. */
+  function heldDeclaration(id = 'v2.speak.sealed.1', holder = 'rogue-2') {
+    const declaration = speakDeclaration();
+    declaration.id = id;
+    for (const option of declaration.speakOptions) {
+      if (option.optionId === 'threat') {
+        option.pending = true;
+        option.pendingOnMemberId = holder;
+      }
+    }
+    return declaration;
+  }
+
+  async function openGoblin(declaration: Declaration): Promise<void> {
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onTargetClick('front-goblin');
+    });
+  }
+
+  it('draws a pending line as waiting on the holder by name, and it cannot be sent', async () => {
+    const declaration = heldDeclaration();
+    render(<Harness declarations={[declaration]} />);
+    await openGoblin(declaration);
+
+    const waiting = screen.getByRole('button', { name: /Move, or be moved/ });
+    expect((waiting as HTMLButtonElement).disabled).toBe(true);
+    expect(waiting.hasAttribute('data-speak-pending')).toBe(true);
+    expect(waiting.hasAttribute('data-speak-choice')).toBe(false);
+    expect(waiting.textContent).toContain("Waiting on Vex's roll");
+    // The free line beside it is untouched.
+    const free = screen.getByRole('button', { name: /troupe for the feast/ });
+    expect((free as HTMLButtonElement).disabled).toBe(false);
+    expect(free.textContent).not.toContain('Waiting');
+
+    await act(async () => {
+      fireEvent.click(waiting);
+      latest.onSpeakOption('threat');
+    });
+    expect(hoisted.speakFn).not.toHaveBeenCalled();
+  });
+
+  it('names no holder it cannot place: "Waiting on a roll"', async () => {
+    const declaration = heldDeclaration('v2.speak.sealed.1', '');
+    render(<Harness declarations={[declaration]} />);
+    await openGoblin(declaration);
+
+    expect(
+      screen.getByRole('button', { name: /Move, or be moved/ }).textContent
+    ).toContain('Waiting on a roll');
+  });
+
+  it('ABORTED is no error: the panel stays on the target, re-reads, and says the conversation moved on', async () => {
+    hoisted.speakFn.mockRejectedValueOnce(
+      new ConnectError('revision moved', Code.Aborted)
+    );
+    const declaration = speakDeclaration();
+    render(<Harness declarations={[declaration]} />);
+    await openGoblin(declaration);
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: /Move, or be moved/ })
+      );
+    });
+
+    expect(hoisted.speakFn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('notice').textContent).toBe(
+      'The conversation moved on — pick again.'
+    );
+    expect(screen.getByTestId('notice').textContent).not.toContain('failed');
+    expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
+    expect(screen.getByText('What do you say to Goblin?')).toBeTruthy();
+    expect(hoisted.scheduleRefresh).toHaveBeenCalledWith(['turn', 'afford']);
+  });
+
+  it('FAILED_PRECONDITION on a line believed free re-reads the same way, and the line comes back pending', async () => {
+    hoisted.speakFn.mockRejectedValueOnce(
+      new ConnectError('line reserved', Code.FailedPrecondition)
+    );
+    const declaration = speakDeclaration();
+    const { rerender } = render(<Harness declarations={[declaration]} />);
+    await openGoblin(declaration);
+
+    await act(async () => {
+      latest.onSpeakOption('threat');
+    });
+    expect(screen.getByTestId('notice').textContent).not.toContain('failed');
+
+    // The refreshed offer mints a new selector and holds the line.
+    rerender(<Harness declarations={[heldDeclaration('v2.speak.sealed.2')]} />);
+
+    expect(screen.getByTestId('armed').textContent).toBe('v2.speak.sealed.2');
+    expect(
+      screen.getByRole('button', { name: /Move, or be moved/ }).textContent
+    ).toContain("Waiting on Vex's roll");
+  });
+
+  it('an open panel is carried across an authority refresh and re-reads the hold without the player acting', async () => {
+    const declaration = speakDeclaration();
+    const { rerender } = render(<Harness declarations={[declaration]} />);
+    await openGoblin(declaration);
+
+    // Another player's roll starts: an act arrives, authority is revoked.
+    act(() => latest.invalidateAuthority());
+    rerender(<Harness declarations={[declaration]} authorityFresh={false} />);
+    expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
+    expect(latest.presentationState.speakTarget).toEqual({
+      case: 'memberId',
+      value: 'front-goblin',
+    });
+    // Nothing can be sent while the offer is being re-read.
+    await act(async () => {
+      latest.onSpeakOption('troupe');
+    });
+    expect(hoisted.speakFn).not.toHaveBeenCalled();
+
+    // The fresh offer holds the line: the same panel shows it waiting.
+    rerender(<Harness declarations={[heldDeclaration('v2.speak.sealed.2')]} />);
+    expect(screen.getByTestId('armed').textContent).toBe('v2.speak.sealed.2');
+    expect(screen.getByTestId('notice').textContent).toBe('none');
+    expect(
+      screen.getByRole('button', { name: /Move, or be moved/ }).textContent
+    ).toContain("Waiting on Vex's roll");
+
+    // The roll settles: the next refresh frees the line again.
+    act(() => latest.invalidateAuthority());
+    rerender(
+      <Harness
+        declarations={[heldDeclaration('v2.speak.sealed.2')]}
+        authorityFresh={false}
+      />
+    );
+    const freed = speakDeclaration();
+    freed.id = 'v2.speak.sealed.3';
+    rerender(<Harness declarations={[freed]} />);
+    const line = screen.getByRole('button', { name: /Move, or be moved/ });
+    expect((line as HTMLButtonElement).disabled).toBe(false);
+    expect(line.textContent).not.toContain('Waiting');
+  });
+
+  it('a free-roam REACT row is answered beside the open panel; ABORTED keeps the panel and says the conversation moved on', async () => {
+    hoisted.reactFn.mockRejectedValueOnce(
+      new ConnectError('hold released', Code.Aborted)
+    );
+    const declaration = speakDeclaration();
+    const window = create(DeclarationSchema, {
+      id: 'selector.window.roll',
+      verb: Verb.REACT,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      reaction: create(ReactionRefSchema, {
+        ref: 'dnd5e:features:bardic_inspiration',
+        name: 'Bardic Inspiration',
+      }),
+    });
+    render(<Harness declarations={[declaration, window]} />);
+    await openGoblin(declaration);
+
+    await act(async () => {
+      latest.onSelectDeclaration(window, ReactChoice.HOLD);
+    });
+
+    expect(hoisted.reactFn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('notice').textContent).toBe(
+      'The conversation moved on — pick again.'
+    );
+    expect(screen.getByTestId('notice').textContent).not.toContain('failed');
+    expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
+    expect(screen.getByText('What do you say to Goblin?')).toBeTruthy();
+    expect(hoisted.scheduleRefresh).toHaveBeenCalled();
   });
 });

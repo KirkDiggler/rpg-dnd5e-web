@@ -25,6 +25,14 @@ export interface SpeakParams {
    * which skill it rolls and what it does are the server's answer.
    */
   optionId: string;
+  /**
+   * The revision of the interaction the picked line was offered at, echoed
+   * verbatim from `SpeakOption.revision` (rpg-project#924). OPAQUE: the
+   * client never compares or increments it. A reply from a menu the
+   * conversation has moved past is refused with `ABORTED` and nothing spent.
+   * 0 (a line that reads no interaction) is sent as the wire's own default.
+   */
+  revision: bigint;
 }
 
 export interface UseSessionSpeakResult {
@@ -43,9 +51,11 @@ export interface UseSessionSpeakResult {
  * member whose sight reaches the actor, and the creature's reply arrives as
  * `answered`. The story log narrates both once for the whole table.
  *
- * NO SELECTOR IS ECHOED. `SpeakRequest` names the target and the option and
- * nothing else; a stale option is refused at the door (`ErrNoOption`), and
- * the caller shows that as a refusal.
+ * NO SELECTOR IS ECHOED. `SpeakRequest` names the target, the option and the
+ * offered line's revision; a stale option is refused at the door
+ * (`ErrNoOption`), a moved-on revision with `ABORTED`, and a line another
+ * speaker's waiting roll holds with `FAILED_PRECONDITION`. The caller decides
+ * how each reads.
  */
 export function useSessionSpeak(): UseSessionSpeakResult {
   const [loading, setLoading] = useState(false);

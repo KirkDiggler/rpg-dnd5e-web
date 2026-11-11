@@ -4,7 +4,11 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import legacy from './CombatExperience.module.css';
 import styles from './ConversationPanel.module.css';
-import { speakLinesFor, speakTargetsOf } from './speakOptions';
+import {
+  speakLinesFor,
+  speakLineWaitingLabel,
+  speakTargetsOf,
+} from './speakOptions';
 
 export interface ConversationPanelProps {
   declaration: Declaration;
@@ -89,18 +93,41 @@ export function ConversationPanel({
             className={styles.choices}
             aria-label={`Lines for ${name(target)}`}
           >
-            {lines.map((option) => (
-              <li key={option.optionId}>
-                <button
-                  type="button"
-                  data-speak-choice={option.optionId}
-                  className={styles.choice}
-                  onClick={() => onSpeakOption?.(option.optionId)}
-                >
-                  {option.line ? `“${option.line}”` : option.optionId}
-                </button>
-              </li>
-            ))}
+            {lines.map((option) => {
+              const said = option.line ? `“${option.line}”` : option.optionId;
+              // A PENDING LINE IS DRAWN AND CANNOT BE SENT (rpg-project#924):
+              // another speaker's roll holds it. Disabled, so neither a click
+              // nor the panel's opening focus can reach it.
+              if (option.pending) {
+                const waiting = speakLineWaitingLabel(option, memberNames);
+                return (
+                  <li key={option.optionId}>
+                    <button
+                      type="button"
+                      data-speak-pending={option.optionId}
+                      className={styles.choice}
+                      disabled
+                      aria-description={waiting}
+                    >
+                      {said}
+                      <span className={styles.waiting}>{waiting}</span>
+                    </button>
+                  </li>
+                );
+              }
+              return (
+                <li key={option.optionId}>
+                  <button
+                    type="button"
+                    data-speak-choice={option.optionId}
+                    className={styles.choice}
+                    onClick={() => onSpeakOption?.(option.optionId)}
+                  >
+                    {said}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ) : targets.length === 0 ? null : (
           <ul className={styles.choices} aria-label="Speak targets">

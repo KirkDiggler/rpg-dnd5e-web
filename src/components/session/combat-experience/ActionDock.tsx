@@ -667,144 +667,6 @@ function ActionDockContents({
         )
       : standingGroup;
 
-  // EVERY OFFER AFFORD SENDS IS DRAWN, and which verbs those are is ONE
-  // QUESTION to the registry rather than a hand-written list
-  // (rpg-dnd5e-web#1104). Afford mints the rows — one per cantrip this build
-  // can actually cast and none for one it cannot, one per social verb on
-  // either clock — so the client decides nothing about membership. What this
-  // filter decides is what gets DRAWN, which is why a verb missing from it
-  // was never a dead button but no button at all: dropped before the arm,
-  // before the click, before anything downstream could be wrong about it.
-  //
-  // THE DEATH-SAVE SHAPE CHECK STAYS HERE. It asks about one declaration's
-  // shape rather than about the verb, so the registry has no business
-  // answering it.
-  const executableDeclarations = declarations.filter(
-    (declaration) =>
-      isExecutableVerb(declaration.verb) &&
-      (declaration.verb !== Verb.DEATH_SAVE ||
-        isDeathSaveExecutableShape(declaration, 'display'))
-  );
-
-  // WHAT THE WORLD CLOCK DRAWS: the rows Afford sent, and no row it did not.
-  // Afford used to return an empty list outside a fight, so that branch drew a
-  // message and nothing else and that was the whole truth. It now returns the
-  // social verbs (rpg-project#457 R3), and drawing only the message would hide
-  // rows the SERVER SENT — a player standing in front of the goblin would be
-  // looking at a creature they are being offered a way to deal with, with
-  // nothing on screen saying so.
-  //
-  // MOVE IS THE ONE OMISSION, and it is not this client withholding an
-  // affordance: on the world clock movement is the FLOOR CLICK, which the
-  // message immediately above advertises in as many words, and the view sends
-  // an empty move selector there precisely because there is no Move
-  // declaration to echo. A Move row here would be a second, competing
-  // affordance for the thing the panel already tells you how to do.
-  const worldClockDeclarations = executableDeclarations.filter(
-    (declaration) => declaration.verb !== Verb.MOVE
-  );
-
-  if (clock === ClockKind.WORLD && actionPresentation?.desktopIcons) {
-    // Same two-level composition as combat: offers, then one utility footer.
-    // The compact/mobile branch below retains its existing standing-control
-    // positions; only desktop replaces the old exploration banner with a hint.
-    return (
-      <div className={styles.actionRow} data-testid="world-clock-actions">
-        <OrganizedActionSurface
-          declarations={worldClockDeclarations}
-          authorityFresh={authorityFresh}
-          presentation={actionPresentation}
-          armedDeclarationId={armedDeclarationId}
-          onSelectDeclaration={onSelectDeclaration}
-          onCancelSelection={onCancelSelection}
-          secondaryControls={standing}
-          embedded={Boolean(desktopStatus)}
-          externalCancel={targetingControlsActive}
-        />
-      </div>
-    );
-  }
-  if (clock === ClockKind.WORLD) {
-    // THE WORLD CLOCK HAS ROWS NOW (rpg-project#457 R3, rpg-project#458).
-    // Afford used to return an empty list here, so this branch drew a message
-    // and nothing else, and that was the whole truth. It now returns the
-    // social verbs — the front room goblin is standing in the doorway and the
-    // entire scenario is talking to it — so drawing only the message would
-    // hide rows the SERVER SENT and leave a player looking at a creature they
-    // are being offered a way to deal with.
-    //
-    // ONLY WHAT AFFORD RETURNED, and no local decision about which. This
-    // draws `executableDeclarations`, which is the same registry-filtered
-    // list the turn clock draws; if the server sends nothing, nothing is
-    // drawn and the message stands alone exactly as before.
-    return (
-      <div className={styles.actionRow}>
-        <div className={styles.passiveActionRow}>
-          <span>Exploration</span>
-          <strong>
-            {authorityFresh
-              ? 'Click the floor to move'
-              : 'Actions may be out of date'}
-          </strong>
-          <small>
-            {authorityFresh
-              ? 'No turn economy on the world clock.'
-              : 'Waiting for current Turn and Afford authority.'}
-          </small>
-        </div>
-        {standing}
-        {/* AFTER `{standing}`, NOT BEFORE IT, and the order is load-bearing
-            rather than aesthetic. React reconciles these children BY POSITION,
-            and this dock returns a differently shaped tree per clock — the
-            "Synchronizing" branch below is `[status, standing]`. Inserting
-            anything AHEAD of `{standing}` here moves it from slot 1 to slot 2,
-            so the first render that crosses from one branch to the other
-            REMOUNTS the whole standing-actions subtree: Search, Loot, Hold and
-            Leave all get fresh DOM nodes, and whatever was already holding one
-            — a focus, a pointer, a test's handle — is left pointing at a
-            detached button whose click goes nowhere.
-
-            Found exactly that way: three SessionEncounterView search scenes
-            went red against a group that rendered NOTHING AT ALL, because the
-            empty slot was enough. Rendered last, `{standing}` keeps slot 1 in
-            every branch and this group is simply mounted beside it.
-
-            It is also rendered unconditionally, empty or not, for the same
-            reason one step smaller: a group that came and went would shift
-            nothing now, but would the moment anything followed it. */}
-        <div
-          className={styles.actionGroup}
-          data-testid="world-clock-actions"
-          role="group"
-          aria-label="Actions"
-        >
-          {worldClockDeclarations.length > 0 && (
-            <span className={styles.groupLabel}>Actions</span>
-          )}
-          {worldClockDeclarations.map((declaration, index) => (
-            <ActionDeclaration
-              key={`${declaration.id}-${index}`}
-              declaration={declaration}
-              armed={declaration.id === armedDeclarationId}
-              authorityFresh={authorityFresh}
-              index={index}
-              // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
-              // Slot.NONE because the world clock has no economy to charge
-              // against, so a badge here would invent a price the server said
-              // there is none of. A row that DOES arrive priced still draws
-              // its badge, so this reads what the server sent rather than
-              // applying a blanket rule about the clock.
-              showCost={
-                declaration.slot !== Slot.NONE &&
-                declaration.slot !== Slot.UNSPECIFIED
-              }
-              onSelect={onSelectDeclaration}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
   // AHEAD OF EVERY "NOT YOUR TURN" RETURN BELOW, because that is precisely
   // when a reaction window is posed: the mover is a monster, the initiative
   // is its, and the fight is frozen waiting on THIS viewer's answer. Drawn
@@ -815,10 +677,12 @@ function ActionDockContents({
   // WINDOW_OPEN shortfall — so a row of refused buttons beside the question
   // would only invite clicks that cannot land.
   const reactionWindow = reactionWindowDeclaration(declarations);
+  let reactionContent: ReactNode = null;
   if (reactionWindow) {
     const reactionInformation = buildActionTooltip(reactionWindow);
     const windowKind = reactionWindowKind(reactionWindow);
-    if (windowKind === 'roll' && !rollWindowReady) {
+    const settling = windowKind === 'roll' && !rollWindowReady;
+    if (settling && clock !== ClockKind.WORLD) {
       return (
         <div className={styles.actionRow}>
           <div
@@ -864,14 +728,28 @@ function ActionDockContents({
                 ? rollWindow
                 : null
             );
+    // ON THE WORLD CLOCK NOTHING WAITS (rpg-project#924): the window is the
+    // viewer's own roll, and the rest of the table plays on beside it.
+    const waits = clock === ClockKind.WORLD ? '' : ' The fight waits on you.';
     const prompt =
       windowKind === 'choice'
-        ? 'Choose an effect, or decline. The fight waits on you.'
+        ? `Choose an effect, or decline.${waits}`
         : windowKind === 'movement'
-          ? 'Strike now, or hold your reaction. The fight waits on you.'
-          : 'Spend it, or keep it. The fight waits on you.';
-    return (
-      <div className={styles.actionRow}>
+          ? `Strike now, or hold your reaction.${waits}`
+          : `Spend it, or keep it.${waits}`;
+    reactionContent = settling ? (
+      <div
+        className={styles.passiveActionRow}
+        data-testid="roll-window-settling"
+        role="status"
+        aria-live="polite"
+      >
+        <span>Roll</span>
+        <strong>Your d20 is settling</strong>
+        <small>The choice follows the matching die.</small>
+      </div>
+    ) : (
+      <>
         <div
           className={styles.passiveActionRow}
           data-testid="reaction-window"
@@ -974,11 +852,163 @@ function ActionDockContents({
             </button>
           </span>
         </div>
-        {standing}
+      </>
+    );
+    // ON THE TURN CLOCK IT REPLACES THE DOCK (see above); on the world clock
+    // it joins it, drawn by the world-clock branches below.
+    if (clock !== ClockKind.WORLD) {
+      return (
+        <div className={styles.actionRow}>
+          {reactionContent}
+          {standing}
+        </div>
+      );
+    }
+  }
+
+  // EVERY OFFER AFFORD SENDS IS DRAWN, and which verbs those are is ONE
+  // QUESTION to the registry rather than a hand-written list
+  // (rpg-dnd5e-web#1104). Afford mints the rows — one per cantrip this build
+  // can actually cast and none for one it cannot, one per social verb on
+  // either clock — so the client decides nothing about membership. What this
+  // filter decides is what gets DRAWN, which is why a verb missing from it
+  // was never a dead button but no button at all: dropped before the arm,
+  // before the click, before anything downstream could be wrong about it.
+  //
+  // THE DEATH-SAVE SHAPE CHECK STAYS HERE. It asks about one declaration's
+  // shape rather than about the verb, so the registry has no business
+  // answering it.
+  const executableDeclarations = declarations.filter(
+    (declaration) =>
+      isExecutableVerb(declaration.verb) &&
+      (declaration.verb !== Verb.DEATH_SAVE ||
+        isDeathSaveExecutableShape(declaration, 'display'))
+  );
+
+  // WHAT THE WORLD CLOCK DRAWS: the rows Afford sent, and no row it did not.
+  // Afford used to return an empty list outside a fight, so that branch drew a
+  // message and nothing else and that was the whole truth. It now returns the
+  // social verbs (rpg-project#457 R3), and drawing only the message would hide
+  // rows the SERVER SENT — a player standing in front of the goblin would be
+  // looking at a creature they are being offered a way to deal with, with
+  // nothing on screen saying so.
+  //
+  // MOVE IS THE ONE OMISSION, and it is not this client withholding an
+  // affordance: on the world clock movement is the FLOOR CLICK, which the
+  // message immediately above advertises in as many words, and the view sends
+  // an empty move selector there precisely because there is no Move
+  // declaration to echo. A Move row here would be a second, competing
+  // affordance for the thing the panel already tells you how to do.
+  const worldClockDeclarations = executableDeclarations.filter(
+    (declaration) => declaration.verb !== Verb.MOVE
+  );
+
+  if (clock === ClockKind.WORLD && actionPresentation?.desktopIcons) {
+    // Same two-level composition as combat: offers, then one utility footer.
+    // The compact/mobile branch below retains its existing standing-control
+    // positions; only desktop replaces the old exploration banner with a hint.
+    return (
+      <div className={styles.actionRow} data-testid="world-clock-actions">
+        <OrganizedActionSurface
+          declarations={worldClockDeclarations}
+          authorityFresh={authorityFresh}
+          presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
+          onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
+          secondaryControls={standing}
+          embedded={Boolean(desktopStatus)}
+          externalCancel={targetingControlsActive}
+        />
+        {reactionContent}
       </div>
     );
   }
+  if (clock === ClockKind.WORLD) {
+    // THE WORLD CLOCK HAS ROWS NOW (rpg-project#457 R3, rpg-project#458).
+    // Afford used to return an empty list here, so this branch drew a message
+    // and nothing else, and that was the whole truth. It now returns the
+    // social verbs — the front room goblin is standing in the doorway and the
+    // entire scenario is talking to it — so drawing only the message would
+    // hide rows the SERVER SENT and leave a player looking at a creature they
+    // are being offered a way to deal with.
+    //
+    // ONLY WHAT AFFORD RETURNED, and no local decision about which. This
+    // draws `executableDeclarations`, which is the same registry-filtered
+    // list the turn clock draws; if the server sends nothing, nothing is
+    // drawn and the message stands alone exactly as before.
+    return (
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Exploration</span>
+          <strong>
+            {authorityFresh
+              ? 'Click the floor to move'
+              : 'Actions may be out of date'}
+          </strong>
+          <small>
+            {authorityFresh
+              ? 'No turn economy on the world clock.'
+              : 'Waiting for current Turn and Afford authority.'}
+          </small>
+        </div>
+        {standing}
+        {/* AFTER `{standing}`, NOT BEFORE IT, and the order is load-bearing
+            rather than aesthetic. React reconciles these children BY POSITION,
+            and this dock returns a differently shaped tree per clock — the
+            "Synchronizing" branch below is `[status, standing]`. Inserting
+            anything AHEAD of `{standing}` here moves it from slot 1 to slot 2,
+            so the first render that crosses from one branch to the other
+            REMOUNTS the whole standing-actions subtree: Search, Loot, Hold and
+            Leave all get fresh DOM nodes, and whatever was already holding one
+            — a focus, a pointer, a test's handle — is left pointing at a
+            detached button whose click goes nowhere.
 
+            Found exactly that way: three SessionEncounterView search scenes
+            went red against a group that rendered NOTHING AT ALL, because the
+            empty slot was enough. Rendered last, `{standing}` keeps slot 1 in
+            every branch and this group is simply mounted beside it.
+
+            It is also rendered unconditionally, empty or not, for the same
+            reason one step smaller: a group that came and went would shift
+            nothing now, but would the moment anything followed it. */}
+        <div
+          className={styles.actionGroup}
+          data-testid="world-clock-actions"
+          role="group"
+          aria-label="Actions"
+        >
+          {worldClockDeclarations.length > 0 && (
+            <span className={styles.groupLabel}>Actions</span>
+          )}
+          {worldClockDeclarations.map((declaration, index) => (
+            <ActionDeclaration
+              key={`${declaration.id}-${index}`}
+              declaration={declaration}
+              armed={declaration.id === armedDeclarationId}
+              authorityFresh={authorityFresh}
+              index={index}
+              // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
+              // Slot.NONE because the world clock has no economy to charge
+              // against, so a badge here would invent a price the server said
+              // there is none of. A row that DOES arrive priced still draws
+              // its badge, so this reads what the server sent rather than
+              // applying a blanket rule about the clock.
+              showCost={
+                declaration.slot !== Slot.NONE &&
+                declaration.slot !== Slot.UNSPECIFIED
+              }
+              onSelect={onSelectDeclaration}
+            />
+          ))}
+        </div>
+        {/* A free-roam player's own waiting roll (rpg-project#924) joins the
+            dock LAST, after the actions group, for the same by-position
+            reason `{standing}` keeps slot 1. */}
+        {reactionContent}
+      </div>
+    );
+  }
   if (clock !== ClockKind.TURN) {
     return (
       <div className={styles.actionRow}>

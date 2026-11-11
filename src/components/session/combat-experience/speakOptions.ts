@@ -19,7 +19,28 @@ import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enu
  * AN UNAVAILABLE LINE IS NOT SHOWN. The offer already gated it (a `requires`
  * the actor does not meet), and drawing it greyed would tell the player a
  * line exists that their character has no way to know about.
+ *
+ * A PENDING LINE IS SHOWN, AND NEVER SENT (rpg-project#924). `pending` says a
+ * speaker's waiting roll holds the line; it is independent of `available`, so
+ * an available pending line is listed (the player can see the conversation is
+ * waiting) and the panel draws it as waiting. The waiting state keys on
+ * `pending` alone, never on `pending_on_member_id` or a shortfall reason.
  */
+
+/**
+ * The label a waiting line carries: the holder by name when the server named
+ * one the client knows, else no name at all. The id is never shown raw — a
+ * holder the viewer cannot place is "a roll", not a string of hex.
+ */
+export function speakLineWaitingLabel(
+  option: SpeakOption,
+  memberNames: ReadonlyMap<string, string>
+): string {
+  const holder = option.pendingOnMemberId
+    ? memberNames.get(option.pendingOnMemberId)
+    : undefined;
+  return holder ? `Waiting on ${holder}'s roll` : 'Waiting on a roll';
+}
 
 /** The row's target, unwrapped of the empty arm, or null for a malformed row. */
 function targetOf(option: SpeakOption): SpeakTarget | null {

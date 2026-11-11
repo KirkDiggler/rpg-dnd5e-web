@@ -26,7 +26,7 @@ describe('useSessionSpeak', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('echoes session/member/target/option exactly, and sends no selector — the request has no field for one', async () => {
+  it('echoes session/member/target/option/revision exactly, and sends no selector — the request has no field for one', async () => {
     const fakeResponse = {} as unknown as SpeakResponse;
     hoisted.speakFn.mockResolvedValue(fakeResponse);
 
@@ -39,6 +39,7 @@ describe('useSessionSpeak', () => {
         member: 'char-1',
         target: { case: 'memberId', value: 'front-goblin' },
         optionId: 'troupe',
+        revision: 3n,
       });
     });
 
@@ -49,6 +50,7 @@ describe('useSessionSpeak', () => {
       member: 'char-1',
       target: { case: 'memberId', value: 'front-goblin' },
       optionId: 'troupe',
+      revision: 3n,
     });
   });
 
@@ -67,6 +69,7 @@ describe('useSessionSpeak', () => {
         member: 'char-1',
         target: { case: 'memberId', value: 'front-goblin' },
         optionId: 'troupe',
+        revision: 3n,
       });
     });
     await waitFor(() => expect(result.current.loading).toBe(true));
@@ -92,6 +95,7 @@ describe('useSessionSpeak', () => {
           member: 'char-1',
           target: { case: 'memberId', value: 'front-goblin' },
           optionId: 'troupe',
+          revision: 3n,
         })
       ).rejects.toThrow('target cannot see the actor');
     });
@@ -114,6 +118,7 @@ describe('useSessionSpeak', () => {
           member: 'char-1',
           target: { case: 'memberId', value: 'front-goblin' },
           optionId: 'troupe',
+          revision: 3n,
         })
       ).rejects.toThrow('first fail');
     });
@@ -125,6 +130,7 @@ describe('useSessionSpeak', () => {
         member: 'char-1',
         target: { case: 'memberId', value: 'front-goblin' },
         optionId: 'troupe',
+        revision: 3n,
       });
     });
     expect(result.current.error).toBeNull();
@@ -157,6 +163,7 @@ describe('useSessionSpeak', () => {
         member: 'char-1',
         target: { case: 'memberId', value: 'front-goblin' },
         optionId: 'troupe',
+        revision: 3n,
       });
     });
 
@@ -169,6 +176,7 @@ describe('useSessionSpeak', () => {
         member: 'char-1',
         target: { case: 'memberId', value: 'front-goblin' },
         optionId: 'troupe',
+        revision: 3n,
       });
     });
 

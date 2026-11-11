@@ -424,6 +424,16 @@ function CombatExperienceContent({
   );
   const targetingDeclaration =
     armedMatches.length === 1 ? armedMatches[0] : undefined;
+  // A CARRIED CONVERSATION STAYS ON SCREEN while authority is re-read
+  // (rpg-project#924): the panel draws the last-good lines, display only —
+  // every send re-asks fresh authority — and re-reads them when it lands.
+  const surfaceSelection =
+    selection ??
+    (!authorityFresh &&
+    presentationState.conversationSelected &&
+    targetingDeclaration?.verb === Verb.SPEAK
+      ? { declaration: targetingDeclaration, candidate: null, whyText: null }
+      : null);
   const targetingControlsActive =
     desktopHotbar &&
     phase === 'targeting' &&
@@ -500,7 +510,7 @@ function CombatExperienceContent({
         >
           <TargetSurface
             phase={phase}
-            selection={selection}
+            selection={surfaceSelection}
             movementRemainingFeet={movementRemainingFeet}
             isViewerTurn={isViewerTurn}
             showTurnNotice={showTurnNotice}
