@@ -218,4 +218,41 @@ describe('a free-roam roll window (rpg-project#924)', () => {
       'The fight waits on you'
     );
   });
+
+  it('the HOLDER’s dock stays as the server froze it, and the row leaves cleanly when the roll is closed', () => {
+    // The holder's other rows arrive refused (window_open); the client draws
+    // what Afford sent and un-freezes nothing.
+    const frozenSpeak = create(DeclarationSchema, {
+      id: 'selector.speak.1',
+      verb: Verb.SPEAK,
+      slot: Slot.NONE,
+      available: false,
+      targetKind: TargetKind.MEMBER,
+      why: { text: 'a roll is waiting on you' },
+    });
+    const onSelect = vi.fn();
+    const props = {
+      clock: ClockKind.WORLD,
+      viewerMember: 'fighter-1',
+      participants: [],
+      authorityFresh: true,
+      memberNames,
+      onSelectDeclaration: onSelect,
+      onEndTurn: vi.fn(),
+    };
+    const { rerender } = render(
+      <ActionDock {...props} declarations={[frozenSpeak, rollWindow()]} />
+    );
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
+    const speakButton = screen
+      .getByTestId('world-clock-actions')
+      .querySelector('button') as HTMLButtonElement;
+    fireEvent.click(speakButton);
+    expect(onSelect).not.toHaveBeenCalledWith(frozenSpeak);
+
+    // Walked out of reach: the next Afford poses no window.
+    rerender(<ActionDock {...props} declarations={[frozenSpeak]} />);
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.queryByTestId('roll-window-settling')).toBeNull();
+  });
 });

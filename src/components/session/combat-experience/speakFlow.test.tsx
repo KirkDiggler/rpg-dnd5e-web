@@ -19,6 +19,7 @@ import {
   ParticipantSchema,
   ReactChoice,
   ReactionRefSchema,
+  ShortfallReason,
   Slot,
   SpeakOptionSchema,
   Standing,
@@ -456,6 +457,9 @@ describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
     declaration.id = id;
     for (const option of declaration.speakOptions) {
       if (option.optionId === 'threat') {
+        // As v0.1.268 sends it: unavailable, reserved, pending.
+        option.available = false;
+        option.shortfall = ShortfallReason.LINE_RESERVED;
         option.pending = true;
         option.pendingOnMemberId = holder;
       }
@@ -490,6 +494,26 @@ describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
       latest.onSpeakOption('threat');
     });
     expect(hoisted.speakFn).not.toHaveBeenCalled();
+  });
+
+  it('a target whose only line is held is still listed, and opens on the waiting line', async () => {
+    const declaration = speakDeclaration();
+    for (const option of declaration.speakOptions) {
+      if (option.optionId === 'pray') {
+        option.available = false;
+        option.shortfall = ShortfallReason.LINE_RESERVED;
+        option.pending = true;
+      }
+    }
+    render(<Harness declarations={[declaration]} />);
+    act(() => latest.onSelectDeclaration(declaration));
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'altar-1' }));
+    });
+    const line = screen.getByRole('button', { name: /Grant us passage/ });
+    expect((line as HTMLButtonElement).disabled).toBe(true);
+    expect(line.textContent).toContain('Waiting on a roll');
   });
 
   it('names no holder it cannot place: "Waiting on a roll"', async () => {

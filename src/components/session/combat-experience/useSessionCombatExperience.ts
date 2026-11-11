@@ -54,6 +54,7 @@ import {
   isMultiMemberDeclaration,
   toggleMemberTarget,
 } from './memberTargeting';
+import { reactionWindowDeclaration } from './reactionWindow';
 import {
   CONVERSATION_MOVED_ON_MESSAGE,
   isMovedOnRefusal,
@@ -564,6 +565,18 @@ export function useSessionCombatExperience({
     memberNames: presentationMemberNames,
     memberRoles: presentationMemberRoles,
   });
+  // A ROLL WINDOW CLOSED FOR THE VIEWER WITHOUT AN ANSWER (rpg-project#924):
+  // the holder walked out of reach, or the conversation released the hold,
+  // and nothing was spent. The numbers go with it once a FRESH Afford — read
+  // after the beat that revoked authority, so never the gap the comment on
+  // `receivedRollWindow` warns about — poses no window at all; otherwise the
+  // stale d20 would keep the client looking busy and block the hail.
+  useEffect(() => {
+    if (!authorityFresh || receivedRollWindow === null) return;
+    if (reactionWindowDeclaration(declarations)) return;
+    setReceivedRollWindow(null);
+  }, [authorityFresh, declarations, receivedRollWindow]);
+
   const rollWindow = useMemo<CombatExperienceRollWindow | null>(() => {
     const received = receivedRollWindow;
     if (!received || received.session !== session) return null;
