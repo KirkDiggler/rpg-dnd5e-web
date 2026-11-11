@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { copyText } from '../../utils/copyText';
 
 /** An id kept off the page and one click from the clipboard
  * (rpg-project#579). The id stays in `title` for hover and in the button's
@@ -24,10 +25,7 @@ export function CopyId({
       title={id}
       aria-label={`Copy ${label} id`}
       onClick={() => {
-        void navigator.clipboard
-          ?.writeText(id)
-          .then(() => setCopied(true))
-          .catch(() => setCopied(false));
+        void copyText(id).then(setCopied);
       }}
     >
       {copied ? 'Copied' : 'Copy id'}

@@ -13,6 +13,7 @@
 
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { copyText } from '../../utils/copyText';
 
 export interface JoinCodeChipProps {
   code: string;
@@ -33,14 +34,15 @@ export function JoinCodeChip({ code }: JoinCodeChipProps) {
   }, []);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy join code:', err);
+    // copyText also works on a plain-HTTP LAN address, where the page has
+    // no navigator.clipboard at all.
+    if (!(await copyText(code))) {
+      console.error('Failed to copy join code');
+      return;
     }
+    setCopied(true);
+    if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+    resetTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   return (
