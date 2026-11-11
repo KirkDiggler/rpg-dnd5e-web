@@ -82,7 +82,17 @@ describe('character status icon rail', () => {
         ],
       })
     );
-    render(<CharacterStatusRail character={data} />);
+    render(
+      <CharacterStatusRail
+        character={data}
+        memberNames={
+          new Map([
+            ['caster-a', 'Caster A'],
+            ['caster-b', 'Caster B'],
+          ])
+        }
+      />
+    );
     expect(
       screen.getAllByRole('button', { name: 'Inspect Blessed' })
     ).toHaveLength(2);
@@ -92,6 +102,12 @@ describe('character status icon rail', () => {
     expect(
       screen.getByRole('dialog', { name: 'Concentrating on Bless' })
     ).toHaveTextContent('7 maintainer turn ends remaining');
+    expect(
+      screen.getByRole('dialog', { name: 'Concentrating on Bless' })
+    ).toHaveTextContent('Source: Caster A');
+    expect(
+      screen.getByRole('dialog', { name: 'Concentrating on Bless' })
+    ).not.toHaveTextContent('Name unavailable');
     expect(screen.queryByText('Linked effects')).toBeNull();
   });
   it('uses compact mapped icons with one linked pool badge and readable focus details', async () => {
