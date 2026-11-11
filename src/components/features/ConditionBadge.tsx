@@ -2,6 +2,7 @@ import {
   getMartialArtsDie,
   getUnarmoredMovementBonus,
   isBrutalCriticalData,
+  isLinkedConditionData,
   isMartialArtsData,
   isRagingData,
   isSneakAttackData,
@@ -73,7 +74,7 @@ function getCategoryClass(category: ConditionCategory): string {
 function getSubtitle(data: ConditionData | undefined): string | null {
   if (!data) return null;
 
-  if (isRagingData(data)) {
+  if (isRagingData(data) || isLinkedConditionData(data)) {
     // A binding is not an assessed benefit. The server's effect rows own that answer.
     return null;
   }
@@ -107,7 +108,7 @@ function getTooltip(
   const parts: string[] = [condition.name];
 
   // Add rich data details to tooltip
-  if (data) {
+  if (data && !isLinkedConditionData(data)) {
     if (isRagingData(data)) {
       const turns = data.runtime.bag.turns_active;
       parts.push(`Active for ${turns} turn${turns === 1 ? '' : 's'}`);

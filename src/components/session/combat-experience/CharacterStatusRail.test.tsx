@@ -57,6 +57,43 @@ function character(current = 3) {
   );
 }
 describe('character status icon rail', () => {
+  it('renders linked maintenance and distinct recipient sources from native private-sheet facts', () => {
+    const data = presentCharacterData(
+      create(CharacterDataSchema, {
+        conditions: [
+          {
+            ref: { module: 'dnd5e', type: 'conditions', id: 'linked-effects' },
+            name: 'Concentrating on Bless',
+            detail: 'Requires concentration. 7 maintainer turn ends remaining.',
+            sourceMember: 'caster-a',
+          },
+          {
+            ref: { module: 'dnd5e', type: 'conditions', id: 'blessed' },
+            name: 'Blessed',
+            detail: 'First source, described by the server.',
+            sourceMember: 'caster-a',
+          },
+          {
+            ref: { module: 'dnd5e', type: 'conditions', id: 'blessed' },
+            name: 'Blessed',
+            detail: 'Second source, described by the server.',
+            sourceMember: 'caster-b',
+          },
+        ],
+      })
+    );
+    render(<CharacterStatusRail character={data} />);
+    expect(
+      screen.getAllByRole('button', { name: 'Inspect Blessed' })
+    ).toHaveLength(2);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect Concentrating on Bless' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Concentrating on Bless' })
+    ).toHaveTextContent('7 maintainer turn ends remaining');
+    expect(screen.queryByText('Linked effects')).toBeNull();
+  });
   it('uses compact mapped icons with one linked pool badge and readable focus details', async () => {
     render(<CharacterStatusRail character={character()} />);
     const rail = screen.getByRole('group', { name: 'Effects and resources' });

@@ -1,0 +1,128 @@
+{
+  "pendingCoordinator": {
+    "ref": {
+      "module": "dnd5e",
+      "type": "conditions",
+      "id": "linked-effects"
+    },
+    "member_id": "caster",
+    "address_source_id": "fixture-cast",
+    "application_id": "fixture-cast",
+    "role": "coordinator",
+    "origin": {
+      "ref": "dnd5e:spells:bless",
+      "entity_id": "caster"
+    },
+    "bindings": {
+      "name": "Bless",
+      "parts": [
+        {
+          "key": "hold",
+          "kind": "concentration",
+          "on_terminal": "application"
+        },
+        {
+          "key": "duration",
+          "kind": "duration",
+          "params": {
+            "turn_ends": 10,
+            "skip_first": true
+          },
+          "on_terminal": "application"
+        }
+      ],
+      "members": [
+        {
+          "key": "0:\"recipient\"",
+          "address": {
+            "member_id": "recipient",
+            "condition_ref": "dnd5e:conditions:blessed",
+            "source_id": "caster"
+          },
+          "mode": "composed"
+        }
+      ]
+    },
+    "runtime": {
+      "parts": {
+        "parts": {
+          "duration": {
+            "state": "fresh",
+            "bag": {
+              "remaining": 10
+            }
+          },
+          "hold": {
+            "state": "active",
+            "bag": {}
+          }
+        }
+      },
+      "lifetime": {
+        "phase": "live",
+        "pending_members": ["0:\"recipient\""],
+        "live_members": []
+      }
+    }
+  },
+  "recipient": {
+    "ref": {
+      "module": "dnd5e",
+      "type": "conditions",
+      "id": "blessed"
+    },
+    "member_id": "recipient",
+    "address_source_id": "caster",
+    "application_id": "fixture-cast",
+    "role": "recipient",
+    "origin": {
+      "ref": "dnd5e:spells:bless",
+      "entity_id": "caster"
+    },
+    "bindings": {
+      "name": "Blessed",
+      "parts": [
+        {
+          "key": "roll",
+          "kind": "roll_modifier",
+          "params": {
+            "dice": "1d4",
+            "group": "bless",
+            "rolls": ["attack", "saving_throw"],
+            "subtract": false
+          },
+          "on_terminal": "part"
+        },
+        {
+          "key": "rest",
+          "kind": "end_on",
+          "params": {
+            "beat": "rest",
+            "reason": "rest"
+          },
+          "on_terminal": "attachment"
+        }
+      ],
+      "owner": {
+        "member_id": "caster",
+        "condition_ref": "dnd5e:conditions:linked-effects",
+        "source_id": "fixture-cast"
+      },
+      "member_key": "0:\"recipient\""
+    },
+    "runtime": {
+      "parts": {
+        "parts": {
+          "rest": {
+            "state": "active",
+            "bag": {}
+          },
+          "roll": {
+            "state": "active",
+            "bag": {}
+          }
+        }
+      }
+    }
+  }
+}

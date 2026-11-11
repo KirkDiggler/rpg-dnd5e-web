@@ -26,6 +26,45 @@ describe('EffectRows', () => {
     );
     expect(screen.queryByText('ring-17')).toBeNull();
   });
+  it('keeps server-selected dice and separate linked sources without combining them', () => {
+    render(
+      <EffectRows
+        lines={[
+          line({
+            id: 'opaque-a',
+            name: 'Blessed',
+            sourceId: 'caster-a',
+            benefit: '+1d4 to the attack roll',
+          }),
+          line({
+            id: 'opaque-b',
+            name: 'Blessed',
+            sourceId: 'caster-b',
+            state: EffectState.DOES_NOT_APPLY,
+            tone: 'does-not-apply',
+            stateWord: 'Does not apply',
+            reason: 'Another source supplies this spell’s die',
+          }),
+          line({
+            id: 'opaque-c',
+            name: 'Baned',
+            sourceId: 'caster-c',
+            benefit: '-1d4 from the attack roll',
+          }),
+        ]}
+      />
+    );
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveAttribute('data-effect-source-id', 'caster-a');
+    expect(rows[1]).toHaveAttribute('data-effect-source-id', 'caster-b');
+    expect(rows[2]).toHaveAttribute('data-effect-source-id', 'caster-c');
+    expect(rows[0]).toHaveTextContent('+1d4');
+    expect(rows[1]).toHaveTextContent('Another source supplies');
+    expect(rows[2]).toHaveTextContent('-1d4');
+    expect(screen.queryByText(/2d4/)).toBeNull();
+  });
+
   it('renders all four states with reasons', () => {
     render(
       <EffectRows
