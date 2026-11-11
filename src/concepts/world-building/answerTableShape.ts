@@ -1418,6 +1418,12 @@ function validateOptionRequirement(
         `${path}.interaction`
       ),
     };
+  if (form === 'recognized') {
+    const topic = value.recognized;
+    if (typeof topic !== 'string' || topic === '')
+      fail(`${path}.recognized`, 'must name a topic');
+    return { recognized: topic };
+  }
   if (form !== 'fact' && form !== 'holds') fail(path, shape);
   const id = value[form];
   if (typeof id !== 'string' || id === '')

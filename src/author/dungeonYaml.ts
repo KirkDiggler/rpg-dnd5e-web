@@ -2394,6 +2394,7 @@ function requiresText(r: OptionRequires): string {
   if ('not' in r) return `{ not: ${requiresText(r.not)} }`;
   if ('fact' in r) return `{ fact: ${scalar(r.fact)} }`;
   if ('holds' in r) return `{ holds: ${scalar(r.holds)} }`;
+  if ('recognized' in r) return `{ recognized: ${scalar(r.recognized)} }`;
   const { id, in: states } = r.interaction;
   return `{ interaction: { id: ${scalar(id)}, in: [${states.map(scalar).join(', ')}] } }`;
 }

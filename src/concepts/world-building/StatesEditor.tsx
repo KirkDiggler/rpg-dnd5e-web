@@ -7,6 +7,7 @@ import {
   type CreatureState,
   type CreatureStates,
 } from './creatureStates';
+import { PassField } from './PassField';
 import {
   patchStateHolds,
   setStateBlocks,
@@ -20,6 +21,9 @@ interface StatesEditorProps {
   onChange?: (next: CreatureStates | undefined) => void;
   /** The doors a post may name (`roomDoorIds`); offered, never enforced. */
   doors?: readonly string[];
+  /** The topics a pass may recognise on (`grantedTopics`); offered, never
+   * enforced. */
+  topics?: readonly string[];
 }
 
 /** The canonical YAML recipe, applied as one undoable edit. In-progress text
@@ -38,6 +42,7 @@ function RecipeDraft({
   inherited,
   onChange,
   doors = [],
+  topics = [],
   source,
 }: StatesEditorProps & { source: string }) {
   const [text, setText] = useState(source);
@@ -113,6 +118,7 @@ function RecipeDraft({
               owner={owner}
               states={value}
               doors={doors}
+              topics={topics}
               onChange={onChange}
             />
           )}
@@ -163,11 +169,13 @@ function PostFields({
   owner,
   states,
   doors,
+  topics,
   onChange,
 }: {
   owner: string;
   states: CreatureStates;
   doors: readonly string[];
+  topics: readonly string[];
   onChange: (next: CreatureStates) => void;
 }) {
   const doorList = `post-doors-${owner}`;
@@ -191,6 +199,7 @@ function PostFields({
           name={name}
           state={state}
           doors={doors}
+          topics={topics}
           doorList={doorList}
           onBlocks={(on) => onChange(setStateBlocks(states, name, on))}
           onHolds={(holds) => onChange(setStateHolds(states, name, holds))}
@@ -206,6 +215,7 @@ function StatePost({
   name,
   state,
   doors,
+  topics,
   doorList,
   onBlocks,
   onHolds,
@@ -215,6 +225,7 @@ function StatePost({
   name: string;
   state: CreatureState;
   doors: readonly string[];
+  topics: readonly string[];
   doorList: string;
   onBlocks: (on: boolean) => void;
   onHolds: (holds: CreatureState['holds']) => void;
@@ -293,17 +304,12 @@ function StatePost({
               ))}
             </select>
           </label>
-          <label>
-            <span>Pass fact</span>
-            <input
-              aria-label={`Pass fact in ${label}`}
-              value={holds.pass ?? ''}
-              placeholder="nobody passes"
-              onChange={(event) =>
-                onPatch({ pass: event.target.value || undefined })
-              }
-            />
-          </label>
+          <PassField
+            label={label}
+            value={holds.pass}
+            topics={topics}
+            onChange={(pass) => onPatch({ pass })}
+          />
           <div aria-label={`Post cells in ${label}`}>
             <span>Post cells</span>
             {cells.length === 0 && (

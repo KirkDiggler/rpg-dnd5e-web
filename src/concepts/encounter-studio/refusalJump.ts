@@ -24,7 +24,10 @@ export type RefusalHomeSection =
   | 'factions'
   | 'dispositions'
   | 'intel'
-  | 'concealments';
+  | 'concealments'
+  /** A root interaction (rpg-project#928): its recipe, approach or
+   * outcomes. */
+  | 'interactions';
 
 export type RefusalTarget =
   | { kind: 'creature'; id: string }
@@ -194,6 +197,18 @@ function targetOf(
     case 'endings': {
       const ending = typeof key === 'number' ? scope.endings?.[key] : undefined;
       return ending ? { kind: 'ending', id: ending.id } : null;
+    }
+    case 'interactions': {
+      // A root interaction rides the scope's unread map (rpg-project#922); a
+      // refusal of its recipe, approach or outcomes opens the Interactions
+      // section, which shows each (rpg-project#928).
+      const interactions = scope.unread?.interactions;
+      return typeof key === 'string' &&
+        interactions !== null &&
+        typeof interactions === 'object' &&
+        Object.hasOwn(interactions, key)
+        ? { kind: 'home', section: 'interactions', id: key }
+        : null;
     }
     default:
       return null;

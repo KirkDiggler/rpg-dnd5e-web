@@ -90,6 +90,7 @@ import {
   threatLabel,
   whenShorthand,
 } from './answerVocabulary';
+import { BindingPostPasses } from './BindingPostPasses';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
 import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
@@ -97,6 +98,7 @@ import { documentStatePicks } from './creatureStates';
 import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
+import { grantedTopics } from './interactionOutcomes';
 import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
@@ -1835,6 +1837,7 @@ function FactionRow({
             owner={faction.id}
             value={faction.states}
             doors={roomDoorIds(room)}
+            topics={grantedTopics(scope)}
             onChange={(states) =>
               onChange(patchSiteFaction(scope, faction.id, { states }))
             }
@@ -2746,12 +2749,19 @@ export function CreatureOrders({
         value={binding?.states}
         inherited={faction?.states}
         doors={roomDoorIds(room)}
+        topics={grantedTopics(scope)}
         onChange={
           onOrdersChange
             ? (states) =>
                 onOrdersChange(normalizeBinding({ ...binding, states }))
             : undefined
         }
+      />
+      <BindingPostPasses
+        owner={monster.id}
+        binding={binding}
+        topics={grantedTopics(scope)}
+        onChange={onOrdersChange}
       />
 
       <StudioSection
