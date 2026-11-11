@@ -23,6 +23,8 @@ Work [Project #919](https://github.com/KirkDiggler/rpg-project/issues/919), impl
 
 - The operator accepted the panel preview (“looks good”); do not repeat that visual approval. The publication gate passes 10,227 tests / five skipped, plus formatting, lint, types and build. Masonry play/cold-host acceptance remains separate — [operator look](https://github.com/KirkDiggler/rpg-project/issues/919#issuecomment-6775787958).
 
+- Operator-merged Protos#427 is verified at sourcea10de131; its successful CI42881363486 publishes generated98190d4164e8e7704b6378edec4a1c85e619de20 / TSv0.1.264. Web adopts that exact release rather than unrelated newer tags; typecheck and 24 focused adapter tests pass. Generated Go resolves to v0.0.0-20261110190446-98190d4164e8; API adoption remains separate — [wire publication](https://github.com/KirkDiggler/rpg-api-protos/pull/427).
+
 ## Mistaken
 
 - The first panel publication gate found an inspector test still sending the retired style token instead of choosing its visible option. Updated the test to select by label and assert the exact resulting appearance plus sibling isolation. That test edit initially used a Playwright-only `exact` option in Testing Library; typecheck caught it. Removed the option, ran typecheck before the next full gate, then confirmed the complete gate green — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
