@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { RegionResolution } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
+import type { Outcomes } from '../world-building/interactionOutcomes';
 import type {
   RoomDoorBinding,
   RoomDraft,
@@ -332,6 +333,14 @@ export interface EncounterStudioSession {
   commitTables(tables: SiteScope['tables']): boolean;
   /** The root `bundles:` (rpg-project#670), one undoable transaction. */
   commitBundles(bundles: SiteScope['bundles']): boolean;
+  /** One interaction's hail distance (rpg-project#923), or null to remove
+   * it, one undoable transaction. Refused, with the notice naming why, for
+   * a distance outside 1 to Speak reach or an interaction not authored. */
+  commitInteractionApproach(id: string, within: number | null): boolean;
+  /** One interaction's outcomes (rpg-project#928), set whole as one
+   * undoable transaction; an empty map removes the key. Refused, with the
+   * notice naming why, for an interaction not authored. */
+  commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

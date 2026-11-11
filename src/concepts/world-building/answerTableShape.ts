@@ -95,8 +95,12 @@ import {
 import { PREDICATE_SHAPE } from '@/author/factionVocabulary';
 import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
 import {
+  INTERACTION_FORM,
   NOT_OF_NOT_REFUSAL,
   OPTION_REQUIRES_FORMS,
+  type InteractionRead,
+  type OptionRead,
+  type OptionRequirement,
   type OptionRequires,
 } from './predicateNot';
 import { carriedCopy, carryUnknownKeys } from './strictShape';
@@ -1132,10 +1136,10 @@ export interface AnswerApproachShape {
   tool?: string;
 }
 
-/** What must hold for the SPEAKER before a line is offered (R9): a fact the
- * speaker knows, or a placed prop the speaker carries. Exactly one form, and
- * only these two — `round`, `down` and `stance` answer "when", not "who may
- * say this". */
+/** What must hold before a line is offered (R9, rpg-project#922): a fact the
+ * speaker knows, a placed prop the speaker carries, or the run's interaction
+ * in a named state — one, or a list that must all hold. `round`, `down` and
+ * `stance` answer "when", not "who may say this". */
 export type OptionRequiresShape = OptionRequires;
 
 /** One option as written (`dungeonspec.OptionSpec`): an id, the line, the
@@ -1155,7 +1159,10 @@ export interface OptionShape {
 export const OPTION_VERDICTS = ['success', 'failure'] as const;
 export type OptionVerdict = (typeof OPTION_VERDICTS)[number];
 
-/** Every key an option reads — `optionKeys` in `dungeonspec/spec.go`. */
+/** Every key an option READS — `optionKeys` in `dungeonspec/spec.go` minus
+ * `advance` (rpg-project#922), which this build carries rather than reads:
+ * it is copied onto the option untouched by `carryUnknownKeys`, so it
+ * survives every option edit byte for byte. */
 export const OPTION_KEYS: readonly string[] = Object.freeze([
   'id',
   'say',
@@ -1344,14 +1351,46 @@ function validateApproaches(
   });
 }
 
-/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`, or `{ not:
- * }` one of them (rpg-project#719). A real predicate of another form is
- * refused BY NAME with the engine's sentence, since the author wrote
- * something meaningful in the wrong place. */
+/** `requires` (rpg-project#922): ONE requirement as a mapping, or a
+ * non-empty LIST of them that must all hold — the engine's
+ * `RequiresSpec.UnmarshalYAML`. The spelling is kept as written. A longer
+ * list's items are judged at `requires[i]`, as the engine names them. */
 function validateOptionRequires(
   value: unknown,
   path: string
 ): OptionRequiresShape {
+  if (Array.isArray(value)) {
+    if (value.length === 0)
+      fail(
+        path,
+        'this requires lists nothing — write a predicate, or drop the requires'
+      );
+    // The engine names a list of one by `requires`, a longer list's items by
+    // `requires[i]` (`optionRequirements`).
+    return value.map((item, index) =>
+      validateOptionRequirement(
+        item,
+        value.length > 1 ? `${path}[${index}]` : path
+      )
+    );
+  }
+  if (!isMapping(value))
+    fail(
+      path,
+      `an option requires one predicate or a list of them: ${OPTION_REQUIRES_FORMS}`
+    );
+  return validateOptionRequirement(value, path);
+}
+
+/** One requirement: exactly `{ fact: <id> }`, `{ holds: <prop id> }` or `{
+ * interaction: { id, in } }`, or `{ not: }` one of them (rpg-project#719,
+ * #922). A real predicate of another form is refused BY NAME with the
+ * engine's sentence, since the author wrote something meaningful in the
+ * wrong place. */
+function validateOptionRequirement(
+  value: unknown,
+  path: string
+): OptionRequirement {
   const shape = OPTION_REQUIRES_FORMS;
   if (!isMapping(value) || Object.keys(value).length !== 1) fail(path, shape);
   const form = Object.keys(value)[0];
@@ -1367,16 +1406,66 @@ function validateOptionRequires(
       fail(`${path}.not`, `this predicate says nothing — ${PREDICATE_SHAPE}`);
     if (isMapping(inner) && Object.keys(inner).length === 1 && 'not' in inner)
       fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
-    const read = validateOptionRequires(inner, `${path}.not`);
-    return { not: read as Exclude<OptionRequiresShape, { not: unknown }> };
+    const read = validateOptionRequirement(inner, `${path}.not`);
+    return { not: read as OptionRead };
   }
   if (OTHER_PREDICATE_FORMS.includes(form))
     fail(path, optionRequiresFormRefusal(form));
+  if (form === 'interaction')
+    return {
+      interaction: validateInteractionRead(
+        value.interaction,
+        `${path}.interaction`
+      ),
+    };
+  if (form === 'recognized') {
+    const topic = value.recognized;
+    if (typeof topic !== 'string' || topic === '')
+      fail(`${path}.recognized`, 'must name a topic');
+    return { recognized: topic };
+  }
   if (form !== 'fact' && form !== 'holds') fail(path, shape);
   const id = value[form];
   if (typeof id !== 'string' || id === '')
     fail(`${path}.${form}`, 'must name an id');
   return form === 'fact' ? { fact: id } : { holds: id };
+}
+
+/** `{ interaction: { id, in } }`'s object, as the engine's
+ * `InteractionPredicateSpec.UnmarshalYAML` reads it: exactly `id` and `in`,
+ * both present, `in` naming at least one state. Whether the id is a root
+ * interaction and each state one its recipe declares is the compiler's to
+ * judge at Save & Play. */
+function validateInteractionRead(
+  value: unknown,
+  path: string
+): InteractionRead['interaction'] {
+  if (!isMapping(value)) fail(path, INTERACTION_FORM);
+  for (const key of Object.keys(value))
+    if (key !== 'id' && key !== 'in')
+      fail(
+        `${path}.${key}`,
+        `field ${key} not found in type dungeonspec.InteractionPredicateSpec`
+      );
+  const id = value.id;
+  if (typeof id !== 'string' || id === '')
+    fail(
+      path,
+      `an interaction predicate does not say which interaction (\`id\`) — ${INTERACTION_FORM}`
+    );
+  const states = value.in;
+  if (
+    states !== undefined &&
+    states !== null &&
+    (!Array.isArray(states) || states.some((s) => typeof s !== 'string'))
+  )
+    fail(`${path}.in`, 'expected a list of state names');
+  if (!Array.isArray(states) || states.length === 0)
+    fail(
+      path,
+      `an interaction predicate lists no state (\`in: [...]\`) — ${INTERACTION_FORM}`
+    );
+  return { id, in: [...(states as string[])] };
 }
 
 /** Whether a `requires: { holds }` names a prop somebody can pick up, against

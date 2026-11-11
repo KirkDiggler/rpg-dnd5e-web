@@ -45,7 +45,10 @@ export interface StateHolds {
   at?: { q: number; r: number }[];
   /** Empty, as absent, reads as both. */
   against?: PostDirection | '';
-  pass?: string;
+  /** What lets a mover through (`postPass.ts`): a fact as a bare word, the
+   * requirement grammar (`{ recognized: <topic> }`, a list, a `not`), as
+   * written. */
+  pass?: unknown;
   /** A field a newer server added: kept as written, never read. */
   [future: string]: unknown;
 }
@@ -144,7 +147,13 @@ function holds(value: unknown, path: string): StateHolds {
           `"${String(raw.against)}" is not a way a post holds: write both, entering or leaving`
         );
       result.against = raw.against as PostDirection | '';
-    } else if (key === 'pass') result.pass = text(raw.pass, at);
+    } else if (key === 'pass')
+      // A bare word is a password; any other spelling is the requirement
+      // grammar (rpg-project#928), carried as written for the compiler.
+      result.pass =
+        raw.pass !== null && typeof raw.pass === 'object'
+          ? carried(raw.pass)
+          : text(raw.pass, at);
     else put(result, key, carried(raw[key]));
   }
   return result;

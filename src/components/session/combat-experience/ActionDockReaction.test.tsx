@@ -149,3 +149,110 @@ describe('the reaction window panel', () => {
     expect(screen.getByText(/Skeleton Guard’s turn/)).toBeTruthy();
   });
 });
+
+describe('a free-roam roll window (rpg-project#924)', () => {
+  /** The viewer's own waiting roll: a post-roll window naming nobody. */
+  function rollWindow(): Declaration {
+    return create(DeclarationSchema, {
+      id: 'selector.window.roll',
+      verb: Verb.REACT,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      reaction: create(ReactionRefSchema, {
+        ref: 'dnd5e:features:bardic_inspiration',
+        name: 'Bardic Inspiration',
+      }),
+    });
+  }
+  function speakRow(): Declaration {
+    return create(DeclarationSchema, {
+      id: 'selector.speak.1',
+      verb: Verb.SPEAK,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.MEMBER,
+    });
+  }
+  function renderWorldDock(declarations: readonly Declaration[]) {
+    const onSelect = vi.fn();
+    render(
+      <ActionDock
+        clock={ClockKind.WORLD}
+        viewerMember="fighter-1"
+        participants={[]}
+        declarations={declarations}
+        authorityFresh
+        memberNames={memberNames}
+        onSelectDeclaration={onSelect}
+        onEndTurn={vi.fn()}
+      />
+    );
+    return onSelect;
+  }
+
+  it('is drawn BESIDE the live world actions, not in place of them', () => {
+    const speak = speakRow();
+    const window = rollWindow();
+    const onSelect = renderWorldDock([speak, window]);
+
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
+    const actions = screen.getByTestId('world-clock-actions');
+    const speakButton = actions.querySelector('button');
+    expect(speakButton).not.toBeNull();
+    expect((speakButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(speakButton!);
+    expect(onSelect).toHaveBeenCalledWith(speak);
+    fireEvent.click(screen.getByTestId('reaction-hold'));
+    expect(onSelect).toHaveBeenCalledWith(window, ReactChoice.HOLD);
+  });
+
+  it('does not say the fight waits: nothing is frozen in free roam', () => {
+    renderWorldDock([speakRow(), rollWindow()]);
+
+    expect(screen.getByTestId('reaction-window').textContent).toContain(
+      'Spend it, or keep it.'
+    );
+    expect(screen.getByTestId('reaction-window').textContent).not.toContain(
+      'The fight waits on you'
+    );
+  });
+
+  it('the HOLDER’s dock stays as the server froze it, and the row leaves cleanly when the roll is closed', () => {
+    // The holder's other rows arrive refused (window_open); the client draws
+    // what Afford sent and un-freezes nothing.
+    const frozenSpeak = create(DeclarationSchema, {
+      id: 'selector.speak.1',
+      verb: Verb.SPEAK,
+      slot: Slot.NONE,
+      available: false,
+      targetKind: TargetKind.MEMBER,
+      why: { text: 'a roll is waiting on you' },
+    });
+    const onSelect = vi.fn();
+    const props = {
+      clock: ClockKind.WORLD,
+      viewerMember: 'fighter-1',
+      participants: [],
+      authorityFresh: true,
+      memberNames,
+      onSelectDeclaration: onSelect,
+      onEndTurn: vi.fn(),
+    };
+    const { rerender } = render(
+      <ActionDock {...props} declarations={[frozenSpeak, rollWindow()]} />
+    );
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
+    const speakButton = screen
+      .getByTestId('world-clock-actions')
+      .querySelector('button') as HTMLButtonElement;
+    fireEvent.click(speakButton);
+    expect(onSelect).not.toHaveBeenCalledWith(frozenSpeak);
+
+    // Walked out of reach: the next Afford poses no window.
+    rerender(<ActionDock {...props} declarations={[frozenSpeak]} />);
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.queryByTestId('roll-window-settling')).toBeNull();
+  });
+});

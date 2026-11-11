@@ -717,3 +717,42 @@ describe('a bump (rpg-project#842)', () => {
     );
   });
 });
+
+describe('a bystander reads the gate conversation (rpg-project#923)', () => {
+  // A party member nearby, not the one the guard addressed: no panel, only
+  // the feed. The describer reads no viewer into the words.
+  const bystander = {
+    viewerMember: 'bram',
+    memberNames: { alice: 'Alice', bram: 'Bram', 'gate-1': 'Gate Guard' },
+  };
+
+  it('the guard’s hail line reads as his answer', () => {
+    const hail = describeAct(
+      act(Family.TABLE_ANSWER, {
+        case: 'tableAnswer',
+        value: {
+          who: gate,
+          word: 'hail',
+          say: 'You there. State your business.',
+        },
+      }),
+      bystander
+    );
+    expect(hail?.text).toBe(
+      'Gate Guard: "You there. State your business." — hail'
+    );
+  });
+
+  it('the addressed player’s reply reads as her Speak', () => {
+    const reply = describeAct(
+      act(Family.ACT, {
+        case: 'speak',
+        value: { by: alice, to: gate, line: "We're the troupe for the feast." },
+      }),
+      bystander
+    );
+    expect(reply?.headline).toBe(
+      `Alice to Gate Guard: "We're the troupe for the feast."`
+    );
+  });
+});

@@ -70,6 +70,8 @@ import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
 import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
+import { setInteractionApproach } from './interactionApproach';
+import { setInteractionOutcomes, type Outcomes } from './interactionOutcomes';
 import {
   createMapLabel,
   deleteMapLabel,
@@ -5085,6 +5087,32 @@ export function WorldBuildingConcept({
                   delete scope.bundles;
                 else scope.bundles = bundles;
                 return commitRoomDocument({ ...current, scope });
+              }
+            ),
+            commitInteractionOutcomes: guardSnapshotIntent(
+              (id: string, outcomes: Outcomes): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setInteractionOutcomes(current.scope, id, outcomes),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            commitInteractionApproach: guardSnapshotIntent(
+              (id: string, within: number | null): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setInteractionApproach(current.scope, id, within),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
               }
             ),
             mapLabelSelection: {

@@ -22,6 +22,10 @@
  * | `answer-to-your-bump` | the line a barrier says when you walk |
  * |                       | into him (rpg-project#842, R2): his   |
  * |                       | answer under your bump's act tag      |
+ * | `line-to-you`         | a creature's line said to you that    |
+ * |                       | answers no line of yours: his hail    |
+ * |                       | when you walk up (rpg-project#923),   |
+ * |                       | named by the answer's own `to`        |
  *
  * `own-speech` and `speech-to-you` keep primary lines in view; `heard-sound`
  * is a secondary cue for the observer only. A discovery remains log-only.
@@ -46,6 +50,7 @@ export type ToastCase =
   | 'fight-ended'
   | 'answer-to-your-line'
   | 'answer-to-your-bump'
+  | 'line-to-you'
   | 'own-speech'
   | 'speech-to-you'
   | 'heard-sound';
@@ -247,20 +252,28 @@ function toastCase(
         act.body.value.observer?.id === member
         ? 'heard-sound'
         : null;
-    case Family.TABLE_ANSWER:
+    case Family.TABLE_ANSWER: {
       // A table pick never toasts; only a creature's answer to the viewer's
       // own line does (the operator's change to "a line spoken to you").
       if (act.verb === 'speak' && lineSpokenBy === member)
         return 'answer-to-your-line';
+      if (act.body.case !== 'tableAnswer') return null;
+      const answer = act.body.value;
+      // A word with no line is a pick, not speech.
+      if (answer.dealt || !answer.say) return null;
+      const bumped = bump?.mover === member && answer.who?.id === bump.barrier;
+      // WHO THE LINE IS SAID TO IS THE SERVER'S (rpg-project#923): `to`
+      // names the member a creature answers for walking up to or into him.
+      // Present, it decides; the act-tag inference below is only for a
+      // server that does not send it.
+      if (answer.to) {
+        if (answer.to.id !== member) return null;
+        return bumped ? 'answer-to-your-bump' : 'line-to-you';
+      }
       // The line a barrier says to the viewer who bumped him: speech, under
-      // the bump's own act tag. A word with no line is a pick, not speech.
-      return bump?.mover === member &&
-        act.body.case === 'tableAnswer' &&
-        !act.body.value.dealt &&
-        Boolean(act.body.value.say) &&
-        act.body.value.who?.id === bump.barrier
-        ? 'answer-to-your-bump'
-        : null;
+      // the bump's own act tag.
+      return bumped ? 'answer-to-your-bump' : null;
+    }
     default:
       return null; // perception: what one observer saw is not news
   }

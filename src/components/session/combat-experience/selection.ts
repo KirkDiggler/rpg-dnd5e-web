@@ -18,6 +18,20 @@ export function isStaleDeclarationRefusal(error: unknown): boolean {
   return ConnectError.from(error).code === Code.FailedPrecondition;
 }
 
+/** The quiet notice for a reply the shared conversation moved past. */
+export const CONVERSATION_MOVED_ON_MESSAGE =
+  'The conversation moved on — pick again.';
+
+/**
+ * A reply or a roll answer the shared interaction moved past (rpg-project#924):
+ * Speak with a revision the conversation has advanced beyond, or React on a
+ * roll whose hold is gone. Nothing was spent; it is not an error, and the
+ * caller re-reads the offer rather than reporting a failure.
+ */
+export function isMovedOnRefusal(error: unknown): boolean {
+  return ConnectError.from(error).code === Code.Aborted;
+}
+
 /**
  * Adds provider-authored refusal copy when one is present. Nothing parses or
  * synthesizes a reason from a selector, verb, slot, or candidate.

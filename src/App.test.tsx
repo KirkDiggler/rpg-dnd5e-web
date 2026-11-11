@@ -342,6 +342,8 @@ function createAppStudioSession(): EncounterStudioSession {
     armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitBundles: vi.fn(() => true),
+    commitInteractionApproach: vi.fn(() => true),
+    commitInteractionOutcomes: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),
       rename: vi.fn(() => true),
