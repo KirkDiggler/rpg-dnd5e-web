@@ -424,6 +424,23 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     });
   });
 
+  it('keeps a `heard` loudness the form does not edit through a kind, span and `not` edit (rpg-project#933)', () => {
+    const last = mount({
+      when: { heard: { kind: 'voice', within: 1, loudness: 'shout' } },
+      toward: 'sound',
+    });
+    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
+      target: { value: 'clang' },
+    });
+    expect(last()?.when).toEqual({
+      heard: { kind: 'clang', within: 1, loudness: 'shout' },
+    });
+    fireEvent.click(screen.getByLabelText('Not for time entry'));
+    expect(last()?.when).toEqual([
+      { not: { heard: { kind: 'voice', within: 1, loudness: 'shout' } } },
+    ]);
+  });
+
   it('authors a `fact` condition as a free id', () => {
     const last = mount({ when: { enemy: 'none' }, hold: {} });
     fireEvent.change(screen.getByLabelText('When for time entry'), {

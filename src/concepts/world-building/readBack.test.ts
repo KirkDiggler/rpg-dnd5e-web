@@ -78,6 +78,48 @@ describe('readBackOf over the castle', () => {
     );
   });
 
+  it('says a shouted row is shouted and a heard loudness, in the content’s word (rpg-project#933)', () => {
+    const document = createCastleReadBackDocument();
+    const rows = document.scope.tables!['gate-patrol'].time;
+    document.scope.tables!['gate-patrol'].time = [
+      ...rows,
+      { say: 'Halt!', loudness: 'shout', when: { enemy: 'seen' } },
+      { say: 'Psst.', loudness: 'whisper', when: { enemy: 'seen' } },
+      {
+        when: { heard: { kind: 'voice', within: 1, loudness: 'shout' } },
+        toward: 'sound',
+      },
+      {
+        when: {
+          not: { heard: { kind: 'voice', within: 1, loudness: 'shout' } },
+        },
+        hold: {},
+      },
+    ];
+    const time = texts(
+      paragraph(
+        readBackOf(document, { kind: 'creature', id: 'gate-1' }),
+        'on-its-time'
+      )
+    );
+    expect(time).toContain(
+      'If an enemy is seen, it shouts “Halt!” (weight 1).'
+    );
+    expect(time).toContain(
+      'If an enemy is seen, it whispers “Psst.” (weight 1).'
+    );
+    expect(time).toContain(
+      'If it heard a voice at shout or louder within 1 round, it walks toward the sound (weight 1).'
+    );
+    expect(time.join('\n')).toContain(
+      'it did not hear a voice at shout or louder within 1 round'
+    );
+    // A row with no loudness still says.
+    expect(time).toContain(
+      'If an enemy is seen and it does not know alarm-raised, it says “To arms! Intruders in the yard!” and raises alarm-raised (weight 1).'
+    );
+  });
+
   it('states the weight law when the weights differ, heaviest row first', () => {
     const document = createCastleReadBackDocument();
     const rows = document.scope.tables!['gate-patrol'].time;

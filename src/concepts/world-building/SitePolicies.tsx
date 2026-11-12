@@ -339,7 +339,14 @@ type WhenBaseForm =
        * (rpg-project#716), or undefined for any fall. */
       who?: string;
     }
-  | { kind: 'heard'; sound: string; within: number }
+  | {
+      kind: 'heard';
+      sound: string;
+      within: number;
+      /** The body's keys the form does not edit (`loudness`,
+       * rpg-project#933), written back after `kind` and `within` as read. */
+      carried?: Record<string, unknown>;
+    }
   | { kind: 'fact'; fact: string }
   /** A `not` inside a `not`: legal to the engine, carried intact, and not
    * something the one-level toggle can say — shown, never rewritten. */
@@ -355,12 +362,12 @@ interface WhenConditionForm {
 function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
   if ('enemy' in condition) return { kind: 'enemy', band: condition.enemy };
   if ('threat' in condition) return { kind: 'threat', word: condition.threat };
-  if ('heard' in condition)
-    return {
-      kind: 'heard',
-      sound: condition.heard.kind,
-      within: condition.heard.within,
-    };
+  if ('heard' in condition) {
+    const { kind, within, ...carried } = condition.heard;
+    return Object.keys(carried).length > 0
+      ? { kind: 'heard', sound: kind, within, carried }
+      : { kind: 'heard', sound: kind, within };
+  }
   if ('fact' in condition) return { kind: 'fact', fact: condition.fact };
   if ('not' in condition) return { kind: 'nested', condition };
   const [deed, span] = Object.entries(condition)[0] as [
@@ -409,7 +416,9 @@ function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
     case 'threat':
       return { threat: base.word };
     case 'heard':
-      return { heard: { kind: base.sound, within: base.within } };
+      return {
+        heard: { kind: base.sound, within: base.within, ...base.carried },
+      };
     case 'fact':
       return { fact: base.fact };
     case 'nested':
@@ -477,6 +486,9 @@ function baseForPicker(
           ? previous.sound
           : (ANSWER_SOUND_KINDS[0] ?? 'clang'),
       within: span,
+      ...(previous?.kind === 'heard' && previous.carried
+        ? { carried: previous.carried }
+        : {}),
     };
   if (next === 'fact')
     return {
