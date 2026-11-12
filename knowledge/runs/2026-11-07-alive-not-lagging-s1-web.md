@@ -1,5 +1,7 @@
 # 2026-11-07 · Alive, not lagging S1 · The own walk continues from the stream
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), slice [rpg-project#890](https://github.com/KirkDiggler/rpg-project/issues/890), PR [#1399](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1399). Protos pinned at [rpg-api-protos v0.1.260](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.260), generated commit `d83fdfa5`: `MoveResponse.continues = 10`, `MoveResponse.through = 11`, `MOVEMENT_STATUS_CONTINUING = 4`. Built while the session continuation and the api runner were built in parallel.
 
 ## Shipped
