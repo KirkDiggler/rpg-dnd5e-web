@@ -350,7 +350,7 @@ function CombatExperienceContent({
   // (rpg-project#842): the map is handed who says what, nothing more.
   const speech = speechAtSpeakers(storyNotices);
   // An unseen speaker's voice marks the place it came from (rpg-project#934).
-  const voices = voicesAtPlaces(storyNotices);
+  const voices = voicesAtPlaces(storyNotices, revealedStory);
   const renderMapWithSpeech: typeof renderMap = (props) =>
     renderMap({ ...props, speech, voices });
   const activeParticipant = participants.find(

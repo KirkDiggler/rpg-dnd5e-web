@@ -285,7 +285,26 @@ export function buildActStory(
       voices.set(row.group, rows);
     }
   }
-  for (const rows of voices.values()) {
+  // A line whose words the viewer caught is the exchange's notice: a
+  // voice-only cue under the same tag (the reply heard through the wall)
+  // needs none of its own — its log row and map cue are enough — and never
+  // stands in for the words.
+  const worded = new Set(
+    story
+      .filter(
+        (row) =>
+          row.toastRule &&
+          row.group &&
+          row.act?.body.case === 'speech' &&
+          row.act.body.value.words !== undefined
+      )
+      .map((row) => row.group)
+  );
+  for (const [group, rows] of voices) {
+    if (worded.has(group)) {
+      for (const i of rows) story[i] = { ...story[i]!, toastRule: undefined };
+      continue;
+    }
     if (rows.length < 2) continue;
     const [first, ...rest] = rows;
     story[first!] = { ...story[first!]!, noticeHeadline: 'You hear voices' };

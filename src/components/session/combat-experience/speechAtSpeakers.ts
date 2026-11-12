@@ -60,17 +60,29 @@ export interface VoiceAtPlace {
   readonly line: string;
 }
 
-/** Each unseen speaker's voice on screen, at the place it came from. */
+/**
+ * Each unseen speaker's voice on screen, at the place it came from.
+ *
+ * A notice brings its whole exchange's voices with it (rpg-project#934): the
+ * reply heard through the wall carries no notice of its own when the line's
+ * words reached the viewer, yet it still marks the place it came from, for as
+ * long as the line's notice shows. `story` is where those quiet rows are
+ * found, by the act tag they share; without it only the notices' own voices
+ * show.
+ */
 export function voicesAtPlaces(
-  notices: readonly CombatExperienceStoryExchange[]
+  notices: readonly CombatExperienceStoryExchange[],
+  story: readonly CombatExperienceStoryExchange[] = []
 ): readonly VoiceAtPlace[] {
   const voices: VoiceAtPlace[] = [];
-  for (const entry of notices) {
+  const seen = new Set<string>();
+  const add = (entry: CombatExperienceStoryExchange) => {
     const act = entry.act;
-    if (!entry.toastRule || act?.body.case !== 'speech') continue;
+    if (seen.has(entry.id) || act?.body.case !== 'speech') return;
     const speech = act.body.value;
     const sound = speechSound(speech);
-    if (!sound?.position) continue;
+    if (!sound?.position) return;
+    seen.add(entry.id);
     voices.push(
       Object.freeze({
         id: entry.id,
@@ -81,6 +93,13 @@ export function voicesAtPlaces(
           speechWords(speech, () => '').headline.replace(/^You hear /, ''),
       })
     );
+  };
+  for (const entry of notices) {
+    if (!entry.toastRule || entry.act?.body.case !== 'speech') continue;
+    add(entry);
+    if (!entry.group) continue;
+    for (const row of story)
+      if (row.group === entry.group && row.id !== entry.id) add(row);
   }
   return voices;
 }
