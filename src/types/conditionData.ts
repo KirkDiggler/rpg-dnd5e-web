@@ -37,6 +37,31 @@ export interface RagingData {
   };
 }
 
+/** Current linked envelope. Bindings and part bags remain opaque to the UI. */
+export interface LinkedConditionData {
+  ref: {
+    module: 'dnd5e';
+    type: 'conditions';
+    id: 'linked-effects' | 'blessed' | 'baned';
+  };
+  member_id: string;
+  address_source_id: string;
+  application_id: string;
+  role: 'coordinator' | 'recipient';
+  origin: { ref: string; entity_id: string };
+  bindings: Record<string, unknown>;
+  runtime: {
+    parts: {
+      parts: Record<string, { state: string; bag: Record<string, unknown> }>;
+    };
+    lifetime?: {
+      phase: 'live';
+      pending_members: string[];
+      live_members: string[];
+    };
+  };
+}
+
 /**
  * Unarmored Defense condition data
  * From: rpg-toolkit/rulebooks/dnd5e/conditions/unarmored_defense.go
@@ -99,6 +124,7 @@ export type FightingStyleData = BaseConditionData;
  * Union type for all condition data variants
  */
 export type ConditionData =
+  | LinkedConditionData
   | RagingData
   | UnarmoredDefenseData
   | BrutalCriticalData
@@ -122,6 +148,101 @@ function nonemptyString(value: unknown): value is string {
 
 function nonnegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function conditionRefName(ref: unknown): string | undefined {
+  if (typeof ref === 'string') return ref;
+  if (
+    !isRecord(ref) ||
+    !nonemptyString(ref.module) ||
+    !nonemptyString(ref.type) ||
+    !nonemptyString(ref.id)
+  )
+    return undefined;
+  return `${ref.module}:${ref.type}:${ref.id}`;
+}
+
+function distinctKeys(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every(nonemptyString) &&
+    new Set(value).size === value.length
+  );
+}
+
+export function isLinkedConditionData(
+  data: unknown
+): data is LinkedConditionData {
+  if (
+    !isRecord(data) ||
+    !isRecord(data.ref) ||
+    data.ref.module !== 'dnd5e' ||
+    data.ref.type !== 'conditions'
+  )
+    return false;
+  if (
+    !nonemptyString(data.ref.id) ||
+    !['linked-effects', 'blessed', 'baned'].includes(data.ref.id)
+  )
+    return false;
+  if (
+    !nonemptyString(data.member_id) ||
+    !nonemptyString(data.application_id) ||
+    !nonemptyString(data.address_source_id)
+  )
+    return false;
+  if (
+    !isRecord(data.origin) ||
+    !nonemptyString(data.origin.ref) ||
+    !nonemptyString(data.origin.entity_id) ||
+    !isRecord(data.bindings)
+  )
+    return false;
+  if (!Array.isArray(data.bindings.parts) || data.bindings.parts.length === 0)
+    return false;
+  if (
+    !isRecord(data.runtime) ||
+    !isRecord(data.runtime.parts) ||
+    !isRecord(data.runtime.parts.parts)
+  )
+    return false;
+  const snapshots = Object.values(data.runtime.parts.parts);
+  if (
+    snapshots.length === 0 ||
+    !snapshots.every(
+      (part) =>
+        isRecord(part) && nonemptyString(part.state) && isRecord(part.bag)
+    )
+  )
+    return false;
+  if (data.role === 'recipient') {
+    const owner = data.bindings.owner;
+    return (
+      data.runtime.lifetime === undefined &&
+      isRecord(owner) &&
+      nonemptyString(owner.member_id) &&
+      nonemptyString(owner.condition_ref) &&
+      nonemptyString(owner.source_id) &&
+      nonemptyString(data.bindings.member_key)
+    );
+  }
+  if (
+    data.role !== 'coordinator' ||
+    data.ref.id !== 'linked-effects' ||
+    data.bindings.owner !== undefined ||
+    data.bindings.member_key !== undefined
+  )
+    return false;
+  const lifetime = data.runtime.lifetime;
+  if (
+    !isRecord(lifetime) ||
+    lifetime.phase !== 'live' ||
+    !distinctKeys(lifetime.pending_members) ||
+    !distinctKeys(lifetime.live_members)
+  )
+    return false;
+  const live = new Set(lifetime.live_members);
+  return lifetime.pending_members.every((key) => !live.has(key));
 }
 
 export function isRagingData(data: unknown): data is RagingData {
@@ -202,7 +323,18 @@ export function parseConditionData(
     const jsonStr = new TextDecoder().decode(conditionData);
     const data: unknown = JSON.parse(jsonStr);
     if (!isRecord(data)) return undefined;
-    if (data.ref === 'dnd5e:conditions:raging' && !isRagingData(data))
+    const ref = conditionRefName(data.ref);
+    if (ref === 'dnd5e:conditions:concentrating') return undefined;
+    if (
+      [
+        'dnd5e:conditions:linked-effects',
+        'dnd5e:conditions:blessed',
+        'dnd5e:conditions:baned',
+      ].includes(ref ?? '') &&
+      !isLinkedConditionData(data)
+    )
+      return undefined;
+    if (ref === 'dnd5e:conditions:raging' && !isRagingData(data))
       return undefined;
     return data as unknown as ConditionData;
   } catch {
