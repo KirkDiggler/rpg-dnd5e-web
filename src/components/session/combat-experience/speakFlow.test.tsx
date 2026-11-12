@@ -28,10 +28,15 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  Family,
+  PartyKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TargetSurface } from './TargetSurface';
-import { selectCombatExperience } from './selection';
+import { isKeptRollAct, selectCombatExperience } from './selection';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
 
 const hoisted = vi.hoisted(() => ({
@@ -646,5 +651,67 @@ describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
     expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
     expect(screen.getByText('What do you say to Goblin?')).toBeTruthy();
     expect(hoisted.scheduleRefresh).toHaveBeenCalled();
+  });
+});
+
+describe('a roll is kept when its speaker walks away (rpg-project#938)', () => {
+  const ownLine = (verb: string, by = 'bard-1') =>
+    create(ActSchema, {
+      id: `${verb}-act`,
+      family: Family.ACT,
+      act: `${verb}:1`,
+      verb,
+      body: {
+        case: 'speak',
+        value: {
+          by: { kind: PartyKind.MEMBER, id: by },
+          line: 'I fell behind.',
+        },
+      },
+    });
+
+  it('a React answered roll_kept says the roll stands and the die is kept', async () => {
+    hoisted.reactFn.mockResolvedValueOnce({ rollKept: true });
+    const declaration = speakDeclaration();
+    const window = create(DeclarationSchema, {
+      id: 'selector.window.roll',
+      verb: Verb.REACT,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      reaction: create(ReactionRefSchema, {
+        ref: 'dnd5e:spells:guidance',
+        name: 'Guidance',
+      }),
+    });
+    render(<Harness declarations={[declaration, window]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(window, ReactChoice.STRIKE);
+    });
+
+    expect(hoisted.reactFn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('notice').textContent).toBe(
+      'You walked away: your roll stands, your die is kept.'
+    );
+  });
+
+  it('the viewer’s own line judged inside their walk says the same, live only', () => {
+    render(<Harness declarations={[speakDeclaration()]} />);
+    act(() =>
+      latest.acceptStreamActs([ownLine('move')], { source: 'catchup' })
+    );
+    expect(screen.getByTestId('notice').textContent).toBe('none');
+    act(() => latest.acceptStreamActs([ownLine('move')], { source: 'live' }));
+    expect(screen.getByTestId('notice').textContent).toBe(
+      'You walked away: your roll stands, your die is kept.'
+    );
+  });
+
+  it('only the viewer’s own line, and only outside their Speak and their answer', () => {
+    expect(isKeptRollAct(ownLine('move'), 'bard-1')).toBe(true);
+    expect(isKeptRollAct(ownLine('move', 'rogue-2'), 'bard-1')).toBe(false);
+    expect(isKeptRollAct(ownLine('speak'), 'bard-1')).toBe(false);
+    expect(isKeptRollAct(ownLine('react'), 'bard-1')).toBe(false);
   });
 });

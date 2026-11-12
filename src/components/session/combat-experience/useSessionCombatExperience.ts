@@ -57,8 +57,10 @@ import {
 import { reactionWindowDeclaration } from './reactionWindow';
 import {
   CONVERSATION_MOVED_ON_MESSAGE,
+  isKeptRollAct,
   isMovedOnRefusal,
   isStaleDeclarationRefusal,
+  ROLL_KEPT_MESSAGE,
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
@@ -1189,7 +1191,7 @@ export function useSessionCombatExperience({
         }
         void (async () => {
           try {
-            await react({
+            const answered = await react({
               session,
               member,
               declarationId: current.id,
@@ -1202,6 +1204,15 @@ export function useSessionCombatExperience({
             // later question would be a number from a die already resolved.
             setReceivedRollWindow(null);
             invalidateAuthority();
+            // A ROLL IS KEPT (rpg-project#938): the speaker had walked away
+            // before this answer, so the server settled it declined — the
+            // die kept, whatever was chosen. Said, not an error.
+            if (answered.rollKept) {
+              setInteraction((now) => ({
+                ...now,
+                changedOptionNotice: ROLL_KEPT_MESSAGE,
+              }));
+            }
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } catch (error) {
             if (!mountedRef.current) return;
@@ -2861,6 +2872,20 @@ export function useSessionCombatExperience({
         heard ? viewerCellRef.current : undefined
       );
       pacing.acceptActs(run, metadata);
+      // A ROLL IS KEPT (rpg-project#938): the viewer's own waiting line,
+      // judged as rolled by the walk that took them away from it. Its window
+      // is gone with it, and the player is told why — live only: a catch-up
+      // page replays history the player already lived through.
+      if (
+        metadata.source === 'live' &&
+        run.some((act) => isKeptRollAct(act, member))
+      ) {
+        setReceivedRollWindow(null);
+        setInteraction((now) => ({
+          ...now,
+          changedOptionNotice: ROLL_KEPT_MESSAGE,
+        }));
+      }
       // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
       // window's audience is exactly one member, and a window naming
       // somebody else is a fact about their decision, not this dock's panel.

@@ -82,7 +82,19 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       expect(byId.straggler.requires).toContainEqual({
         not: { recognized: 'admitted' },
       });
-      expect(byId.straggler.failure![0].recognize).toBeUndefined();
+      // ONE TRY (rpg-project#932): a missed case turns the speaker away,
+      // and the case asks that the guard not hold it.
+      expect(byId.straggler.failure![0].recognize).toEqual({
+        topic: 'turned-away',
+        holder: 'spoken_to',
+        about: 'speaker',
+        heard_by: 'carriers_who_witnessed',
+      });
+      expect(byId.straggler.requires).toContainEqual({
+        not: { recognized: 'turned-away' },
+      });
+      expect(Object.keys(byId)).toContain('friends-inside');
+      expect(byId['friends-inside'].success![0].recognize).toBeUndefined();
     }
     const captain = doc.behaviorDefinitions['captain-policy'];
     const wake = Object.values(captain.recipe.states)
@@ -114,9 +126,9 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
     ],
     ['a winning line that grants nothing', STRAGGLER_GRANT, ''],
     [
-      'a grant on a losing line',
-      '              - say: Never seen you before. Back the way you came.\n',
-      `              - say: Never seen you before. Back the way you came.\n${STRAGGLER_GRANT.replace('topic: admitted', 'topic: turned-away')}`,
+      'a losing line that grants nothing',
+      `              - say: Never seen you before. Unless one of that lot will speak for you.\n${STRAGGLER_GRANT.replace('topic: admitted', 'topic: turned-away')}`,
+      '              - say: Never seen you before. Unless one of that lot will speak for you.\n',
     ],
     [
       'a line that requires recognition, not its absence',
@@ -153,6 +165,19 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
     );
     expect(text).toContain(
       'it recognises the speaker as admitted, and every other carrier who saw it said does too'
+    );
+  });
+
+  it('the read-back says what a missed line grants, and the line asking after friends (rpg-project#932)', () => {
+    const result = read(served);
+    const text = JSON.stringify(
+      readBackOf(result, { kind: 'creature', id: 'gate-1' })
+    );
+    expect(text).toContain(
+      'Failure: “Never seen you before. Unless one of that lot will speak for you.”, and it recognises the speaker as turned-away, and every other carrier who saw it said does too'
+    );
+    expect(text).toContain(
+      '“Our friends must have just gone in. Did you see a funny man and let them in?”'
     );
   });
 
