@@ -368,3 +368,95 @@ describe('refresh keys', () => {
     expect(refreshKeysForAct(heard, viewer)).toEqual(['afford', 'view']);
   });
 });
+
+describe('one exchange heard through a wall is one notice (the operator’s run on rpg-dnd5e-web#1416)', () => {
+  // The bard's versions, as the castle record holds them: the barbarian's
+  // line to gate-1 and gate-1's answer, each a voice one room off with no
+  // speaker and no words (record entries 526 and 532 of that run, one act).
+  const tag = 'speak:01M78DPCF640K5SM7VP2BT1V8W';
+  const bard = 'char_c1243ea4-09c4-450a-bb25-3e9e01ea7c20';
+  const voiceOf = (id: string, utterance: string, x: number, y: number) =>
+    speech(
+      { utterance, loudness: Loudness.SPEAK, hops: 1, place: { x, y } },
+      [Sense.HEARING],
+      { id, tag }
+    );
+  const retiredVoice = (id: string, x: number, y: number) =>
+    create(ActSchema, {
+      session: 's',
+      id,
+      act: tag,
+      verb: 'speak',
+      family: Family.PERCEPTION,
+      body: {
+        case: 'perception',
+        value: {
+          observer: { kind: PartyKind.MEMBER, id: bard },
+          sense: Sense.HEARING,
+          heard: { kind: 'voice', cell: { x, y }, hops: 1 },
+        },
+      },
+    });
+  const fact = (act: Act, seq: number, index: number): CombatStoryFact => ({
+    act,
+    index,
+    seq: BigInt(seq),
+    source: 'live',
+    visible: true,
+  });
+
+  it('the line and its answer toast once, as voices; the retired sounds do not toast at all', () => {
+    const lineId = '01M78DPCF6ZZ0DZ57C';
+    const answerId = '01M78DPCF6ZZG7035X';
+    const story = buildActStory(
+      [
+        fact(retiredVoice(lineId, -5, 9), 1, 0),
+        fact(voiceOf(lineId, 'u525', -5, 9), 2, 1),
+        fact(retiredVoice(answerId, -3, 7), 3, 0),
+        fact(voiceOf(answerId, 'u531', -3, 7), 4, 1),
+      ],
+      { viewerMember: bard }
+    );
+    // Both voices stay in the log; the retired sounds are gone.
+    expect(story.map((row) => row.headline)).toEqual([
+      'You hear a voice',
+      'You hear a voice',
+    ]);
+    const toasts = story.filter((row) => row.toastRule);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]!.noticeHeadline).toBe('You hear voices');
+    expect(toasts[0]!.detail).toBe('1 room away');
+    // One voice cue on the map, at the first voice's place.
+    expect(voicesAtPlaces(toasts)).toEqual([
+      { id: toasts[0]!.id, x: -5, y: 9, line: 'a voice' },
+    ]);
+  });
+
+  it('words caught still notify per line', () => {
+    const story = buildActStory(
+      [
+        fact(
+          speech(
+            { words: 'Who goes?', loudness: Loudness.SPEAK, hops: 1 },
+            [Sense.HEARING],
+            { id: 'a', tag }
+          ),
+          1,
+          0
+        ),
+        fact(
+          speech(
+            { words: 'A friend.', loudness: Loudness.SPEAK, hops: 1 },
+            [Sense.HEARING],
+            { id: 'b', tag }
+          ),
+          2,
+          0
+        ),
+      ],
+      { viewerMember: bard }
+    );
+    expect(story.filter((row) => row.toastRule)).toHaveLength(2);
+    expect(story.every((row) => row.noticeHeadline === undefined)).toBe(true);
+  });
+});

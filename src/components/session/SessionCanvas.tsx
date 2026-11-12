@@ -108,6 +108,7 @@ import { facingWhileWalking, type Movements } from './moveController';
 import type { HoverAct } from './moveIndicator';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { positionToCube } from './positionBridge';
+import { sessionCanvasStyle } from './sessionCanvasStyle';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
@@ -1242,14 +1243,7 @@ export function SessionCanvas(props: SessionCanvasProps) {
           ? { fov: cameraDials.fovDeg }
           : { zoom: cameraDials.zoomStart }),
       }}
-      style={{
-        width: '100%',
-        height: '100%',
-        pointerEvents: props.interactionEnabled === false ? 'none' : 'auto',
-        // Keep renderer/Html layers beneath sibling HUD panels without disabling
-        // the canvas: touch camera gestures must still work while aiming.
-        zIndex: props.touchPanEnabled ? 0 : undefined,
-      }}
+      style={sessionCanvasStyle(props)}
     >
       <SessionScene {...props} />
     </Canvas>

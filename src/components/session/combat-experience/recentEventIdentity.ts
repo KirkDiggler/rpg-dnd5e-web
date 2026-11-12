@@ -67,9 +67,12 @@ export function recentEventIdentity(
     case 'speak':
       return result('Speech', MessageCircle);
     case 'speech':
-      // No speaker seen is no speaker named (rpg-project#934).
+      // No speaker seen is no speaker named (rpg-project#934); words not
+      // caught are a voice, not speech.
       return result(
-        'Speech',
+        body.value.words === undefined && !body.value.speaker?.id
+          ? 'Voice'
+          : 'Speech',
         MessageCircle,
         partyName(body.value.speaker, context) || 'Someone'
       );

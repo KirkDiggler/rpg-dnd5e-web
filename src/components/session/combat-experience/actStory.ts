@@ -272,7 +272,35 @@ export function buildActStory(
     )
       story[i] = { ...row, toastRule: undefined };
   }
+  // ONE EXCHANGE THROUGH A WALL IS ONE NOTICE (rpg-project#934). A line and
+  // its answer heard as voices only — no speaker seen, no words caught —
+  // share their act tag; the first keeps the notice and reads "You hear
+  // voices", the rest stay in the log without one. Words the viewer caught
+  // still notify per line.
+  const voices = new Map<string, number[]>();
+  for (const [i, row] of story.entries()) {
+    if (row.toastRule && row.group && isVoiceOnly(row.act)) {
+      const rows = voices.get(row.group) ?? [];
+      rows.push(i);
+      voices.set(row.group, rows);
+    }
+  }
+  for (const rows of voices.values()) {
+    if (rows.length < 2) continue;
+    const [first, ...rest] = rows;
+    story[first!] = { ...story[first!]!, noticeHeadline: 'You hear voices' };
+    for (const i of rest) story[i] = { ...story[i]!, toastRule: undefined };
+  }
   return Object.freeze(story);
+}
+
+/** A `Speech` that reached the viewer as a voice alone: no speaker, no words. */
+function isVoiceOnly(act: Act | undefined): boolean {
+  return (
+    act?.body.case === 'speech' &&
+    !act.body.value.speaker?.id &&
+    act.body.value.words === undefined
+  );
 }
 
 /** The act tags and record ids that carry a `Speech`. */
