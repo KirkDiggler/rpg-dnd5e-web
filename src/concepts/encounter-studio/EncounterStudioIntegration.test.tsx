@@ -1466,9 +1466,7 @@ describe('Studio authoring homes through the real owner', () => {
     );
     fireEvent.click(button('Apply'));
     // This must reach compatibility refusal, not an unrelated schema/asset guard.
-    expect(
-      screen.getByText(/has no compatible A face for this finish/)
-    ).toBeTruthy();
+    expect(screen.getAllByText(/no declared finish surface/)[0]).toBeTruthy();
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
     expect(
@@ -1592,7 +1590,8 @@ describe('Studio authoring homes through the real owner', () => {
     expect(
       (screen.getByLabelText('Side B finish') as HTMLSelectElement).value
     ).toBe(smallRef);
-    fireEvent.click(button('Use region / authored defaults'));
+    fireEvent.click(mode());
+    fireEvent.click(button('Reset Wall finish (both sides)'));
     expect(storage.document()).toEqual(split);
     fireEvent.click(button('Apply'));
     expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
@@ -7087,7 +7086,7 @@ describe('Save and Play through the real owner (S6)', () => {
       .textContent!;
   };
 
-  it('the wall finish field carries the studio-only help line', () => {
+  it('the shared wall panel distinguishes wall choices from unapplied region defaults', () => {
     installFinishPreview();
     const draft = finishRoomFixture();
     delete draft.scene.mapLabels;
@@ -7095,7 +7094,10 @@ describe('Save and Play through the real owner (S6)', () => {
     const storage = new MemoryStorage({ draft, scope: {} });
     mount(storage);
     selectWall(storage, storage.document().draft.room.walls![0]);
-    expect(helpText('Wall finish')).toBe(STUDIO_ONLY);
+    expect(screen.getByRole('group', { name: 'Appearance' })).toBeTruthy();
+    expect(
+      screen.getByText(/Region defaults without a wall binding/)
+    ).toBeTruthy();
   });
 
   it("a region's wall finish says studio-only and its lighting says undecided", async () => {

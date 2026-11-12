@@ -55,6 +55,7 @@ function fixture() {
           magFilter: 9728,
           minFilter: 9984,
         },
+        compatibleFamilies: ['kingdom-main-atlas'],
         suggestedCollections: [
           'dnd5e:material-collection:fantasy-kingdom:main_atlas',
         ],

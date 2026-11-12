@@ -1,4 +1,4 @@
-// The agreed schema2 target/recommendation wire. Geometry validation belongs
+// The schema3 target/compatibility/recommendation wire. Geometry validation belongs
 // to the exact model adapter; these names alone never certify a loaded model.
 const NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 const SHA = /^[a-f0-9]{64}$/;
@@ -39,11 +39,16 @@ function references(value, known, path) {
 }
 
 /** Typed metadata views of the same material catalog, never a second source.
- * @param {{collections: unknown, bindings: unknown, atlasRefs: Set<string>}} input
+ * @param {{collections: unknown, bindings: unknown, atlasRefs: Set<string>, atlasFamilies: Set<string>}} input
  * @returns {{collections: import('./worldMaterialTypes').WorldMaterialCollection[], bindings: import('./worldMaterialTypes').WorldAtlasBinding[]}}
  */
-export function parseWorldAtlasMetadata({ collections, bindings, atlasRefs }) {
-  if (!atlasRefs.size) fail('schema2 must include atlas choices');
+export function parseWorldAtlasMetadata({
+  collections,
+  bindings,
+  atlasRefs,
+  atlasFamilies,
+}) {
+  if (!atlasRefs.size) fail('schema3 must include atlas choices');
   const collectionRefs = new Set();
   const parsedCollections = rows(collections, 'collections').map(
     (row, index) => {
@@ -87,6 +92,7 @@ export function parseWorldAtlasMetadata({ collections, bindings, atlasRefs }) {
           'texCoord',
           'defaultBaseColorSha256',
           'sampler',
+          'compatibleFamilies',
           'suggestedCollections',
         ],
         path
@@ -134,6 +140,11 @@ export function parseWorldAtlasMetadata({ collections, bindings, atlasRefs }) {
         texCoord: surface.texCoord,
         defaultBaseColorSha256,
         sampler,
+        compatibleFamilies: references(
+          surface.compatibleFamilies,
+          atlasFamilies,
+          `${path}.compatibleFamilies`
+        ),
         suggestedCollections: references(
           surface.suggestedCollections,
           collectionRefs,

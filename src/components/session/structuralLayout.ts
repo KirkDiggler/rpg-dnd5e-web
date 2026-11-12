@@ -36,7 +36,9 @@ import type {
   StructuralWallOpening,
   StructuralWallSurface,
 } from '@/concepts/world-building/structuralWalls';
+import type { WallFinishOverrides } from '@/concepts/world-building/wallFinishTypes';
 import { copyMaterialOverrides } from '@/rendering/materialOverrides';
+import { copyWallFaceFinishes } from '@/rendering/wallFaceFinishes';
 import type {
   AtlasStructuralDoor,
   AtlasStructuralWall,
@@ -44,10 +46,15 @@ import type {
 import { FEET_PER_HEX } from './areaFootprintProjection';
 import { positionToCube } from './positionBridge';
 
+/** Captured render-only facts; this does not add keys to the authored wall. */
+export type CapturedWallSurface = StructuralWallSurface & {
+  readonly faceFinishes?: WallFinishOverrides;
+};
+
 /** One wall as the shared surface leaf consumes it (scene units). */
 export interface StructuralWallRenderUnit {
   readonly id: string;
-  readonly surface: StructuralWallSurface;
+  readonly surface: CapturedWallSurface;
   /** The floor cells the wall's blocker footprint overlaps, in order along
    * the wall, as the server listed them (`footprint_cells`). Fog of war grades
    * the wall's stretches by these cells (R9). Empty from a server older than
@@ -129,7 +136,7 @@ function sceneFeet(
 export function structuralWallSurfaceFromAtlas(
   wall: AtlasStructuralWall,
   scale: number
-): StructuralWallSurface {
+): CapturedWallSurface {
   if (!wall.id) {
     throw new Error(
       'structural layout: a supplied wall must carry a nonempty id'
@@ -139,6 +146,10 @@ export function structuralWallSurfaceFromAtlas(
   const materialOverrides = copyMaterialOverrides(
     wall.materialOverrides ?? [],
     `${path}.materialOverrides`
+  );
+  const faceFinishes = copyWallFaceFinishes(
+    wall.faceFinishes ?? [],
+    `${path}.faceFinishes`
   );
   const start = scenePointFromFeet(wall.from, `${path}.from`, scale);
   const end = scenePointFromFeet(wall.to, `${path}.to`, scale);
@@ -180,6 +191,7 @@ export function structuralWallSurfaceFromAtlas(
   return {
     id: wall.id,
     label: wall.ref || wall.id,
+    ...(Object.keys(faceFinishes).length ? { faceFinishes } : {}),
     line: { start, end },
     // The ref rides through verbatim; the shared leaf names a missing catalog
     // asset at the wall itself rather than this adapter inventing a model.

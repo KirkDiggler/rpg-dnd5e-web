@@ -1,13 +1,16 @@
 import { paletteNameForRef } from '@/author/paletteData';
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
-import { resolveWorldAsset } from '@/generated/worldAssetCatalog';
-import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
+import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
+import { NPC_APPEARANCE_FAMILIES } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { castMemberOf } from '../world-building/cast';
 import {
   deriveWallCornerFits,
   wallFitAsset,
 } from '../world-building/wallCornerFits';
+import { appearanceEditPatch } from './appearance/appearanceEdits';
+import { buildAppearanceSheet } from './appearance/appearanceSheet';
+import { StudioAppearancePanel } from './appearance/StudioAppearancePanel';
 import { FieldHelp } from './FieldHelp';
 import {
   arrangeFields,
@@ -24,10 +27,8 @@ import type {
   StudioArrangeSelection,
   StudioSocialSection,
 } from './studioSession';
-import { StudioTexturePackControls } from './StudioTexturePackControls';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
 import { StudioWallConstraints } from './StudioWallConstraints';
-import { StudioWallFinishes } from './StudioWallFinishes';
 
 function StudioArrangeField({
   field,
@@ -121,18 +122,15 @@ function SelectedArrange({
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
-  const textureOwner =
-    selection.kind === 'wall'
-      ? {
-          ...selection.appearance,
-          assetRef: draft.assetRef ?? selection.appearance.assetRef,
-        }
-      : selection.kind === 'scene' && selection.rootCount === 1
-        ? session.document.draft.scene.items.find(
-            (item) => item.id === selection.rootIds[0]
-          )
-        : undefined;
-  const textureCatalog = session.wallEditing.finishes?.catalog;
+  const appearanceInput = {
+    selection,
+    draft,
+    scene: session.document.draft.scene,
+    catalog: session.wallEditing.finishes?.catalog.catalog ?? null,
+    assets: GENERATED_WORLD_ASSETS,
+    npcFamilies: NPC_APPEARANCE_FAMILIES,
+  };
+  const appearanceSheet = buildAppearanceSheet(appearanceInput);
   const preview =
     (selection.kind === 'scene' ||
       selection.kind === 'wall' ||
@@ -178,7 +176,13 @@ function SelectedArrange({
     [session.document.draft.room.walls]
   );
   const fields = arrangeFields(selection, FACING_NAMES, draft).filter(
-    (field) => regionControls || field.key !== 'background'
+    (field) =>
+      (regionControls || field.key !== 'background') &&
+      ![
+        'appearanceFamily',
+        'appearanceStyle',
+        'appearanceSkinPalette',
+      ].includes(field.key)
   );
   const region =
     regionControls && selection.kind === 'region'
@@ -190,29 +194,6 @@ function SelectedArrange({
       field={field}
       draft={draft}
       onChange={(key, value) => {
-        if (
-          selection.kind === 'actor' &&
-          (key === 'appearanceFamily' ||
-            key === 'appearanceStyle' ||
-            key === 'appearanceSkinPalette')
-        ) {
-          try {
-            const appearanceRef = chooseNpcAppearance({
-              currentRef: selection.monster.appearanceRef,
-              control:
-                key === 'appearanceFamily'
-                  ? 'family'
-                  : key === 'appearanceStyle'
-                    ? 'style'
-                    : 'skinPalette',
-              value,
-            });
-            commitPicker({ appearanceRef });
-          } catch (error) {
-            setError(error instanceof Error ? error.message : String(error));
-          }
-          return;
-        }
         if (field.applyOnChange) {
           commitPicker({ [key]: value });
           return;
@@ -342,6 +323,15 @@ function SelectedArrange({
             event.preventDefault();
             if (preview) return;
             try {
+              const editsAppearance = [
+                'appearanceRef',
+                'assetRef',
+                'materialOverrides',
+                'finishA',
+                'finishB',
+              ].some((key) => Object.hasOwn(draft, key));
+              if (editsAppearance && appearanceSheet.diagnostics.length)
+                throw Error(appearanceSheet.diagnostics.join(' '));
               const intent = arrangeIntent(selection, draft);
               if (!intent) return;
               if (session.commitArrange(intent)) reset();
@@ -371,31 +361,35 @@ function SelectedArrange({
             }
           }}
         >
-          {selection.kind === 'wall' && (
-            <StudioWallFinishes
-              session={session}
-              wall={selection.wall}
-              draft={draft}
-              onChange={(patch) => {
+          <StudioAppearancePanel
+            key={appearanceSheet.selectionKey}
+            sheet={appearanceSheet}
+            emptyMessage={
+              selection.kind === 'wall' ||
+              (selection.kind === 'scene' &&
+                selection.rootCount === 1 &&
+                session.document.draft.scene.items.some(
+                  (item) => item.id === selection.rootIds[0]
+                ))
+                ? 'This asset has no published material choices.'
+                : undefined
+            }
+            onChange={(edit) => {
+              try {
+                const patch = appearanceEditPatch({
+                  ...appearanceInput,
+                  sheet: appearanceSheet,
+                  edit,
+                });
                 setDraft((previous) => ({ ...previous, ...patch }));
                 setError(null);
-              }}
-            />
-          )}
-          {textureOwner && textureCatalog && (
-            <StudioTexturePackControls
-              assetRef={textureOwner.assetRef}
-              glbSha256={resolveWorldAsset(textureOwner.assetRef)?.glbSha256}
-              catalog={textureCatalog}
-              values={
-                draft.materialOverrides ?? textureOwner.materialOverrides ?? []
+              } catch (caught) {
+                setError(
+                  caught instanceof Error ? caught.message : String(caught)
+                );
               }
-              onChange={(materialOverrides) => {
-                setDraft((previous) => ({ ...previous, materialOverrides }));
-                setError(null);
-              }}
-            />
-          )}
+            }}
+          />
           <div className="es-arrange-fields">
             {fields.filter((field) => !field.secondary).map(renderField)}
             {fields.some((field) => field.secondary) && (

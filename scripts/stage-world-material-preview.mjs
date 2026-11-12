@@ -83,7 +83,7 @@ export function stageWorldMaterialPreview({
         bindings: parseSurfaces(row.surfaces, row.ref),
       };
     });
-  if (parsed.schemaVersion === 2) {
+  if (parsed.schemaVersion === 3) {
     for (const binding of parsed.bindings) {
       const matches = source.assets.filter(
         (row) => row.ref === binding.assetRef
@@ -96,7 +96,7 @@ export function stageWorldMaterialPreview({
     }
   }
   if (
-    (!surfaces.length && parsed.schemaVersion !== 2) ||
+    (!surfaces.length && parsed.schemaVersion !== 3) ||
     new Set(surfaces.map((s) => s.assetRef)).size !== surfaces.length
   )
     throw new Error('Expected unique enrolled preview assets.');
@@ -131,7 +131,7 @@ export function stageWorldMaterialPreview({
     catalogSha256: parsed.catalogSha256,
     materials,
     surfaces,
-    ...(parsed.schemaVersion === 2
+    ...(parsed.schemaVersion === 3
       ? {
           atlas: {
             materials: parsed.atlasMaterials.map(previewMaterial),

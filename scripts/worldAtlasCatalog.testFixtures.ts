@@ -60,12 +60,13 @@ export function worldAtlasFixture(root: string) {
           minFilter: 9984,
           magFilter: 9728,
         },
+        compatibleFamilies: ['main-atlas'],
         suggestedCollections: [collection.ref],
       },
     ],
   };
   const document = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     materials: [masonry, atlas],
     collections: [collection],
     bindings: [binding],

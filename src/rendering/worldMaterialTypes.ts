@@ -59,6 +59,8 @@ export interface WorldAtlasSurface {
   readonly texCoord: number;
   readonly defaultBaseColorSha256: string;
   readonly sampler: WorldAtlasSampler;
+  /** Provider-verified technical compatibility, not artistic recommendations. */
+  readonly compatibleFamilies: readonly string[];
   readonly suggestedCollections: readonly string[];
 }
 export interface WorldAtlasBinding {
@@ -75,14 +77,14 @@ export interface WorldAtlasCatalog {
 }
 
 /** Typed views of one source document and digest. A v1 result retains its
- * earlier shape; v2 must be explicitly handled before generation/publication. */
+ * earlier shape; v3 must be explicitly handled before generation/publication. */
 export type WorldMaterialResources = {
   readonly catalogSha256: string;
   readonly materials: readonly WorldSurfaceMaterial[];
 } & (
   | { readonly schemaVersion?: undefined }
   | {
-      readonly schemaVersion: 2;
+      readonly schemaVersion: 3;
       readonly atlasMaterials: readonly WorldAtlasMaterial[];
       readonly collections: readonly WorldMaterialCollection[];
       readonly bindings: readonly WorldAtlasBinding[];

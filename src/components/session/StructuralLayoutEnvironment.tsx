@@ -30,7 +30,6 @@ import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import {
   FittedDoorSurface,
   StructuralWallFallbackMarker,
-  StructuralWallSurfacePieces,
   WallMarker,
   type FittedDoorState,
   type WallFogStretch,
@@ -42,6 +41,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { ReactElement } from 'react';
 import { Suspense } from 'react';
+import { CapturedWallSurface } from './CapturedWallSurface';
 import type {
   StructuralDoorRenderUnit,
   StructuralWallRenderUnit,
@@ -121,7 +121,7 @@ export function StructuralLayoutEnvironment({
               />
             }
           >
-            <StructuralWallSurfacePieces
+            <CapturedWallSurface
               wall={unit.surface}
               remembered={rememberedWallIds?.has(unit.id) ?? false}
               fogStretches={wallStretches?.get(unit.id)}

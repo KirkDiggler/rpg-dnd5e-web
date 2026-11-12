@@ -31,13 +31,15 @@ export function resolveWorldAtlasMaterials(input: {
   const plans = input.overrides.map((value) => {
     if (seen.has(value.surfaceId)) refuse('duplicate selected scope');
     seen.add(value.surfaceId);
-    if (!binding.surfaces.some((surface) => surface.id === value.surfaceId))
-      refuse(`selected scope is unavailable: ${value.surfaceId}`);
+    const surface = binding.surfaces.find((row) => row.id === value.surfaceId);
+    if (!surface) refuse(`selected scope is unavailable: ${value.surfaceId}`);
     const material = input.atlas!.materials.find(
       (row) => row.ref === value.materialRef
     );
     if (!material)
       refuse(`selected material is unavailable: ${value.materialRef}`);
+    if (!surface.compatibleFamilies?.includes(material.family))
+      refuse(`selected material is incompatible with scope ${value.surfaceId}`);
     return { surfaceId: value.surfaceId, material };
   });
   return { binding, plans };
@@ -154,6 +156,7 @@ export function parseWorldAtlasPreview(
     collections: raw.collections,
     bindings: raw.bindings,
     atlasRefs: refs,
+    atlasFamilies: new Set(materials.map((material) => material.family)),
   });
   for (const binding of metadata.bindings)
     if (assets[binding.assetRef]?.glbSha256 !== binding.glbSha256)

@@ -54,6 +54,7 @@ function fixture() {
               magFilter: 9728,
               minFilter: 9984,
             },
+            compatibleFamilies: ['main-atlas'],
             suggestedCollections: ['dnd5e:material-collection:test:main_atlas'],
           },
         ],
@@ -104,6 +105,47 @@ describe('private atlas preview boundary', () => {
         overrides: [{ surfaceId: 'atlas', materialRef: 'missing' }],
       })
     ).toThrow(/material/i);
+  });
+  it('refuses a real material from an incompatible family without modifying intent', () => {
+    const raw = fixture();
+    raw.materials.push({
+      ...raw.materials[0],
+      ref: 'dnd5e:material:test:foreign',
+      family: 'other-layout',
+    });
+    const atlas = parseWorldAtlasPreview(raw, { [ref]: { glbSha256: sha } });
+    const overrides = [
+      { surfaceId: 'atlas', materialRef: 'dnd5e:material:test:foreign' },
+    ];
+    expect(() =>
+      resolveWorldAtlasMaterials({
+        assetRef: ref,
+        glbSha256: sha,
+        atlas,
+        overrides,
+      })
+    ).toThrow(/incompatible/i);
+    expect(overrides).toEqual([
+      { surfaceId: 'atlas', materialRef: 'dnd5e:material:test:foreign' },
+    ]);
+  });
+  it('allows a technically compatible material that no collection recommends', () => {
+    const raw = fixture();
+    raw.materials.push({
+      ...raw.materials[0],
+      ref: 'dnd5e:material:test:uncurated',
+    });
+    const atlas = parseWorldAtlasPreview(raw, { [ref]: { glbSha256: sha } });
+    expect(
+      resolveWorldAtlasMaterials({
+        assetRef: ref,
+        glbSha256: sha,
+        atlas,
+        overrides: [
+          { surfaceId: 'atlas', materialRef: 'dnd5e:material:test:uncurated' },
+        ],
+      })?.plans[0].material.ref
+    ).toBe('dnd5e:material:test:uncurated');
   });
   it('retains the complete authored-UV view bound to current geometry', () => {
     const raw = fixture();

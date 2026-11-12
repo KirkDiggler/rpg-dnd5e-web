@@ -82,6 +82,7 @@ it('renders a captured atlas choice through the shared model leaf, before memory
                   magFilter: 9728,
                   minFilter: 9984,
                 },
+                compatibleFamilies: ['kingdom-main-atlas'],
                 suggestedCollections: [],
               },
             ],

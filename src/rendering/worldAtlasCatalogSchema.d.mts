@@ -5,4 +5,5 @@ export function parseWorldAtlasMetadata(input: {
   collections: unknown;
   bindings: unknown;
   atlasRefs: Set<string>;
+  atlasFamilies: Set<string>;
 }): Pick<WorldAtlasCatalog, 'collections' | 'bindings'>;

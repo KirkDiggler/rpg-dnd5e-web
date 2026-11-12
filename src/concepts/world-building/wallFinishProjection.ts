@@ -1,3 +1,4 @@
+import type { WallSurfaceChart } from '@/rendering/wallSurfaceCharts';
 import type {
   WorldMaterialCatalog,
   WorldSurfaceAsset,
@@ -11,10 +12,14 @@ import {
   type WallFinishSpan,
 } from './roomWallFinishes';
 import { wallLength, wallMidpoint } from './structuralWallEditing';
-import type { StructuralWall, StructuralWallSurface } from './structuralWalls';
+import type { StructuralWallSurface } from './structuralWalls';
 import type { WorldPoint } from './types';
 import { wallFinishFor } from './wallFinishEdits';
-import { WALL_FINISH_SIDES, type WallFinishSide } from './wallFinishTypes';
+import {
+  WALL_FINISH_SIDES,
+  type WallFinishOverrides,
+  type WallFinishSide,
+} from './wallFinishTypes';
 
 /** Display-only side labels in the wall's canonical Start→End frame. */
 export function wallFaceGuidePoints(wall: StructuralWallSurface): {
@@ -43,7 +48,7 @@ export interface WallFinishProjection extends RoomWallFinishProjection {
 }
 export function resolveWallFaceFinish(
   catalog: WorldMaterialCatalog | null,
-  wall: StructuralWall,
+  wall: StructuralWallSurface,
   side: WallFinishSide,
   ref: string
 ): {
@@ -65,6 +70,54 @@ export function resolveWallFaceFinish(
       `Wall ${wall.label || wall.id} has no compatible ${side === 'positive-z' ? 'A' : 'B'} face for this finish.`
     );
   return { material, provider, surfaceId: matches[0].id };
+}
+
+/** The same local mapping for Studio and captured play; no regional inference. */
+export function localWallFaceChart(
+  wall: StructuralWallSurface,
+  side: WallFinishSide,
+  material: WorldSurfaceMaterial,
+  surfaceId: string
+): WallSurfaceChart {
+  return {
+    surfaceId,
+    phase: 0,
+    direction: side === 'positive-z' ? 1 : -1,
+    elevation: wall.appearance.elevation,
+    repeat: surfaceRepeatSceneUnits(material),
+  };
+}
+
+/** Project only supplied face choices over the supplied wall's own geometry. */
+export function projectCapturedWallFinishes(
+  wall: StructuralWallSurface,
+  finishes: WallFinishOverrides,
+  catalog: WorldMaterialCatalog | null
+): WallFinishSpan[] {
+  const end = wallLength(wall);
+  if (!Number.isFinite(end) || end <= 0)
+    throw Error('Wall finish requires a finite positive wall length.');
+  return WALL_FINISH_SIDES.flatMap((side) => {
+    const ref = finishes[side];
+    if (ref === undefined) return [];
+    const { material, provider, surfaceId } = resolveWallFaceFinish(
+      catalog,
+      wall,
+      side,
+      ref
+    );
+    return [
+      {
+        wallId: wall.id,
+        side,
+        start: 0,
+        end,
+        material,
+        provider,
+        chart: localWallFaceChart(wall, side, material, surfaceId),
+      },
+    ];
+  });
 }
 
 /** Explicit face intent wins across the whole source wall. Certified region
@@ -132,11 +185,8 @@ export function projectWallFinishes(
             provider,
             ...(base?.regionId ? { regionId: base.regionId } : {}),
             chart: {
-              ...(base?.chart ?? {
-                phase: 0,
-                direction: side === 'positive-z' ? 1 : -1,
-                elevation: wall.appearance.elevation,
-              }),
+              ...(base?.chart ??
+                localWallFaceChart(wall, side, material, surfaceId)),
               surfaceId,
               repeat: surfaceRepeatSceneUnits(material),
             },

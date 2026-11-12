@@ -74,6 +74,69 @@ const observation = (state: DoorState) =>
   create(DoorInfoSchema, { door: 'front-room/gate', state });
 
 describe('StructuralLayoutEnvironment', () => {
+  it('feeds captured face packs and their normal maps through the existing repeated wall leaf', async () => {
+    const brick = 'dnd5e:material:fantasy-kingdom:wall_brick_01';
+    const stucco = 'dnd5e:material:fantasy-kingdom:wall_stucco_01';
+    const built = render([
+      wall({
+        ref: 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01',
+        faceFinishes: [
+          { side: 'positive-z', materialRef: brick },
+          { side: 'negative-z', materialRef: stucco },
+        ],
+      }),
+    ]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={[]}
+        diagnostics={built.diagnostics}
+      />
+    );
+    const pieces = view.scene.findAllByProps({ name: 'stub-world-asset' });
+    expect(pieces.length).toBeGreaterThan(0);
+    for (const piece of pieces) {
+      const plans = piece.props.userData.surfacePlans;
+      expect(
+        plans.map((plan: { material: { ref: string } }) => plan.material.ref)
+      ).toEqual([brick, stucco]);
+      expect(plans[0].material.normal.url).toContain(
+        '/world-materials/images/'
+      );
+      expect(
+        plans.map((plan: { chart: { phase: number; direction: number } }) => [
+          plan.chart.phase,
+          plan.chart.direction,
+        ])
+      ).toEqual([
+        [0, 1],
+        [0, -1],
+      ]);
+    }
+    await view.unmount();
+  });
+  it('marks an unavailable captured face material instead of silently drawing Original', async () => {
+    const built = render([
+      wall({
+        ref: 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01',
+        faceFinishes: [{ side: 'positive-z', materialRef: 'missing:material' }],
+      }),
+    ]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={[]}
+        diagnostics={built.diagnostics}
+      />
+    );
+    expect(
+      view.scene.findByProps({ name: 'structural-wall-error-wall-1' })
+    ).toBeTruthy();
+    expect(
+      view.scene.findAllByProps({ name: 'stub-world-asset' })
+    ).toHaveLength(0);
+    await view.unmount();
+  });
   it('draws the supplied wall through the shared repeated-surface leaf', async () => {
     const built = render([wall()]);
     const view = await ReactThreeTestRenderer.create(
