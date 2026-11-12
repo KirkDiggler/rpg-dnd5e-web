@@ -13,11 +13,10 @@
  *   3. a state change guarded by the fact `heard.loudness:shout`: gate-1 is
  *      alerted by any sound but a voice, and by a voice only when shouted.
  *
- * The served castle does not carry them yet (rpg-api content, synced into
- * `fixtures/the-mad-king-served.yaml`), so each case writes the toolkit's
- * exact shape into the served castle at the toolkit's own place. The studio
- * loads each, writes each back byte for byte, and invents nothing: a line
- * with no loudness gets none.
+ * The served castle carries all three (rpg-api `content/the-mad-king.yaml`,
+ * synced into `fixtures/the-mad-king-served.yaml`). The studio loads each,
+ * writes each back byte for byte, and invents nothing: a line with no
+ * loudness gets none.
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -48,80 +47,24 @@ function editedFirst(text: string, from: string, to: string): string {
   return text.replace(from, to);
 }
 
-// 1. The toolkit's stranger line, shouted, placed after his first line.
-const PEDLAR_TONIGHT_END = `              - say: Feast, tonight. Now leave me be.
-                fact: feast-tonight
-    doorBindings:
-`;
+// The pedlar's shouted line, as the served castle writes it.
 const HAIL = `          - id: hail-the-pedlar
             say: Oi! Pedlar! What have you got to sell?
             loudness: shout
             success:
               - say: Nothing for the likes of you at this hour. Off with you.
 `;
-const withHail = (text: string) =>
-  editedFirst(
-    text,
-    PEDLAR_TONIGHT_END,
-    PEDLAR_TONIGHT_END.replace(
-      '    doorBindings:\n',
-      `${HAIL}    doorBindings:\n`
-    )
-  );
 
-// 1b. The toolkit's alarm row: a routine row's line, shouted.
-const ALARM = `        - say: To arms! Intruders at the gate!
-          when:
-`;
-const SHOUTED_ALARM = `        - say: To arms! Intruders at the gate!
-          loudness: shout
-          when:
-`;
-
-// 2. gate-1's post rows: toward a voice only when it is a shout.
-const HEARD_VOICE = 'heard: {kind: voice, within: 1}';
+// gate-1's post row: toward a voice only when it is a shout.
 const HEARD_SHOUT = 'heard: {kind: voice, within: 1, loudness: shout}';
 
-// 3. gate-1's `on: heard` change, guarded by the loudness fact.
-const HEARD_WAKE = `            - on: heard
-              when:
-                scope:
-                  within: 6
-              to: alert
-`;
-const SHOUT_WAKE = `            - on: heard
-              when:
-                all:
-                  - scope:
-                      within: 6
-                  - any:
-                      - not:
-                          fact:
-                            name: heard.kind
-                            op: eq
-                            value: voice
-                      - fact:
-                          name: heard.loudness:shout
-                          op: eq
-                          value: true
-              to: alert
-`;
-
-/** All three shapes, at the toolkit castle's places in gate-1 and the
- * pedlar. */
-function shouted(): string {
-  let text = withHail(served);
-  text = editedFirst(text, ALARM, SHOUTED_ALARM);
-  text = text.replace(
-    `            - ${HEARD_VOICE}\n`,
-    `            - ${HEARD_SHOUT}\n`
+/** The served castle with the hail's loudness line replaced. */
+const hailSaid = (line: string) =>
+  editedFirst(
+    served,
+    HAIL,
+    HAIL.replace('            loudness: shout\n', line)
   );
-  text = text.replace(
-    `                ${HEARD_VOICE}\n`,
-    `                ${HEARD_SHOUT}\n`
-  );
-  return editedFirst(text, HEARD_WAKE, SHOUT_WAKE);
-}
 
 type Row = Record<string, unknown>;
 type Parsed = {
@@ -140,18 +83,24 @@ type Parsed = {
 };
 
 describe('authored loudness loads and writes back (rpg-project#933)', () => {
-  it('the served castle with all three shapes writes back byte for byte, each in its place', () => {
-    const text = shouted();
-    const doc = parse(roundTrips(text)) as Parsed;
+  it('the served castle carries all three shapes and writes back byte for byte, each in its place', () => {
+    expect(served).toContain(HAIL);
+    const doc = parse(roundTrips(served)) as Parsed;
 
     const pedlar = doc.room.room.monsterBindings.pedlar.options!;
     expect(pedlar.map((o) => o.id)).toEqual(['tonight', 'hail-the-pedlar']);
     expect(pedlar[1].loudness).toBe('shout');
     expect(pedlar[0]).not.toHaveProperty('loudness');
 
+    // Each gate guard's alarm is shouted, on every trigger that says it.
+    for (const guard of ['gate-1-policy', 'gate-2-policy']) {
+      const alarms = Object.values(doc.behaviorDefinitions[guard].table)
+        .flat()
+        .filter((r) => r.say === 'To arms! Intruders at the gate!');
+      expect(alarms.length).toBeGreaterThan(0);
+      for (const alarm of alarms) expect(alarm.loudness).toBe('shout');
+    }
     const gate1 = doc.behaviorDefinitions['gate-1-policy'];
-    const alarm = gate1.table.time.find((r) => typeof r.say === 'string')!;
-    expect(alarm.loudness).toBe('shout');
     expect(gate1.table.post).toContainEqual({
       when: [
         { enemy: 'none' },
@@ -194,19 +143,12 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
       do: [{ anchor: true }],
       reason: 'heard something',
     });
-    // Only gate-1 was edited: gate-2 keeps its unshouted alarm.
-    const gate2 = doc.behaviorDefinitions['gate-2-policy'];
-    expect(
-      gate2.table.time.find((r) => typeof r.say === 'string')
-    ).not.toHaveProperty('loudness');
   });
 
   it.each(['whisper', 'speak', 'shout', 'scream'])(
     'a line said at %s keeps its word',
     (word) => {
-      roundTrips(
-        editedFirst(withHail(served), 'loudness: shout', `loudness: ${word}`)
-      );
+      roundTrips(hailSaid(`            loudness: ${word}\n`));
     }
   );
 
@@ -216,7 +158,7 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
       roundTrips(
         editedFirst(
           served,
-          `            - ${HEARD_VOICE}\n`,
+          `            - ${HEARD_SHOUT}\n`,
           `            - heard: {kind: voice, within: 1, loudness: ${word}}\n`
         )
       );
@@ -224,31 +166,16 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
   );
 
   it('a line with no loudness gets none: nothing is invented', () => {
-    const text = editedFirst(
-      withHail(served),
-      '            loudness: shout\n',
-      ''
-    );
-    const written = roundTrips(text);
-    expect(written).not.toContain('loudness');
-    const doc = parse(written) as Parsed;
-    expect(
-      doc.room.room.monsterBindings.pedlar.options!.find(
-        (o) => o.id === 'hail-the-pedlar'
-      )
-    ).not.toHaveProperty('loudness');
-  });
-
-  it('the served castle, which says no loudness, still writes back with none', () => {
-    expect(served).not.toContain('loudness');
-    expect(roundTrips(served)).not.toContain('loudness');
+    const doc = parse(roundTrips(hailSaid(''))) as Parsed;
+    for (const option of doc.room.room.monsterBindings.pedlar.options!)
+      expect(option).not.toHaveProperty('loudness');
   });
 
   it('the read-back says a shouted line is shouted, and leaves an unshouted one alone', () => {
     // gate-1's machine and table live under `behaviorDefinitions`, which the
     // creature read-back does not read; the row and `heard` phrasing is
     // pinned in `readBack.test.ts`.
-    const result = read(shouted());
+    const result = read(served);
     const pedlar = JSON.stringify(
       readBackOf(result, { kind: 'creature', id: 'pedlar' })
     );
@@ -260,16 +187,14 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
   });
 
   it('the read-back names a loudness word it cannot say, as written', () => {
-    const result = read(
-      editedFirst(withHail(served), 'loudness: shout', 'loudness: bellow')
-    );
+    const result = read(hailSaid('            loudness: bellow\n'));
     expect(
       JSON.stringify(readBackOf(result, { kind: 'creature', id: 'pedlar' }))
     ).toContain('“Oi! Pedlar! What have you got to sell?” (at bellow)');
   });
 
   it('editing a shouted line’s words keeps its loudness beside them', () => {
-    const result = read(withHail(served));
+    const result = read(served);
     const room = result.draft.room;
     const pedlar = room.monsterBindings!.pedlar;
     const options = pedlar.options!.map((o) =>
