@@ -27,3 +27,11 @@
   border-top-color: #fbf6e9f2;
   border-bottom: 0;
 }
+/* A voice from someone the viewer did not see (rpg-project#934): marked at
+   the place it came from, unattributed, dashed so it never reads as a body. */
+.voice {
+  composes: speech;
+  border-style: dashed;
+  font-style: italic;
+  color: #3a3428;
+}

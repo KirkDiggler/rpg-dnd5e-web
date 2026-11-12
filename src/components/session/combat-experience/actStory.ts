@@ -18,6 +18,7 @@ import {
   DamageType as ActDamageType,
   AttackOutcome,
   ClockMark,
+  Family,
   InfluenceKind,
   type Act,
   type Roll,
@@ -153,6 +154,12 @@ export function buildActStory(
   // Each bump by act tag, so the barrier's answer under it is told apart as
   // speech to the member who bumped (toast case `answer-to-your-bump`).
   const bumps = new Map<string, Bump>();
+  // THE ONE SPEECH MESSAGE WINS (rpg-project#934). While the server still
+  // sends the retired messages beside it, a line would show twice: once as
+  // the `Speech` and once as the `speak` act, the answer's `say`, or the
+  // voice sound it folded into. Tied by the act tag and record id both acts
+  // carry — never by timing or text — the retired copy steps aside.
+  const spoken = spokenEntries(facts);
   for (const fact of facts) {
     const id = actStoryId(fact.act, fact.index);
     if (seen.has(id)) continue;
@@ -171,8 +178,17 @@ export function buildActStory(
         inFight = true;
       }
     }
-    if (act.body.case === 'speak' && act.act && act.body.value.by?.id) {
-      speakers.set(act.act, act.body.value.by.id);
+    // The line's speaker, first seen under its tag: the retired `speak`
+    // act's `by`, or the first `Speech` that names a speaker (a creature's
+    // answer under the same tag comes after the line it answers).
+    if (act.act && !speakers.has(act.act)) {
+      const by =
+        act.body.case === 'speak'
+          ? act.body.value.by?.id
+          : act.body.case === 'speech'
+            ? act.body.value.speaker?.id
+            : undefined;
+      if (by) speakers.set(act.act, by);
     }
     if (
       act.body.case === 'barred' &&
@@ -194,17 +210,22 @@ export function buildActStory(
     if (isIdleHoldPick(act)) continue;
     // A dash pick is told by the run it causes (rpg-dnd5e-web#1341).
     if (isDashPick(act)) continue;
-    const line = describeAct(act, context);
+    const kept = withoutRetiredSpeech(fact.act, spoken);
+    if (!kept) continue;
+    const shown = kept.act;
+    const line = describeAct(shown, context);
     if (!line) continue;
-    const group = act.act;
+    const group = shown.act;
     const breakdown = formatRollBreakdown(line.roll);
-    const toastRule = toastFor(
-      act,
-      context.viewerMember,
-      inFight,
-      group ? speakers.get(group) : undefined,
-      group ? bumps.get(group) : undefined
-    );
+    const toastRule = kept.quiet
+      ? null
+      : toastFor(
+          shown,
+          context.viewerMember,
+          inFight,
+          group ? speakers.get(group) : undefined,
+          group ? bumps.get(group) : undefined
+        );
     story.push({
       id,
       deliverySource: fact.source,
@@ -212,18 +233,18 @@ export function buildActStory(
       headline: line.headline,
       detail: line.detail,
       tone: line.tone,
-      attack: attackRefOf(act),
+      attack: attackRefOf(shown),
       group: group || undefined,
       nested: group !== '' && group === lastGroup,
       rollBreakdown: breakdown || undefined,
-      act,
+      act: shown,
       describeContext: context,
       toastRule: toastRule ?? undefined,
       toastText: line.text,
       byViewer:
-        isDeed(act) &&
+        isDeed(shown) &&
         Boolean(context.viewerMember) &&
-        actorOf(act)?.id === context.viewerMember,
+        actorOf(shown)?.id === context.viewerMember,
       inFight,
       fightEdge,
     });
@@ -251,7 +272,129 @@ export function buildActStory(
     )
       story[i] = { ...row, toastRule: undefined };
   }
+  // ONE EXCHANGE THROUGH A WALL IS ONE NOTICE (rpg-project#934). A line and
+  // its answer heard as voices only — no speaker seen, no words caught —
+  // share their act tag; the first keeps the notice and reads "You hear
+  // voices", the rest stay in the log without one. Words the viewer caught
+  // still notify per line.
+  const voices = new Map<string, number[]>();
+  for (const [i, row] of story.entries()) {
+    if (row.toastRule && row.group && isVoiceOnly(row.act)) {
+      const rows = voices.get(row.group) ?? [];
+      rows.push(i);
+      voices.set(row.group, rows);
+    }
+  }
+  // A line whose words the viewer caught is the exchange's notice: a
+  // voice-only cue under the same tag (the reply heard through the wall)
+  // needs none of its own — its log row and map cue are enough — and never
+  // stands in for the words.
+  const worded = new Set(
+    story
+      .filter(
+        (row) =>
+          row.toastRule &&
+          row.group &&
+          row.act?.body.case === 'speech' &&
+          row.act.body.value.words !== undefined
+      )
+      .map((row) => row.group)
+  );
+  for (const [group, rows] of voices) {
+    if (worded.has(group)) {
+      for (const i of rows) story[i] = { ...story[i]!, toastRule: undefined };
+      continue;
+    }
+    if (rows.length < 2) continue;
+    const [first, ...rest] = rows;
+    story[first!] = { ...story[first!]!, noticeHeadline: 'You hear voices' };
+    for (const i of rest) story[i] = { ...story[i]!, toastRule: undefined };
+  }
   return Object.freeze(story);
+}
+
+/** A `Speech` that reached the viewer as a voice alone: no speaker, no words. */
+function isVoiceOnly(act: Act | undefined): boolean {
+  return (
+    act?.body.case === 'speech' &&
+    !act.body.value.speaker?.id &&
+    act.body.value.words === undefined
+  );
+}
+
+/** The act tags and record ids that carry a `Speech`. */
+interface SpokenEntries {
+  readonly tags: ReadonlySet<string>;
+  readonly ids: ReadonlySet<string>;
+}
+
+function spokenEntries(facts: readonly CombatStoryFact[]): SpokenEntries {
+  const tags = new Set<string>();
+  const ids = new Set<string>();
+  for (const { act } of facts) {
+    if (act.body.case !== 'speech') continue;
+    if (act.act) tags.add(act.act);
+    ids.add(act.id);
+  }
+  return { tags, ids };
+}
+
+/**
+ * What a `Speech` leaves of an act that also carried a line (rpg-project#934),
+ * or the act unchanged when no `Speech` covers it:
+ *
+ * - a `speak` act under a tag a `Speech` speaks under is the retired copy of
+ *   that line: gone, unless the creature's answer folded into it states a
+ *   pick (a word, a roll), which stays as that answer's own row WITHOUT its
+ *   words — the creature's `Speech` says them;
+ * - a table answer under such a tag keeps its pick and loses its words; one
+ *   that only said words is gone;
+ * - a voice sound in a `Speech`'s own record entry or tag is gone: the
+ *   `Speech` is that voice.
+ *
+ * `quiet` marks a kept pick that must not toast: the `Speech` rows carry the
+ * line's notices.
+ */
+export function withoutRetiredSpeech(
+  act: Act,
+  spoken: SpokenEntries
+): { act: Act; quiet: boolean } | null {
+  const body = act.body;
+  const tagged = Boolean(act.act) && spoken.tags.has(act.act);
+  switch (body.case) {
+    case 'speak': {
+      if (!tagged) return { act, quiet: false };
+      const answer = body.value.answer;
+      if (!answer || (!answer.word && !answer.roll)) return null;
+      return {
+        act: {
+          ...act,
+          family: Family.TABLE_ANSWER,
+          body: { case: 'tableAnswer', value: { ...answer, say: '' } },
+        },
+        quiet: true,
+      };
+    }
+    case 'tableAnswer': {
+      const t = body.value;
+      if (!tagged || !t.say || t.dealt) return { act, quiet: false };
+      if (!t.word && !t.roll) return null;
+      return {
+        act: {
+          ...act,
+          body: { case: 'tableAnswer', value: { ...t, say: '' } },
+        },
+        quiet: true,
+      };
+    }
+    case 'perception':
+      return body.value.heard?.kind === 'voice' &&
+        (spoken.ids.has(act.id) || tagged)
+        ? null
+        : { act, quiet: false };
+    default:
+      return { act, quiet: false };
+  }
 }
 
 /** The latest-result card for an attack act; undefined for anything else. */

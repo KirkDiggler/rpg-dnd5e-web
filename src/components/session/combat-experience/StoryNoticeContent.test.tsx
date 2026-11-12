@@ -4,7 +4,9 @@ import {
   ActSchema,
   AttackOutcome,
   Family,
+  Loudness,
   PartyKind,
+  Sense,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -132,5 +134,88 @@ describe('damage-first toast', () => {
     };
     render(<StoryNoticeContent entry={entry} />);
     expect(screen.getByRole('heading', { name: '0 Healing' })).toBeVisible();
+  });
+});
+
+describe('a notice’s Details are never empty (rpg-dnd5e-web#1416)', () => {
+  const context = { viewerMember: 'barb', memberNames: { bard: 'Bree' } };
+  const row = (act: ReturnType<typeof create<typeof ActSchema>>) => ({
+    id: 'n1',
+    eyebrow: '',
+    headline: '',
+    detail: '',
+    tone: 'neutral' as const,
+    act,
+    describeContext: context,
+  });
+
+  it('a voice heard through a wall says what was and was not perceived', () => {
+    const voice = create(ActSchema, {
+      session: 's',
+      id: 'r1',
+      family: Family.ACT,
+      perceived: { senses: [Sense.HEARING] },
+      body: {
+        case: 'speech',
+        value: {
+          utterance: 'u957',
+          loudness: Loudness.SPEAK,
+          hops: 1,
+          place: { x: 0, y: 14 },
+        },
+      },
+    });
+    render(<StoryNoticeContent entry={row(voice)} showDescription={false} />);
+    const facts = screen.getByTestId('speech-facts');
+    expect(facts).toHaveTextContent('PerceivedHeard, not seen');
+    expect(facts).toHaveTextContent('SpeakerNot seen');
+    expect(facts).toHaveTextContent('Said toNot named');
+    expect(facts).toHaveTextContent('WordsNot caught');
+    expect(facts).toHaveTextContent('LoudnessSpoken');
+    expect(facts).toHaveTextContent('From1 room away');
+  });
+
+  it('a shout caught keeps its words in Details', () => {
+    const shout = create(ActSchema, {
+      session: 's',
+      id: 'r2',
+      family: Family.ACT,
+      perceived: { senses: [Sense.HEARING] },
+      body: {
+        case: 'speech',
+        value: {
+          utterance: 'u952',
+          words: 'Oi! Pedlar!',
+          loudness: Loudness.SHOUT,
+          hops: 1,
+          place: { x: -2, y: 14 },
+        },
+      },
+    });
+    render(<StoryNoticeContent entry={row(shout)} showDescription={false} />);
+    expect(screen.getByTestId('speech-facts')).toHaveTextContent(
+      'Words“Oi! Pedlar!”'
+    );
+  });
+
+  it('an act with no amount and no roll shows its own line rather than nothing', () => {
+    const heard = create(ActSchema, {
+      session: 's',
+      id: 'r3',
+      family: Family.PERCEPTION,
+      body: {
+        case: 'perception',
+        value: {
+          observer: { kind: PartyKind.MEMBER, id: 'barb' },
+          sense: Sense.HEARING,
+          heard: { kind: 'voice', hops: 1 },
+        },
+      },
+    });
+    const { container } = render(
+      <StoryNoticeContent entry={row(heard)} showDescription={false} />
+    );
+    expect(container.textContent).toContain('1 room away');
+    expect(container.textContent).not.toContain('cell');
   });
 });

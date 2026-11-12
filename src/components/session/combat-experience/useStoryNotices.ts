@@ -110,9 +110,15 @@ export function useStoryNotices({
         fresh.push(entry);
       previous.seen.add(entry.id);
     }
+    // A row that no longer toasts (a voice cue whose exchange's words have
+    // since arrived, rpg-project#934) leaves the screen with its toast.
     const currentIds = new Set(
       story
-        .filter((entry) => followMonsters || !monsterTurnIds?.has(entry.id))
+        .filter(
+          (entry) =>
+            entry.toastRule &&
+            (followMonsters || !monsterTurnIds?.has(entry.id))
+        )
         .map((entry) => entry.id)
     );
     if (!fresh.length) {
