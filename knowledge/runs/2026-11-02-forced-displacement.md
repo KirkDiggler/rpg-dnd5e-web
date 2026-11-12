@@ -1,5 +1,7 @@
 # Forced displacement presentation
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Frontend implementation checkpoint, not merged or live-API verified: [web#1377](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1377), part of [project#800](https://github.com/KirkDiggler/rpg-project/issues/800). Code commits `d08fb2fe` and `ca1ee6de`; existing previews and pending six-idle wave unchanged.

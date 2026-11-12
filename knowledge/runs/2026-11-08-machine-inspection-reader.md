@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — symbol-backed machine inspection reader
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Implemented the playtest reader for captured configuration/decision/work records and schema1 API JSONL captures; lossless live transport awaits the reviewed R9 proto's publication and consumer adoption, and nothing is released — [Machine inspection S3](https://github.com/KirkDiggler/rpg-project/issues/901).
