@@ -208,7 +208,7 @@ describe('a notice’s Details are never empty (rpg-dnd5e-web#1416)', () => {
         value: {
           observer: { kind: PartyKind.MEMBER, id: 'barb' },
           sense: Sense.HEARING,
-          heard: { kind: 'voice', hops: 1 },
+          heard: { kind: 'crash', hops: 1 },
         },
       },
     });

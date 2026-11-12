@@ -5,9 +5,7 @@
  * A line the viewer caught shows on the map while its notice is on screen:
  *
  * - over the SPEAKER, when the viewer saw who spoke (`speechAtSpeakers`): a
- *   `Speech` that names its speaker and carries words, or — while the server
- *   still sends the retired message — a creature's table answer that speaks
- *   to the viewer;
+ *   `Speech` that names its speaker and carries words;
  * - at the PLACE the voice came from, when the viewer did not see who spoke
  *   (`voicesAtPlaces`): a `Speech` with no speaker. It names nobody; it only
  *   marks where the voice was.
@@ -18,15 +16,7 @@
  */
 import { speechSound } from '../heardBeat';
 import { speechWords } from './speechLine';
-import type { ToastCase } from './toastPolicy';
 import type { CombatExperienceStoryExchange } from './types';
-
-/** The retired table-answer cases that speak over the creature. */
-const ANSWER_CASES: ReadonlySet<ToastCase> = new Set<ToastCase>([
-  'answer-to-your-line',
-  'answer-to-your-bump',
-  'line-to-you',
-]);
 
 /** Each speaker's line on screen, by member id; the newest line wins. */
 export function speechAtSpeakers(
@@ -34,18 +24,10 @@ export function speechAtSpeakers(
 ): ReadonlyMap<string, string> {
   const speech = new Map<string, string>();
   for (const entry of notices) {
-    const rule = entry.toastRule;
     const act = entry.act;
-    if (!rule || !act) continue;
-    if (act.body.case === 'speech') {
-      const { speaker, words } = act.body.value;
-      if (speaker?.id && words) speech.set(speaker.id, words);
-      continue;
-    }
-    if (!ANSWER_CASES.has(rule.case)) continue;
-    if (act.body.case !== 'tableAnswer') continue;
-    const { who, say } = act.body.value;
-    if (who?.id && say) speech.set(who.id, say);
+    if (!entry.toastRule || act?.body.case !== 'speech') continue;
+    const { speaker, words } = act.body.value;
+    if (speaker?.id && words) speech.set(speaker.id, words);
   }
   return speech;
 }

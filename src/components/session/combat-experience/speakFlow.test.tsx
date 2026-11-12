@@ -661,11 +661,14 @@ describe('a roll is kept when its speaker walks away (rpg-project#938)', () => {
       family: Family.ACT,
       act: `${verb}:1`,
       verb,
+      // The viewer's own line as the server sends it (rpg-project#934): a
+      // Speech carrying the kept roll.
       body: {
-        case: 'speak',
+        case: 'speech',
         value: {
-          by: { kind: PartyKind.MEMBER, id: by },
-          line: 'I fell behind.',
+          speaker: { kind: PartyKind.MEMBER, id: by },
+          words: 'I fell behind.',
+          roll: { total: 14, against: 12, beaten: true },
         },
       },
     });

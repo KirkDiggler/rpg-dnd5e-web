@@ -64,8 +64,9 @@ export function recentEventIdentity(
       return result('Cast', Sparkles);
     case 'activate':
       return result('Ability', Zap);
+    // RETIRED (rpg-project#934): a `speak` body is no longer sent.
     case 'speak':
-      return result('Speech', MessageCircle);
+      return result('Unknown event', CircleHelp, 'Unknown actor');
     case 'speech':
       // No speaker seen is no speaker named (rpg-project#934); words not
       // caught are a voice, not speech.

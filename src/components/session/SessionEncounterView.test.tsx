@@ -4558,17 +4558,21 @@ describe('SessionEncounterView production combat integration', () => {
     );
     stream.push(
       walkAct('commoner', [{ x: 1, y: 0 }]),
-      makeAct(Family.ACT, {
-        case: 'speak',
-        value: {
-          by: { kind: PartyKind.MEMBER, id: 'char-1' },
-          answer: {
+      // The pedlar's pick as the server sends it now (rpg-project#934): a
+      // table answer with its activity; its words are a Speech of their own.
+      makeAct(
+        Family.TABLE_ANSWER,
+        {
+          case: 'tableAnswer',
+          value: {
             who: { kind: PartyKind.MEMBER, id: 'pedlar' },
-            say: 'Let me think.',
+            word: 'think',
             activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
           },
-        },
-      } as Act['body'])
+        } as Act['body'],
+        undefined,
+        'speak'
+      )
     );
     await waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
@@ -7245,22 +7249,6 @@ describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#14
     const tag = 'speak:01M78FGHHV78EWWRWPNWDNF0NV';
     const shoutId = '01M78FGHJ06DQ1TCHHP1FEZY2W';
     const replyId = '01M78FGHJ35J2A5W3Z97SK78FN';
-    const sound = (id: string, x: number, y: number) =>
-      create(ActSchema, {
-        session: 'enc-1',
-        id,
-        act: tag,
-        verb: 'speak',
-        family: Family.PERCEPTION,
-        body: {
-          case: 'perception',
-          value: {
-            observer: memberParty('char-1'),
-            sense: Sense.HEARING,
-            heard: { kind: 'voice', cell: { x, y }, hops: 1 },
-          },
-        },
-      });
     const said = (id: string, value: Record<string, unknown>) =>
       create(ActSchema, {
         session: 'enc-1',
@@ -7286,7 +7274,6 @@ describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#14
     });
     await act(async () => {
       stream.push(
-        sound(shoutId, -2, 14),
         said(shoutId, {
           utterance: 'u952',
           words: 'Oi! Pedlar! What have you got to sell?',
@@ -7295,7 +7282,6 @@ describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#14
           loudness: 3, // LOUDNESS_SHOUT
           place: { x: -2, y: 14 },
         }),
-        sound(replyId, 0, 14),
         said(replyId, {
           utterance: 'u957',
           hops: 1,

@@ -78,11 +78,9 @@ export function beatActor(act: Act): string | undefined {
     case 'attack':
     case 'cast':
     case 'activate':
-    case 'speak':
       return body.value.by?.id;
-    // The one speech message (rpg-project#934): another fight member's line
-    // paces as their beat once the retired `speak` act is no longer sent.
-    // An unseen speaker names nobody, so it paces as nobody's.
+    // A spoken thing (rpg-project#934): another fight member's line paces as
+    // their beat. An unseen speaker names nobody, so it paces as nobody's.
     case 'speech':
       return body.value.speaker?.id;
     case 'clock':

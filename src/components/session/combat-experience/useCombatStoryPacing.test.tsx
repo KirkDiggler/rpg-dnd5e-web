@@ -56,7 +56,7 @@ describe('useCombatStoryPacing scope', () => {
     vi.useRealTimers();
   });
 
-  it.each(['cast', 'activate', 'speak'] as const)(
+  it.each(['cast', 'activate', 'speech'] as const)(
     'follows the real %s-to-viewer notice policy in both toggle modes',
     (kind) => {
       const by = { kind: PartyKind.MEMBER, id: 'skeleton-guard' };
@@ -84,7 +84,10 @@ describe('useCombatStoryPacing scope', () => {
                     results: [{ target: to, kind: 'damaged', amount: 2 }],
                   },
                 }
-              : { case: 'speak', value: { by, to, line: 'Stand aside.' } },
+              : {
+                  case: 'speech',
+                  value: { speaker: by, spokenTo: to, words: 'Stand aside.' },
+                },
       });
       for (const follow of ['off', 'on']) {
         setDial('followMonsterTurns', follow);
@@ -138,7 +141,7 @@ describe('useCombatStoryPacing scope', () => {
             }
           );
           expect(story[0]?.toastRule?.case).toBe(
-            kind === 'speak' ? 'speech-to-you' : 'done-to-you'
+            kind === 'speech' ? 'line-to-you' : 'done-to-you'
           );
           view.rerender({ story });
           expect(view.result.current.story).toEqual([]);
@@ -456,16 +459,17 @@ describe('counted say cues on the existing presentation cursor', () => {
     create(ActSchema, {
       session: 'crypt-run',
       id,
-      family: Family.ACT,
+      // The pedlar's pick as the server sends it (rpg-project#934): its
+      // activity cue on the table answer; its words are a Speech.
+      family: Family.TABLE_ANSWER,
+      act: 'speak:reply',
+      verb: 'speak',
       body: {
-        case: 'speak',
+        case: 'tableAnswer',
         value: {
-          by: { kind: PartyKind.MEMBER, id: 'aldric' },
-          answer: {
-            who: { kind: PartyKind.MEMBER, id: 'pedlar' },
-            say: 'Let me think.',
-            activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
-          },
+          who: { kind: PartyKind.MEMBER, id: 'pedlar' },
+          word: 'think',
+          activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
         },
       },
     });

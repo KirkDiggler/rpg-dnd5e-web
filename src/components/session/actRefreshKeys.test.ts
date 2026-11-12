@@ -125,10 +125,14 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
   ],
   [
     'own line',
-    act(Family.ACT, { case: 'speak', value: { by: me } }),
+    act(Family.ACT, { case: 'speech', value: { speaker: me } }),
     ['afford', 'characterData'],
   ],
-  ['their line', act(Family.ACT, { case: 'speak', value: { by: them } }), []],
+  [
+    'their line',
+    act(Family.ACT, { case: 'speech', value: { speaker: them } }),
+    ['afford', 'view'],
+  ],
   [
     'death save',
     act(Family.ACT, { case: 'deathSave', value: { by: me } }),
@@ -346,16 +350,6 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
 describe('refreshKeysForAct', () => {
   it.each(PAIRS)('refresh keys for each family: %s', (_, a, keys) => {
     expect(new Set(refreshKeysForAct(a, VIEWER))).toEqual(new Set(keys));
-  });
-
-  it('a line with its answer folded in adds the answer’s row', () => {
-    const line = act(Family.ACT, {
-      case: 'speak',
-      value: { by: me, answer: { word: 'yield' } },
-    });
-    expect(new Set(refreshKeysForAct(line, VIEWER))).toEqual(
-      new Set(['characterData', 'afford', 'view'])
-    );
   });
 
   it('a refused act names no keys', () => {

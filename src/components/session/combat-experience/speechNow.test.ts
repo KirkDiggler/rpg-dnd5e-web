@@ -1,10 +1,9 @@
 // @vitest-environment node
 /**
- * Right without the retired speech messages (rpg-project#934): the shapes the
- * server WILL send once the SpeakAct, the table answer's `say`/`to` and the
- * voice Sound stop — a Speech act per spoken thing, and the creature's pick
- * as a standalone TableAnswer under the same `speak:` tag with its key, word,
- * roll and activity and an empty `say`/`to`.
+ * The shapes the server sends now that the retired speech messages have
+ * stopped (rpg-project#934): a Speech act per spoken thing, and the
+ * creature's pick as a standalone TableAnswer under the same `speak:` tag
+ * with its key, word, roll and activity.
  */
 import { sayActivityFromAct } from '@/npc-activities/sayActivityPresentation';
 import { create } from '@bufbuild/protobuf';
@@ -73,7 +72,6 @@ const pick = create(ActSchema, {
       word: 'admit',
       roll: { total: 41, of: 100, dice: [41] },
       activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
-      say: '',
     },
   },
 } as never);
@@ -155,69 +153,5 @@ describe('without the retired messages', () => {
       verb: 'move',
     });
     expect(isKeptRollAct(noRoll, bard)).toBe(false);
-  });
-});
-
-describe('with both sets still sent (today)', () => {
-  it('the retired SpeakAct steps aside, its folded pick stays quiet, and the Speech rows toast', () => {
-    const retired = create(ActSchema, {
-      session: 's',
-      id: 'r1',
-      act: tag,
-      verb: 'speak',
-      family: Family.ACT,
-      body: {
-        case: 'speak',
-        value: {
-          by: bardParty,
-          to: guard,
-          line: 'We’re the troupe for tonight’s feast.',
-          roll: check,
-          answer: {
-            who: guard,
-            word: 'admit',
-            say: 'Through to the hall, then.',
-          },
-        },
-      },
-    } as never);
-    const story = buildActStory(
-      [fact(retired, 1), { ...fact(line, 2), index: 1 }, fact(reply, 3)],
-      {
-        viewerMember: bard,
-        memberNames: { [bard]: 'Bree', 'gate-1': 'Gate guard' },
-      }
-    );
-    expect(story.map((row) => [row.headline, row.toastRule?.case])).toEqual([
-      ['Gate guard: admit', undefined],
-      [
-        'Bree says to Gate guard: “We’re the troupe for tonight’s feast.”',
-        'own-outcome',
-      ],
-      [
-        'Gate guard says to Bree: “Through to the hall, then.”',
-        'answer-to-your-line',
-      ],
-    ]);
-    // The cue still plays from the folded answer while it is sent.
-    expect(
-      sayActivityFromAct({
-        act: create(ActSchema, {
-          ...retired,
-          body: {
-            case: 'speak',
-            value: {
-              by: bardParty,
-              answer: {
-                who: guard,
-                say: 'Through to the hall, then.',
-                activity: { ref: 'dnd5e:activities:thoughtful', cycles: 1 },
-              },
-            },
-          },
-        } as never),
-        id: 'row-1',
-      })?.member
-    ).toBe('gate-1');
   });
 });

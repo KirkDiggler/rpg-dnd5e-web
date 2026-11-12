@@ -34,7 +34,7 @@ export interface HeardSound {
 }
 
 /**
- * The sealed rulebook kinds (`clang`, `boom`, `voice`, `crash`) as the
+ * The sealed rulebook sound kinds (`clang`, `boom`, `crash`) as the
  * phrase a player reads. A kind this client does not know yet is shown as
  * its own raw word rather than hidden: the rulebook owns the vocabulary, so a
  * fifth kind must still reach the player the day it ships.
@@ -42,7 +42,6 @@ export interface HeardSound {
 const SOUND_PHRASES: Readonly<Record<string, string>> = Object.freeze({
   clang: 'metal clanging',
   boom: 'a boom',
-  voice: 'a voice',
   crash: 'a crash',
 });
 

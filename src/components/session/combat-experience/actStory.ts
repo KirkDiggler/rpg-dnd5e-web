@@ -18,7 +18,6 @@ import {
   DamageType as ActDamageType,
   AttackOutcome,
   ClockMark,
-  Family,
   InfluenceKind,
   type Act,
   type Roll,
@@ -148,18 +147,12 @@ export function buildActStory(
   // end that names them; until then their toasts run timers and their walks
   // fold.
   let inFight = false;
-  // Who spoke each line, by act tag, so a line's own table answer can be
+  // Who spoke each line, by act tag, so a creature's Speech under it can be
   // told apart as an answer to the viewer (toast case `answer-to-your-line`).
   const speakers = new Map<string, string>();
   // Each bump by act tag, so the barrier's answer under it is told apart as
   // speech to the member who bumped (toast case `answer-to-your-bump`).
   const bumps = new Map<string, Bump>();
-  // THE ONE SPEECH MESSAGE WINS (rpg-project#934). While the server still
-  // sends the retired messages beside it, a line would show twice: once as
-  // the `Speech` and once as the `speak` act, the answer's `say`, or the
-  // voice sound it folded into. Tied by the act tag and record id both acts
-  // carry — never by timing or text — the retired copy steps aside.
-  const spoken = spokenEntries(facts);
   for (const fact of facts) {
     const id = actStoryId(fact.act, fact.index);
     if (seen.has(id)) continue;
@@ -178,17 +171,16 @@ export function buildActStory(
         inFight = true;
       }
     }
-    // The line's speaker, first seen under its tag: the retired `speak`
-    // act's `by`, or the first `Speech` that names a speaker (a creature's
-    // answer under the same tag comes after the line it answers).
-    if (act.act && !speakers.has(act.act)) {
-      const by =
-        act.body.case === 'speak'
-          ? act.body.value.by?.id
-          : act.body.case === 'speech'
-            ? act.body.value.speaker?.id
-            : undefined;
-      if (by) speakers.set(act.act, by);
+    // The line's speaker, first seen under its tag: the first `Speech` that
+    // names a speaker (a creature's answer under the same tag comes after
+    // the line it answers).
+    if (
+      act.act &&
+      !speakers.has(act.act) &&
+      act.body.case === 'speech' &&
+      act.body.value.speaker?.id
+    ) {
+      speakers.set(act.act, act.body.value.speaker.id);
     }
     if (
       act.body.case === 'barred' &&
@@ -210,22 +202,17 @@ export function buildActStory(
     if (isIdleHoldPick(act)) continue;
     // A dash pick is told by the run it causes (rpg-dnd5e-web#1341).
     if (isDashPick(act)) continue;
-    const kept = withoutRetiredSpeech(fact.act, spoken);
-    if (!kept) continue;
-    const shown = kept.act;
-    const line = describeAct(shown, context);
+    const line = describeAct(act, context);
     if (!line) continue;
-    const group = shown.act;
+    const group = act.act;
     const breakdown = formatRollBreakdown(line.roll);
-    const toastRule = kept.quiet
-      ? null
-      : toastFor(
-          shown,
-          context.viewerMember,
-          inFight,
-          group ? speakers.get(group) : undefined,
-          group ? bumps.get(group) : undefined
-        );
+    const toastRule = toastFor(
+      act,
+      context.viewerMember,
+      inFight,
+      group ? speakers.get(group) : undefined,
+      group ? bumps.get(group) : undefined
+    );
     story.push({
       id,
       deliverySource: fact.source,
@@ -233,18 +220,18 @@ export function buildActStory(
       headline: line.headline,
       detail: line.detail,
       tone: line.tone,
-      attack: attackRefOf(shown),
+      attack: attackRefOf(act),
       group: group || undefined,
       nested: group !== '' && group === lastGroup,
       rollBreakdown: breakdown || undefined,
-      act: shown,
+      act,
       describeContext: context,
       toastRule: toastRule ?? undefined,
       toastText: line.text,
       byViewer:
-        isDeed(shown) &&
+        isDeed(act) &&
         Boolean(context.viewerMember) &&
-        actorOf(shown)?.id === context.viewerMember,
+        actorOf(act)?.id === context.viewerMember,
       inFight,
       fightEdge,
     });
@@ -320,86 +307,6 @@ function isVoiceOnly(act: Act | undefined): boolean {
     !act.body.value.speaker?.id &&
     act.body.value.words === undefined
   );
-}
-
-/** The act tags and record ids that carry a `Speech`. */
-interface SpokenEntries {
-  readonly tags: ReadonlySet<string>;
-  readonly ids: ReadonlySet<string>;
-}
-
-function spokenEntries(facts: readonly CombatStoryFact[]): SpokenEntries {
-  const tags = new Set<string>();
-  const ids = new Set<string>();
-  for (const { act } of facts) {
-    if (act.body.case !== 'speech') continue;
-    if (act.act) tags.add(act.act);
-    ids.add(act.id);
-  }
-  return { tags, ids };
-}
-
-/**
- * What a `Speech` leaves of an act that also carried a line (rpg-project#934),
- * or the act unchanged when no `Speech` covers it:
- *
- * - a `speak` act under a tag a `Speech` speaks under is the retired copy of
- *   that line: gone, unless the creature's answer folded into it states a
- *   pick (a word, a roll), which stays as that answer's own row WITHOUT its
- *   words — the creature's `Speech` says them;
- * - a table answer under such a tag keeps its pick and loses its words; one
- *   that only said words is gone;
- * - a voice sound in a `Speech`'s own record entry or tag is gone: the
- *   `Speech` is that voice.
- *
- * `quiet` marks a kept pick that must not toast: the `Speech` rows carry the
- * line's notices.
- */
-export function withoutRetiredSpeech(
-  act: Act,
-  spoken: SpokenEntries
-): { act: Act; quiet: boolean } | null {
-  const body = act.body;
-  const tagged = Boolean(act.act) && spoken.tags.has(act.act);
-  switch (body.case) {
-    case 'speak': {
-      if (!tagged) return { act, quiet: false };
-      const answer = body.value.answer;
-      if (!answer || (!answer.word && !answer.roll)) return null;
-      return {
-        act: {
-          ...act,
-          family: Family.TABLE_ANSWER,
-          body: { case: 'tableAnswer', value: { ...answer, say: '' } },
-        },
-        quiet: true,
-      };
-    }
-    case 'tableAnswer': {
-      const t = body.value;
-      if (!tagged || t.dealt) return { act, quiet: false };
-      // A PICK UNDER A SPOKEN EXCHANGE IS QUIET (rpg-project#934): the
-      // Speech rows carry the line's notices. Once the retired SpeakAct is
-      // no longer sent the answer stands alone here, and toasting it as
-      // `answer-to-your-line` would repeat the creature's Speech.
-      if (!t.say) return { act, quiet: true };
-      if (!t.word && !t.roll) return null;
-      return {
-        act: {
-          ...act,
-          body: { case: 'tableAnswer', value: { ...t, say: '' } },
-        },
-        quiet: true,
-      };
-    }
-    case 'perception':
-      return body.value.heard?.kind === 'voice' &&
-        (spoken.ids.has(act.id) || tagged)
-        ? null
-        : { act, quiet: false };
-    default:
-      return { act, quiet: false };
-  }
 }
 
 /** The latest-result card for an attack act; undefined for anything else. */

@@ -1,5 +1,5 @@
 {
-  "recorded": "rpg-api e7a815c2 (session f2b208f5) on the hold stack, castle free roam, 2026-11-05, as GetStory returned them to the bumping member: the R8 click on gate-1 in the web (a Move whose goal is his cell), then a refused OpenDoor on the gate he holds.",
+  "recorded": "rpg-api e7a815c2 (session f2b208f5) on the hold stack, castle free roam, 2026-11-05, as GetStory returned them to the bumping member: the R8 click on gate-1 in the web (a Move whose goal is his cell), then a refused OpenDoor on the gate he holds. REBUILT 2026-11-13 for rpg-project#934 from the same recording in the shapes the server sends now: each table answer keeps its pick and loses its retired say/to, and the retired voice Sound the mover heard is replaced, at its own record id, by the Speech that carries the guard's line (seen and heard; spoken to the mover; at his cell).",
   "acts": [
     {
       "id": "01M6PQE80Y2J2G51V11J47NK3G",
@@ -93,7 +93,6 @@
           "id": "gate-1"
         },
         "key": "barred",
-        "say": "Whoa there, buddy. Can I help you?",
         "temperament": "coward"
       }
     },
@@ -102,21 +101,27 @@
       "at": "2",
       "act": "move:01M6PQE7VH7EXF27EZ6A274QWN",
       "verb": "move",
-      "family": "FAMILY_PERCEPTION",
+      "family": "FAMILY_ACT",
       "runEnd": true,
-      "perception": {
-        "observer": {
+      "perceived": {
+        "senses": ["SENSE_SIGHT", "SENSE_HEARING"]
+      },
+      "speech": {
+        "utterance": "u-2CQ5CB",
+        "speaker": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "spokenTo": {
           "kind": "PARTY_KIND_MEMBER",
           "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
-        "sense": "SENSE_HEARING",
-        "heard": {
-          "kind": "voice",
-          "cell": {
-            "x": -3,
-            "y": 7
-          }
-        }
+        "words": "Whoa there, buddy. Can I help you?",
+        "place": {
+          "x": -3,
+          "y": 7
+        },
+        "loudness": "LOUDNESS_SPEAK"
       }
     },
     {
@@ -152,7 +157,6 @@
           "id": "gate-1"
         },
         "key": "challenged",
-        "say": "I said, can I help you?",
         "temperament": "coward"
       }
     },
@@ -161,21 +165,27 @@
       "at": "2",
       "act": "open_door:01M6PQFGAY6G474300TDHXG8CS",
       "verb": "open_door",
-      "family": "FAMILY_PERCEPTION",
+      "family": "FAMILY_ACT",
       "runEnd": true,
-      "perception": {
-        "observer": {
+      "perceived": {
+        "senses": ["SENSE_SIGHT", "SENSE_HEARING"]
+      },
+      "speech": {
+        "utterance": "u-G6NGX6",
+        "speaker": {
+          "kind": "PARTY_KIND_MEMBER",
+          "id": "gate-1"
+        },
+        "spokenTo": {
           "kind": "PARTY_KIND_MEMBER",
           "id": "char_ae557118-9ef5-4d7e-940b-ce983b05363b"
         },
-        "sense": "SENSE_HEARING",
-        "heard": {
-          "kind": "voice",
-          "cell": {
-            "x": -3,
-            "y": 7
-          }
-        }
+        "words": "I said, can I help you?",
+        "place": {
+          "x": -3,
+          "y": 7
+        },
+        "loudness": "LOUDNESS_SPEAK"
       }
     }
   ]

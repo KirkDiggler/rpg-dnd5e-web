@@ -5,7 +5,9 @@ import {
   AttackOutcome,
   DamageType,
   Family,
+  Loudness,
   PartyKind,
+  Sense,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 
 const member = (id: string) => ({ kind: PartyKind.MEMBER, id });
@@ -37,13 +39,19 @@ export const RECENT_IDENTITY_SAMPLES = buildActStory(
       session: 'fixture',
       id: 'reminder-speak',
       family: Family.ACT,
+      act: 'speak:reminder',
       verb: 'speak',
+      // The one speech message (rpg-project#934), as the server sends it.
+      perceived: { senses: [Sense.SIGHT, Sense.HEARING] },
       body: {
-        case: 'speak',
+        case: 'speech',
         value: {
-          by: member('mira'),
-          to: member('aldric'),
-          line: 'We are not alone.',
+          utterance: 'reminder-speak',
+          speaker: member('mira'),
+          spokenTo: member('aldric'),
+          words: 'We are not alone.',
+          loudness: Loudness.SPEAK,
+          place: { x: 0, y: 0 },
         },
       },
     }),

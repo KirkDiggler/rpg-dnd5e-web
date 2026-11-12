@@ -1564,15 +1564,18 @@ describe('the guard’s answer to a bump speaks at him on the map (rpg-project#8
   it('hands the map his line while its notice shows, and no tooltip', () => {
     const viewer = bump.ALICE.id;
     const bumpStory = buildActStory(
-      [bump.walkToTheGate, bump.bumpTheGuard, bump.theGuardAnswers].map(
-        (a) => ({
-          act: a,
-          index: 0,
-          seq: 1n,
-          source: 'live' as const,
-          visible: true,
-        })
-      ),
+      [
+        bump.walkToTheGate,
+        bump.bumpTheGuard,
+        bump.theGuardAnswers,
+        bump.hisLine,
+      ].map((a) => ({
+        act: a,
+        index: 0,
+        seq: 1n,
+        source: 'live' as const,
+        visible: true,
+      })),
       { viewerMember: viewer, memberNames: { 'gate-1': 'Gate Guard' } }
     );
     const props = propsFor(fresh, {
