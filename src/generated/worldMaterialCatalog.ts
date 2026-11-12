@@ -7,7 +7,7 @@ import type {
 } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: '8e9c518c6a8ba2aefff98a7e5b59a77a8931a2dc',
+  commit: '32d11dc19c2783f5c2cda711c61c933b265d8759',
   catalogSha256:
     '47317921e30bef460446599745f60c445646dd6f337bac434d1abe293e74b5ea' as
       | string
