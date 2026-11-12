@@ -47,10 +47,15 @@ describe('toasts own outcome', () => {
     expect(toastFor(loot, 'alice', false)).toBeNull();
   });
 
-  it('your own line with its answer folded in is your outcome', () => {
+  it('your own line with its check is your outcome', () => {
     const line = act(Family.ACT, {
-      case: 'speak',
-      value: { by: alice, to: captain, line: 'Stand aside.', answer: {} },
+      case: 'speech',
+      value: {
+        speaker: alice,
+        spokenTo: captain,
+        words: 'Stand aside.',
+        roll: { total: 15, against: 12, beaten: true },
+      },
     });
     expect(toastFor(line, 'alice', false)?.case).toBe('own-outcome');
   });
@@ -199,7 +204,18 @@ describe('toasts fight formed and dissolved', () => {
 });
 
 describe('a creature’s answer to your line', () => {
+  // The answer's words are its own Speech (rpg-project#934); its pick is
+  // arithmetic and never toasts.
   const answer = act(
+    Family.ACT,
+    {
+      case: 'speech',
+      value: { speaker: captain, spokenTo: alice, words: 'No.' },
+    },
+    'speak',
+    'speak:id-0'
+  );
+  const pick = act(
     Family.TABLE_ANSWER,
     { case: 'tableAnswer', value: { who: captain, word: 'refuses' } },
     'speak',
@@ -212,21 +228,25 @@ describe('a creature’s answer to your line', () => {
     );
   });
 
-  it('does not toast for another member', () => {
-    expect(toastFor(answer, 'bob', false, 'alice')).toBeNull();
+  it('another member who caught it hears it; the pick never toasts', () => {
+    expect(toastFor(answer, 'bob', false, 'alice')?.case).toBe('heard-speech');
+    expect(toastFor(pick, 'alice', false, 'alice')).toBeNull();
   });
 });
 
 describe('primary speech and secondary heard cues', () => {
-  it('toasts your speech and speech addressed to you, not to bystanders', () => {
+  it('toasts your speech and speech addressed to you; a bystander who caught it hears it', () => {
     const line = act(
       Family.ACT,
-      { case: 'speak', value: { by: alice, to: bob, line: 'Stay back.' } },
+      {
+        case: 'speech',
+        value: { speaker: alice, spokenTo: bob, words: 'Stay back.' },
+      },
       'speak'
     );
     expect(toastFor(line, 'alice', false)?.case).toBe('own-speech');
-    expect(toastFor(line, 'bob', false)?.case).toBe('speech-to-you');
-    expect(toastFor(line, 'captain', false)).toBeNull();
+    expect(toastFor(line, 'bob', false)?.case).toBe('line-to-you');
+    expect(toastFor(line, 'captain', false)?.case).toBe('heard-speech');
   });
 
   it('toasts only a hearing cue delivered to its observer, not a discovery', () => {

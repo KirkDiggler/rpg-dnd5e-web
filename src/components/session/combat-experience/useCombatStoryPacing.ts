@@ -406,7 +406,7 @@ export function useCombatStoryPacing({
         beat.act.body.case === 'attack' ||
         beat.act.body.case === 'cast' ||
         beat.act.body.case === 'activate' ||
-        beat.act.body.case === 'speak'
+        beat.act.body.case === 'speech'
       ) {
         sawBeatRef.current = true;
         setNoticeForScope(null);

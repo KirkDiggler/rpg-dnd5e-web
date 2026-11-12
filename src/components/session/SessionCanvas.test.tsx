@@ -264,6 +264,7 @@ import {
   TOWNFOLK_OFF_HAND_SOCKET,
 } from '../hex-grid/offHandEquipment';
 import { SessionScene } from './SessionCanvas';
+import { sessionCanvasStyle } from './sessionCanvasStyle';
 
 function floorTiles(...coords: Array<[number, number, number]>) {
   const map = new Map<string, AbsoluteFloorTile>();
@@ -4079,5 +4080,17 @@ describe('the ways out reach the map (rpg-dnd5e-web#927)', () => {
       renderer.scene.findAllByProps({ name: 'session-exit-markers' })
     ).toHaveLength(0);
     await renderer.unmount();
+  });
+});
+
+describe('the canvas stacks as one layer under the HUD (rpg-dnd5e-web#1416)', () => {
+  it('isolates its Html labels so none can sit over a notice and turn its click into a walk', () => {
+    expect(sessionCanvasStyle({}).isolation).toBe('isolate');
+    expect(sessionCanvasStyle({ touchPanEnabled: true }).isolation).toBe(
+      'isolate'
+    );
+    expect(
+      sessionCanvasStyle({ interactionEnabled: false }).pointerEvents
+    ).toBe('none');
   });
 });

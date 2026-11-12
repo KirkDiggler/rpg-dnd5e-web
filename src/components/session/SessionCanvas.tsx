@@ -46,6 +46,7 @@
  */
 
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
+import { VoiceCue } from '@/components/hex-grid/VoiceCue';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCameraDials } from '@/feel/useFeelDials';
 import type { ActivityCueRequest } from '@/npc-activities/activityTypes';
@@ -98,6 +99,7 @@ import {
   type ClickToActOffers,
   type CreatureVerb,
 } from './clickToAct';
+import type { VoiceAtPlace } from './combat-experience/speechAtSpeakers';
 import { CreatureVerbMenu } from './CreatureVerbMenu';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
@@ -106,6 +108,7 @@ import { facingWhileWalking, type Movements } from './moveController';
 import type { HoverAct } from './moveIndicator';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { positionToCube } from './positionBridge';
+import { sessionCanvasStyle } from './sessionCanvasStyle';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
@@ -348,6 +351,9 @@ export interface SessionCanvasProps {
   /** Who is saying which line right now, by member id, drawn above them as
    * speech (rpg-project#842). Presentation only: the story notices decide it. */
   speech?: ReadonlyMap<string, string>;
+  /** Voices from speakers the viewer did not see, at the place each came
+   * from (rpg-project#934). Presentation only: the story notices decide it. */
+  voices?: readonly VoiceAtPlace[];
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -406,6 +412,7 @@ export function SessionScene({
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
+  voices,
   speech,
   compositionSource,
 }: SessionCanvasProps) {
@@ -954,6 +961,15 @@ export function SessionScene({
       <LocalWorldDieWarmup />
       <SightAreaOverlay areas={sightAreas} hexSize={hexSize} />
       {presentationLayer}
+      {voices?.map((voice) => (
+        <VoiceCue
+          key={voice.id}
+          x={voice.x}
+          y={voice.y}
+          line={voice.line}
+          hexSize={hexSize}
+        />
+      ))}
       <AreaFootprintPreview
         footprint={areaFootprint}
         caster={myPosition}
@@ -1227,14 +1243,7 @@ export function SessionCanvas(props: SessionCanvasProps) {
           ? { fov: cameraDials.fovDeg }
           : { zoom: cameraDials.zoomStart }),
       }}
-      style={{
-        width: '100%',
-        height: '100%',
-        pointerEvents: props.interactionEnabled === false ? 'none' : 'auto',
-        // Keep renderer/Html layers beneath sibling HUD panels without disabling
-        // the canvas: touch camera gestures must still work while aiming.
-        zIndex: props.touchPanEnabled ? 0 : undefined,
-      }}
+      style={sessionCanvasStyle(props)}
     >
       <SessionScene {...props} />
     </Canvas>

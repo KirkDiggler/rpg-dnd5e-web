@@ -4558,17 +4558,21 @@ describe('SessionEncounterView production combat integration', () => {
     );
     stream.push(
       walkAct('commoner', [{ x: 1, y: 0 }]),
-      makeAct(Family.ACT, {
-        case: 'speak',
-        value: {
-          by: { kind: PartyKind.MEMBER, id: 'char-1' },
-          answer: {
+      // The pedlar's pick as the server sends it now (rpg-project#934): a
+      // table answer with its activity; its words are a Speech of their own.
+      makeAct(
+        Family.TABLE_ANSWER,
+        {
+          case: 'tableAnswer',
+          value: {
             who: { kind: PartyKind.MEMBER, id: 'pedlar' },
-            say: 'Let me think.',
+            word: 'think',
             activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },
           },
-        },
-      } as Act['body'])
+        } as Act['body'],
+        undefined,
+        'speak'
+      )
     );
     await waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.movements?.has('commoner')).toBe(
@@ -7230,5 +7234,71 @@ describe('the act funnel (rpg-project#630)', () => {
     );
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#1416)', () => {
+  it('toasts the shout’s words once and the pedlar’s reply not at all', async () => {
+    readyScene();
+    const stream = liveActs();
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    // The barbarian's acts as the castle record held them (session
+    // 3b24f584…): the bard walks out front, shouts to the pedlar one room
+    // away, and the pedlar answers in a voice too low to carry.
+    const tag = 'speak:01M78FGHHV78EWWRWPNWDNF0NV';
+    const shoutId = '01M78FGHJ06DQ1TCHHP1FEZY2W';
+    const replyId = '01M78FGHJ35J2A5W3Z97SK78FN';
+    const said = (id: string, value: Record<string, unknown>) =>
+      create(ActSchema, {
+        session: 'enc-1',
+        id,
+        act: tag,
+        verb: 'speak',
+        family: Family.ACT,
+        perceived: { senses: [Sense.HEARING] },
+        body: { case: 'speech', value },
+      } as never);
+    await act(async () => {
+      stream.push(
+        create(ActSchema, {
+          ...walkAct('char-9', [
+            { x: -5, y: 14 },
+            { x: -2, y: 14 },
+          ]),
+          id: '01M78FGAE20R71H688DNV2P3BC',
+          act: 'move:01M78FGA8B329K5AB08KHQTCN5',
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await act(async () => {
+      stream.push(
+        said(shoutId, {
+          utterance: 'u952',
+          words: 'Oi! Pedlar! What have you got to sell?',
+          option: 'hail-the-pedlar',
+          hops: 1,
+          loudness: 3, // LOUDNESS_SHOUT
+          place: { x: -2, y: 14 },
+        }),
+        said(replyId, {
+          utterance: 'u957',
+          hops: 1,
+          loudness: 2, // LOUDNESS_SPEAK
+          place: { x: 0, y: 14 },
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    const notices = await screen.findByTestId('story-notices');
+    await waitFor(() =>
+      within(notices).getByText(
+        'Someone shouts: “Oi! Pedlar! What have you got to sell?”'
+      )
+    );
+    expect(within(notices).queryByText('You hear voices')).toBeNull();
+    expect(within(notices).queryByText('You hear a voice')).toBeNull();
+    expect(notices.querySelectorAll('article')).toHaveLength(1);
   });
 });

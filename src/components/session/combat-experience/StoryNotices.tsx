@@ -85,7 +85,7 @@ export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
               )}
             </header>
             <p className={styles.headline}>
-              {description?.headline ?? entry.headline}
+              {entry.noticeHeadline ?? description?.headline ?? entry.headline}
             </p>
             {(description?.outcome ?? entry.detail) && (
               <p>{description?.outcome ?? entry.detail}</p>

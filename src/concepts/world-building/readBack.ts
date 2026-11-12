@@ -21,6 +21,8 @@ import type { AnswerEntryShape, OptionShape } from './answerTableShape';
 import {
   abilityPhrase,
   joinAnd,
+  quotedLine,
+  sayVerb,
   triggerPhrase,
   whenPhrase,
   wordPhrase,
@@ -125,12 +127,13 @@ function rowSentence(row: AnswerEntryShape): ReadBackSentence {
   const when = whenPhrase(row.when, 'it');
   const word = wordPhrase(row, 'it', 'time');
   const say = row.say !== undefined ? `“${row.say}”` : undefined;
+  const says = sayVerb(row.loudness);
   const does =
     word !== undefined && say !== undefined
-      ? `it says ${say} and ${word}`
+      ? `it ${says} ${say} and ${word}`
       : word !== undefined
         ? `it ${word}`
-        : `it says ${say ?? '""'}`;
+        : `it ${says} ${say ?? '""'}`;
   const text = `${when !== undefined ? `If ${when}, ${does}` : `At any time, ${does}`} (weight ${row.weight ?? 1}).`;
   return sentence(text, factRefsIn(text, rowFacts(row)));
 }
@@ -383,7 +386,7 @@ function verdictText(rows: readonly AnswerEntryShape[]): {
   const facts: string[] = [];
   const parts = rows.map((row) => {
     const bits: string[] = [];
-    if (row.say !== undefined) bits.push(`“${row.say}”`);
+    if (row.say !== undefined) bits.push(quotedLine(row.say, row.loudness));
     if (row.fact !== undefined) {
       facts.push(row.fact);
       bits.push(
@@ -406,7 +409,7 @@ function optionSentence(
   document: Readonly<RoomDraftDocument>,
   option: OptionShape
 ): ReadBackSentence {
-  const parts = [`“${option.say}”`];
+  const parts = [quotedLine(option.say, option.loudness)];
   const refs: ReadBackRef[] = [];
   const facts: string[] = [];
   if (option.requires !== undefined) {

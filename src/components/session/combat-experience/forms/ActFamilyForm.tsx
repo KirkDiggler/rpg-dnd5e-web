@@ -23,13 +23,18 @@ export function ActFamilyForm({
     case 'attack':
     case 'cast':
     case 'activate':
-    case 'speak':
     case 'deathSave':
     case 'door':
     case 'sneak':
     case 'rest':
       rolled = true;
       break;
+    case 'speech':
+      // A line shows its formula only when a roll reached this viewer.
+      rolled = body.value.roll !== undefined;
+      break;
+    // RETIRED (rpg-project#934): a `speak` body is no longer sent.
+    case 'speak':
     case 'walk':
     case 'loot':
     case 'hold':

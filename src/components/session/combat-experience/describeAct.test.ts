@@ -8,6 +8,7 @@ import {
   EndingResult,
   Family,
   InfluenceKind,
+  Loudness,
   PartyKind,
   RollSchema,
   Sense,
@@ -99,18 +100,14 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
     }),
     'Alice uses Second Wind',
   ],
+  // Retired (rpg-project#934): a `speak` body is no longer sent and
+  // describes to nothing; every spoken thing is a `speech`.
   speak: [
     act(Family.ACT, {
       case: 'speak',
-      value: {
-        by: alice,
-        to: gate,
-        line: 'Stand aside.',
-        skill: 'persuasion',
-        roll: d20,
-      },
+      value: {},
     }),
-    'Alice to Gate Guard: "Stand aside."',
+    null,
   ],
   deathSave: [
     act(Family.ACT, {
@@ -178,10 +175,10 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
   tableAnswer: [
     act(
       Family.TABLE_ANSWER,
-      { case: 'tableAnswer', value: { who: gate, word: 'refuse', say: 'No.' } },
+      { case: 'tableAnswer', value: { who: gate, word: 'refuse' } },
       'speak'
     ),
-    'Gate Guard: "No."',
+    'Gate Guard: refuse',
   ],
   barred: [
     act(
@@ -193,6 +190,23 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       'move'
     ),
     'Gate Guard bars the way',
+  ],
+  speech: [
+    act(
+      Family.ACT,
+      {
+        case: 'speech',
+        value: {
+          utterance: 'u1',
+          speaker: alice,
+          words: 'Evening.',
+          loudness: Loudness.SPEAK,
+          place: { x: 4, y: 2 },
+        },
+      },
+      'speak'
+    ),
+    'Alice says: “Evening.”',
   ],
   state: [
     act(Family.STATE, {
@@ -231,7 +245,7 @@ describe('describeAct', () => {
     const members = oneof!.fields.map((f) => f.localName).sort();
     expect(Object.keys(EVERY_BODY).sort()).toEqual(members);
     for (const [name, [a, headline]] of Object.entries(EVERY_BODY)) {
-      expect(describeAct(a, context)?.headline, name).toBe(headline);
+      expect(describeAct(a, context)?.headline ?? null, name).toBe(headline);
     }
   });
 
@@ -366,11 +380,12 @@ describe('the verdict is the server’s, never derived from total and against', 
   it('a check', () => {
     const speak = describeAct(
       act(Family.ACT, {
-        case: 'speak',
+        case: 'speech',
         value: {
-          by: alice,
-          to: gate,
-          line: 'Stand aside.',
+          speaker: alice,
+          spokenTo: gate,
+          words: 'Stand aside.',
+          loudness: Loudness.SPEAK,
           skill: 'persuasion',
           roll: lost,
         },
@@ -586,17 +601,6 @@ describe('a table pick says its word once', () => {
     );
     expect(pick?.text).toBe('Gate Guard: toward');
   });
-
-  it('a spoken answer keeps its word after the line', () => {
-    const said = describeAct(
-      act(Family.TABLE_ANSWER, {
-        case: 'tableAnswer',
-        value: { who: gate, word: 'fact', say: 'You’ll bleed first.' },
-      }),
-      context
-    );
-    expect(said?.text).toBe('Gate Guard: "You’ll bleed first." — fact');
-  });
 });
 
 describe('an influence named as an id reads as words', () => {
@@ -634,11 +638,12 @@ describe('the formula verdict is the server’s', () => {
 
   it('a check', () => {
     const speak = act(Family.ACT, {
-      case: 'speak',
+      case: 'speech',
       value: {
-        by: alice,
-        to: gate,
-        line: 'Stand aside.',
+        speaker: alice,
+        spokenTo: gate,
+        words: 'Stand aside.',
+        loudness: Loudness.SPEAK,
         skill: 'persuasion',
         roll: lost,
       },
@@ -726,33 +731,47 @@ describe('a bystander reads the gate conversation (rpg-project#923)', () => {
     memberNames: { alice: 'Alice', bram: 'Bram', 'gate-1': 'Gate Guard' },
   };
 
-  it('the guard’s hail line reads as his answer', () => {
+  it('the guard’s hail line reads as his Speech, his pick as its word', () => {
     const hail = describeAct(
-      act(Family.TABLE_ANSWER, {
-        case: 'tableAnswer',
+      act(Family.ACT, {
+        case: 'speech',
         value: {
-          who: gate,
-          word: 'hail',
-          say: 'You there. State your business.',
+          speaker: gate,
+          spokenTo: alice,
+          words: 'You there. State your business.',
+          loudness: Loudness.SPEAK,
         },
       }),
       bystander
     );
     expect(hail?.text).toBe(
-      'Gate Guard: "You there. State your business." — hail'
+      'Gate Guard says to Alice: “You there. State your business.”'
     );
+    const pick = describeAct(
+      act(Family.TABLE_ANSWER, {
+        case: 'tableAnswer',
+        value: { who: gate, word: 'hail' },
+      }),
+      bystander
+    );
+    expect(pick?.text).toBe('Gate Guard: hail');
   });
 
-  it('the addressed player’s reply reads as her Speak', () => {
+  it('the addressed player’s reply reads as her Speech', () => {
     const reply = describeAct(
       act(Family.ACT, {
-        case: 'speak',
-        value: { by: alice, to: gate, line: "We're the troupe for the feast." },
+        case: 'speech',
+        value: {
+          speaker: alice,
+          spokenTo: gate,
+          words: "We're the troupe for the feast.",
+          loudness: Loudness.SPEAK,
+        },
       }),
       bystander
     );
     expect(reply?.headline).toBe(
-      `Alice to Gate Guard: "We're the troupe for the feast."`
+      `Alice says to Gate Guard: “We're the troupe for the feast.”`
     );
   });
 });

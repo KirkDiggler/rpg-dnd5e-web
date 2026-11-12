@@ -33,6 +33,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
+import { hopsPhrase, speechWords } from './speechLine';
 
 /**
  * The cause a creature's `dash` pick writes on every step of its run
@@ -367,18 +368,28 @@ function describeWith(
         roll: a.results.find((r) => r.roll)?.roll ?? a.saves[0]?.roll,
       };
     }
-    case 'speak': {
-      const s = body.value;
-      const answer = s.answer
-        ? ` ${name(s.answer.who)}: ${s.answer.say ? `"${s.answer.say}"` : s.answer.word}`
+    // RETIRED (rpg-project#934): the server no longer sends a `speak` body;
+    // every spoken thing is a `speech`. Nothing of it is read.
+    case 'speak':
+      return null;
+    case 'speech': {
+      // ONE SPOKEN THING AS THIS VIEWER PERCEIVED IT (rpg-project#934). The
+      // words are `speechLine`'s; the roll is the speaker's when a speaker is
+      // named and someone's when not — never attributed from elsewhere.
+      const sp = body.value;
+      const words = speechWords(sp, name);
+      const check = sp.skill ? `${sp.skill} check` : '';
+      const rolled = rw.short(sp.roll)
+        ? words.speakerSeen
+          ? rw.withRoll(check, sp.roll)
+          : `someone rolled ${sp.roll!.total}`
         : '';
       return {
-        eyebrow: `Speak${s.skill ? ` · ${s.skill}` : ''}`,
-        headline: `${name(s.by)} to ${name(s.to)}: "${s.line}"`,
-        detail:
-          `${rw.withRoll(s.skill ? `${s.skill} check` : '', s.roll)}${answer}`.trim(),
+        eyebrow: `Speech${sp.skill && sp.roll ? ` · ${sp.skill}` : ''}`,
+        headline: words.headline,
+        detail: [words.where, rolled].filter(Boolean).join(' · '),
         tone: 'neutral',
-        roll: s.roll,
+        roll: sp.roll,
       };
     }
     case 'deathSave': {
@@ -514,9 +525,9 @@ function describeWith(
       }
       return {
         eyebrow: 'Answer',
-        headline: `${name(t.who)}: ${t.say ? `"${t.say}"` : t.word || 'answers'}`,
-        // A pick with no line already says its word in the headline.
-        detail: rw.withRoll(t.say ? t.word : '', t.roll),
+        // The pick only: whatever the creature said is its own Speech.
+        headline: `${name(t.who)}: ${t.word || 'answers'}`,
+        detail: rw.withRoll('', t.roll),
         tone: 'neutral',
         roll: t.roll,
       };
@@ -589,7 +600,9 @@ function describeWith(
           return {
             eyebrow: 'Heard',
             headline: `${name(p.observer)} hears ${authoredWords(p.heard?.kind ?? 'something')}`,
-            detail: p.heard ? plural(p.heard.hops, 'cell') + ' away' : '',
+            // A sound's hops are ROOMS it crossed, never cells (the same
+            // words a Speech's voice uses, `speechLine.hopsPhrase`).
+            detail: p.heard ? hopsPhrase(p.heard.hops) : '',
             tone: 'neutral',
           };
         case Sense.DISCOVERY: {
@@ -857,7 +870,7 @@ export function formatRollFormula(
       ];
       return lines.filter(Boolean).join('; ');
     }
-    case 'speak':
+    case 'speech':
       return rollFormula(body.value.skill || 'Check', body.value.roll, 'DC');
     case 'sneak':
       return rollFormula('Stealth', body.value.roll, 'DC');

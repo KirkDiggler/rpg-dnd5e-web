@@ -375,3 +375,24 @@ describe('useStoryNotices', () => {
     expect(view.result.current).toEqual([]);
   });
 });
+
+describe('a row that stops toasting leaves the screen (rpg-project#934)', () => {
+  it('a voice cue’s notice goes when its exchange’s words arrive and take the notice', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const voice = {
+      ...entry('voice'),
+      toastRule: { case: 'heard-sound' as const, hold: false },
+    };
+    view.rerender({ ...props, story: [old, voice] });
+    expect(view.result.current.map((row) => row.id)).toEqual(['voice']);
+    const words = {
+      ...entry('words'),
+      toastRule: { case: 'heard-speech' as const, hold: false },
+    };
+    view.rerender({
+      ...props,
+      story: [old, { ...voice, toastRule: undefined }, words],
+    });
+    expect(view.result.current.map((row) => row.id)).toEqual(['words']);
+  });
+});

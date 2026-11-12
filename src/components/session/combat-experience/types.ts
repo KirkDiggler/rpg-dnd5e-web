@@ -18,6 +18,7 @@ import type { PartySide } from '../partySide';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
+import type { VoiceAtPlace } from './speechAtSpeakers';
 import type { ToastRule } from './toastPolicy';
 
 /** Local interaction state. Provider facts remain in generated messages. */
@@ -125,6 +126,12 @@ export interface CombatExperienceStoryExchange {
   toastRule?: ToastRule;
   /** The describer's one line: what a toast shows and is timed by. */
   toastText?: string;
+  /**
+   * The notice's headline when it stands for more than its own act: one
+   * exchange heard as voices through a wall is one notice, "You hear voices"
+   * (rpg-project#934). Absent, the notice reads the act's own headline.
+   */
+  noticeHeadline?: string;
   /** The viewer's own deed: its arrival releases held combat toasts. */
   byViewer?: boolean;
   /** A fight was formed once this row's act had landed. */
@@ -227,6 +234,9 @@ export interface CombatExperienceMapRenderProps {
    * (`speechAtSpeakers`, rpg-project#842). The map draws it above them.
    */
   speech?: ReadonlyMap<string, string>;
+  /** Voices from speakers the viewer did not see, at their places
+   * (`voicesAtPlaces`, rpg-project#934). The map marks each, naming nobody. */
+  voices?: readonly VoiceAtPlace[];
 }
 
 interface CombatExperienceBaseProps {

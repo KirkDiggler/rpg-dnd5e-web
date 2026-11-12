@@ -1,5 +1,7 @@
 # 2026-11-04 · The guard holds the gate S1c · A held crossing plans shut only in the barred direction
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#857](https://github.com/KirkDiggler/rpg-project/issues/857), [plan Task 22](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/plan.md#task-22-s1c-the-web-previews-a-one-way-hold), [ruling R6](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md) and its laws "A post holds both ways unless its setting says a direction" and "A pass fact walks through a hold". Protos pinned at [rpg-api-protos v0.1.255](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.255), generated commit `0bd33650`: `Sighting.holds_against` and `Sighting.holds_side`. Built against the protos while the server tasks (encounter T17, session T18, api T19) were built in parallel.
 
 ## Shipped

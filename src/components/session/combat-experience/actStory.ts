@@ -147,7 +147,7 @@ export function buildActStory(
   // end that names them; until then their toasts run timers and their walks
   // fold.
   let inFight = false;
-  // Who spoke each line, by act tag, so a line's own table answer can be
+  // Who spoke each line, by act tag, so a creature's Speech under it can be
   // told apart as an answer to the viewer (toast case `answer-to-your-line`).
   const speakers = new Map<string, string>();
   // Each bump by act tag, so the barrier's answer under it is told apart as
@@ -171,8 +171,16 @@ export function buildActStory(
         inFight = true;
       }
     }
-    if (act.body.case === 'speak' && act.act && act.body.value.by?.id) {
-      speakers.set(act.act, act.body.value.by.id);
+    // The line's speaker, first seen under its tag: the first `Speech` that
+    // names a speaker (a creature's answer under the same tag comes after
+    // the line it answers).
+    if (
+      act.act &&
+      !speakers.has(act.act) &&
+      act.body.case === 'speech' &&
+      act.body.value.speaker?.id
+    ) {
+      speakers.set(act.act, act.body.value.speaker.id);
     }
     if (
       act.body.case === 'barred' &&
@@ -251,7 +259,54 @@ export function buildActStory(
     )
       story[i] = { ...row, toastRule: undefined };
   }
+  // ONE EXCHANGE THROUGH A WALL IS ONE NOTICE (rpg-project#934). A line and
+  // its answer heard as voices only — no speaker seen, no words caught —
+  // share their act tag; the first keeps the notice and reads "You hear
+  // voices", the rest stay in the log without one. Words the viewer caught
+  // still notify per line.
+  const voices = new Map<string, number[]>();
+  for (const [i, row] of story.entries()) {
+    if (row.toastRule && row.group && isVoiceOnly(row.act)) {
+      const rows = voices.get(row.group) ?? [];
+      rows.push(i);
+      voices.set(row.group, rows);
+    }
+  }
+  // A line whose words the viewer caught is the exchange's notice: a
+  // voice-only cue under the same tag (the reply heard through the wall)
+  // needs none of its own — its log row and map cue are enough — and never
+  // stands in for the words.
+  const worded = new Set(
+    story
+      .filter(
+        (row) =>
+          row.toastRule &&
+          row.group &&
+          row.act?.body.case === 'speech' &&
+          row.act.body.value.words !== undefined
+      )
+      .map((row) => row.group)
+  );
+  for (const [group, rows] of voices) {
+    if (worded.has(group)) {
+      for (const i of rows) story[i] = { ...story[i]!, toastRule: undefined };
+      continue;
+    }
+    if (rows.length < 2) continue;
+    const [first, ...rest] = rows;
+    story[first!] = { ...story[first!]!, noticeHeadline: 'You hear voices' };
+    for (const i of rest) story[i] = { ...story[i]!, toastRule: undefined };
+  }
   return Object.freeze(story);
+}
+
+/** A `Speech` that reached the viewer as a voice alone: no speaker, no words. */
+function isVoiceOnly(act: Act | undefined): boolean {
+  return (
+    act?.body.case === 'speech' &&
+    !act.body.value.speaker?.id &&
+    act.body.value.words === undefined
+  );
 }
 
 /** The latest-result card for an attack act; undefined for anything else. */

@@ -34,7 +34,7 @@ export interface HeardSound {
 }
 
 /**
- * The sealed rulebook kinds (`clang`, `boom`, `voice`, `crash`) as the
+ * The sealed rulebook sound kinds (`clang`, `boom`, `crash`) as the
  * phrase a player reads. A kind this client does not know yet is shown as
  * its own raw word rather than hidden: the rulebook owns the vocabulary, so a
  * fifth kind must still reach the player the day it ships.
@@ -42,7 +42,6 @@ export interface HeardSound {
 const SOUND_PHRASES: Readonly<Record<string, string>> = Object.freeze({
   clang: 'metal clanging',
   boom: 'a boom',
-  voice: 'a voice',
   crash: 'a crash',
 });
 
@@ -136,4 +135,24 @@ export function heardSentence(
   return heard.hops > 0
     ? `${line.headline}, ${line.detail}.`
     : `${line.headline}.`;
+}
+
+/**
+ * A `Speech` from a speaker the viewer did not see, as the voice it is
+ * (rpg-project#934): heard at its `place`, `hops` rooms off. Undefined when
+ * the viewer saw who spoke — then it is that speaker's line, not a sound —
+ * or the message names no place. Nothing about the speaker is read or
+ * guessed; the words, when caught, are the describer's (`speechLine.ts`).
+ */
+export function speechSound(speech: {
+  readonly speaker?: { readonly id: string };
+  readonly place?: HeardCell;
+  readonly hops?: number;
+}): HeardSound | undefined {
+  if (speech.speaker?.id || !speech.place) return undefined;
+  return Object.freeze({
+    kind: 'voice',
+    position: Object.freeze({ x: speech.place.x, y: speech.place.y }),
+    hops: speech.hops ?? 0,
+  });
 }

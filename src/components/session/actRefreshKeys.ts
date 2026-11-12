@@ -28,10 +28,6 @@ const FULL: SessionRefreshKey[] = ['characterData', 'afford', 'turn', 'view'];
 /** The arrival kind a prop placement carries (Arrival.kind). */
 const ARRIVED_PROP = 'prop';
 
-function union(...sets: SessionRefreshKey[][]): SessionRefreshKey[] {
-  return [...new Set(sets.flat())];
-}
-
 export function refreshKeysForAct(
   act: Act,
   member: string
@@ -59,12 +55,16 @@ export function refreshKeysForAct(
         return [];
       }
       return body.value.results.some((r) => r.stabilization) ? FULL : COMBAT;
-    // spoke, scoped to the speaker; a folded-in answer adds answered's row.
-    case 'speak': {
-      const own: SessionRefreshKey[] =
-        body.value.by?.id === member ? ['characterData', 'afford'] : [];
-      return body.value.answer ? union(own, ['afford', 'view']) : own;
-    }
+    // RETIRED (rpg-project#934): no `speak` body is sent any more.
+    case 'speak':
+      return [];
+    // A spoken thing (rpg-project#934): the speaker re-reads their own sheet
+    // and offers; anyone else re-reads what a creature's answer may have
+    // changed.
+    case 'speech':
+      return body.value.speaker?.id === member
+        ? ['characterData', 'afford']
+        : ['afford', 'view'];
     case 'deathSave':
       return COMBAT;
     case 'loot':

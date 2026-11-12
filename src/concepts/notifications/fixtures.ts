@@ -77,7 +77,7 @@ if (attack.act?.body.case === 'attack') {
 export const NOTIFICATION_SAMPLES = {
   attack,
   speech: RECENT_IDENTITY_SAMPLES.find(
-    (entry) => entry.act?.body.case === 'speak'
+    (entry) => entry.act?.body.case === 'speech'
   )!,
   sound: heard,
 };

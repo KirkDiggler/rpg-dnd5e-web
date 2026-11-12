@@ -19,14 +19,12 @@ export function sayActivityFromAct(input: {
   readonly id: string;
 }): PresentedSayActivity | undefined {
   const answer =
-    input.act.body.case === 'speak'
-      ? input.act.body.value.answer
-      : input.act.body.case === 'tableAnswer'
-        ? input.act.body.value
-        : undefined;
+    input.act.body.case === 'tableAnswer' ? input.act.body.value : undefined;
+  // NO `say` GATE (rpg-project#934). The cue is what the creature is seen
+  // doing, carried on its pick; the words it says travel in the Speech act,
+  // and the retired `say` is empty once the server stops sending it.
   if (
     !answer?.activity ||
-    !answer.say ||
     answer.who?.kind !== PartyKind.MEMBER ||
     !answer.who.id
   )
