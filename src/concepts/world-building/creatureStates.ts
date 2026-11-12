@@ -89,7 +89,10 @@ export type CreatureStates = { initial: string } & Record<
  * The beats a state listens for (dungeonspec/states.go). `barred` is a bump
  * (rpg-project#842): a step refused by this body, or a door verb refused by
  * its hold. It is heard by the barrier alone, at once, in the Move that
- * bumped, and is scoped like `heard`.
+ * bumped, and is scoped like `heard`. `topic` (rpg-project#929) wakes a
+ * member who has come to hold a topic about someone (a recognition granted
+ * by an interaction's outcome or a line's success row); a recipe machine
+ * guards it with `topic:<id>`.
  */
 export const STATE_BEATS = [
   'time',
@@ -98,6 +101,7 @@ export const STATE_BEATS = [
   'deed',
   'seen',
   'fact',
+  'topic',
   'clock:world',
   'clock:fight',
 ] as const;

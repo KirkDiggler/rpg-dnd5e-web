@@ -3,7 +3,9 @@ import type { SiteScope } from './siteScope';
 /**
  * WHAT FOLLOWS AN INTERACTION ENTERING A STATE (rpg-project#928): an
  * interaction's `outcomes:`, keyed by the state it enters, each a list of
- * consequences. The one kind today is `recognize`:
+ * consequences. The one kind today is `recognize`. A line's success row
+ * may carry the same `recognize` (rpg-project#929), granted when the line
+ * wins; `recognizeOf` reads either:
  *
  *   outcomes:
  *     admitted:
@@ -25,8 +27,34 @@ import type { SiteScope } from './siteScope';
 export const HOLDER_SPOKEN_TO = 'spoken_to';
 /** `about`'s one word: the speaker's party the holder sees. */
 export const ABOUT_PARTY_IN_SIGHT = 'party_in_sight';
+/** `about`'s other word (rpg-project#929): the speaker alone, as a line's
+ * success row grants it to a straggler who made their own case. */
+export const ABOUT_SPEAKER = 'speaker';
 /** `heard_by`'s one word: the interaction's other carriers who witnessed it. */
 export const HEARD_BY_WITNESSES = 'carriers_who_witnessed';
+
+const HOLDER_WORDS: Record<string, string> = {
+  [HOLDER_SPOKEN_TO]: 'the creature the line was said to',
+};
+const ABOUT_WORDS: Record<string, string> = {
+  [ABOUT_PARTY_IN_SIGHT]: 'the speaker’s party he sees',
+  [ABOUT_SPEAKER]: 'the speaker',
+};
+
+/** A recognize's holder in plain words; a word this build does not know, as
+ * written. */
+export function holderWords(holder: string): string {
+  return HOLDER_WORDS[holder] ?? holder;
+}
+
+/** A recognize's subjects in plain words; a word this build does not know,
+ * as written. */
+export function aboutWords(about: string): string {
+  return ABOUT_WORDS[about] ?? about;
+}
+
+/** The suffix a heard recognize adds: the witnesses recognise too. */
+export const HEARD_WORDS = ', and every other carrier who saw it said does too';
 
 /** A state's consequences, as written. */
 export type Outcomes = Record<string, unknown[]>;

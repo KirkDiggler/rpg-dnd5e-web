@@ -31,6 +31,7 @@ describe('creature state recipe — dungeonspec/states.go', () => {
     'deed',
     'deed:attacked',
     'fact',
+    'topic',
     'clock:world',
     'clock:fight',
     'clock:bell:alarm',

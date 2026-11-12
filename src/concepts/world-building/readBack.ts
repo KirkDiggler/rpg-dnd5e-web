@@ -29,6 +29,13 @@ import { castMemberOf } from './cast';
 import { ENGINE_LAWS, type EngineLawId } from './engineLaws';
 import { walkFacts } from './factWalk';
 import {
+  aboutWords,
+  HEARD_WORDS,
+  HOLDER_SPOKEN_TO,
+  holderWords,
+  recognizeOf,
+} from './interactionOutcomes';
+import {
   factionOf,
   layeredOrders,
   type OrdersLayer,
@@ -355,6 +362,18 @@ function propName(document: Readonly<RoomDraftDocument>, id: string): string {
   return label?.trim() ? label : id;
 }
 
+/** A row's `recognize` (rpg-project#929), granted when the line wins, in
+ * the outcomes form's words; on a line the creature spoken to is "it". A
+ * recognize this build cannot say is named, and carried as written. */
+function grantWords(row: AnswerEntryShape): string | undefined {
+  const raw = (row as Record<string, unknown>).recognize;
+  if (raw === undefined) return undefined;
+  const r = recognizeOf({ recognize: raw });
+  if (!r) return 'a recognition this build cannot say, kept as written';
+  const holder = r.holder === HOLDER_SPOKEN_TO ? 'it' : holderWords(r.holder);
+  return `${holder} recognises ${aboutWords(r.about)} as ${r.topic}${r.heard ? HEARD_WORDS : ''}`;
+}
+
 /** One verdict's rows: “line”, and the speaker learns x. More than one row
  * carries each weight, since one is picked among them. */
 function verdictText(rows: readonly AnswerEntryShape[]): {
@@ -375,6 +394,8 @@ function verdictText(rows: readonly AnswerEntryShape[]): {
     }
     if (row.flee !== undefined)
       bits.push(bits.length ? 'and it flees' : 'it flees');
+    const grant = grantWords(row);
+    if (grant !== undefined) bits.push(bits.length ? `and ${grant}` : grant);
     const weight = rows.length > 1 ? ` (weight ${row.weight ?? 1})` : '';
     return `${bits.join(', ')}${weight}`;
   });
