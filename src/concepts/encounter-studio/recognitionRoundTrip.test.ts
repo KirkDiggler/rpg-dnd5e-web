@@ -122,8 +122,8 @@ describe('the recognition grammar loads and writes back (rpg-project#928)', () =
     ],
     [
       'an outcome heard by nobody else',
-      '            heard_by: carriers_who_witnessed\n',
-      '',
+      '\n            heard_by: carriers_who_witnessed\n',
+      '\n',
     ],
     [
       'an outcome of a kind this build does not know',
@@ -132,8 +132,8 @@ describe('the recognition grammar loads and writes back (rpg-project#928)', () =
     ],
     [
       'a recognize with a word this build does not know',
-      '            holder: spoken_to\n',
-      '            holder: everyone\n',
+      '\n            holder: spoken_to\n',
+      '\n            holder: everyone\n',
     ],
   ])('%s loads and writes back byte for byte', (_name, from, to) => {
     roundTrips(edited(served, from, to));
@@ -210,7 +210,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
   it('heard by nobody else drops its own line and nothing else', () => {
     const saved = outcomesAfter((o) => withHeard(o, 'admitted', 0, false));
     expect(saved).toBe(
-      served.replace('            heard_by: carriers_who_witnessed\n', '')
+      served.replace('\n            heard_by: carriers_who_witnessed\n', '\n')
     );
     roundTrips(saved);
   });

@@ -6,9 +6,10 @@ import {
   SPEAK_REACH_CELLS,
 } from '../world-building/interactionApproach';
 import {
-  ABOUT_PARTY_IN_SIGHT,
+  aboutWords,
   grantedTopics,
-  HOLDER_SPOKEN_TO,
+  HEARD_WORDS,
+  holderWords,
   outcomesOf,
   recipeStates,
   recognizeOf,
@@ -167,14 +168,6 @@ function ApproachField({
   );
 }
 
-/** The holder and subjects words in plain English. */
-const HOLDER_WORDS: Record<string, string> = {
-  [HOLDER_SPOKEN_TO]: 'the creature the line was said to',
-};
-const ABOUT_WORDS: Record<string, string> = {
-  [ABOUT_PARTY_IN_SIGHT]: 'the speaker’s party he sees',
-};
-
 /**
  * One interaction's outcomes (rpg-project#928): for each state with any, its
  * recognitions in plain words, each with its topic to edit, whether the
@@ -230,11 +223,8 @@ function OutcomesField({
               return (
                 <li key={index} aria-label={`Recognition ${label}`}>
                   <p>
-                    {HOLDER_WORDS[r.holder] ?? r.holder} recognises{' '}
-                    {ABOUT_WORDS[r.about] ?? r.about}
-                    {r.heard
-                      ? ', and every other carrier who saw it said does too.'
-                      : '.'}
+                    {holderWords(r.holder)} recognises {aboutWords(r.about)}
+                    {r.heard ? `${HEARD_WORDS}.` : '.'}
                   </p>
                   <label className="es-field">
                     <span>Topic</span>
