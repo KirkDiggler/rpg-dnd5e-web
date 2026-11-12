@@ -195,6 +195,9 @@ export type AnswerWhenDeed = {
 export interface AnswerWhenHeard {
   kind: string;
   within: number;
+  /** `loudness: <word>` (rpg-project#933): a sound at or above it. Carried
+   * as written (`carryUnknownKeys`); the read-back says it. */
+  loudness?: string;
 }
 
 /** ONE condition — one key, so the key IS the condition. `not` wraps exactly
@@ -279,6 +282,11 @@ export interface AnswerActivityShape {
 export interface AnswerEntryShape {
   weight?: number;
   say?: string;
+  /** `loudness: whisper | speak | shout | scream` (rpg-project#933),
+   * speak when absent. CARRIED, not read: the decoder copies it untouched
+   * (`carryUnknownKeys`), so the file's bytes round-trip; the read-back says
+   * it. */
+  loudness?: string;
   activity?: AnswerActivityShape;
   when?: AnswerWhenShape;
   fact?: string;
@@ -1149,6 +1157,11 @@ export type OptionRequiresShape = OptionRequires;
 export interface OptionShape {
   id: string;
   say: string;
+  /** `loudness: whisper | speak | shout | scream` (rpg-project#933),
+   * speak when absent. CARRIED, not read: the decoder copies it untouched
+   * (`carryUnknownKeys`), so the file's bytes round-trip; the read-back says
+   * it. */
+  loudness?: string;
   check?: AnswerApproachShape[];
   requires?: OptionRequiresShape;
   success?: AnswerEntryShape[];

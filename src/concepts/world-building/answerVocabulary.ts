@@ -173,6 +173,35 @@ export function heardLabel(subject: Subject = 'I'): string {
   return `${subject} heard a sound`;
 }
 
+/** How a line is said (rpg-project#933), in the content's own word: the
+ * verb a table row reads with, and the note a line or a reply carries.
+ * Absent is speak, and says nothing; a word this build does not know is
+ * named as written. */
+const LOUDNESS_VERBS: Readonly<Record<string, string>> = {
+  whisper: 'whispers',
+  speak: 'says',
+  shout: 'shouts',
+  scream: 'screams',
+};
+const LOUDNESS_NOTES: Readonly<Record<string, string>> = {
+  whisper: 'whispered',
+  speak: 'spoken',
+  shout: 'shouted',
+  scream: 'screamed',
+};
+
+/** "says", "shouts"; "says, at <word>," for a word this build cannot say. */
+export function sayVerb(loudness: unknown): string {
+  if (typeof loudness !== 'string') return 'says';
+  return LOUDNESS_VERBS[loudness] ?? `says, at ${loudness},`;
+}
+
+/** "“line”", "“line” (shouted)"; absent loudness adds nothing. */
+export function quotedLine(say: string, loudness: unknown): string {
+  if (typeof loudness !== 'string') return `“${say}”`;
+  return `“${say}” (${LOUDNESS_NOTES[loudness] ?? `at ${loudness}`})`;
+}
+
 /** The `fact` picker's label. */
 export function factLabel(subject: Subject = 'I'): string {
   return `${subject} ${verb('know', subject)} a fact`;
@@ -220,7 +249,11 @@ function clause(
       : enemyBandPhrase(condition.enemy);
   if ('heard' in condition) {
     const span = `within ${roundsPhrase(condition.heard.within)}`;
-    const sound = soundPhrase(condition.heard.kind);
+    const loudness = condition.heard.loudness;
+    const sound =
+      typeof loudness === 'string'
+        ? `${soundPhrase(condition.heard.kind)} at ${loudness} or louder`
+        : soundPhrase(condition.heard.kind);
     return negated
       ? `${subject} did not hear ${sound} ${span}`
       : `${subject} heard ${sound} ${span}`;
