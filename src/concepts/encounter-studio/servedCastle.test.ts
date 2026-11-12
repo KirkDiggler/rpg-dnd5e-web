@@ -697,38 +697,39 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     expect(grammarOf(parse(canonical))).toEqual(grammarOf(parse(gate)));
   });
 
-  // Each edit lands on gate-1's troupe, its options[2] after the vouch and the
-  // straggler's case (rpg-project#929), the first troupe in the file.
+  // Each edit lands on gate-1's troupe, its options[3] after the vouch, the
+  // straggler's case and the line asking after friends (rpg-project#929,
+  // #932), the first troupe in the file.
   it.each([
     [
       'a two-key predicate in the list',
       '              - fact: feast-tonight\n',
       '              - { fact: feast-tonight, holds: lute }\n',
-      'gate-1 options[2].requires[0]: an option requires one or a list of',
+      'gate-1 options[3].requires[0]: an option requires one or a list of',
     ],
     [
       'an interaction naming no state',
       '                  in: [fresh, warned-guest]\n',
       '                  in: []\n',
-      'gate-1 options[2].requires[1].interaction: an interaction predicate lists no state',
+      'gate-1 options[3].requires[1].interaction: an interaction predicate lists no state',
     ],
     [
       'an interaction naming no id',
       '                  id: front-gate\n                  in: [fresh, warned-guest]\n',
       '                  in: [fresh, warned-guest]\n',
-      'gate-1 options[2].requires[1].interaction: an interaction predicate does not say which interaction',
+      'gate-1 options[3].requires[1].interaction: an interaction predicate does not say which interaction',
     ],
     [
       'an interaction with an unknown key',
       '                  id: front-gate\n                  in: [fresh, warned-guest]\n',
       '                  id: front-gate\n                  at: gate\n                  in: [fresh, warned-guest]\n',
-      'gate-1 options[2].requires[1].interaction.at: field at not found',
+      'gate-1 options[3].requires[1].interaction.at: field at not found',
     ],
     [
       'an empty requires list',
       TROUPE_REQUIRES,
       '            requires: []\n',
-      'gate-1 options[2].requires: this requires lists nothing — write a predicate, or drop the requires',
+      'gate-1 options[3].requires: this requires lists nothing — write a predicate, or drop the requires',
     ],
   ])('%s is refused as the compiler refuses it', (_name, from, to, refusal) => {
     expect(served).toContain(from);

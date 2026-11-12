@@ -6,6 +6,7 @@ import {
   type Shortfall,
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import type { CombatExperiencePresentationState } from './types';
 
@@ -21,6 +22,28 @@ export function isStaleDeclarationRefusal(error: unknown): boolean {
 /** The quiet notice for a reply the shared conversation moved past. */
 export const CONVERSATION_MOVED_ON_MESSAGE =
   'The conversation moved on — pick again.';
+
+/** The notice for a waiting roll its speaker walked away from (rpg-project#938). */
+export const ROLL_KEPT_MESSAGE =
+  'You walked away: your roll stands, your die is kept.';
+
+/**
+ * Whether an act is the viewer's own waiting line judged as rolled because
+ * they walked away from it (rpg-project#938): the viewer's `speak` beat
+ * arriving inside an act that is neither their Speak nor their answer to the
+ * roll — the walk (or any later verb) whose commit settled the kept roll.
+ * A line said or answered in the ordinary way arrives in a `speak` or a
+ * `react` act and is not this.
+ */
+export function isKeptRollAct(act: Act, viewer: string): boolean {
+  return (
+    act.body.case === 'speak' &&
+    act.body.value.by?.id === viewer &&
+    act.verb !== '' &&
+    act.verb !== 'speak' &&
+    act.verb !== 'react'
+  );
+}
 
 /**
  * A reply or a roll answer the shared interaction moved past (rpg-project#924):
