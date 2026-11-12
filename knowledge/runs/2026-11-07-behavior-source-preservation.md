@@ -1,5 +1,7 @@
 # Run — 2026-11-07 — behavior source preservation
 
+processed: 2026-11-12T165555Z
+
 Part of [live adoption #866](https://github.com/KirkDiggler/rpg-project/issues/866), under [story #859](https://github.com/KirkDiggler/rpg-project/issues/859).
 
 ## Shipped

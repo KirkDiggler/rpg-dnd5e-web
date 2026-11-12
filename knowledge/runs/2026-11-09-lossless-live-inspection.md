@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — exact live and captured inspection
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Adopted the real v0.1.263 generated record binding and replaced approximate Struct decoding with the same lossless raw JSON parser used by captures — [R9 provider](https://github.com/KirkDiggler/rpg-api-protos/pull/426).
