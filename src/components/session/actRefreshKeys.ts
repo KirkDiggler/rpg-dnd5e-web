@@ -65,6 +65,13 @@ export function refreshKeysForAct(
         body.value.by?.id === member ? ['characterData', 'afford'] : [];
       return body.value.answer ? union(own, ['afford', 'view']) : own;
     }
+    // A spoken thing (rpg-project#934): the speaker re-reads their own sheet
+    // and offers, as `speak` did; anyone else re-reads what a creature's
+    // answer may have changed, as `tableAnswer` did.
+    case 'speech':
+      return body.value.speaker?.id === member
+        ? ['characterData', 'afford']
+        : ['afford', 'view'];
     case 'deathSave':
       return COMBAT;
     case 'loot':

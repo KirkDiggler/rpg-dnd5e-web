@@ -66,6 +66,13 @@ export function recentEventIdentity(
       return result('Ability', Zap);
     case 'speak':
       return result('Speech', MessageCircle);
+    case 'speech':
+      // No speaker seen is no speaker named (rpg-project#934).
+      return result(
+        'Speech',
+        MessageCircle,
+        partyName(body.value.speaker, context) || 'Someone'
+      );
     case 'deathSave':
       return result('Death save', HeartPulse);
     case 'loot':

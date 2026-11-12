@@ -137,3 +137,23 @@ export function heardSentence(
     ? `${line.headline}, ${line.detail}.`
     : `${line.headline}.`;
 }
+
+/**
+ * A `Speech` from a speaker the viewer did not see, as the voice it is
+ * (rpg-project#934): heard at its `place`, `hops` rooms off. Undefined when
+ * the viewer saw who spoke — then it is that speaker's line, not a sound —
+ * or the message names no place. Nothing about the speaker is read or
+ * guessed; the words, when caught, are the describer's (`speechLine.ts`).
+ */
+export function speechSound(speech: {
+  readonly speaker?: { readonly id: string };
+  readonly place?: HeardCell;
+  readonly hops?: number;
+}): HeardSound | undefined {
+  if (speech.speaker?.id || !speech.place) return undefined;
+  return Object.freeze({
+    kind: 'voice',
+    position: Object.freeze({ x: speech.place.x, y: speech.place.y }),
+    hops: speech.hops ?? 0,
+  });
+}

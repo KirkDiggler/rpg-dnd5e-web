@@ -18,6 +18,7 @@ import type { PartySide } from '../partySide';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
+import type { VoiceAtPlace } from './speechAtSpeakers';
 import type { ToastRule } from './toastPolicy';
 
 /** Local interaction state. Provider facts remain in generated messages. */
@@ -227,6 +228,9 @@ export interface CombatExperienceMapRenderProps {
    * (`speechAtSpeakers`, rpg-project#842). The map draws it above them.
    */
   speech?: ReadonlyMap<string, string>;
+  /** Voices from speakers the viewer did not see, at their places
+   * (`voicesAtPlaces`, rpg-project#934). The map marks each, naming nobody. */
+  voices?: readonly VoiceAtPlace[];
 }
 
 interface CombatExperienceBaseProps {

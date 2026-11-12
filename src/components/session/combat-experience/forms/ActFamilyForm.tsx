@@ -30,6 +30,10 @@ export function ActFamilyForm({
     case 'rest':
       rolled = true;
       break;
+    case 'speech':
+      // A line shows its formula only when a roll reached this viewer.
+      rolled = body.value.roll !== undefined;
+      break;
     case 'walk':
     case 'loot':
     case 'hold':

@@ -8,6 +8,7 @@ import {
   EndingResult,
   Family,
   InfluenceKind,
+  Loudness,
   PartyKind,
   RollSchema,
   Sense,
@@ -193,6 +194,23 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       'move'
     ),
     'Gate Guard bars the way',
+  ],
+  speech: [
+    act(
+      Family.ACT,
+      {
+        case: 'speech',
+        value: {
+          utterance: 'u1',
+          speaker: alice,
+          words: 'Evening.',
+          loudness: Loudness.SPEAK,
+          place: { x: 4, y: 2 },
+        },
+      },
+      'speak'
+    ),
+    'Alice says: “Evening.”',
   ],
   state: [
     act(Family.STATE, {

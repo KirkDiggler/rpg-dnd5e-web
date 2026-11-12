@@ -34,7 +34,7 @@ import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { MemberPortrait } from './MemberPortrait';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
-import { speechAtSpeakers } from './speechAtSpeakers';
+import { speechAtSpeakers, voicesAtPlaces } from './speechAtSpeakers';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
 import { StoryNotices } from './StoryNotices';
@@ -349,8 +349,10 @@ function CombatExperienceContent({
   // A creature's answer to the viewer speaks above it while its notice shows
   // (rpg-project#842): the map is handed who says what, nothing more.
   const speech = speechAtSpeakers(storyNotices);
+  // An unseen speaker's voice marks the place it came from (rpg-project#934).
+  const voices = voicesAtPlaces(storyNotices);
   const renderMapWithSpeech: typeof renderMap = (props) =>
-    renderMap({ ...props, speech });
+    renderMap({ ...props, speech, voices });
   const activeParticipant = participants.find(
     (participant) => participant.active
   );

@@ -2207,6 +2207,7 @@ function SessionEncounterScope({
               onTargetClick,
               onApproachClick,
               speech,
+              voices,
             }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
@@ -2361,6 +2362,7 @@ function SessionEncounterScope({
                     )}
                     fitRequest={atlas?.regions.length ?? 0}
                     speech={speech}
+                    voices={voices}
                     presentationLayer={
                       <>
                         {localWorldDieLayer}
