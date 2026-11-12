@@ -377,7 +377,12 @@ export function withoutRetiredSpeech(
     }
     case 'tableAnswer': {
       const t = body.value;
-      if (!tagged || !t.say || t.dealt) return { act, quiet: false };
+      if (!tagged || t.dealt) return { act, quiet: false };
+      // A PICK UNDER A SPOKEN EXCHANGE IS QUIET (rpg-project#934): the
+      // Speech rows carry the line's notices. Once the retired SpeakAct is
+      // no longer sent the answer stands alone here, and toasting it as
+      // `answer-to-your-line` would repeat the creature's Speech.
+      if (!t.say) return { act, quiet: true };
       if (!t.word && !t.roll) return null;
       return {
         act: {

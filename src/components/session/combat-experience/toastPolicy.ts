@@ -93,6 +93,10 @@ export function actorOf(act: Act): Party | undefined {
       return body.value.mover;
     case 'stay':
       return body.value.member;
+    // A spoken thing's actor is its speaker — present only when the viewer
+    // saw them (rpg-project#934); an unseen speaker is no actor at all.
+    case 'speech':
+      return body.value.speaker;
     case 'attack':
     case 'cast':
     case 'activate':

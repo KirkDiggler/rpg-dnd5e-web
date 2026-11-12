@@ -80,6 +80,11 @@ export function beatActor(act: Act): string | undefined {
     case 'activate':
     case 'speak':
       return body.value.by?.id;
+    // The one speech message (rpg-project#934): another fight member's line
+    // paces as their beat once the retired `speak` act is no longer sent.
+    // An unseen speaker names nobody, so it paces as nobody's.
+    case 'speech':
+      return body.value.speaker?.id;
     case 'clock':
       return body.value.mark === ClockMark.TURN_ENDED
         ? body.value.turn?.member?.id
