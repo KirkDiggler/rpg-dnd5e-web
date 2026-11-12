@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — Run-ended toast dismissal lifecycle
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Prepared an ending-keyed toast scope in Web#1401 so the existing dismissal/fade behavior survives commit-before-passive-effect ordering; release remains gated on full/current-head checks — [bug](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1403).

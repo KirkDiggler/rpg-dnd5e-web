@@ -1,5 +1,7 @@
 # 2026-11-05 · Click a hostile to attack · Walk up and swing, only when in reach
 
+processed: 2026-11-12T165555Z
+
 Card [rpg-project#872](https://github.com/KirkDiggler/rpg-project/issues/872), decisions D1–D4. Protos pinned at [rpg-api-protos v0.1.257](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.257): `TargetCandidate.approach = 6`, the cell where the attacker's own walk this turn stops within weapon reach. Built while the api slice (rpg-api, branch `approach-872`) and the toolkit slices (rpg-toolkit#2285, #2286) were built in parallel.
 
 ## Shipped

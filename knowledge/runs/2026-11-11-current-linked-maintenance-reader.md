@@ -1,5 +1,7 @@
 # Current linked maintenance reader
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Recognize current linked coordinator/recipient envelopes, including valid pending entries, without interpreting bindings or part bags; reject obsolete Bless/Bane/concentration data and malformed current envelopes — [S3](https://github.com/KirkDiggler/rpg-project/issues/706).

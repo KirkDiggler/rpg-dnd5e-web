@@ -1,5 +1,7 @@
 # 2026-11-07 — read composed Raging without cached bonuses
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Identify Raging by its canonical ref/current data, read runtime progress, and leave bindings opaque. The badge renders the server description rather than duplicating Rage rules or deriving a bonus — [reader](../../src/types/conditionData.ts).

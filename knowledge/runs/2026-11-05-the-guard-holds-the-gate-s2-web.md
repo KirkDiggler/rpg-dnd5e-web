@@ -1,5 +1,7 @@
 # 2026-11-05 · The guard holds the gate S2 · The bump and the guard's answer
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#842](https://github.com/KirkDiggler/rpg-project/issues/842), [plan Task 10](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/plan.md#task-10-s2-the-web-shows-him-speak), rulings R2 and R7 in [design.md](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/the-guard-holds-the-gate/design.md). Protos pinned at [rpg-api-protos v0.1.256](https://github.com/KirkDiggler/rpg-api-protos/releases/tag/v0.1.256), generated commit `36d9cb82`: `Act.body barred = 38`, `BarredAct {mover, barrier, cell, door}`. Built against the protos while the server tasks (encounter T6, session T7, api T9) were built in parallel.
 
 ## Shipped
