@@ -12,8 +12,8 @@ import {
   bumpTheDoor,
   bumpTheGuard,
   GATE,
-  hisVoice,
-  hisVoiceAtTheDoor,
+  hisLine,
+  hisLineAtTheDoor,
   LINE,
   SHORTER_LINE,
   theGuardAnswers,
@@ -48,23 +48,23 @@ const theMove = [
   bumpTheGuard,
   theGuardIsChallenged,
   theGuardAnswers,
-  hisVoice,
+  hisLine,
 ];
 /** The door bump's OpenDoor, likewise. */
-const theDoor = [bumpTheDoor, theGuardAnswersAtTheDoor, hisVoiceAtTheDoor];
+const theDoor = [bumpTheDoor, theGuardAnswersAtTheDoor, hisLineAtTheDoor];
 const rowOf = (rows: ReturnType<typeof story>, act: Act) =>
   rows.find((r) => r.act?.id === act.id)!;
 /** The same act under another tag: the engine's old fresh `time:` act. */
 const retagged = (act: Act, tag: string) => ({ ...act, act: tag }) as Act;
-/** The same answer with its body changed. */
-const answerWith = (
-  over: Partial<Extract<Act['body'], { case: 'tableAnswer' }>['value']>
+/** His line with some of its parts changed. */
+const lineWith = (
+  over: Partial<Extract<Act['body'], { case: 'speech' }>['value']>
 ) =>
   ({
-    ...theGuardAnswers,
+    ...hisLine,
     body: {
-      case: 'tableAnswer',
-      value: { ...theGuardAnswers.body.value, ...over },
+      case: 'speech',
+      value: { ...hisLine.body.value, ...over },
     },
   }) as Act;
 
@@ -72,19 +72,19 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
   it('a step bump: the bump line, then his line as speech at him, one toast', () => {
     const rows = story(theMove);
     const bump = rowOf(rows, bumpTheGuard);
-    const answer = rowOf(rows, theGuardAnswers);
+    const said = rowOf(rows, hisLine);
     expect(bump.toastText).toBe(
       'Gate Guard bars the way — Alice stops short of (-3, 7)'
     );
     // The walk's stop keeps its own notice: the bump line does not toast.
     expect(bump.toastRule).toBeUndefined();
-    // His answer sits under the bump in the log and toasts as speech to her.
-    expect(answer.group).toBe(bump.group);
-    expect(answer.nested).toBe(true);
-    expect(answer.headline).toBe(`Gate Guard: "${LINE}"`);
-    expect(answer.toastRule?.case).toBe('answer-to-your-bump');
-    // His voice, which she also hears, does not toast beside his line.
-    expect(rowOf(rows, hisVoice)).toBeDefined();
+    // His line sits under the bump in the log and toasts as speech to her;
+    // his pick is a quiet row beside it.
+    expect(said.group).toBe(bump.group);
+    expect(said.nested).toBe(true);
+    expect(said.headline).toBe(`Gate Guard says to Alice: “${LINE}”`);
+    expect(said.toastRule?.case).toBe('answer-to-your-bump');
+    expect(rowOf(rows, theGuardAnswers).toastRule).toBeUndefined();
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'answer-to-your-bump',
     ]);
@@ -97,9 +97,9 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
     expect(rowOf(rows, bumpTheDoor).toastText).toBe(
       'Gate Guard bars the door — Alice at the gate wall door'
     );
-    const answer = rowOf(rows, theGuardAnswersAtTheDoor);
-    expect(answer.headline).toBe(`Gate Guard: "${SHORTER_LINE}"`);
-    expect(answer.nested).toBe(true);
+    const said = rowOf(rows, hisLineAtTheDoor);
+    expect(said.headline).toBe(`Gate Guard says to Alice: “${SHORTER_LINE}”`);
+    expect(said.nested).toBe(true);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'answer-to-your-bump',
     ]);
@@ -116,48 +116,36 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
     expect(speechAtSpeakers(rows)).toEqual(new Map());
   });
 
-  it('an answer under another act tag is not his answer to the bump', () => {
+  it('his line under another act tag is a line to her, not his answer to the bump', () => {
     const rows = story([
       walkToTheGate,
       bumpTheGuard,
-      retagged(theGuardAnswers, 'time:01M6PNBCFZ2F5NMPE7V0F2WK2M'),
-      hisVoice,
+      retagged(hisLine, 'time:01M6PNBCFZ2F5NMPE7V0F2WK2M'),
     ]);
-    expect(rowOf(rows, theGuardAnswers).toastRule).toBeUndefined();
-    expect(speechAtSpeakers(rows)).toEqual(new Map());
-    // With no answer under the tag, the voice still toasts as a sound.
-    expect(rowOf(rows, hisVoice).toastRule?.case).toBe('heard-sound');
+    expect(rowOf(rows, hisLine).toastRule?.case).toBe('line-to-you');
   });
 
-  it('another member who sees the answer is not spoken to', () => {
+  it('another member who catches his line is not spoken to', () => {
     const rows = story(theMove, 'bob');
-    expect(rowOf(rows, theGuardAnswers).toastRule).toBeUndefined();
-    expect(speechAtSpeakers(rows)).toEqual(new Map());
+    expect(rowOf(rows, hisLine).toastRule?.case).toBe('heard-speech');
   });
 
-  it('another creature answering under the bump’s tag does not speak to her', () => {
-    const other = answerWith({
-      who: create(PartySchema, { ...GATE, id: 'gate-2' }),
+  it('another creature speaking under the bump’s tag is not his answer to the bump', () => {
+    const other = lineWith({
+      speaker: create(PartySchema, { ...GATE, id: 'gate-2' }),
     });
     const rows = story([walkToTheGate, bumpTheGuard, other]);
-    expect(rowOf(rows, other).toastRule).toBeUndefined();
+    expect(rowOf(rows, other).toastRule?.case).toBe('line-to-you');
+  });
+
+  it('his pick with no line stays a pick: no toast, no speech', () => {
+    const rows = story([walkToTheGate, bumpTheGuard, theGuardAnswers]);
+    expect(rowOf(rows, theGuardAnswers).toastRule).toBeUndefined();
     expect(speechAtSpeakers(rows)).toEqual(new Map());
   });
 
-  it('his answer with no line stays a pick: no toast, no speech', () => {
-    const pick = answerWith({ say: '', word: 'barred' });
-    const rows = story([walkToTheGate, bumpTheGuard, pick]);
-    expect(rowOf(rows, pick).toastRule).toBeUndefined();
-    expect(speechAtSpeakers(rows)).toEqual(new Map());
-  });
-
-  it('the voice is suppressed whichever order the wire sends it in', () => {
-    const rows = story([
-      walkToTheGate,
-      bumpTheGuard,
-      hisVoice,
-      theGuardAnswers,
-    ]);
+  it('his line toasts once whichever order the wire sends it in', () => {
+    const rows = story([walkToTheGate, bumpTheGuard, hisLine, theGuardAnswers]);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'answer-to-your-bump',
     ]);
@@ -168,64 +156,69 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
     expect(rows.map((r) => r.kind)).toEqual(['walks', 'entry']);
   });
 
-  it('nothing in a bump is paced or held, so no window opens on it', () => {
+  it('nothing in a bump but his line is paced; his line is his beat in a fight', () => {
     const fight = new Set([ALICE.id, 'gate-1']);
-    for (const act of [...theMove.slice(1), ...theDoor])
+    for (const act of [
+      bumpTheGuard,
+      theGuardIsChallenged,
+      theGuardAnswers,
+      bumpTheDoor,
+      theGuardAnswersAtTheDoor,
+    ])
       expect(needsPacing(act, 'bob', fight)).toBe(false);
+    expect(needsPacing(hisLine, 'bob', fight)).toBe(true);
   });
 });
 
 /**
  * THE HAIL (rpg-project#923): the guard speaks first when a visitor walks up.
- * His answer names who it is said to (`TableAnswer.to`), and the visitor
- * also hears his anonymous voice under the same Move's act tag. One toast:
- * his line, as speech at him.
+ * His Speech names who it is said to (`spoken_to`). One toast: his line, as
+ * speech at him.
  */
 describe('the hail, spoken to the viewer by name (rpg-project#923)', () => {
   const HAIL = 'You there. State your business.';
-  const toAlice = create(PartySchema, ALICE);
-  const hail = answerWith({ to: toAlice, key: 'approached', say: HAIL });
-  const theHail = [walkToTheGate, hail, hisVoice];
+  const hail = lineWith({ words: HAIL });
+  const theHail = [walkToTheGate, theGuardAnswers, hail];
 
-  it('his hail toasts once, as speech to her, and his voice stays in the log', () => {
+  it('his hail toasts once, as speech to her', () => {
     const rows = story(theHail);
-    const answer = rowOf(rows, hail);
-    expect(answer.toastRule?.case).toBe('line-to-you');
-    expect(answer.toastText).toContain(`Gate Guard: "${HAIL}"`);
-    expect(rowOf(rows, hisVoice)).toBeDefined();
+    const said = rowOf(rows, hail);
+    expect(said.toastRule?.case).toBe('line-to-you');
+    expect(said.toastText).toContain(`Gate Guard says to Alice: “${HAIL}”`);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'line-to-you',
     ]);
     expect(speechAtSpeakers(rows)).toEqual(new Map([['gate-1', HAIL]]));
   });
 
-  it('the voice under another tag is not this line, and still toasts', () => {
-    const rows = story([walkToTheGate, hail, retagged(hisVoice, 'time:other')]);
+  it('a voice heard under another tag is not this line, and still toasts', () => {
+    const elsewhere = lineWith({
+      speaker: undefined,
+      spokenTo: undefined,
+      words: undefined,
+      hops: 1,
+    });
+    const rows = story([
+      walkToTheGate,
+      hail,
+      { ...retagged(elsewhere, 'time:other'), id: 'other-voice' } as Act,
+    ]);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'line-to-you',
       'heard-sound',
     ]);
   });
 
-  it('a viewer the line is not said to gets no speech toast', () => {
+  it('a viewer the line is not said to hears it, but is not spoken to', () => {
     const rows = story(theHail, 'bram');
-    expect(rowOf(rows, hail).toastRule).toBeUndefined();
-    expect(speechAtSpeakers(rows).size).toBe(0);
+    expect(rowOf(rows, hail).toastRule?.case).toBe('heard-speech');
   });
 
-  it('`to` decides over the act tag: a bump answer said to someone else does not toast', () => {
-    const elsewhere = answerWith({
-      to: create(PartySchema, { ...ALICE, id: 'bram' }),
+  it('`spoken_to` decides over the act tag: a bump line said to someone else is not her bump answer', () => {
+    const elsewhere = lineWith({
+      spokenTo: create(PartySchema, { ...ALICE, id: 'bram' }),
     });
-    const rows = story([walkToTheGate, bumpTheGuard, elsewhere, hisVoice]);
-    expect(rowOf(rows, elsewhere).toastRule).toBeUndefined();
-  });
-
-  it('a bump whose answer names her still toasts once, as the bump answer', () => {
-    const named = answerWith({ to: toAlice });
-    const rows = story([walkToTheGate, bumpTheGuard, named, hisVoice]);
-    expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
-      'answer-to-your-bump',
-    ]);
+    const rows = story([walkToTheGate, bumpTheGuard, elsewhere]);
+    expect(rowOf(rows, elsewhere).toastRule?.case).toBe('heard-speech');
   });
 });

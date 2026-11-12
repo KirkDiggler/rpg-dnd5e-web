@@ -213,88 +213,6 @@ describe('toasts', () => {
   });
 });
 
-describe('one line shows once while the retired messages still arrive', () => {
-  function fact(act: Act, seq: number, index = 0): CombatStoryFact {
-    return { act, index, seq: BigInt(seq), source: 'live', visible: true };
-  }
-
-  it('the retired speak act and the voice sound step aside; a pick keeps its word, not its words', () => {
-    const retiredLine = create(ActSchema, {
-      session: 's',
-      id: 'r-1',
-      act: 'speak:1',
-      verb: 'speak',
-      family: Family.ACT,
-      body: {
-        case: 'speak',
-        value: {
-          by: aldric,
-          to: guard,
-          line: 'Open the gate!',
-          answer: { who: guard, word: 'refuse', say: 'No.' },
-        },
-      },
-    });
-    const voice = create(ActSchema, {
-      session: 's',
-      id: 'r-2',
-      act: 'speak:1',
-      verb: 'speak',
-      family: Family.PERCEPTION,
-      body: {
-        case: 'perception',
-        value: {
-          observer: { kind: PartyKind.MEMBER, id: viewer },
-          sense: Sense.HEARING,
-          heard: { kind: 'voice', hops: 0 },
-        },
-      },
-    });
-    const said = speech({
-      speaker: aldric,
-      spokenTo: guard,
-      words: 'Open the gate!',
-      loudness: Loudness.SHOUT,
-    });
-    const answer = speech(
-      { speaker: guard, words: 'No.', loudness: Loudness.SPEAK },
-      [Sense.SIGHT, Sense.HEARING],
-      { id: 'r-3' }
-    );
-    const story = buildActStory(
-      [fact(retiredLine, 1), fact(voice, 2), fact(said, 3, 1), fact(answer, 4)],
-      context
-    );
-    const heads = story.map((row) => row.headline);
-    expect(heads).toEqual([
-      'Gate guard: refuse',
-      'Aldric shouts to Gate guard: “Open the gate!”',
-      'Gate guard says: “No.”',
-    ]);
-    // The kept pick is quiet: the Speech rows carry the line's notices.
-    expect(story[0]!.toastRule).toBeUndefined();
-    expect(heads.filter((h) => h.includes('Open the gate!'))).toHaveLength(1);
-  });
-
-  it('without a Speech, the retired messages still show as before', () => {
-    const retiredLine = create(ActSchema, {
-      session: 's',
-      id: 'r-1',
-      act: 'speak:9',
-      verb: 'speak',
-      family: Family.ACT,
-      body: {
-        case: 'speak',
-        value: { by: aldric, to: guard, line: 'Evening.' },
-      },
-    });
-    const story = buildActStory([fact(retiredLine, 1)], context);
-    expect(story.map((row) => row.headline)).toEqual([
-      'Aldric to Gate guard: "Evening."',
-    ]);
-  });
-});
-
 describe('on the map', () => {
   const notice = (act: Act, id: string) => ({
     id,
@@ -381,22 +299,6 @@ describe('one exchange heard through a wall is one notice (the operator’s run 
       [Sense.HEARING],
       { id, tag }
     );
-  const retiredVoice = (id: string, x: number, y: number) =>
-    create(ActSchema, {
-      session: 's',
-      id,
-      act: tag,
-      verb: 'speak',
-      family: Family.PERCEPTION,
-      body: {
-        case: 'perception',
-        value: {
-          observer: { kind: PartyKind.MEMBER, id: bard },
-          sense: Sense.HEARING,
-          heard: { kind: 'voice', cell: { x, y }, hops: 1 },
-        },
-      },
-    });
   const fact = (act: Act, seq: number, index: number): CombatStoryFact => ({
     act,
     index,
@@ -405,19 +307,17 @@ describe('one exchange heard through a wall is one notice (the operator’s run 
     visible: true,
   });
 
-  it('the line and its answer toast once, as voices; the retired sounds do not toast at all', () => {
+  it('the line and its answer toast once, as voices; one notice for the pair', () => {
     const lineId = '01M78DPCF6ZZ0DZ57C';
     const answerId = '01M78DPCF6ZZG7035X';
     const story = buildActStory(
       [
-        fact(retiredVoice(lineId, -5, 9), 1, 0),
         fact(voiceOf(lineId, 'u525', -5, 9), 2, 1),
-        fact(retiredVoice(answerId, -3, 7), 3, 0),
         fact(voiceOf(answerId, 'u531', -3, 7), 4, 1),
       ],
       { viewerMember: bard }
     );
-    // Both voices stay in the log; the retired sounds are gone.
+    // Both voices stay in the log.
     expect(story.map((row) => row.headline)).toEqual([
       'You hear a voice',
       'You hear a voice',
@@ -465,28 +365,11 @@ describe('a shout caught through a wall keeps its words (the operator’s run on
   // The barbarian's versions, as the castle record holds them (session
   // 3b24f584…, seq 952 and 957 under one act): the bard's shout to the
   // pedlar with its words, one room off, no speaker, no addressee; and the
-  // pedlar's reply as a voice only. Each arrives beside its retired voice
-  // Sound, in one same-id run.
+  // pedlar's reply as a voice only.
   const tag = 'speak:01M78FGHHV78EWWRWPNWDNF0NV';
   const barbarian = 'char_724d38a3-a34f-4535-9083-85abab79322b';
   const shoutId = '01M78FGHJ06DQ1TCHHP1FEZY2W';
   const replyId = '01M78FGHJ35J2A5W3Z97SK78FN';
-  const sound = (id: string, x: number, y: number) =>
-    create(ActSchema, {
-      session: 's',
-      id,
-      act: tag,
-      verb: 'speak',
-      family: Family.PERCEPTION,
-      body: {
-        case: 'perception',
-        value: {
-          observer: { kind: PartyKind.MEMBER, id: barbarian },
-          sense: Sense.HEARING,
-          heard: { kind: 'voice', cell: { x, y }, hops: 1 },
-        },
-      },
-    });
   const shout = speech(
     {
       utterance: 'u952',
@@ -522,12 +405,7 @@ describe('a shout caught through a wall keeps its words (the operator’s run on
 
   it('in record order, the words are the exchange’s one notice; the reply is a log row and a map cue', () => {
     const story = buildActStory(
-      [
-        fact(sound(shoutId, -2, 14), 1, 0),
-        fact(shout, 2, 1),
-        fact(sound(replyId, 0, 14), 3, 0),
-        fact(reply, 4, 1),
-      ],
+      [fact(shout, 2, 1), fact(reply, 4, 1)],
       context
     );
     expect(story.map((row) => row.headline)).toEqual([
@@ -552,20 +430,12 @@ describe('a shout caught through a wall keeps its words (the operator’s run on
   });
 
   it('in separate stream messages, the same: each rebuild keeps the words as the notice', () => {
-    const first = buildActStory(
-      [fact(sound(shoutId, -2, 14), 1, 0), fact(shout, 2, 1)],
-      context
-    );
+    const first = buildActStory([fact(shout, 2, 1)], context);
     expect(toasts(first).map((row) => row.headline)).toEqual([
       'Someone shouts: “Oi! Pedlar! What have you got to sell?”',
     ]);
     const second = buildActStory(
-      [
-        fact(sound(shoutId, -2, 14), 1, 0),
-        fact(shout, 2, 1),
-        fact(sound(replyId, 0, 14), 3, 0),
-        fact(reply, 4, 1),
-      ],
+      [fact(shout, 2, 1), fact(reply, 4, 1)],
       context
     );
     expect(toasts(second).map((row) => row.headline)).toEqual([

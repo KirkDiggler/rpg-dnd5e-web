@@ -7,10 +7,9 @@ import {
 } from './heardBeat';
 
 describe('heardBeat (rpg-project#569)', () => {
-  it('reads the four sealed kinds as phrases and an unknown kind as its own word', () => {
+  it('reads the sealed sound kinds as phrases and an unknown kind as its own word', () => {
     expect(soundPhrase('clang')).toBe('metal clanging');
     expect(soundPhrase('boom')).toBe('a boom');
-    expect(soundPhrase('voice')).toBe('a voice');
     expect(soundPhrase('crash')).toBe('a crash');
     expect(soundPhrase('growl')).toBe('growl');
   });
@@ -45,12 +44,12 @@ describe('heardBeat (rpg-project#569)', () => {
       })
     ).toBe('You hear a boom, to the north.');
     expect(
-      heardSentence({ kind: 'voice', position, hops: 0 } as never, position)
-    ).toBe('You hear a voice, right here.');
+      heardSentence({ kind: 'crash', position, hops: 0 } as never, position)
+    ).toBe('You hear a crash, right here.');
     // The same cell across a region boundary is not "right here".
     expect(
-      formatHeardLine({ kind: 'voice', position, hops: 1 } as never, position)
+      formatHeardLine({ kind: 'crash', position, hops: 1 } as never, position)
         .headline
-    ).toBe('You hear a voice');
+    ).toBe('You hear a crash');
   });
 });

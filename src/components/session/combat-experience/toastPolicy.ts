@@ -25,15 +25,16 @@
  * | `line-to-you`         | a creature's line said to you that    |
  * |                       | answers no line of yours: his hail    |
  * |                       | when you walk up (rpg-project#923),   |
- * |                       | named by the answer's own `to`        |
+ * |                       | named by the Speech's `spoken_to`     |
  *
  * | `heard-speech`        | words the viewer caught that were not |
  * |                       | theirs nor said to them: a shout from |
  * |                       | the next room, a line across the hall |
  * |                       | (rpg-project#934), fight or no fight  |
  *
- * `own-speech` and `speech-to-you` keep primary lines in view; `heard-sound`
- * is a secondary cue for the observer only — on a `Speech`, a voice whose
+ * Every spoken case is read off a `Speech` (rpg-project#934). `own-speech`
+ * keeps the viewer's own line in view; `heard-sound` is a secondary cue for
+ * the observer only — a sound heard (a clang, a crash), or a `Speech` whose
  * words did not reach them and whose speaker they did not see. A discovery remains log-only.
  * NEVER: a walk, another's miss, a table pick, or another member's perception.
  *
@@ -59,7 +60,6 @@ export type ToastCase =
   | 'answer-to-your-bump'
   | 'line-to-you'
   | 'own-speech'
-  | 'speech-to-you'
   | 'heard-sound'
   | 'heard-speech';
 
@@ -100,7 +100,6 @@ export function actorOf(act: Act): Party | undefined {
     case 'attack':
     case 'cast':
     case 'activate':
-    case 'speak':
     case 'deathSave':
     case 'loot':
     case 'hold':
@@ -132,8 +131,6 @@ function carriesOutcome(act: Act): boolean {
       return body.value.results.length > 0;
     case 'activate':
       return body.value.results.length > 0 || body.value.saves.length > 0;
-    case 'speak':
-      return Boolean(body.value.roll || body.value.answer);
     case 'speech':
       return Boolean(body.value.roll);
     case 'door':
@@ -238,12 +235,6 @@ function toastCase(
     case Family.REACTION:
       if (act.body.case === 'speech')
         return speechCase(act, act.body.value, member, lineSpokenBy, bump);
-      if (act.body.case === 'speak') {
-        if (actorOf(act)?.id === member && carriesOutcome(act))
-          return 'own-outcome';
-        if (actorOf(act)?.id === member) return 'own-speech';
-        if (act.body.value.to?.id === member) return 'speech-to-you';
-      }
       if (actorOf(act)?.id === member && carriesOutcome(act))
         return 'own-outcome';
       if (doneTo(act, member)) return 'done-to-you';
@@ -268,28 +259,11 @@ function toastCase(
         act.body.value.observer?.id === member
         ? 'heard-sound'
         : null;
-    case Family.TABLE_ANSWER: {
-      // A table pick never toasts; only a creature's answer to the viewer's
-      // own line does (the operator's change to "a line spoken to you").
-      if (act.verb === 'speak' && lineSpokenBy === member)
-        return 'answer-to-your-line';
-      if (act.body.case !== 'tableAnswer') return null;
-      const answer = act.body.value;
-      // A word with no line is a pick, not speech.
-      if (answer.dealt || !answer.say) return null;
-      const bumped = bump?.mover === member && answer.who?.id === bump.barrier;
-      // WHO THE LINE IS SAID TO IS THE SERVER'S (rpg-project#923): `to`
-      // names the member a creature answers for walking up to or into him.
-      // Present, it decides; the act-tag inference below is only for a
-      // server that does not send it.
-      if (answer.to) {
-        if (answer.to.id !== member) return null;
-        return bumped ? 'answer-to-your-bump' : 'line-to-you';
-      }
-      // The line a barrier says to the viewer who bumped him: speech, under
-      // the bump's own act tag.
-      return bumped ? 'answer-to-your-bump' : null;
-    }
+    // A TABLE PICK NEVER TOASTS (rpg-project#934). Whatever a creature says
+    // arrives as its own Speech, which carries the line's notice; the pick
+    // is the arithmetic behind it and stays in the log.
+    case Family.TABLE_ANSWER:
+      return null;
     default:
       return null; // perception: what one observer saw is not news
   }

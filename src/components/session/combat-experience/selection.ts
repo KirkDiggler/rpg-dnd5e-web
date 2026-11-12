@@ -29,7 +29,7 @@ export const ROLL_KEPT_MESSAGE =
 
 /**
  * Whether an act is the viewer's own waiting line judged as rolled because
- * they walked away from it (rpg-project#938): the viewer's `speak` beat
+ * they walked away from it (rpg-project#938): the viewer's own Speech
  * arriving inside an act that is neither their Speak nor their answer to the
  * roll — the walk (or any later verb) whose commit settled the kept roll.
  * A line said or answered in the ordinary way arrives in a `speak` or a
@@ -38,10 +38,8 @@ export const ROLL_KEPT_MESSAGE =
 export function isKeptRollAct(act: Act, viewer: string): boolean {
   if (act.verb === '' || act.verb === 'speak' || act.verb === 'react')
     return false;
-  // The retired `speak` act, or the one speech message that replaces it
-  // (rpg-project#934): the viewer's own line, with its roll, inside another
-  // verb's act.
-  if (act.body.case === 'speak') return act.body.value.by?.id === viewer;
+  // The viewer's own Speech, with its roll, inside another verb's act
+  // (rpg-project#934).
   return (
     act.body.case === 'speech' &&
     act.body.value.speaker?.id === viewer &&

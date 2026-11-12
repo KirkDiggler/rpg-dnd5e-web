@@ -117,37 +117,37 @@ describe('buildActStory carries the toast policy onto its rows', () => {
     expect(swing?.toastRule?.hold).toBe(true);
   });
 
-  it('a line’s own table answer toasts for the member who spoke it', () => {
+  it('the answer to a line toasts for the member who spoke it; the pick does not', () => {
     const line = at(
       'id-1',
       Family.ACT,
       {
-        case: 'speak',
-        value: { by: alice, to: gate, line: 'Stand aside.' },
+        case: 'speech',
+        value: { speaker: alice, spokenTo: gate, words: 'Stand aside.' },
       },
       'speak',
       'speak:id-1'
     );
-    const answer = at(
+    const pick = at(
       'id-2',
       Family.TABLE_ANSWER,
       { case: 'tableAnswer', value: { who: gate, word: 'refuses' } },
       'speak',
       'speak:id-1'
     );
-    const [, aliceSees] = story(line, answer);
-    expect(aliceSees?.toastRule?.case).toBe('answer-to-your-line');
-    const [, bobSees] = buildActStory(
-      [line, answer].map((act) => ({
-        act,
-        index: 0,
-        seq: 1n,
-        source: 'live' as const,
-        visible: true,
-      })),
-      { ...context, viewerMember: 'bob' }
+    const answer = at(
+      'id-3',
+      Family.ACT,
+      {
+        case: 'speech',
+        value: { speaker: gate, spokenTo: alice, words: 'No.' },
+      },
+      'speak',
+      'speak:id-1'
     );
-    expect(bobSees?.toastRule).toBeUndefined();
+    const [, alicePick, aliceAnswer] = story(line, pick, answer);
+    expect(alicePick?.toastRule).toBeUndefined();
+    expect(aliceAnswer?.toastRule?.case).toBe('answer-to-your-line');
   });
 
   it('the viewer’s own deed is marked, so it can release a held toast', () => {

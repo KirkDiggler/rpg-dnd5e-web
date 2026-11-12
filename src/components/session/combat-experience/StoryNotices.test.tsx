@@ -15,7 +15,7 @@ it('uses shared identity, collapses details and offers dismissal', () => {
   const setPaused = vi.fn();
   const dismissAll = vi.fn();
   const entry = RECENT_IDENTITY_SAMPLES.find(
-    (e) => e.act?.body.case === 'speak'
+    (e) => e.act?.body.case === 'speech'
   )!;
   render(
     <StoryNotices
@@ -34,7 +34,7 @@ it('uses shared identity, collapses details and offers dismissal', () => {
     />
   );
   expect(screen.getByText('Speech')).toBeTruthy();
-  expect(screen.getByText('Mira')).toBeTruthy();
+  expect(screen.getByText('Mira', { selector: 'strong' })).toBeTruthy();
   expect(screen.getByText('Details').closest('details')?.open).toBe(false);
   const button = screen.getByRole('button', {
     name: 'Dismiss Speech notification',
@@ -58,7 +58,7 @@ it('uses shared identity, collapses details and offers dismissal', () => {
 
 it('a click on a notice, or on its Details, never reaches the map beneath (rpg-dnd5e-web#1416)', () => {
   const entry = RECENT_IDENTITY_SAMPLES.find(
-    (e) => e.act?.body.case === 'speak'
+    (e) => e.act?.body.case === 'speech'
   )!;
   // The map's own handlers, as the HUD sits over it.
   const mapClick = vi.fn();

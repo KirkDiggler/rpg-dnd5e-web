@@ -106,30 +106,27 @@ describe('rows group by act id', () => {
     const story = buildActStory(
       [
         row('id-1', 'speak:id-1', Family.ACT, {
-          case: 'speak',
+          case: 'speech',
           value: {
-            by: member('aldric'),
-            to: member('gate'),
-            line: 'Stand aside.',
+            speaker: member('aldric'),
+            spokenTo: member('gate'),
+            words: 'Stand aside.',
           },
         } as never),
-        {
-          ...row('id-1', 'speak:id-1', Family.TABLE_ANSWER, {
-            case: 'tableAnswer',
-            value: { who: member('gate'), word: 'refuse', say: 'No.' },
-          } as never),
-          index: 1,
-        },
+        row('id-2', 'speak:id-1', Family.TABLE_ANSWER, {
+          case: 'tableAnswer',
+          value: { who: member('gate'), word: 'refuse' },
+        } as never),
       ],
       context
     );
     expect(story.map((e) => [e.headline, e.nested])).toEqual([
-      ['Aldric to gate: "Stand aside."', false],
-      ['gate: "No."', true],
+      ['Aldric says to gate: “Stand aside.”', false],
+      ['gate: refuse', true],
     ]);
     render(<StoryLog {...props} story={story} />);
     expect(
-      screen.getByText('gate: "No."').closest('article')?.dataset.nested
+      screen.getByText('gate: refuse').closest('article')?.dataset.nested
     ).toBe('true');
   });
 
