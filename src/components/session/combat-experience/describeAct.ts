@@ -33,7 +33,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
-import { speechWords } from './speechLine';
+import { hopsPhrase, speechWords } from './speechLine';
 
 /**
  * The cause a creature's `dash` pick writes on every step of its run
@@ -610,7 +610,9 @@ function describeWith(
           return {
             eyebrow: 'Heard',
             headline: `${name(p.observer)} hears ${authoredWords(p.heard?.kind ?? 'something')}`,
-            detail: p.heard ? plural(p.heard.hops, 'cell') + ' away' : '',
+            // A sound's hops are ROOMS it crossed, never cells (the same
+            // words a Speech's voice uses, `speechLine.hopsPhrase`).
+            detail: p.heard ? hopsPhrase(p.heard.hops) : '',
             tone: 'neutral',
           };
         case Sense.DISCOVERY: {
