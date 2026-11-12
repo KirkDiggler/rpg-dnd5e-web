@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — Courtyard S3 wall choices
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Consumer checkpoint adopts already-merged Kingdom wall models and five masonry resources; a native saved-copy Studio/play preview is running on isolated :3182, with final visual acceptance and PR gates still outstanding — [Courtyard S3](https://github.com/KirkDiggler/rpg-project/issues/895).

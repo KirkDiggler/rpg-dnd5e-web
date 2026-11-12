@@ -1,5 +1,7 @@
 # Run — 2026-11-05 — hair attachment visibility
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Added a per-instance raycast opt-out before mounting skinned accessories, with scalp/facial-hair regressions covering initial mounts and replacements — [web#1391](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1391).

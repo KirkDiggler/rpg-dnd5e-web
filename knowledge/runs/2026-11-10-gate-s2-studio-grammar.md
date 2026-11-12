@@ -1,5 +1,7 @@
 # Run — 2026-11-10 — the-world-runs Gate S2 studio grammar
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922) of story [rpg-project#769](https://github.com/KirkDiggler/rpg-project/issues/769). Base: `rpg-dnd5e-web` `dev` at [`3be3c439`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/3be3c439).
 
 ## Shipped
