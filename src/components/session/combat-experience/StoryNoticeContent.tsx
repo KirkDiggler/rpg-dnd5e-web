@@ -1,7 +1,18 @@
-import { AttackOutcome } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import {
+  AttackOutcome,
+  Loudness,
+  Sense,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { ReactElement } from 'react';
-import { damageWord, partyName } from './describeAct';
+import {
+  damageWord,
+  formatRollFormula,
+  partyName,
+  type DescribeContext,
+} from './describeAct';
 import { RecentEventSummary } from './RecentEventSummary';
+import { hopsPhrase } from './speechLine';
 import styles from './StoryNotices.module.css';
 import type { CombatExperienceStoryExchange } from './types';
 
@@ -70,6 +81,14 @@ export function StoryNoticeContent({
       </div>
     );
   }
+  if (act.body.case === 'speech') {
+    return (
+      <div className={styles.content}>
+        <SpeechFacts act={act} context={context} />
+        <RecentEventSummary entry={entry} showDescription={showDescription} />
+      </div>
+    );
+  }
   const amounts =
     act.body.case === 'activate'
       ? act.body.value.results.filter(
@@ -94,7 +113,70 @@ export function StoryNoticeContent({
           </p>
         </div>
       ))}
-      <RecentEventSummary entry={entry} showDescription={showDescription} />
+      {/* DETAILS ARE NEVER EMPTY: an act with no amount and no roll shows
+          its own line here rather than opening onto nothing. */}
+      <RecentEventSummary
+        entry={entry}
+        showDescription={
+          showDescription ||
+          (amounts.length === 0 && !formatRollFormula(act, context))
+        }
+      />
     </div>
+  );
+}
+
+const LOUDNESS_WORD: Readonly<Record<Loudness, string>> = {
+  [Loudness.UNSPECIFIED]: 'Spoken',
+  [Loudness.WHISPER]: 'Whispered',
+  [Loudness.SPEAK]: 'Spoken',
+  [Loudness.SHOUT]: 'Shouted',
+  [Loudness.SCREAM]: 'Screamed',
+};
+
+/**
+ * What one spoken thing's Details say (rpg-project#934): each part as the
+ * viewer perceived it, and plainly what they did not. Read off the message
+ * only — an absent part is "not seen" or "not caught", never a guess.
+ */
+function SpeechFacts({ act, context }: { act: Act; context: DescribeContext }) {
+  if (act.body.case !== 'speech') return null;
+  const speech = act.body.value;
+  const senses = act.perceived?.senses ?? [];
+  const saw = senses.includes(Sense.SIGHT);
+  const heard = senses.includes(Sense.HEARING);
+  const rows: [string, string][] = [
+    [
+      'Perceived',
+      saw && heard
+        ? 'Seen and heard'
+        : saw
+          ? 'Seen, not heard'
+          : heard
+            ? 'Heard, not seen'
+            : 'Not stated',
+    ],
+    [
+      'Speaker',
+      speech.speaker?.id ? partyName(speech.speaker, context) : 'Not seen',
+    ],
+    [
+      'Said to',
+      speech.spokenTo?.id ? partyName(speech.spokenTo, context) : 'Not named',
+    ],
+    ['Words', speech.words !== undefined ? `“${speech.words}”` : 'Not caught'],
+    ['Loudness', LOUDNESS_WORD[speech.loudness] ?? 'Spoken'],
+  ];
+  const where = hopsPhrase(speech.hops);
+  if (!speech.speaker?.id && where) rows.push(['From', where]);
+  return (
+    <dl className={styles.facts} data-testid="speech-facts">
+      {rows.map(([term, value]) => (
+        <div key={term}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

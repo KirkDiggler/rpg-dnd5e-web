@@ -66,6 +66,16 @@ export function recentEventIdentity(
       return result('Ability', Zap);
     case 'speak':
       return result('Speech', MessageCircle);
+    case 'speech':
+      // No speaker seen is no speaker named (rpg-project#934); words not
+      // caught are a voice, not speech.
+      return result(
+        body.value.words === undefined && !body.value.speaker?.id
+          ? 'Voice'
+          : 'Speech',
+        MessageCircle,
+        partyName(body.value.speaker, context) || 'Someone'
+      );
     case 'deathSave':
       return result('Death save', HeartPulse);
     case 'loot':

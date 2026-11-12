@@ -55,3 +55,40 @@ it('uses shared identity, collapses details and offers dismissal', () => {
   fireEvent.click(button);
   expect(dismiss).toHaveBeenCalledOnce();
 });
+
+it('a click on a notice, or on its Details, never reaches the map beneath (rpg-dnd5e-web#1416)', () => {
+  const entry = RECENT_IDENTITY_SAMPLES.find(
+    (e) => e.act?.body.case === 'speak'
+  )!;
+  // The map's own handlers, as the HUD sits over it.
+  const mapClick = vi.fn();
+  const mapPointerDown = vi.fn();
+  render(
+    <div onClick={mapClick} onPointerDown={mapPointerDown}>
+      <StoryNotices
+        entries={[
+          {
+            ...entry,
+            notice: {
+              durationMs: 6000,
+              held: false,
+              dismiss: vi.fn(),
+              setPaused: vi.fn(),
+              dismissAll: vi.fn(),
+            },
+          },
+        ]}
+      />
+    </div>
+  );
+  const summary = screen.getByText('Details');
+  const card = summary.closest('article')!;
+  fireEvent.pointerDown(card);
+  fireEvent.click(card);
+  fireEvent.pointerDown(summary);
+  fireEvent.click(summary);
+  expect(mapPointerDown).not.toHaveBeenCalled();
+  expect(mapClick).not.toHaveBeenCalled();
+  // Details still does what it does: it opens the act's details.
+  expect(summary.closest('details')?.open).toBe(true);
+});
