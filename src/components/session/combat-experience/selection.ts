@@ -36,12 +36,16 @@ export const ROLL_KEPT_MESSAGE =
  * `react` act and is not this.
  */
 export function isKeptRollAct(act: Act, viewer: string): boolean {
+  if (act.verb === '' || act.verb === 'speak' || act.verb === 'react')
+    return false;
+  // The retired `speak` act, or the one speech message that replaces it
+  // (rpg-project#934): the viewer's own line, with its roll, inside another
+  // verb's act.
+  if (act.body.case === 'speak') return act.body.value.by?.id === viewer;
   return (
-    act.body.case === 'speak' &&
-    act.body.value.by?.id === viewer &&
-    act.verb !== '' &&
-    act.verb !== 'speak' &&
-    act.verb !== 'react'
+    act.body.case === 'speech' &&
+    act.body.value.speaker?.id === viewer &&
+    act.body.value.roll !== undefined
   );
 }
 
