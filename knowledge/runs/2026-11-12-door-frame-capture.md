@@ -19,6 +19,10 @@ Slice [Project #906](https://github.com/KirkDiggler/rpg-project/issues/906), sto
 - Full local Web gate passes: 10480 tests passed, five skipped; format, lint, typecheck, build and production-asset guards passed. Existing fixture warnings and the npm script-listing diagnostic are not hidden; the retained test transcript confirms the run completed — [slice](https://github.com/KirkDiggler/rpg-project/issues/906).
 - The current API castle imports and exports byte-identically through all 59 served-castle tests, including its upstream shout annotations — [API adoption](https://github.com/KirkDiggler/rpg-api/pull/1236).
 
+- Adopted Assets `e4e493b99a2d` through normal world-assets sync/check after the approved two-container custody repair; only provider/recipe/catalog identities and two GLB hashes/sizes change in the generated catalog, while bounds, fit facts, surfaces and material pins stay identical — [bounded approval](https://github.com/KirkDiggler/rpg-project/issues/906#issuecomment-6861377166).
+
 ## Mistaken
+
+- The provider-pin gate exposed a flaky pre-existing NPC sync fixture: `Stat.mtime` rounds the final half-millisecond into the next second, allowing rsync to repair the corrupt destination before the rejection check. Reproduced at timestamp `1700000000.9996`; setting both filesystem timestamps directly restores the intended independent hash-refusal test without changing production sync — [consumer PR](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1425).
 
 - Reusing the legacy whole-assembly unknown-state return would remove the fixed frame while cutting its full visual span; failing role-visibility and fitted-frame tests led to hiding only moving leaves for captured aperture kits — [independent-frame contract](https://github.com/KirkDiggler/rpg-api-protos/pull/436).
