@@ -107,6 +107,7 @@ import {
   reactionWindowDeclaration,
   reactionWindowMover,
 } from './combat-experience/reactionWindow';
+import { walkOffFor } from './combat-experience/relocateCut';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useDesktopHotbarFrame } from './combat-experience/useDesktopHotbarFrame';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
@@ -2379,6 +2380,7 @@ function SessionEncounterScope({
                     )}
                     fitRequest={atlas?.regions.length ?? 0}
                     speech={speech}
+                    selfWalkOff={walkOffFor(combat.relocateCut)}
                     voices={voices}
                     presentationLayer={
                       <>

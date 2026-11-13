@@ -101,3 +101,18 @@ export function useRelocateCut(): {
 
   return { cut, start };
 }
+
+/**
+ * THE WALK-OFF (rpg-project#925): while the view fades out, the viewer's own
+ * figure walks a short way toward `to` — for show only (`presentationDrift`).
+ * Only in the fade-out, never with reduced motion, and gone the moment the
+ * cut moves on or ends, so a cut cut short by its bound leaves no offset.
+ */
+export function walkOffFor(
+  cut: RelocateCut | null
+):
+  | { key: string; to: { x: number; y: number }; durationMs: number }
+  | undefined {
+  if (!cut || cut.reduced || cut.phase !== 'out' || !cut.to) return undefined;
+  return { key: cut.key, to: cut.to, durationMs: CUT_OUT_MS };
+}

@@ -86,6 +86,7 @@ import { resolveMainHandPresentationByRefKey } from '../hex-grid/mainHandWeapons
 import type { OffHandPresentation } from '../hex-grid/offHandEquipment';
 import { resolveOffHandPresentationByRefKey } from '../hex-grid/offHandEquipment';
 import { PathPreview } from '../hex-grid/PathPreview';
+import { driftToward } from '../hex-grid/presentationDrift';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import { AreaFootprintPreview } from './AreaFootprintPreview';
@@ -187,6 +188,16 @@ export interface SessionCanvasProps {
    * A peer's off hand comes from their sighting; see above. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
+  /**
+   * The viewer's own walk-off during a relocation cut (rpg-project#925):
+   * toward `to`, for show. The figure is drawn offset; `myPosition` is
+   * untouched.
+   */
+  selfWalkOff?: {
+    readonly key: string;
+    readonly to: { readonly x: number; readonly y: number };
+    readonly durationMs: number;
+  };
   /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
    * or absent when the author stated none — in which case the camera sits
    * exactly where it always has. Presentation only: it aims the first
@@ -378,6 +389,7 @@ export function SessionScene({
   offHandPresentation,
   localIsDowned = false,
   myPosition,
+  selfWalkOff,
   startFacing,
   movements,
   heldMovementMembers,
@@ -435,6 +447,19 @@ export function SessionScene({
   // `new THREE.Vector3(...)` built inline on every render (Copilot review,
   // PR #764) would snap the camera back to the character on any unrelated
   // re-render, silently discarding whatever the player just panned to.
+  const selfDrift = useMemo(
+    () =>
+      selfWalkOff
+        ? driftToward(
+            selfWalkOff.key,
+            myPosition,
+            positionToCube(selfWalkOff.to),
+            hexSize,
+            selfWalkOff.durationMs
+          )
+        : undefined,
+    [selfWalkOff, myPosition, hexSize]
+  );
   const target = cubeToWorld(myPosition, hexSize);
   const initialTargetRef = useRef<THREE.Vector3 | null>(null);
   if (initialTargetRef.current === null) {
@@ -1038,6 +1063,7 @@ export function SessionScene({
         }
         name={characterName}
         position={myPosition}
+        presentationDrift={selfDrift}
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}

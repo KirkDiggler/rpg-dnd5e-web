@@ -24,6 +24,8 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cubeToWorld } from '../../hex-grid/hexMath';
+import { driftAt, driftToward } from '../../hex-grid/presentationDrift';
 import { refreshKeysForAct } from '../actRefreshKeys';
 import { buildActStory } from './actStory';
 import {
@@ -33,6 +35,7 @@ import {
   CUT_OUT_MS,
   ownRelocation,
   useRelocateCut,
+  walkOffFor,
 } from './relocateCut';
 import { RelocateCutOverlay } from './RelocateCutOverlay';
 import { toastFor } from './toastPolicy';
@@ -302,5 +305,73 @@ describe('the cut', () => {
     fireEvent.pointerDown(veil);
     fireEvent.click(veil);
     expect(behind).not.toHaveBeenCalled();
+  });
+});
+
+describe('the walk-off (for show, never a move)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const own = relocate({
+    mover: member(viewer),
+    from: { x: 0, y: 0 },
+    to: { x: 9, y: 0 },
+    words: WORDS,
+    end: RelocateEnd.BOTH,
+  });
+
+  it('plays only in the fade-out, toward `to`, and never with reduced motion', () => {
+    const start = ownRelocation([own], viewer)!;
+    expect(walkOffFor({ ...start, phase: 'out', reduced: false })).toEqual({
+      key: start.key,
+      to: { x: 9, y: 0 },
+      durationMs: CUT_OUT_MS,
+    });
+    expect(
+      walkOffFor({ ...start, phase: 'hold', reduced: false })
+    ).toBeUndefined();
+    expect(
+      walkOffFor({ ...start, phase: 'in', reduced: false })
+    ).toBeUndefined();
+    expect(
+      walkOffFor({ ...start, phase: 'out', reduced: true })
+    ).toBeUndefined();
+    expect(walkOffFor(null)).toBeUndefined();
+  });
+
+  it('drifts about two cells in a straight line, never past `to`, eased', () => {
+    const from = Object.freeze({ x: 0, y: 0, z: 0 });
+    const to = Object.freeze({ x: 9, y: -9, z: 0 });
+    const drift = driftToward('k', from, to, 1, CUT_OUT_MS)!;
+    const a = cubeToWorld(from, 1);
+    const b = cubeToWorld(to, 1);
+    const toward = Math.atan2(b.z - a.z, b.x - a.x);
+    expect(Math.atan2(drift.z, drift.x)).toBeCloseTo(toward);
+    expect(Math.hypot(drift.x, drift.z)).toBeCloseTo(2 * Math.sqrt(3));
+    expect(driftAt(drift, 0)).toEqual({ x: 0, z: 0 });
+    expect(driftAt(drift, CUT_OUT_MS)).toEqual({ x: drift.x, z: drift.z });
+    // One cell away: it stops at `to`, not past it.
+    const near = driftToward('n', from, { x: 1, y: -1, z: 0 }, 1, 100)!;
+    const end = cubeToWorld({ x: 1, y: -1, z: 0 }, 1);
+    expect(Math.hypot(near.x, near.z)).toBeCloseTo(
+      Math.hypot(end.x - a.x, end.z - a.z)
+    );
+    expect(driftToward('z', from, from, 1, 100)).toBeUndefined();
+  });
+
+  it('never changes the stored position: the positions it reads stay as they were', () => {
+    const position = Object.freeze({ x: 2, y: -3, z: 1 });
+    const before = { ...position };
+    driftToward('k', position, { x: 9, y: -9, z: 0 }, 1, CUT_OUT_MS);
+    expect(position).toEqual(before);
+  });
+
+  it('a cut ended by its bound leaves no offset behind', () => {
+    const { result } = renderHook(() => useRelocateCut());
+    act(() => result.current.start(ownRelocation([own], viewer)!));
+    expect(walkOffFor(result.current.cut)).toBeDefined();
+    act(() => vi.advanceTimersByTime(CUT_MAX_MS));
+    expect(result.current.cut).toBeNull();
+    expect(walkOffFor(result.current.cut)).toBeUndefined();
+    expect(driftAt(undefined, 1e6)).toEqual({ x: 0, z: 0 });
   });
 });
