@@ -414,9 +414,9 @@ describe('useSessionWalk', () => {
     expect(result.current.moveError).toBe('no doorway joins those cells');
   });
 
-  it('routes every Move FailedPrecondition through stale-selector recovery without exposing raw wording', async () => {
+  it('routes a stale Move declaration (ABORTED, rpg-api#1238) through stale-selector recovery without exposing raw wording', async () => {
     hoisted.moveFn.mockRejectedValue(
-      new ConnectError('not your turn', Code.FailedPrecondition)
+      new ConnectError('stale declaration', Code.Aborted)
     );
     const onStaleDeclarationRefusal = vi.fn();
     const { result } = renderHook(() =>
@@ -433,10 +433,39 @@ describe('useSessionWalk', () => {
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
     expect(result.current.moveError).toBeNull();
-    expect(result.current.notYourTurn).toBe(true);
+    expect(result.current.notYourTurn).toBe(false);
     expect(onStaleDeclarationRefusal).toHaveBeenCalledOnce();
     expect(onStaleDeclarationRefusal).toHaveBeenCalledWith('v1.move');
   });
+
+  it.each([
+    'Guard bars the way',
+    'move: member is in a fight',
+    'The guards hold you; you cannot walk away.',
+  ])(
+    'shows a Move refusal sentence (FAILED_PRECONDITION) as written: %s',
+    async (sentence) => {
+      hoisted.moveFn.mockRejectedValue(
+        new ConnectError(sentence, Code.FailedPrecondition)
+      );
+      const onStaleDeclarationRefusal = vi.fn();
+      const { result } = renderHook(() =>
+        useSessionWalk(
+          'enc-1',
+          'char-1',
+          corridorIndex(),
+          { x: 0, y: 0 } as never,
+          vi.fn(),
+          'v1.move',
+          onStaleDeclarationRefusal
+        )
+      );
+      act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+      await waitFor(() => expect(result.current.busy).toBe(false));
+      expect(result.current.moveError).toBe(sentence);
+      expect(onStaleDeclarationRefusal).not.toHaveBeenCalled();
+    }
+  );
 
   it('a plain (non-turn-lock) Move RPC failure leaves notYourTurn false', async () => {
     hoisted.moveFn.mockRejectedValue(new Error('no doorway joins those cells'));

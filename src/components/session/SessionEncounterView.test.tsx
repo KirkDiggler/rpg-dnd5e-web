@@ -6191,7 +6191,7 @@ describe('SessionEncounterView production combat integration', () => {
   it('recovers an Attack selector refusal with generic copy, refreshed provider why, cleared arm, and no retry', async () => {
     readyTurn();
     hoisted.attackFn.mockRejectedValue(
-      new ConnectError('raw selector mismatch', Code.FailedPrecondition)
+      new ConnectError('raw selector mismatch', Code.Aborted)
     );
     renderView();
     await screen.findByRole('button', { name: /longsword/i });
@@ -6228,10 +6228,29 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
   });
 
+  it('shows an Attack refusal sentence (FAILED_PRECONDITION) as the server wrote it (rpg-project#925)', async () => {
+    readyTurn();
+    hoisted.attackFn.mockRejectedValue(
+      new ConnectError('Guard bars the way', Code.FailedPrecondition)
+    );
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText('Guard bars the way');
+    expect(
+      screen.queryByText('That option changed; review your current actions.')
+    ).toBeNull();
+    expect(screen.queryByText(/failed_precondition/i)).toBeNull();
+    expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+  });
+
   it('recovers an End Turn selector refusal instead of swallowing it and never retries', async () => {
     readyTurn();
     hoisted.endTurnFn.mockRejectedValue(
-      new ConnectError('stale end selector', Code.FailedPrecondition)
+      new ConnectError('stale end selector', Code.Aborted)
     );
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /end turn/i }));
@@ -6245,10 +6264,10 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.endTurnFn).toHaveBeenCalledTimes(1);
   });
 
-  it('recovers every Move FailedPrecondition through the stale declaration path regardless of not-your-turn wording', async () => {
+  it('recovers a stale Move declaration (ABORTED, rpg-api#1238) through the stale declaration path', async () => {
     readyTurn();
     hoisted.moveFn.mockRejectedValue(
-      new ConnectError('selector no longer current', Code.FailedPrecondition)
+      new ConnectError('selector no longer current', Code.Aborted)
     );
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /move/i }));

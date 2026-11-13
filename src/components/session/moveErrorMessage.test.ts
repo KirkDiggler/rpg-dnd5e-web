@@ -9,7 +9,7 @@ describe('formatMoveError', () => {
     expect(formatMoveError(err)).toBe('Not your turn — movement is locked.');
   });
 
-  it('does NOT treat every FailedPrecondition as the turn lock -- sibling sentinels pass their own message through unchanged', () => {
+  it('does NOT treat every FailedPrecondition as the turn lock -- sibling refusals read as the server wrote them (rpg-project#925)', () => {
     // errors.go's FailedPrecondition bucket also covers ErrNotInFight,
     // ErrClosed, ErrDowned, ErrCannotAfford, etc. -- only the exact
     // sentinel text should trigger a rewrite (Copilot review risk: a
@@ -42,12 +42,24 @@ describe('formatMoveError', () => {
     expect(formatMoveError(cannotAfford)).toBe(cannotAfford.rawMessage);
   });
 
-  it('passes through a non-FailedPrecondition ConnectError unchanged', () => {
+  it('passes through a non-FailedPrecondition ConnectError as its raw text, never the "[code] " prefix', () => {
     const err = new ConnectError(
       'no doorway joins those cells',
       Code.InvalidArgument
     );
-    expect(formatMoveError(err)).toBe(err.rawMessage);
+    expect(formatMoveError(err)).toBe('no doorway joins those cells');
+  });
+
+  it('reads a session refusal sentence exactly as written (rpg-project#925)', () => {
+    for (const sentence of [
+      'Guard bars the way',
+      'move: member is in a fight',
+      'The guards hold you; you cannot walk away.',
+    ]) {
+      expect(
+        formatMoveError(new ConnectError(sentence, Code.FailedPrecondition))
+      ).toBe(sentence);
+    }
   });
 
   it('passes through a plain Error unchanged (existing useSessionWalk contract, mock RPC rejections in tests)', () => {
@@ -98,15 +110,5 @@ describe('isNotYourTurnError (toolkit#1169)', () => {
     expect(isNotYourTurnError(new Error('not your turn'))).toBe(false);
     expect(isNotYourTurnError('boom')).toBe(false);
     expect(isNotYourTurnError(undefined)).toBe(false);
-  });
-
-  it('the held refusal reads as the server wrote it (rpg-project#925)', () => {
-    const held = new ConnectError(
-      'The guards hold you; you cannot walk away.',
-      Code.PermissionDenied
-    );
-    expect(formatMoveError(held)).toBe(
-      'The guards hold you; you cannot walk away.'
-    );
   });
 });

@@ -60,7 +60,9 @@ import {
   CONVERSATION_MOVED_ON_MESSAGE,
   isKeptRollAct,
   isMovedOnRefusal,
+  isSentenceRefusal,
   isStaleDeclarationRefusal,
+  refusalNotice,
   ROLL_KEPT_MESSAGE,
   selectCombatExperience,
   staleDeclarationMessage,
@@ -1243,7 +1245,7 @@ export function useSessionCombatExperience({
               // resumed the turn before the response was lost. Fail closed,
               // keep the message, reconcile, and never retry — a replayed
               // answer would be a second swing.
-              const notice = `Reaction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Reaction', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -1344,7 +1346,7 @@ export function useSessionCombatExperience({
               recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
             } else {
               attemptedDeathSaveDeclarationIdRef.current = current.id;
-              const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Death Save', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -1672,10 +1674,8 @@ export function useSessionCombatExperience({
           if (!mountedRef.current) return;
           // THE CONVERSATION MOVED ON (rpg-project#924), not an error.
           // ABORTED: the line was offered at a revision the interaction has
-          // advanced past. FAILED_PRECONDITION: another speaker's waiting
-          // roll holds the line this client believed free. Nothing was
-          // spent either way; the panel re-opens on the same target from the
-          // next fresh offer, where the line comes back current or pending.
+          // advanced past. Nothing was spent; the panel re-opens on the same
+          // target from the next fresh offer.
           if (isMovedOnRefusal(error) || isStaleDeclarationRefusal(error)) {
             reopenConversation(
               declaration.id,
@@ -1684,12 +1684,21 @@ export function useSessionCombatExperience({
             );
             return;
           }
+          // FAILED_PRECONDITION: a refusal with the server's sentence (a line
+          // another speaker's waiting roll holds, say). The panel re-opens the
+          // same way, and says what the server said (rpg-project#925).
+          if (isSentenceRefusal(error)) {
+            reopenConversation(
+              declaration.id,
+              target,
+              refusalNotice('Speak', error)
+            );
+            return;
+          }
           // A refusal at the door — the target cannot perceive the actor, or
           // the option was withdrawn (`ErrNoOption`) — is shown as one. The
           // request names no selector, so there is no stale id to recover.
-          const notice = `Speak failed: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`;
+          const notice = refusalNotice('Speak', error);
           invalidateAuthority();
           setInteraction({
             ...EMPTY_INTERACTION,
@@ -1750,7 +1759,7 @@ export function useSessionCombatExperience({
             // committed the command even though its response did not arrive.
             // Keep the honest error, but never leave pre-command authority
             // armed or executable and never replay the mutation.
-            const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Attack', error);
             // A legacy window cannot identify its die without the response;
             // keep that already-open choice answerable after response loss.
             // A current window carries its own provider ID and can still roll.
@@ -1982,7 +1991,7 @@ export function useSessionCombatExperience({
                 exactTarget
               );
             } else {
-              const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Activate', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -2331,7 +2340,7 @@ export function useSessionCombatExperience({
             // committed — the ack is thin by design, so a transport error
             // cannot be told from a refusal after the fact. Fail closed,
             // preserve the message, reconcile, and never retry.
-            const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Activate', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2440,7 +2449,7 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(current.id, Verb.CAST, targets[0]);
           } else {
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2558,7 +2567,7 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(current.id, Verb.CAST);
           } else {
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2722,7 +2731,7 @@ export function useSessionCombatExperience({
             // Ambiguous about whether the cast committed — the ack is thin by
             // design. Fail closed, preserve the message, reconcile, never
             // retry.
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2794,7 +2803,7 @@ export function useSessionCombatExperience({
             // Non-selector failures are ambiguous and may describe a committed
             // EndTurn. Fail closed, preserve the transport error, and reconcile
             // snapshots without ever retrying the command.
-            const notice = `End turn failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('End turn', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
