@@ -1,5 +1,5 @@
 # SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#925)
-# at commit dc9b316a6e252d8b48677282babbd366f7c28b41, git blob 7a91d2af93cf949afab6ce1de42151af0e425788.
+# at commit deb9b9f7cc82299fea1c8c1e1aeb924a98660841, git blob 873fe75abeda9ef986384237846a9d52743f0e0d.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -316,6 +316,9 @@ dispositions:
     until:
       - {fact: guards-turned, then: allied}
       - {fact: party-recognized, then: hostile}
+      # Hand edit (rpg-project#925): a prisoner seen out of the cells turns
+      # the garrison.
+      - {fact: prisoners-escaped, then: hostile}
   - between:
       - loyalists
       - party
@@ -1632,6 +1635,23 @@ room:
               # Hand edit (rpg-project#922): a first failure is a warning,
               # not recognition; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested]
+              - recognized: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
         behaviors:
           - id: policy
             use: gate-1-policy
@@ -1774,6 +1794,23 @@ room:
               # Hand edit (rpg-project#922): a first failure is a warning,
               # not recognition; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested]
+              - recognized: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
         behaviors:
           - id: policy
             use: gate-2-policy
@@ -1853,6 +1890,23 @@ room:
               # Hand edit (rpg-project#922): a first failure is a warning,
               # not recognition; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested]
+              - recognized: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
           - id: stand-aside
             say: Stand aside or bleed.
             check:
@@ -2241,6 +2295,14 @@ interactions:
               cells:
                 - {r: 13, q: [[-8, -5]]}
                 - {r: 14, q: [[-8, -6]]}
+      # Hand edit (rpg-project#925): going quietly moves the taken into the
+      # cells, an off-screen walk of 5 rounds. A gate speaker who sees one of
+      # them outside the cells again tells the captain they escaped.
+      jailed:
+        - jail:
+            words: The guards march you to the cells.
+            rounds: 5
+            escaped: prisoners-escaped
     recipe:
       ref: site:interactions:front-gate
       initial: fresh
@@ -2259,7 +2321,12 @@ interactions:
             - { on: guest-failed, to: arrested, reason: the second claim failed }
             - { on: admitted, to: admitted, reason: let through }
         admitted: { terminal: true }
-        arrested: { terminal: true }
+        # Hand edit (rpg-project#925): arrested waits for the taken to go
+        # quietly; jailed is where they end up.
+        arrested:
+          transitions:
+            - { on: came-quietly, to: jailed, reason: the arrested went quietly }
+        jailed: { terminal: true }
 behaviorDefinitions:
   gate-1-policy:
     recipe:

@@ -51,6 +51,16 @@ const ARREST = {
   },
 };
 
+/** The castle's jail (rpg-project#925): the `jailed` outcome, kept as written
+ * like the arrest beside it. */
+const JAIL = {
+  jail: {
+    words: 'The guards march you to the cells.',
+    rounds: 5,
+    escaped: 'prisoners-escaped',
+  },
+};
+
 describe('the outcomes form', () => {
   it('says the gate’s recognition in plain words, holder and subjects shown, not offered', () => {
     renderOutcomes();
@@ -77,6 +87,7 @@ describe('the outcomes form', () => {
     expect(commit).toHaveBeenCalledWith('front-gate', {
       admitted: [{ recognize: { ...RECOGNITION, topic: 'welcome' } }],
       arrested: [ARREST],
+      jailed: [JAIL],
     });
   });
 
@@ -92,6 +103,7 @@ describe('the outcomes form', () => {
     expect(commit).toHaveBeenCalledWith('front-gate', {
       admitted: [{ recognize: unheard }],
       arrested: [ARREST],
+      jailed: [JAIL],
     });
   });
 
@@ -105,12 +117,14 @@ describe('the outcomes form', () => {
     expect(commit).toHaveBeenLastCalledWith('front-gate', {
       admitted: [{ recognize: RECOGNITION }],
       arrested: [ARREST, { recognize: RECOGNITION }],
+      jailed: [JAIL],
     });
     fireEvent.click(
       screen.getByLabelText('Remove recognition front-gate admitted 1')
     );
     expect(commit).toHaveBeenLastCalledWith('front-gate', {
       arrested: [ARREST],
+      jailed: [JAIL],
     });
   });
 
@@ -135,10 +149,11 @@ describe('the outcomes form', () => {
         { recognize: { ...RECOGNITION, topic: 'welcome' } },
       ],
       arrested: [ARREST],
+      jailed: [JAIL],
     });
   });
 
-  it('shows the castle’s arrest as written, never refused or hidden, and keeps it (rpg-project#925)', () => {
+  it('shows the castle’s arrest and jail as written, never refused or hidden, and keeps them (rpg-project#925)', () => {
     const commit = renderOutcomes();
     expect(
       screen.getByRole('heading', { name: 'Entering arrested' })
@@ -150,6 +165,15 @@ describe('the outcomes form', () => {
       )
     ).toEqual(ARREST);
     expect(
+      screen.getByRole('heading', { name: 'Entering jailed' })
+    ).toBeTruthy();
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Outcome as written front-gate jailed 1')
+          .textContent!
+      )
+    ).toEqual(JAIL);
+    expect(
       screen.getByLabelText('Outcomes on entering arrested in front-gate')
         .textContent
     ).toContain('This form does not edit it; it is kept as written.');
@@ -160,6 +184,7 @@ describe('the outcomes form', () => {
     expect(commit).toHaveBeenLastCalledWith('front-gate', {
       admitted: [{ recognize: { ...RECOGNITION, topic: 'welcome' } }],
       arrested: [ARREST],
+      jailed: [JAIL],
     });
   });
 });
