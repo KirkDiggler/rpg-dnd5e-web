@@ -337,7 +337,12 @@ describe('one exchange heard through a wall is one notice (the operator’s run 
       [
         fact(
           speech(
-            { words: 'Who goes?', loudness: Loudness.SPEAK, hops: 1 },
+            {
+              utterance: 'u-who',
+              words: 'Who goes?',
+              loudness: Loudness.SPEAK,
+              hops: 1,
+            },
             [Sense.HEARING],
             { id: 'a', tag }
           ),
@@ -346,7 +351,12 @@ describe('one exchange heard through a wall is one notice (the operator’s run 
         ),
         fact(
           speech(
-            { words: 'A friend.', loudness: Loudness.SPEAK, hops: 1 },
+            {
+              utterance: 'u-friend',
+              words: 'A friend.',
+              loudness: Loudness.SPEAK,
+              hops: 1,
+            },
             [Sense.HEARING],
             { id: 'b', tag }
           ),

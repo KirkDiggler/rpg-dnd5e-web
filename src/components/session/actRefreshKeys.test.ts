@@ -228,7 +228,7 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     'sighted',
     act(Family.PERCEPTION, {
       case: 'perception',
-      value: { sense: Sense.SIGHT },
+      value: { sense: Sense.SIGHT, observer: me },
     }),
     ['roster', 'view'],
   ],
@@ -252,7 +252,7 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     'revealed',
     act(Family.PERCEPTION, {
       case: 'perception',
-      value: { sense: Sense.REVEAL },
+      value: { sense: Sense.REVEAL, observer: me },
     }),
     ['atlas', 'doors'],
   ],
@@ -260,7 +260,7 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     'cells',
     act(Family.PERCEPTION, {
       case: 'perception',
-      value: { sense: Sense.CELLS },
+      value: { sense: Sense.CELLS, observer: me },
     }),
     ['roster', 'view'],
   ],

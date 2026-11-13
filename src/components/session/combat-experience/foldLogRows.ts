@@ -23,6 +23,7 @@
  * the pick and its roll.
  */
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import { cameThroughFriend } from '../sharedVia';
 import { actorOf, isDeed } from './toastPolicy';
 import type { CombatExperienceStoryExchange } from './types';
 
@@ -81,7 +82,13 @@ export function foldLogRows(
     }
     if (entry.fightEdge === 'formed') open.clear(); // a fight ends every stretch
     const mover = isDeed(act) ? actorOf(act)?.id : undefined;
-    if (act.body.case === 'walk' && mover && !entry.inFight) {
+    // A walk that came through a friend (rpg-project#935) stands on its own
+    // row with its mark; it never joins the viewer's own stretch of a walk.
+    const viaFriend = cameThroughFriend(
+      act,
+      entry.describeContext?.viewerMember ?? ''
+    );
+    if (act.body.case === 'walk' && mover && !entry.inFight && !viaFriend) {
       const cells = act.body.value.path.length;
       const stretch = open.get(mover);
       if (stretch) {
