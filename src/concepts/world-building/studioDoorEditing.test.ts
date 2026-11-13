@@ -3,6 +3,7 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
   type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
+import { clampDoorFramePosition, doorwayVisualWall } from './doorwayPlacement';
 import { createWall } from './structuralWallEditing';
 import {
   clampDoorPosition,
@@ -35,15 +36,29 @@ const target = {
   doorId: 'door',
 };
 describe('complete grouped Studio door candidates', () => {
-  it('does not confuse newly published aperture-fit frames with legacy whole-assembly openings', () => {
+  it('uses enrolled aperture dimensions and refuses missing fit metadata', () => {
     const entry = WORLD_BUILDING_CATALOG_BY_REF.get(
       'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01'
     )!;
     expect(entry).toBeTruthy();
-    expect(() => studioDoorAssetWidth(entry)).toThrow(/aperture-anchor/);
-    expect(studioDoorOptions().some((option) => option.ref === entry.ref)).toBe(
-      false
+    expect(entry.source).toBe('generated');
+    if (entry.source !== 'generated')
+      throw new Error('fixture must be generated');
+    expect(studioDoorAssetWidth(entry)).toBe(
+      entry.asset.wallOpening!.widthMeters
     );
+    expect(studioDoorAssetWidth(entry)).toBeLessThan(
+      entry.asset.boundsMeters[0]
+    );
+    expect(studioDoorOptions().some((option) => option.ref === entry.ref)).toBe(
+      true
+    );
+    expect(() =>
+      studioDoorAssetWidth({
+        ...entry,
+        asset: { ...entry.asset, wallOpening: undefined },
+      })
+    ).toThrow(/aperture-anchor/);
   });
   it('uses the actual one-group/frame metadata and native runtime-scaled width without filename rules', () => {
     expect(studioDoorAssetWidth(asset)).toBe(asset.asset.boundsMeters[0]);
@@ -67,6 +82,34 @@ describe('complete grouped Studio door candidates', () => {
         asset: { ...asset.asset, boundsMeters: [NaN, 2, 0.3] },
       })
     ).toThrow(/dimensions/);
+  });
+  it('refuses a doorway frame that overflows or overlaps even if its aperture fits', () => {
+    const assetRef = 'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01';
+    expect(() =>
+      createStudioDoor(wall(), { ...target, assetRef, position: 0.5 })
+    ).toThrow(/frame/);
+    const next = createStudioDoor(wall(), { ...target, assetRef, position: 3 });
+    expect(next.openings[0]!.width).toBeLessThan(1);
+    const visual = doorwayVisualWall(next);
+    expect(visual.openings[0]!.width).toBeCloseTo(3.75);
+    expect(next.openings[0]!.width).toBeLessThan(1);
+    const clamped = clampDoorFramePosition(
+      wall(),
+      0,
+      next.openings[0]!.width,
+      assetRef
+    );
+    expect(clamped.clamped).toBe(true);
+    expect(clamped.position).toBeCloseTo(1.875);
+    expect(() =>
+      createStudioDoor(next, {
+        openingId: 'b',
+        doorId: 'b-door',
+        assetRef,
+        position: 5,
+      })
+    ).toThrow(/frame/);
+    expect(next.openings).toHaveLength(1);
   });
   it('projects and clamps centre without shrinking chosen width; refuses a short wall and overlapping cut atomically', () => {
     const original = wall();

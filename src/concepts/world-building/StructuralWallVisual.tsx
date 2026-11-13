@@ -80,13 +80,17 @@ export interface StructuralWallVisualProps {
   visualLighting?: RegionLightingMaterialBinding;
 }
 
+import { DoorRepeatGuides } from './DoorRepeatGuides';
+
 function AttachedDoors({
   wall,
+  finishSpans,
   doorBindings,
   onMeasured,
   visualLighting,
 }: {
   wall: StructuralWall;
+  finishSpans?: readonly WallFinishSpan[];
   doorBindings?: DoorBindings;
   onMeasured: () => void;
   visualLighting?: RegionLightingMaterialBinding;
@@ -119,6 +123,8 @@ function AttachedDoors({
             doorId={opening.door!.id}
             assetRef={opening.door!.assetRef}
             pose={pose}
+            wallOffset={opening.position}
+            finishSpans={finishSpans}
             // The AUTHORED INITIAL state preview only; it is never a live
             // engine operation. A missing binding reads as the asset's rest
             // pose, exactly as it did before.
@@ -486,6 +492,7 @@ function WallVisual({
       >
         <StructuralWallSurfacePieces
           wall={wall}
+          replaceDoorFrames
           endFits={endFits}
           finishSpans={finishSpans}
           maxPieces={maxPieces}
@@ -494,6 +501,7 @@ function WallVisual({
         />
         <AttachedDoors
           wall={wall}
+          finishSpans={finishSpans}
           doorBindings={doorBindings}
           onMeasured={onMeasured}
           visualLighting={visualLighting}
@@ -575,6 +583,7 @@ export function StructuralWallVisual({
       );
   return (
     <group name="structural-walls">
+      {preview?.valid && <DoorRepeatGuides preview={preview} />}
       {[...wallRefusals].map(([id, reason]) => {
         const wall = walls.find((w) => w.id === id);
         if (!wall) return null;

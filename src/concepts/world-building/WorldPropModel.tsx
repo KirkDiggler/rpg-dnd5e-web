@@ -24,6 +24,7 @@ export interface WorldPropModelProps {
   rememberedTint?: WorldAssetModelProps['rememberedTint'];
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  wallOpeningFit?: PlainWallFit;
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfacePlans?: WorldAssetModelProps['surfacePlans'];
   surfaceProvider?: WorldAssetModelProps['surfaceProvider'];
@@ -53,6 +54,7 @@ export function WorldPropModel({
   rememberedTint,
   visualLighting,
   plainWallFit,
+  wallOpeningFit,
   surfaceSelections,
   surfacePlans,
   surfaceProvider,
@@ -78,6 +80,7 @@ export function WorldPropModel({
       assetRef={entry.ref}
       materialOverrides={materialOverrides}
       plainWallFit={plainWallFit}
+      wallOpeningFit={wallOpeningFit}
       surfaceSelections={surfaceSelections}
       surfacePlans={surfacePlans}
       surfaceProvider={surfaceProvider}

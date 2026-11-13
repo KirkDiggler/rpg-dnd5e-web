@@ -68,6 +68,7 @@ import {
 } from './documentReferences';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
+import { placeDoorFrame } from './doorwayPlacement';
 import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import { setInteractionApproach } from './interactionApproach';
@@ -213,7 +214,6 @@ import {
   type StudioArrangeTarget,
 } from './studioArrange';
 import {
-  clampDoorPosition,
   createStudioDoor,
   doorAlongWall,
   doorPreviewIds,
@@ -431,6 +431,7 @@ export function WorldBuildingConcept({
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [doorAssetRef, setDoorAssetRef] = useState<string | null>(null);
+  const [doorRepeatSnap, setDoorRepeatSnap] = useState(false);
   const [previewDoor, setPreviewDoor] = useState<StudioDoorPreview | null>(
     null
   );
@@ -4050,6 +4051,30 @@ export function WorldBuildingConcept({
       studioTargetKey(activeStudioTargetRef.current) === capturedTargetKey,
     [roomTool, selectionRevision, capturedTargetKey]
   );
+  const doorPlacementPose = useCallback(
+    (
+      wall: StructuralWall,
+      position: number,
+      width: number,
+      assetRef: string
+    ) => {
+      const spans = roomFinishes.spans.filter(
+        (span) => span.wallId === wall.id
+      );
+      const chart = (
+        spans.find((span) => span.side === 'positive-z') ?? spans[0]
+      )?.chart;
+      return placeDoorFrame(
+        wall,
+        position,
+        width,
+        assetRef,
+        doorRepeatSnap,
+        chart
+      );
+    },
+    [roomFinishes, doorRepeatSnap]
+  );
   const placementCandidate = useCallback(
     (wallId: string, point: WorldPoint): StudioDoorPreview => {
       const wall = roomDraft.room.walls?.find((wall) => wall.id === wallId);
@@ -4059,7 +4084,12 @@ export function WorldBuildingConcept({
         : undefined;
       if (!entry) throw new Error('Choose a complete door appearance first.');
       const width = studioDoorAssetWidth(entry);
-      const pose = clampDoorPosition(wall, doorAlongWall(wall, point), width);
+      const pose = doorPlacementPose(
+        wall,
+        doorAlongWall(wall, point),
+        width,
+        entry.ref
+      );
       const ids = doorPreviewIds(wall, [
         ...roomDraft.scene.items.map((item) => item.id),
         ...roomDraft.scene.groups.map((group) => group.id),
@@ -4089,7 +4119,7 @@ export function WorldBuildingConcept({
         ...pose,
       };
     },
-    [roomDraft, doorAssetRef]
+    [roomDraft, doorAssetRef, doorPlacementPose]
   );
   const showDoorPlacement = useCallback(
     (wallId: string, point: WorldPoint): boolean => {
@@ -4130,7 +4160,12 @@ export function WorldBuildingConcept({
         return false;
       try {
         const { wall, opening } = requireStudioDoor(roomDraft, target);
-        const pose = clampDoorPosition(wall, position, opening.width);
+        const pose = doorPlacementPose(
+          wall,
+          position,
+          opening.width,
+          opening.door!.assetRef
+        );
         const next = editStudioDoor(wall, target, { position: pose.position });
         setPreviewDoor({
           valid: true,
@@ -4162,6 +4197,7 @@ export function WorldBuildingConcept({
       refuseWhilePublishing,
       roomDraft,
       rejectEdit,
+      doorPlacementPose,
     ]
   );
   const cancelDoorPreview = useCallback((): void => {
@@ -4174,6 +4210,15 @@ export function WorldBuildingConcept({
     selectedTarget:
       activeStudioTarget?.kind === 'door' ? activeStudioTarget : null,
     preview: previewDoor,
+    repeatSnap: {
+      enabled: doorRepeatSnap,
+      setEnabled: (enabled) => {
+        if (!doorContextCurrent() || refuseWhilePublishing()) return false;
+        cancelTransients();
+        setDoorRepeatSnap(enabled);
+        return true;
+      },
+    },
     setAsset: (ref): boolean => {
       if (!doorContextCurrent() || refuseWhilePublishing()) return false;
       if (ref !== null && !doorOptions.some((option) => option.ref === ref))
@@ -4248,7 +4293,12 @@ export function WorldBuildingConcept({
         return false;
       try {
         const { wall, opening } = requireStudioDoor(roomDraft, target);
-        const pose = clampDoorPosition(wall, position, opening.width);
+        const pose = doorPlacementPose(
+          wall,
+          position,
+          opening.width,
+          opening.door!.assetRef
+        );
         const accepted = commitDoorWall(
           editStudioDoor(wall, target, { position: pose.position })
         );

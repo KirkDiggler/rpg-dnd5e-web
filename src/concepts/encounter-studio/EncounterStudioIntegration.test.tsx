@@ -2507,6 +2507,93 @@ function selectWall(storage: MemoryStorage, wall: StructuralWall): void {
 }
 
 describe('complete Studio doors through real Layout gestures', () => {
+  it('places aperture-fit Doorway01 freely or with optional repeat snapping through one native owner transaction', async () => {
+    installFinishPreview();
+    const original = createPopulatedStudioDocument();
+    const source = original.draft.room.walls![0];
+    original.draft.room.walls = [
+      {
+        ...source,
+        openings: [],
+        line: { start: { x: -4, z: -3 }, end: { x: 8, z: -3 } },
+        appearance: {
+          ...source.appearance,
+          assetRef: FIT_WALL_REF,
+          height: 3.75,
+          thickness: 0.375,
+        },
+      },
+    ];
+    delete original.draft.room.doorBindings;
+    original.draft.scene.version = 7;
+    original.draft.scene.wallFinishes = {
+      'studio-wall': { 'positive-z': GRAY_REF, 'negative-z': GRAY_REF },
+    };
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Door'));
+    changeField(
+      'Door appearance',
+      'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01'
+    );
+    const snap = screen.getByLabelText(
+      'Snap frame start to texture repeats'
+    ) as HTMLInputElement;
+    expect(snap.checked).toBe(false);
+    fireEvent.pointerMove(
+      wallHit('studio-wall'),
+      pointer(storage, { x: 1.8, z: -3 })
+    );
+    expect(screen.getByText(/Free preview/)).toBeTruthy();
+    const freeX = surface()
+      .querySelector('[data-door-id] circle')!
+      .getAttribute('cx');
+    fireEvent.click(snap);
+    fireEvent.pointerMove(
+      wallHit('studio-wall'),
+      pointer(storage, { x: 1.8, z: -3 })
+    );
+    expect(screen.getByText(/Snapped frame start/)).toBeTruthy();
+    const previewX = surface()
+      .querySelector('[data-door-id] circle')!
+      .getAttribute('cx');
+    expect(previewX).not.toBe(freeX);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerDown(
+      wallHit('studio-wall'),
+      pointer(storage, { x: 1.8, z: -3 })
+    );
+    const placed = storage.document();
+    expect(
+      surface().querySelector('[data-door-id] circle')!.getAttribute('cx')
+    ).toBe(previewX);
+    expect(placed.draft.room.walls![0].openings[0]!.width).toBeLessThan(1);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(
+      (
+        screen.getByLabelText(
+          'Snap frame start to texture repeats'
+        ) as HTMLInputElement
+      ).checked
+    ).toBe(true);
+    expectCodecs(placed);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(placed);
+    switchTo('3D');
+    fireEvent.click(button('Door'));
+    expect(screen.getByLabelText('Door appearance')).toBeTruthy();
+    const stale = boundary.latest!.roomAuthoring!.doorEditing!;
+    const count = storage.roomWrites();
+    fireEvent.click(
+      screen.getByLabelText('Snap frame start to texture repeats')
+    );
+    expect(stale.create('studio-wall', { x: 1.8, z: -3 })).toBe(false);
+    expect(storage.roomWrites()).toBe(count);
+  });
   it('hover/click creates one closed door; selecting drag, Arrange, cancellation and whole removal share history and codecs', async () => {
     const original = createPopulatedStudioDocument();
     const storage = new MemoryStorage(original);
@@ -2516,7 +2603,7 @@ describe('complete Studio doors through real Layout gestures', () => {
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     fireEvent.click(button('Door'));
     changeField(
-      'Complete door appearance',
+      'Door appearance',
       'dnd5e:env:dark-fortress:wall_door_double_01'
     );
     fireEvent.pointerMove(
@@ -2541,7 +2628,7 @@ describe('complete Studio doors through real Layout gestures', () => {
       pointer(storage, { x: -0.25, z: -3 })
     );
     expect(button('Select').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByLabelText('Complete door appearance')).toBeNull();
+    expect(screen.queryByLabelText('Door appearance')).toBeNull();
     const created = storage.document();
     const opening = created.draft.room.walls![0].openings.at(-1)!;
     expect(created.draft.room.doorBindings![opening.door!.id]).toEqual({

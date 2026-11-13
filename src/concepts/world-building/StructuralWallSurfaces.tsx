@@ -32,6 +32,7 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { doorwayVisualWall } from './doorwayPlacement';
 import {
   partitionFinishInterval,
   type WallFinishSpan,
@@ -164,6 +165,7 @@ export function StructuralWallSurfacePieces({
   finishSpans = [],
   remembered = false,
   fogStretches = [],
+  replaceDoorFrames = false,
 }: {
   wall: StructuralWallSurface;
   /** Fog of war (rpg-project#586): draw every piece in the remembered
@@ -176,6 +178,8 @@ export function StructuralWallSurfacePieces({
    * be cut takes the brightest state it overlaps. Empty draws everything
    * seen. The editor never sets it. */
   fogStretches?: readonly WallFogStretch[];
+  /** Editor-only until captured door-frame envelopes are delivered explicitly. */
+  replaceDoorFrames?: boolean;
   endFits?: WallEndFits;
   finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
@@ -214,7 +218,7 @@ export function StructuralWallSurfacePieces({
   let layouts;
   try {
     layouts = layoutWallPieces({
-      wall,
+      wall: replaceDoorFrames ? doorwayVisualWall(wall) : wall,
       sourceWidthMeters: widthMeters,
       sourceHeightMeters: heightMeters,
       sourceDepthMeters: depthMeters,
@@ -446,7 +450,12 @@ export function FittedDoorSurface({
   onClick,
   visualLighting,
   remembered = false,
+  finishSpans = [],
+  wallOffset = 0,
 }: {
+  finishSpans?: readonly WallFinishSpan[];
+  /** Opening-center distance on the supplied owner wall, never inferred in play. */
+  wallOffset?: number;
   /** Fog of war (rpg-project#586): draw the door in the remembered
    * treatment. The editor never sets it. */
   remembered?: boolean;
@@ -521,6 +530,78 @@ export function FittedDoorSurface({
         position={anchor.position}
         rotationY={anchor.rotationY}
       />
+    );
+  }
+  const openingFit = entry.asset.wallOpening;
+  if (openingFit) {
+    const ratio = pose.width / openingFit.widthMeters;
+    const bindings = entry.asset.surfaces ?? [];
+    const start = wallOffset - openingFit.leftExtentMeters * ratio;
+    const end = start + openingFit.frameWidthMeters * ratio;
+    const inherited = finishSpans.filter(
+      (span) => span.start <= start + 1e-6 && span.end >= end - 1e-6
+    );
+    const plans = inherited.map((span) => {
+      const target = bindings.find(
+        (binding) =>
+          binding.side === span.side && binding.family === span.material.family
+      );
+      if (!target)
+        throw new Error(
+          'Doorway has no compatible fixed masonry target for the inherited face.'
+        );
+      return {
+        material: span.material,
+        chart: { ...span.chart, surfaceId: target.id },
+      };
+    });
+    if (
+      finishSpans.some(
+        (span) =>
+          span.end > start && span.start < end && !inherited.includes(span)
+      )
+    )
+      throw new Error(
+        'Door frame crosses a material boundary; split finishes are not supported by this checkpoint.'
+      );
+    return (
+      <group
+        name={`structural-wall-door-${doorId}`}
+        position={[pose.point.x, pose.y, pose.point.z]}
+        rotation={[0, pose.rotationY, 0]}
+        userData={{
+          doorId,
+          assetRef,
+          state,
+          openingWidth: pose.width,
+          frameWidth: openingFit.frameWidthMeters * ratio,
+        }}
+      >
+        <WorldPropModel
+          entry={entry}
+          position={[0, 0, 0]}
+          rotationY={0}
+          heightScale={1}
+          wallOpeningFit={{
+            width: openingFit.frameWidthMeters * ratio,
+            height: pose.height,
+            depth: pose.thickness,
+            offset: start,
+          }}
+          surfacePlans={plans}
+          surfaceProvider={
+            plans.length
+              ? { assetRef, glbSha256: entry.asset.glbSha256, bindings }
+              : undefined
+          }
+          visualLighting={visualLighting}
+          open={state === 'open'}
+          remembered={remembered}
+          rememberedTint={REMEMBERED_SURFACE_TINT}
+          onBoundsMeasured={onMeasured}
+          onDoorClick={onClick}
+        />
+      </group>
     );
   }
   // Catalog bounds already include the shared model scale; fit against the

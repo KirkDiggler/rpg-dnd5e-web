@@ -261,8 +261,8 @@ function StudioSurface({
     labels.activate();
     setSidebarOpen(true);
   };
-  /** Wall, Door and Note are Layout tools; their options show at the top of
-   * the inspector while armed. */
+  /** Wall and Note are Layout tools; Door uses the same owner in both views.
+   * Their options show at the top of the inspector while armed. */
   const armTool = (next: 'wall' | 'door' | 'label'): void => {
     if (next === 'label') {
       startLabel();
@@ -821,7 +821,13 @@ function StudioSurface({
         selectPartyStart: () => session.selectPartyStart(),
       };
   const armedTool =
-    home !== 'build' || view !== 'layout' ? null : layoutTool === 'wall' ? (
+    home !== 'build' ? null : session.doorEditing.active ||
+      (session.doorEditing.selectedTarget &&
+        ['select', 'move'].includes(
+          session.viewportProps.roomAuthoring?.tool ?? 'select'
+        )) ? (
+      <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
+    ) : view !== 'layout' ? null : layoutTool === 'wall' ? (
       <StudioWallControls
         session={session}
         onDismiss={() => setSidebarOpen(false)}
@@ -1208,6 +1214,15 @@ function StudioSurface({
                 ))}
               </div>
             ))}
+          {home === 'build' && view === '3d' && (
+            <button
+              type="button"
+              aria-pressed={session.doorEditing.active}
+              onClick={() => armTool('door')}
+            >
+              Door
+            </button>
+          )}
           {home === 'encounter' && (
             <strong>
               Encounter configuration · {ENCOUNTER_SECTIONS[encounterSection]}

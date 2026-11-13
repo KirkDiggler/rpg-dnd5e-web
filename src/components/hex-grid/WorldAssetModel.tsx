@@ -43,6 +43,11 @@ export type WorldAssetRole = NonNullable<
 >[number]['role'];
 
 /** One declared opening: the asset-local id and its leaf pivot in asset space. */
+import {
+  fitWallOpeningInstance,
+  type WallOpeningDescriptor,
+} from '@/rendering/wallOpeningFit';
+
 export interface WorldAssetDoor {
   id: string;
   /** Leaf pivot in the asset's local frame; the placement transform is the consumer's. */
@@ -81,6 +86,8 @@ export interface WorldAssetModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
+  /** Aperture-anchored fixed surround; distinct from a miterable wall body. */
+  wallOpeningFit?: PlainWallFit;
   /** Transient, fully loaded finish sets for explicit provider surface bindings.
    * The caller supplies a fitted compatible chart; no persisted room state here. */
   surfaceSelections?: readonly WorldSurfaceSelection[];
@@ -321,6 +328,7 @@ function LoadedWorldAssetModel({
   rememberedTint,
   visualLighting,
   plainWallFit,
+  openingDescriptor,
   surfaces,
   surfaceSelections,
   surfaceCharts,
@@ -349,19 +357,26 @@ function LoadedWorldAssetModel({
   rememberedTint?: THREE.Color;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  openingDescriptor?: WallOpeningDescriptor;
   surfaces: GeneratedWorldAsset['surfaces'];
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfaceCharts?: readonly WallSurfaceChart[];
 }) {
   const { scene } = useGLTF(url);
   const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
+  const openingKey = openingDescriptor ? JSON.stringify(openingDescriptor) : '';
   const chartKey = JSON.stringify(surfaceCharts ?? []);
   const bindingKey = JSON.stringify(surfaces ?? []);
   const instance = useMemo(() => {
     const object = scene.clone(true);
     const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
     const fitted = fit
-      ? fitPlainWallInstance(object, fit)
+      ? openingKey
+        ? fitWallOpeningInstance(
+            object,
+            JSON.parse(openingKey) as WallOpeningDescriptor
+          )
+        : fitPlainWallInstance(object, fit)
       : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
     try {
       const charts = JSON.parse(chartKey) as WallSurfaceChart[];
@@ -388,7 +403,7 @@ function LoadedWorldAssetModel({
       for (const geometry of fitted.owned) geometry.dispose();
       throw error;
     }
-  }, [scene, fitKey, chartKey, bindingKey, assetRef]);
+  }, [scene, fitKey, openingKey, chartKey, bindingKey, assetRef]);
   const cloned = instance.object;
   const fit = instance.fit;
   useEffect(
@@ -802,6 +817,7 @@ export function WorldAssetModel({
   onDoorClick,
   onDoorsResolved,
   plainWallFit,
+  wallOpeningFit,
   surfaceSelections,
   surfacePlans,
   surfaceProvider,
@@ -811,6 +827,22 @@ export function WorldAssetModel({
     onDiagnostic?.(diagnostic)
   );
   if (!asset) return null;
+  if (
+    wallOpeningFit &&
+    (plainWallFit ||
+      !asset.wallOpening ||
+      asset.roles?.filter((role) => role.role === 'frame').length !== 1 ||
+      ![
+        wallOpeningFit.width,
+        wallOpeningFit.height,
+        wallOpeningFit.depth,
+      ].every((v) => Number.isFinite(v) && v > 0) ||
+      wallOpeningFit.start !== undefined ||
+      wallOpeningFit.end !== undefined)
+  )
+    throw new Error(
+      'This asset requires valid aperture fitting without wall miters.'
+    );
   if (plainWallFit && !asset.tags.includes('wall-miter-90'))
     throw new Error('This asset is not enrolled for plain wall fitting.');
   if (
@@ -847,7 +879,16 @@ export function WorldAssetModel({
       remembered={remembered}
       rememberedTint={rememberedTint}
       visualLighting={visualLighting}
-      plainWallFit={plainWallFit}
+      plainWallFit={plainWallFit ?? wallOpeningFit}
+      openingDescriptor={
+        wallOpeningFit && asset.wallOpening
+          ? {
+              ...asset.wallOpening,
+              frameNode: asset.roles!.find((role) => role.role === 'frame')!
+                .node,
+            }
+          : undefined
+      }
       surfaces={surfaceProvider?.bindings ?? asset.surfaces}
       surfaceSelections={surfaceSelections}
     />
