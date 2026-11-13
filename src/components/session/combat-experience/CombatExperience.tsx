@@ -34,6 +34,7 @@ import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { MemberPortrait } from './MemberPortrait';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
+import { SharingMode } from './SharingMode';
 import { speechAtSpeakers, voicesAtPlaces } from './speechAtSpeakers';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
@@ -231,6 +232,7 @@ function CombatExperienceContent({
   pacingNotice,
   monsterTurnIds,
   onNotificationInteractionChange,
+  partySharing,
   renderMap,
   hoveredTarget,
   onSelectDeclaration,
@@ -640,6 +642,7 @@ function CombatExperienceContent({
           >
             <span>World clock</span>
             <strong>Free roam</strong>
+            <SharingMode sharing={partySharing} />
           </div>
         ) : (
           <div
@@ -648,6 +651,7 @@ function CombatExperienceContent({
           >
             <span>Authority</span>
             <strong>Synchronizing</strong>
+            <SharingMode sharing={partySharing} />
           </div>
         )}
 

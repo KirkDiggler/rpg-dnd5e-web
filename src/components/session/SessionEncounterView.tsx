@@ -23,6 +23,7 @@ import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRest } from '@/api/useSessionRest';
 import type { SpeakTarget } from '@/api/useSessionSpeak';
+import { useSessionStatus } from '@/api/useSessionStatus';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
@@ -1456,6 +1457,8 @@ function SessionEncounterScope({
   // act revokes action authority, patches knowledge, and schedules the reads
   // its family changed (`actRefreshKeys.ts`, paired with the v1 table it
   // replaces). A same-id run arrives whole and is funnelled in one pass.
+  // The run's sharing dial (rpg-project#935), read once per session.
+  const { partySharing } = useSessionStatus(sessionId);
   const { acceptStreamActs, invalidateAuthority } = combat;
   const { acceptActs: acceptTurnOrderActs, reset: resetTurnOrder } = turnOrder;
   const handleSessionActs = useCallback(
@@ -2098,6 +2101,7 @@ function SessionEncounterScope({
             />
           )}
           <CombatExperience
+            partySharing={partySharing}
             portraits={{
               scopeKey:
                 playerId && sessionId && member
