@@ -92,6 +92,19 @@ export function refreshKeysForAct(
     // table answer and refreshes as one.
     case 'barred':
       return body.value.mover?.id === member ? ['where', 'afford'] : [];
+    // A member set down elsewhere (rpg-project#925). The figure's place is
+    // the snapshot's, never the act's: the mover re-reads where they are and
+    // everything their new place changes; anyone else re-reads the view the
+    // engine's own sightings already changed.
+    case 'relocate':
+      return body.value.mover?.id === member
+        ? ['where', 'afford', 'turn', 'view', 'roster']
+        : ['view', 'roster'];
+    // An arrest changes what the taken may do (they are held).
+    case 'arrest':
+      return body.value.taken.some((party) => party.id === member)
+        ? ['afford', 'characterData']
+        : [];
     // answered refreshes for everybody; tempered refreshes nothing.
     case 'tableAnswer':
       return body.value.dealt ? [] : ['afford', 'view'];

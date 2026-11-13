@@ -40,6 +40,7 @@ import {
   taggedThrough,
   type PerceptionVerb,
 } from '../sharedVia';
+import { arrestSentence, relocateSentence } from './relocateLine';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -777,6 +778,22 @@ function describeWith(
           return null; // a tick and the scene opening: bookkeeping
       }
     }
+    // A member set down without walking, as this viewer saw it
+    // (rpg-project#925). LEFT never names a destination.
+    case 'relocate':
+      return {
+        eyebrow: 'Taken',
+        headline: relocateSentence(body.value, context.viewerMember, name),
+        detail: '',
+        tone: 'neutral',
+      };
+    case 'arrest':
+      return {
+        eyebrow: 'Arrest',
+        headline: arrestSentence(body.value, context.viewerMember, name),
+        detail: '',
+        tone: 'danger',
+      };
     case undefined:
       return null;
     default: {

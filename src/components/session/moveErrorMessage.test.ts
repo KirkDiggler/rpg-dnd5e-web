@@ -18,19 +18,19 @@ describe('formatMoveError', () => {
       'member is not in a fight',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(notInFight)).toBe(notInFight.message);
+    expect(formatMoveError(notInFight)).toBe(notInFight.rawMessage);
 
     const closed = new ConnectError(
       'encounter closed',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(closed)).toBe(closed.message);
+    expect(formatMoveError(closed)).toBe(closed.rawMessage);
 
     const downed = new ConnectError(
       'member is downed',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(downed)).toBe(downed.message);
+    expect(formatMoveError(downed)).toBe(downed.rawMessage);
 
     // ErrCannotAfford's own movement text (toolkit#1169's Move.go) already
     // reads player-friendly unmodified -- must NOT be caught by the
@@ -39,7 +39,7 @@ describe('formatMoveError', () => {
       'movement: 20 ft needed, 15 ft left',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(cannotAfford)).toBe(cannotAfford.message);
+    expect(formatMoveError(cannotAfford)).toBe(cannotAfford.rawMessage);
   });
 
   it('passes through a non-FailedPrecondition ConnectError unchanged', () => {
@@ -47,7 +47,7 @@ describe('formatMoveError', () => {
       'no doorway joins those cells',
       Code.InvalidArgument
     );
-    expect(formatMoveError(err)).toBe(err.message);
+    expect(formatMoveError(err)).toBe(err.rawMessage);
   });
 
   it('passes through a plain Error unchanged (existing useSessionWalk contract, mock RPC rejections in tests)', () => {
@@ -98,5 +98,15 @@ describe('isNotYourTurnError (toolkit#1169)', () => {
     expect(isNotYourTurnError(new Error('not your turn'))).toBe(false);
     expect(isNotYourTurnError('boom')).toBe(false);
     expect(isNotYourTurnError(undefined)).toBe(false);
+  });
+
+  it('the held refusal reads as the server wrote it (rpg-project#925)', () => {
+    const held = new ConnectError(
+      'The guards hold you; you cannot walk away.',
+      Code.PermissionDenied
+    );
+    expect(formatMoveError(held)).toBe(
+      'The guards hold you; you cannot walk away.'
+    );
   });
 });

@@ -840,7 +840,19 @@ function SessionEncounterScope({
     () => hailTurnFocus(combat.hailFocus, otherMembers),
     [combat.hailFocus, otherMembers]
   );
-  const cameraPresentationFocus = hailCamera ?? monsterCamera.focus;
+  // THE CUT'S CAMERA (rpg-project#925): once the view is dark, the camera
+  // goes to where the character was set down, through the same keyed focus,
+  // so the fade-in opens on them wherever the cells are.
+  const relocateCamera = useMemo(() => {
+    const cut = combat.relocateCut;
+    if (!cut?.to || cut.phase === 'out') return null;
+    return {
+      key: `relocate\u0000${cut.key}`,
+      position: positionToCube(cut.to),
+    };
+  }, [combat.relocateCut]);
+  const cameraPresentationFocus =
+    relocateCamera ?? hailCamera ?? monsterCamera.focus;
   // THE DIAL (rpg-project#872 D2), remembered per browser. Off, no offers
   // reach the map and a creature click behaves exactly as before.
   const clickToActOn = useDialValues()[CLICK_TO_ACT_DIAL] === 'on';
@@ -2101,6 +2113,7 @@ function SessionEncounterScope({
             />
           )}
           <CombatExperience
+            relocateCut={combat.relocateCut}
             partySharing={partySharing}
             portraits={{
               scopeKey:
