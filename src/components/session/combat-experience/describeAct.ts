@@ -37,7 +37,7 @@ import { endingResultLine } from '../runEnding';
 import {
   cameThroughFriend,
   perceiverSays,
-  throughMark,
+  taggedThrough,
   type PerceptionVerb,
 } from '../sharedVia';
 import { hopsPhrase, speechWords } from './speechLine';
@@ -239,14 +239,23 @@ export function describeAct(
 }
 
 /**
- * WHAT CAME THROUGH A FRIEND SAYS SO (rpg-project#935): the mark "through
- * Bea" closes the line's detail, so the log row, the toast and every form
- * that reads the describer carry it. The viewer's own entry has no mark.
+ * WHAT CAME THROUGH A FRIEND SAYS SO IN ITS TAG (rpg-project#935): the log
+ * row's eyebrow reads "Speech · through Bea" — never the sentence, so
+ * nothing is said twice, and always when a friend's senses contributed,
+ * even when the sentence names that friend. The viewer's own entry keeps
+ * the plain tag.
  */
 function withThroughMark(act: Act, context: DescribeContext) {
-  const mark = throughMark(act, context.viewerMember, context.memberNames);
-  return <T extends { detail: string }>(d: T | null): T | null =>
-    d && mark ? { ...d, detail: d.detail ? `${d.detail} · ${mark}` : mark } : d;
+  return <T extends { eyebrow: string }>(d: T | null): T | null =>
+    d && {
+      ...d,
+      eyebrow: taggedThrough(
+        d.eyebrow,
+        act,
+        context.viewerMember,
+        context.memberNames
+      ),
+    };
 }
 
 /** The roll wording a describer pass uses: the log's detail, or none. */

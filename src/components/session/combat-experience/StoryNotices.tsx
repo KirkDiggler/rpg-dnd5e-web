@@ -1,5 +1,6 @@
 import { CircleHelp, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { taggedThrough } from '../sharedVia';
 import { describeAct } from './describeAct';
 import { recentEventIdentity } from './recentEventIdentity';
 import { StoryNoticeContent } from './StoryNoticeContent';
@@ -73,7 +74,17 @@ export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
             <header className={styles.identity}>
               <Icon size={18} aria-hidden="true" />
               <strong>{identity.who}</strong>
-              <span>{identity.what}</span>
+              {/* The corner tag carries the through-mark (rpg-project#935). */}
+              <span>
+                {entry.describeContext
+                  ? taggedThrough(
+                      identity.what,
+                      entry.act,
+                      entry.describeContext.viewerMember,
+                      entry.describeContext.memberNames
+                    )
+                  : identity.what}
+              </span>
               {entry.notice.dismiss && (
                 <button
                   type="button"

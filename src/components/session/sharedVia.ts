@@ -56,7 +56,33 @@ export function friendNames(
   );
 }
 
-/** The mark: "through Bea", or '' for the viewer's own entry. */
+/**
+ * The corner tag's mark (rpg-project#935): "through Bea", "through Bea and
+ * Rin" — every friend an entry came through, whether or not its sentence
+ * names them, so the tag always says the viewer's own character did not
+ * perceive it. '' for the viewer's own entry.
+ */
+export function throughTag(
+  act: Act | undefined,
+  viewer: string,
+  names: Readonly<Record<string, string>> | undefined
+): string {
+  const friends = throughFriends(act, viewer);
+  return friends.length ? `through ${friendNames(friends, names)}` : '';
+}
+
+/** The tag with its mark: "Speech · through Bea", or the tag alone. */
+export function taggedThrough(
+  tag: string,
+  act: Act | undefined,
+  viewer: string,
+  names: Readonly<Record<string, string>> | undefined
+): string {
+  const mark = throughTag(act, viewer, names);
+  return mark ? `${tag} · ${mark}` : tag;
+}
+
+/** The map's mark (bubble, voice cue): "through Bea", or ''. */
 export function throughMark(
   act: Act | undefined,
   viewer: string,
