@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
-import { patchOption } from '../world-building/optionEdits';
+import { patchOption, patchOptionRow } from '../world-building/optionEdits';
 import { readBackOf } from '../world-building/readBack';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
@@ -214,5 +214,63 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
     expect(written).toContain(
       HAIL.replace('Oi! Pedlar! What have you got to sell?', 'Oi! You there!')
     );
+  });
+
+  // rpg-project#936: the gate guards' hint, an ANSWER row, is shouted.
+  const HINT =
+    'The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.';
+
+  it('both gate guards’ shouted hint, an answer row, loads and writes back in its place', () => {
+    const doc = parse(roundTrips(served)) as Parsed;
+    for (const guard of ['gate-1', 'gate-2']) {
+      const line = doc.room.room.monsterBindings[guard].options!.find(
+        (o) => o.id === 'friends-inside'
+      )!;
+      expect(line).not.toHaveProperty('loudness');
+      expect((line.success as Row[])[0]).toEqual({
+        say: HINT,
+        loudness: 'shout',
+      });
+    }
+  });
+
+  it('the read-back says the hint is shouted', () => {
+    const result = read(served);
+    for (const guard of ['gate-1', 'gate-2'])
+      expect(
+        JSON.stringify(readBackOf(result, { kind: 'creature', id: guard }))
+      ).toContain(`“${HINT}” (shouted)`);
+  });
+
+  it('editing the hint’s words keeps its loudness beside them', () => {
+    const result = read(served);
+    const room = result.draft.room;
+    const gate1 = room.monsterBindings!['gate-1'];
+    const options = gate1.options!.map((o) =>
+      o.id === 'friends-inside'
+        ? patchOptionRow(o, 'success', 0, {
+            ...o.success![0],
+            say: 'Inside, the lot of them.',
+          })
+        : o
+    );
+    const draft = {
+      ...result.draft,
+      room: {
+        ...room,
+        monsterBindings: {
+          ...room.monsterBindings,
+          'gate-1': normalizeBinding({ ...gate1, options })!,
+        },
+      },
+    };
+    const saved = parse(
+      exportDraftYaml({ draft, scope: result.scope }, result.key)
+    ) as Parsed;
+    expect(
+      saved.room.room.monsterBindings['gate-1'].options!.find(
+        (o) => o.id === 'friends-inside'
+      )!.success
+    ).toEqual([{ say: 'Inside, the lot of them.', loudness: 'shout' }]);
   });
 });
