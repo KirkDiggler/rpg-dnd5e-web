@@ -15,9 +15,32 @@ import type { CombatExperiencePresentationState } from './types';
 export const STALE_DECLARATION_MESSAGE =
   'That option changed; review your current actions.';
 
-/** Selector-bearing session verbs use FAILED_PRECONDITION for stale offers. */
+/**
+ * A stale offer (rpg-project#925, rpg-api#1238): every act verb's stale
+ * selector is ABORTED, as Speak's stale option already was. Keyed on the
+ * code alone, never on the message. FAILED_PRECONDITION is a session refusal
+ * with a sentence for the player (`refusalNotice`), never a stale offer.
+ */
 export function isStaleDeclarationRefusal(error: unknown): boolean {
+  return ConnectError.from(error).code === Code.Aborted;
+}
+
+/**
+ * The notice for a refused act: a session refusal (FAILED_PRECONDITION)
+ * reads as the server wrote it — "Guard bars the way", "The guards hold you;
+ * you cannot walk away." — from `rawMessage`, with no "[code] " prefix and
+ * no verb in front. Anything else (a dropped connection, an internal error)
+ * keeps "<Verb> failed: …" so it is never mistaken for the game's word.
+ */
+export function isSentenceRefusal(error: unknown): boolean {
   return ConnectError.from(error).code === Code.FailedPrecondition;
+}
+
+export function refusalNotice(verb: string, error: unknown): string {
+  const refused = ConnectError.from(error);
+  if (isSentenceRefusal(refused) && refused.rawMessage)
+    return refused.rawMessage;
+  return `${verb} failed: ${refused.rawMessage || 'unknown error'}`;
 }
 
 /** The quiet notice for a reply the shared conversation moved past. */
