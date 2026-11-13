@@ -206,7 +206,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       },
       'speak'
     ),
-    'Alice says: “Evening.”',
+    'You say: “Evening.”',
   ],
   state: [
     act(Family.STATE, {

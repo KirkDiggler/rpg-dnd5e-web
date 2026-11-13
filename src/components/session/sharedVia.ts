@@ -51,9 +51,9 @@ export function friendNames(
   friends: readonly Party[],
   names: Readonly<Record<string, string>> | undefined
 ): string {
-  const said = friends.map((party) => names?.[party.id] || 'a party member');
-  if (said.length <= 1) return said[0] ?? '';
-  return `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
+  return joinNames(
+    friends.map((party) => names?.[party.id] || 'a party member')
+  );
 }
 
 /** The mark: "through Bea", or '' for the viewer's own entry. */
@@ -114,23 +114,52 @@ const THIRD_PERSON: Readonly<Record<PerceptionVerb, string>> = {
 };
 
 /**
- * THE ONE PLACE A PERCEPTION LINE'S SUBJECT AND VERB ARE DECIDED
- * (rpg-project#935). The viewer's own perception reads "You hear", "You see",
- * "You lose sight of", "You find", "You search"; anyone else's reads with
- * their display name and the verb agreeing: "Bea hears", "Bea and Rin hear".
- * A perceiver the client has no name for is "A party member" — never a
- * guessed name or a raw id. Who perceived it is `perceivers` (the observer,
- * or the friends an entry came through), never inferred.
+ * THE ONE PLACE A LINE'S SUBJECT AND VERB ARE DECIDED (rpg-project#935), for
+ * perception and speech alike: second person whenever the subject is the
+ * viewer's own character ("You hear", "You say"), the character's name
+ * otherwise ("Bea hears", "Aldric says"), the verb agreeing ("Bea and Rin
+ * hear"). No ids at all is "A party member hears" — never a guessed name or a
+ * raw id. `nameOf` is the reader's name for one id.
  */
+export function subjectSays(
+  ids: readonly string[],
+  viewer: string,
+  nameOf: (id: string) => string,
+  base: string,
+  third: string
+): string {
+  if (ids.length === 1 && ids[0] === viewer) return `You ${base}`;
+  const subject = ids.length ? joinNames(ids.map(nameOf)) : 'a party member';
+  const said = `${subject.charAt(0).toUpperCase()}${subject.slice(1)}`;
+  return `${said} ${ids.length > 1 ? base : third}`;
+}
+
+/** The object form `subjectSays` pairs with: "you" for the viewer. */
+export function toWhom(
+  id: string,
+  viewer: string,
+  nameOf: (id: string) => string
+): string {
+  return id === viewer ? 'you' : nameOf(id);
+}
+
+function joinNames(said: readonly string[]): string {
+  if (said.length <= 1) return said[0] ?? '';
+  return `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
+}
+
+/** A perception line's subject and verb: "You hear", "Bea hears". */
 export function perceiverSays(
   act: Act,
   viewer: string,
   names: Readonly<Record<string, string>> | undefined,
   verb: PerceptionVerb
 ): string {
-  const who = perceivers(act, viewer);
-  if (who.length === 1 && who[0]!.id === viewer) return `You ${verb}`;
-  const subject = who.length ? friendNames(who, names) : 'a party member';
-  const said = `${subject.charAt(0).toUpperCase()}${subject.slice(1)}`;
-  return `${said} ${who.length > 1 ? verb : THIRD_PERSON[verb]}`;
+  return subjectSays(
+    perceivers(act, viewer).map((party) => party.id),
+    viewer,
+    (id) => names?.[id] || 'a party member',
+    verb,
+    THIRD_PERSON[verb]
+  );
 }

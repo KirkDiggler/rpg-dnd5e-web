@@ -9,6 +9,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActSchema,
   Family,
+  Loudness,
   PartyKind,
   PartySchema,
   PerceivedSchema,
@@ -21,6 +22,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { perceiverSays, type PerceptionVerb } from '../sharedVia';
 import { buildActStory } from './actStory';
+import { speechAtSpeakers } from './speechAtSpeakers';
 import { StoryNotices } from './StoryNotices';
 
 afterEach(cleanup);
@@ -172,5 +174,146 @@ describe('the log, the toast and the notice agree', () => {
     expect(
       screen.getAllByText('You hear metal clanging')[1]!.closest('details')
     ).not.toBeNull();
+  });
+});
+
+describe('spoken lines follow the same rule', () => {
+  function line(
+    value: Record<string, unknown>,
+    senses = [Sense.SIGHT, Sense.HEARING]
+  ) {
+    return create(ActSchema, {
+      session: 's',
+      id: `line-${JSON.stringify(value).length}-${Math.random()}`,
+      act: 'speak:1',
+      verb: 'speak',
+      family: Family.ACT,
+      perceived: create(PerceivedSchema, { senses }),
+      body: {
+        case: 'speech',
+        value: { place: { x: 0, y: 0 }, ...value },
+      },
+    } as never);
+  }
+  const rowOf = (act: Act) =>
+    buildActStory([{ act, index: 0, seq: 1n, source: 'live', visible: true }], {
+      ...context,
+      memberNames: { ...names, aldric: 'Aldric' },
+    })[0]!;
+
+  it.each([
+    [Loudness.WHISPER, 'You whisper', 'Aldric whispers'],
+    [Loudness.SPEAK, 'You say', 'Aldric says'],
+    [Loudness.SHOUT, 'You shout', 'Aldric shouts'],
+    [Loudness.SCREAM, 'You scream', 'Aldric screams'],
+  ] as const)('loudness %s in both persons', (loudness, you, him) => {
+    expect(
+      rowOf(line({ speaker: member(viewer), words: 'Evening.', loudness }))
+        .headline
+    ).toBe(`${you}: “Evening.”`);
+    expect(
+      rowOf(line({ speaker: member('aldric'), words: 'Evening.', loudness }))
+        .headline
+    ).toBe(`${him}: “Evening.”`);
+  });
+
+  it('said to the viewer, to someone else, and to nobody named', () => {
+    expect(
+      rowOf(
+        line({
+          speaker: member('aldric'),
+          spokenTo: member(viewer),
+          words: 'Evening.',
+          loudness: Loudness.SPEAK,
+        })
+      ).headline
+    ).toBe('Aldric says to you: “Evening.”');
+    expect(
+      rowOf(
+        line({
+          speaker: member('gate-1'),
+          spokenTo: member(viewer),
+          words: 'Halt!',
+          loudness: Loudness.SHOUT,
+        })
+      ).headline
+    ).toBe('Gate guard shouts to you: “Halt!”');
+    expect(
+      rowOf(
+        line({
+          speaker: member(viewer),
+          spokenTo: member('gate-1'),
+          words: 'Evening.',
+          loudness: Loudness.SPEAK,
+        })
+      ).headline
+    ).toBe('You say to Gate guard: “Evening.”');
+    expect(
+      rowOf(
+        line({
+          speaker: member('aldric'),
+          words: 'Hm.',
+          loudness: Loudness.SPEAK,
+        })
+      ).headline
+    ).toBe('Aldric says: “Hm.”');
+  });
+
+  it('a watched whisper, and "Someone" unchanged', () => {
+    expect(
+      rowOf(
+        line(
+          {
+            speaker: member(viewer),
+            spokenTo: member('gate-1'),
+            loudness: Loudness.WHISPER,
+          },
+          [Sense.SIGHT]
+        )
+      ).headline
+    ).toBe('You whisper to Gate guard');
+    expect(
+      rowOf(
+        line(
+          {
+            speaker: member('aldric'),
+            spokenTo: member(viewer),
+            loudness: Loudness.WHISPER,
+          },
+          [Sense.SIGHT]
+        )
+      ).headline
+    ).toBe('Aldric whispers to you');
+    expect(
+      rowOf(
+        line({ words: 'To arms!', loudness: Loudness.SHOUT, hops: 1 }, [
+          Sense.HEARING,
+        ])
+      ).headline
+    ).toBe('Someone shouts: “To arms!”');
+  });
+
+  it('the viewer’s own line with a roll; log, toast and Details agree; the bubble keeps only the words', () => {
+    const own = line({
+      speaker: member(viewer),
+      spokenTo: member('gate-1'),
+      words: 'We’re the troupe.',
+      loudness: Loudness.SPEAK,
+      roll: { total: 15, against: 12, beaten: true, expression: '1d20+3' },
+      skill: 'performance',
+    });
+    const row = rowOf(own);
+    expect(row.headline).toBe('You say to Gate guard: “We’re the troupe.”');
+    expect(row.detail).toBe('performance check, 1d20+3 = 15 vs 12');
+    expect(row.toastText).toBe('You say to Gate guard: “We’re the troupe.”');
+    render(
+      <StoryNotices
+        entries={[{ ...row, notice: { durationMs: 6000, held: false } }]}
+      />
+    );
+    expect(
+      screen.getByText('You say to Gate guard: “We’re the troupe.”')
+    ).toBeInTheDocument();
+    expect(speechAtSpeakers([row]).get(viewer)).toBe('We’re the troupe.');
   });
 });

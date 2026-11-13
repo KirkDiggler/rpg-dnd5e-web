@@ -143,14 +143,14 @@ describe('each row a viewer can perceive reads as the message says', () => {
     ).toBe('Aldric says: “Hm.”');
   });
 
-  it('the viewer’s own line is theirs, by the name they go by', () => {
+  it('the viewer’s own line reads in the second person', () => {
     const own = speech({
       speaker: { kind: PartyKind.MEMBER, id: viewer },
       spokenTo: guard,
       words: 'Evening.',
       loudness: Loudness.SPEAK,
     });
-    expect(line(own).headline).toBe('Bree says to Gate guard: “Evening.”');
+    expect(line(own).headline).toBe('You say to Gate guard: “Evening.”');
     expect(toastFor(own, viewer, false)?.case).toBe('own-speech');
   });
 

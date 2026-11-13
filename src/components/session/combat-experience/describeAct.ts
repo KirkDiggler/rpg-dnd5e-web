@@ -396,7 +396,7 @@ function describeWith(
       // words are `speechLine`'s; the roll is the speaker's when a speaker is
       // named and someone's when not — never attributed from elsewhere.
       const sp = body.value;
-      const words = speechWords(sp, name);
+      const words = speechWords(sp, name, context.viewerMember);
       const check = sp.skill ? `${sp.skill} check` : '';
       const rolled = rw.short(sp.roll)
         ? words.speakerSeen
