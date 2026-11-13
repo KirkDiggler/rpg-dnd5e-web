@@ -1,5 +1,5 @@
-# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#933)
-# at commit d61a5994d12adf564b3d144c3ca17b878cb180fc, git blob f69d14366571004a7d61236e16f92ec1742a9385.
+# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#936)
+# at commit 44f1f404bd29a1693d7b53fc79acfa55b286af6d, git blob ce90ff694c99d29f74ee31c6fe316371a2c03d11.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -1602,7 +1602,11 @@ room:
               - not:
                   recognized: admitted
             success:
+              # Hand edit (rpg-project#936): the hint is shouted, so a friend
+              # inside, out of sight in the next room, catches the words
+              # without the name (R2, R7, R14).
               - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
+                loudness: shout
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1740,7 +1744,11 @@ room:
               - not:
                   recognized: admitted
             success:
+              # Hand edit (rpg-project#936): the hint is shouted, so a friend
+              # inside, out of sight in the next room, catches the words
+              # without the name (R2, R7, R14).
               - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
+                loudness: shout
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:

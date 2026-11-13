@@ -1,6 +1,7 @@
 import type { WallSurfaceChart } from '@/rendering/wallSurfaceCharts';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { wallLength } from './structuralWallEditing';
+import { wallSolidIntervals } from './structuralWallGeometry';
 import type { StructuralWallSurface } from './structuralWalls';
 
 export interface DoorRepeatGuide {
@@ -75,6 +76,33 @@ export function placeDoorFrame(
     snapped: true,
     repeatGuide,
   };
+}
+
+/** Runtime uses only spans explicitly supplied on its permitted openings.
+ * No door matching, asset lookup or hidden-parent reconstruction participates. */
+export function wallWithCapturedFrameSpans(
+  wall: StructuralWallSurface
+): StructuralWallSurface {
+  if (!wall.openings.some((opening) => opening.frameSpan)) return wall;
+  const visual = {
+    ...wall,
+    openings: wall.openings.map((opening) => {
+      const span = opening.frameSpan;
+      if (!span) return opening;
+      if (span.before < opening.width / 2 || span.after < opening.width / 2)
+        throw Error('Captured frame span must enclose the clear opening.');
+      return {
+        ...opening,
+        position: opening.position + (span.after - span.before) / 2,
+        width: span.before + span.after,
+      };
+    }),
+  };
+  wallSolidIntervals({
+    wall: visual,
+    extent: { start: 0, end: wallLength(wall) },
+  });
+  return visual;
 }
 
 /** A derived render input, never a replacement native wall or blocker. */

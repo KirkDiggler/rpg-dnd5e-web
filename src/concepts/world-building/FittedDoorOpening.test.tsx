@@ -15,6 +15,7 @@ vi.mock('./WorldPropModel', () => ({
         provider: props.surfaceProvider,
         plans: props.surfacePlans,
         open: props.open,
+        hideDoorLeaves: props.hideDoorLeaves,
       }}
     />
   ),
@@ -48,6 +49,83 @@ const finish: WallFinishSpan = {
 };
 
 describe('Studio fixed surround rendering seam', () => {
+  it('renders supplied wrapped frame facts without a parent wall or source chart', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <FittedDoorSurface
+        doorId="door"
+        assetRef={assetRef}
+        pose={pose}
+        state="closed"
+        framePresentation={{
+          span: {
+            before: fit.leftExtentMeters,
+            after: fit.frameWidthMeters - fit.leftExtentMeters,
+          },
+          faceFinishes: [
+            {
+              side: 'positive-z',
+              materialRef: finish.material.ref,
+              phaseU: 0.6,
+            },
+          ],
+        }}
+        requireFramePresentation
+      />
+    );
+    const probe = renderer.scene.findByProps({ name: 'opening-probe' }).instance
+      .userData;
+    expect(probe.plans).toHaveLength(1);
+    expect(probe.plans[0].material.ref).toBe(finish.material.ref);
+    expect(
+      probe.plans[0].chart.phase / probe.plans[0].chart.repeat[0]
+    ).toBeCloseTo(0.6);
+    expect(probe.fit.offset).toBeCloseTo(-fit.leftExtentMeters);
+    await renderer.unmount();
+  });
+  it('keeps a known fixed surround when mutable leaf state is unknown', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <FittedDoorSurface
+        doorId="door"
+        assetRef={assetRef}
+        pose={pose}
+        state="unknown"
+        framePresentation={{
+          span: {
+            before: fit.leftExtentMeters,
+            after: fit.frameWidthMeters - fit.leftExtentMeters,
+          },
+          faceFinishes: [],
+        }}
+        requireFramePresentation
+      />
+    );
+    const probe = renderer.scene.findByProps({ name: 'opening-probe' }).instance
+      .userData;
+    expect(probe.hideDoorLeaves).toBe(true);
+    expect(
+      renderer.scene.findAllByProps({ name: 'structural-door-unknown-door' })
+    ).toHaveLength(1);
+    await renderer.unmount();
+  });
+  it('marks an uncaptured aperture kit rather than guessing a parent in play', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <FittedDoorSurface
+        doorId="door"
+        assetRef={assetRef}
+        pose={pose}
+        state="closed"
+        requireFramePresentation
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'opening-probe' })
+    ).toHaveLength(0);
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-error-door' })
+        .instance.userData.reason
+    ).toMatch(/capture/);
+    await renderer.unmount();
+  });
   it('uses the frame envelope while retaining aperture pose and inherited chart phase', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <FittedDoorSurface

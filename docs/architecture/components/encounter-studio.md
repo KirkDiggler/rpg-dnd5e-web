@@ -123,6 +123,26 @@ or persisting a default. The author commits the chosen look only by placing.
 Changing defaults does not restyle old placements. A placement can be removed
 without losing a cast member inferred from that last imported instance.
 
+## Aperture-fitted doorway frames
+
+Door placement uses provider-verified aperture metrics, not complete-assembly
+bounds. Free positioning remains available; optional repeat snapping uses the
+wall's actual material chart. The surround replaces its visual span while the
+native opening retains its clear width and gameplay identity.
+
+The existing owner transaction captures `door.framePresentation`: visual extents
+and fixed-face material refs with wrapped U phase at the aperture centre. Moving
+a door updates phase; changing an inherited wall finish updates the affected
+face. Unchanged unknown intent is preserved, while a newly required unavailable
+phase is refused. Native export fills missing captures from the same pinned
+provider metadata, without another registry or source fetch.
+
+Play consumes the door's independent captured presentation and each permitted
+opening's visual span. It does not recover appearance from a hidden parent.
+Known fixed surrounds remain when mutable leaf state is unknown: moving leaves
+are hidden and a neutral aperture marker is shown, not an invented open/closed
+pose. Legacy complete assemblies retain their existing path.
+
 ## Source map
 
 | Concern                                         | Owner / entry                                                                                                        |

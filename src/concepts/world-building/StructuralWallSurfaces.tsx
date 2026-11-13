@@ -28,11 +28,20 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * describe rather than at the world origin.
  */
 import { REMEMBERED_SURFACE_TINT } from '@/components/hex-grid/sceneKnowledge';
+import {
+  copyDoorFramePresentation,
+  type DoorFramePresentation,
+} from '@/rendering/doorFramePresentation';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { useWorldMaterialCatalog } from '@/rendering/useWorldMaterialCatalog';
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
-import { doorwayVisualWall } from './doorwayPlacement';
+import { projectDoorFrameFinishes } from './doorFrameFinishes';
+import {
+  doorwayVisualWall,
+  wallWithCapturedFrameSpans,
+} from './doorwayPlacement';
 import {
   partitionFinishInterval,
   type WallFinishSpan,
@@ -218,7 +227,9 @@ export function StructuralWallSurfacePieces({
   let layouts;
   try {
     layouts = layoutWallPieces({
-      wall: replaceDoorFrames ? doorwayVisualWall(wall) : wall,
+      wall: replaceDoorFrames
+        ? doorwayVisualWall(wall)
+        : wallWithCapturedFrameSpans(wall),
       sourceWidthMeters: widthMeters,
       sourceHeightMeters: heightMeters,
       sourceDepthMeters: depthMeters,
@@ -452,7 +463,11 @@ export function FittedDoorSurface({
   remembered = false,
   finishSpans = [],
   wallOffset = 0,
+  framePresentation,
+  requireFramePresentation = false,
 }: {
+  framePresentation?: DoorFramePresentation;
+  requireFramePresentation?: boolean;
   finishSpans?: readonly WallFinishSpan[];
   /** Opening-center distance on the supplied owner wall, never inferred in play. */
   wallOffset?: number;
@@ -474,7 +489,13 @@ export function FittedDoorSurface({
   onMeasured?: () => void;
   onClick?: () => void;
 }) {
-  if (state === 'unknown') {
+  const materials = useWorldMaterialCatalog();
+  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(assetRef);
+  const knownFrame =
+    framePresentation &&
+    entry?.source === 'generated' &&
+    entry.asset.wallOpening;
+  if (state === 'unknown' && !knownFrame) {
     // The model's absent `open` prop is a closed rest pose, not an unknown
     // state. Render only the neutral supplied-layout marker until observed.
     return (
@@ -492,7 +513,6 @@ export function FittedDoorSurface({
       />
     );
   }
-  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(assetRef);
   const anchor = {
     position: [
       pose.point.x,
@@ -533,29 +553,84 @@ export function FittedDoorSurface({
     );
   }
   const openingFit = entry.asset.wallOpening;
+  const frame = copyDoorFramePresentation(
+    framePresentation,
+    `door ${doorId}.framePresentation`
+  );
+  if (
+    (openingFit && requireFramePresentation && !frame) ||
+    (frame && !openingFit)
+  )
+    return (
+      <WallMarker
+        wallId={doorId}
+        tone="error"
+        reason="Doorway frame capture is missing or incompatible with its provider."
+        position={anchor.position}
+        rotationY={anchor.rotationY}
+      />
+    );
   if (openingFit) {
+    if (frame?.faceFinishes.length && materials.status === 'loading')
+      return (
+        <WallMarker
+          wallId={doorId}
+          tone="loading"
+          position={anchor.position}
+          rotationY={anchor.rotationY}
+        />
+      );
     const ratio = pose.width / openingFit.widthMeters;
     const bindings = entry.asset.surfaces ?? [];
-    const start = wallOffset - openingFit.leftExtentMeters * ratio;
+    if (
+      frame &&
+      (Math.abs(frame.span.before - openingFit.leftExtentMeters * ratio) >
+        1e-5 * Math.max(1, ratio) ||
+        Math.abs(
+          frame.span.after -
+            (openingFit.frameWidthMeters - openingFit.leftExtentMeters) * ratio
+        ) >
+          1e-5 * Math.max(1, ratio))
+    )
+      return (
+        <WallMarker
+          wallId={doorId}
+          tone="error"
+          reason="Captured frame span disagrees with the provider aperture fit."
+          position={anchor.position}
+          rotationY={anchor.rotationY}
+        />
+      );
+    const start =
+      (frame ? 0 : wallOffset) - openingFit.leftExtentMeters * ratio;
     const end = start + openingFit.frameWidthMeters * ratio;
     const inherited = finishSpans.filter(
       (span) => span.start <= start + 1e-6 && span.end >= end - 1e-6
     );
-    const plans = inherited.map((span) => {
-      const target = bindings.find(
-        (binding) =>
-          binding.side === span.side && binding.family === span.material.family
-      );
-      if (!target)
-        throw new Error(
-          'Doorway has no compatible fixed masonry target for the inherited face.'
-        );
-      return {
-        material: span.material,
-        chart: { ...span.chart, surfaceId: target.id },
-      };
-    });
+    const plans = frame
+      ? projectDoorFrameFinishes({
+          asset: entry.asset,
+          frame,
+          catalog: materials.catalog,
+          elevation: pose.y,
+        })
+      : inherited.map((span) => {
+          const target = bindings.find(
+            (binding) =>
+              binding.side === span.side &&
+              binding.family === span.material.family
+          );
+          if (!target)
+            throw new Error(
+              'Doorway has no compatible fixed masonry target for the inherited face.'
+            );
+          return {
+            material: span.material,
+            chart: { ...span.chart, surfaceId: target.id },
+          };
+        });
     if (
+      !frame &&
       finishSpans.some(
         (span) =>
           span.end > start && span.start < end && !inherited.includes(span)
@@ -596,11 +671,22 @@ export function FittedDoorSurface({
           }
           visualLighting={visualLighting}
           open={state === 'open'}
+          hideDoorLeaves={state === 'unknown'}
           remembered={remembered}
           rememberedTint={REMEMBERED_SURFACE_TINT}
           onBoundsMeasured={onMeasured}
           onDoorClick={onClick}
         />
+        {state === 'unknown' && (
+          <StructuralDoorUnknownMarker
+            doorId={doorId}
+            position={[0, DUNGEON_SURFACE_Y + pose.height / 2, 0]}
+            rotationY={0}
+            width={pose.width}
+            height={pose.height}
+            thickness={pose.thickness}
+          />
+        )}
       </group>
     );
   }

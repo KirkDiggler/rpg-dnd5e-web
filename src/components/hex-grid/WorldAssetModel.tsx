@@ -102,6 +102,8 @@ export interface WorldAssetModelProps {
    * door's live state: a placed door item is one door however many openings
    * its asset declares, and the caller is not the one that resolved them. */
   open?: boolean;
+  /** Unknown mutable state hides only moving leaves, retaining known fixed art. */
+  hideDoorLeaves?: boolean;
   /** Fires when the door was hit. The raycast is the whole assembly, so a
    * click on the frame, a leaf or the cap above all report the door — the
    * affordance belongs to the door, not to one of its parts. */
@@ -113,6 +115,7 @@ export interface WorldAssetModelProps {
 interface ResolvedLeaf {
   node: THREE.Object3D;
   restQuaternion: THREE.Quaternion;
+  restVisible: boolean;
 }
 
 interface ResolvedDoor {
@@ -238,7 +241,11 @@ function resolveRoles(
           node.getWorldPosition(new THREE.Vector3()).applyMatrix4(inverseRoot)
         );
       }
-      group.leaves.push({ node, restQuaternion: node.quaternion.clone() });
+      group.leaves.push({
+        node,
+        restQuaternion: node.quaternion.clone(),
+        restVisible: node.visible,
+      });
       doors.set(binding.door, group);
     }
     // `frame` is static by contract: binding it only proves the node exists.
@@ -322,6 +329,7 @@ function LoadedWorldAssetModel({
   onDoorsResolved,
   openDoors,
   open,
+  hideDoorLeaves,
   onDoorClick,
   heightScale,
   remembered,
@@ -351,6 +359,7 @@ function LoadedWorldAssetModel({
   onDoorsResolved?: (doors: readonly WorldAssetDoor[]) => void;
   openDoors: readonly string[];
   open?: boolean;
+  hideDoorLeaves?: boolean;
   onDoorClick?: () => void;
   heightScale: number;
   remembered: boolean;
@@ -464,9 +473,15 @@ function LoadedWorldAssetModel({
     for (const door of resolved.doors) {
       // `open` is the whole-assembly form: a placed door is one door, so its
       // live state applies to every group its asset declares.
-      applyLeafSwing(door.leaves, open === true || openDoors.includes(door.id));
+      for (const leaf of door.leaves)
+        leaf.node.visible = !hideDoorLeaves && leaf.restVisible;
+      if (!hideDoorLeaves)
+        applyLeafSwing(
+          door.leaves,
+          open === true || openDoors.includes(door.id)
+        );
     }
-  }, [open, openDoors, resolved]);
+  }, [open, openDoors, hideDoorLeaves, resolved]);
 
   /**
    * The authored `above` row, plus the clones that tile it upward. Row 0 IS
@@ -814,6 +829,7 @@ export function WorldAssetModel({
   visualLighting,
   openDoors = [],
   open,
+  hideDoorLeaves,
   onDoorClick,
   onDoorsResolved,
   plainWallFit,
@@ -873,6 +889,7 @@ export function WorldAssetModel({
       onDiagnostic={onDiagnostic}
       onDoorsResolved={onDoorsResolved}
       openDoors={openDoors}
+      hideDoorLeaves={hideDoorLeaves}
       open={open}
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}

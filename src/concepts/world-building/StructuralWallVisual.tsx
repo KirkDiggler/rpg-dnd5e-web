@@ -123,6 +123,7 @@ function AttachedDoors({
             doorId={opening.door!.id}
             assetRef={opening.door!.assetRef}
             pose={pose}
+            framePresentation={opening.door!.framePresentation}
             wallOffset={opening.position}
             finishSpans={finishSpans}
             // The AUTHORED INITIAL state preview only; it is never a live
