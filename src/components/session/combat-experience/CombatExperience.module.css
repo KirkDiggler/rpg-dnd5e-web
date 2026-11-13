@@ -3316,3 +3316,33 @@ button.diceDrawerCue:focus-visible {
 .storyFocus {
   outline: 1px solid var(--sc-gold);
 }
+
+/* The run's sharing mode under the world-clock plate (rpg-project#935):
+   quiet, one line, its meaning on hover or tap. */
+.sharingMode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 3px;
+}
+.sharingMode button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sc-muted, #9aa8ad);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+.sharingMode button:hover,
+.sharingMode button:focus-visible {
+  color: var(--sc-ink, #e8e2d2);
+}
+.sharingMode [role='note'] {
+  max-width: 240px;
+  margin-top: 3px;
+  color: var(--sc-ink, #e8e2d2);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+}

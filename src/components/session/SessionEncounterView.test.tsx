@@ -15,6 +15,7 @@ import {
 import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
+  PartySharing,
   VendorStockMode,
   WatchZoneSchema,
   type GetAtlasResponse,
@@ -160,6 +161,7 @@ const hoisted = vi.hoisted(() => ({
   streamRecordFn: vi.fn(),
   getRecordFn: vi.fn(),
   streamActsFn: vi.fn(),
+  getStatusFn: vi.fn(),
   getStoryActsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
   publishDiceThrowFn: vi.fn(),
@@ -239,6 +241,7 @@ vi.mock('@/api/client', () => ({
     publishDiceThrow: hoisted.publishDiceThrowFn,
   },
   sessionClient: {
+    getStatus: hoisted.getStatusFn,
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
     getStory: hoisted.getStoryFn,
@@ -7300,5 +7303,27 @@ describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#14
     expect(within(notices).queryByText('You hear voices')).toBeNull();
     expect(within(notices).queryByText('You hear a voice')).toBeNull();
     expect(notices.querySelectorAll('article')).toHaveLength(1);
+  });
+});
+
+describe('the run’s sharing mode (rpg-project#935)', () => {
+  it('sits on the world-clock plate in the server’s words', async () => {
+    readyScene();
+    hoisted.getStatusFn.mockResolvedValue({ partySharing: PartySharing.VIEW });
+    renderView();
+    const plate = await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() =>
+      expect(within(plate).getByText('Shared view')).toBeTruthy()
+    );
+  });
+
+  it('a failed status read shows nothing and the view carries on', async () => {
+    readyScene();
+    hoisted.getStatusFn.mockRejectedValue(new Error('unavailable'));
+    renderView();
+    const plate = await screen.findByTestId('session-combat-free-roam');
+    expect(within(plate).getByText('Free roam')).toBeTruthy();
+    await waitFor(() => expect(hoisted.getStatusFn).toHaveBeenCalled());
+    expect(screen.queryByTestId('sharing-mode')).toBeNull();
   });
 });

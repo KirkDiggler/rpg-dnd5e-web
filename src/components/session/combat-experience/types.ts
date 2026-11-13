@@ -3,6 +3,7 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import type { PartySharing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AttackRef,
   ClockKind,
@@ -242,6 +243,9 @@ export interface CombatExperienceMapRenderProps {
 interface CombatExperienceBaseProps {
   /** Review defaults to a fixed visual-gate frame; the production portal fills its definite-height parent. */
   layout?: CombatExperienceLayout;
+  /** The run's sharing dial as the server reports it (rpg-project#935);
+   * absent or UNSPECIFIED shows nothing. */
+  partySharing?: PartySharing;
   /** Existing observer-disclosed roster; one shared portrait cache for this HUD. */
   portraits?: {
     scopeKey: string;
