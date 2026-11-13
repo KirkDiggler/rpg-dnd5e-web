@@ -36,6 +36,21 @@ const RECOGNITION = {
   heard_by: 'carriers_who_witnessed',
 };
 
+/** The castle's arrest (rpg-project#925): an outcome this form cannot say,
+ * shown as written and carried through every edit of its neighbours. */
+const ARREST = {
+  arrest: {
+    cell: 'region-cells',
+    area: {
+      regions: ['region-gatehouse'],
+      cells: [
+        { r: 13, q: [[-8, -5]] },
+        { r: 14, q: [[-8, -6]] },
+      ],
+    },
+  },
+};
+
 describe('the outcomes form', () => {
   it('says the gate’s recognition in plain words, holder and subjects shown, not offered', () => {
     renderOutcomes();
@@ -61,6 +76,7 @@ describe('the outcomes form', () => {
     );
     expect(commit).toHaveBeenCalledWith('front-gate', {
       admitted: [{ recognize: { ...RECOGNITION, topic: 'welcome' } }],
+      arrested: [ARREST],
     });
   });
 
@@ -75,6 +91,7 @@ describe('the outcomes form', () => {
     delete unheard.heard_by;
     expect(commit).toHaveBeenCalledWith('front-gate', {
       admitted: [{ recognize: unheard }],
+      arrested: [ARREST],
     });
   });
 
@@ -87,12 +104,14 @@ describe('the outcomes form', () => {
     fireEvent.click(screen.getByLabelText('Add recognition for front-gate'));
     expect(commit).toHaveBeenLastCalledWith('front-gate', {
       admitted: [{ recognize: RECOGNITION }],
-      arrested: [{ recognize: RECOGNITION }],
+      arrested: [ARREST, { recognize: RECOGNITION }],
     });
     fireEvent.click(
       screen.getByLabelText('Remove recognition front-gate admitted 1')
     );
-    expect(commit).toHaveBeenLastCalledWith('front-gate', {});
+    expect(commit).toHaveBeenLastCalledWith('front-gate', {
+      arrested: [ARREST],
+    });
   });
 
   it('shows an entry it cannot say as written, and keeps it through an edit of its neighbour', () => {
@@ -115,6 +134,32 @@ describe('the outcomes form', () => {
         { announce: { to: 'garrison' } },
         { recognize: { ...RECOGNITION, topic: 'welcome' } },
       ],
+      arrested: [ARREST],
+    });
+  });
+
+  it('shows the castle’s arrest as written, never refused or hidden, and keeps it (rpg-project#925)', () => {
+    const commit = renderOutcomes();
+    expect(
+      screen.getByRole('heading', { name: 'Entering arrested' })
+    ).toBeTruthy();
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Outcome as written front-gate arrested 1')
+          .textContent!
+      )
+    ).toEqual(ARREST);
+    expect(
+      screen.getByLabelText('Outcomes on entering arrested in front-gate')
+        .textContent
+    ).toContain('This form does not edit it; it is kept as written.');
+    fireEvent.change(
+      screen.getByLabelText('Recognition topic front-gate admitted 1'),
+      { target: { value: 'welcome' } }
+    );
+    expect(commit).toHaveBeenLastCalledWith('front-gate', {
+      admitted: [{ recognize: { ...RECOGNITION, topic: 'welcome' } }],
+      arrested: [ARREST],
     });
   });
 });

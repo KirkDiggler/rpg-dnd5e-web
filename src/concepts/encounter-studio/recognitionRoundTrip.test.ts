@@ -63,6 +63,21 @@ type Parsed = {
   };
 };
 
+/** The castle's arrest (rpg-project#925): an outcome the outcomes form
+ * cannot say, carried through every edit of its neighbours. */
+const ARREST = {
+  arrest: {
+    cell: 'region-cells',
+    area: {
+      regions: ['region-gatehouse'],
+      cells: [
+        { r: 13, q: [[-8, -5]] },
+        { r: 14, q: [[-8, -6]] },
+      ],
+    },
+  },
+};
+
 describe('the recognition grammar loads and writes back (rpg-project#928)', () => {
   it('the served castle carries every new field, and an unedited download is byte-identical', () => {
     const doc = parse(served) as Parsed;
@@ -77,6 +92,7 @@ describe('the recognition grammar loads and writes back (rpg-project#928)', () =
           },
         },
       ],
+      arrested: [ARREST],
     });
     for (const id of ['gate-1', 'gate-2', 'captain'])
       for (const post of Object.values(
@@ -222,6 +238,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const after = parse(added) as Parsed;
     expect(after.interactions['front-gate'].outcomes).toMatchObject({
       arrested: [
+        ARREST,
         {
           recognize: {
             topic: 'prisoner',
@@ -239,7 +256,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const removed = setInteractionOutcomes(
       again.scope,
       'front-gate',
-      withEntryRemoved(outcomesOf(again.scope, 'front-gate'), 'arrested', 0)
+      withEntryRemoved(outcomesOf(again.scope, 'front-gate'), 'arrested', 1)
     );
     expect(
       parse(exportDraftYaml({ draft: again.draft, scope: removed }, again.key))
@@ -247,8 +264,34 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     ).toEqual((parse(served) as Parsed).interactions['front-gate'].outcomes);
   });
 
-  it('removing the last outcome drops the key and keeps the interaction', () => {
+  it('removing a state’s only outcome drops that state and keeps the arrest in place (rpg-project#925)', () => {
     const saved = outcomesAfter((o) => withEntryRemoved(o, 'admitted', 0));
+    const after = parse(saved) as Parsed;
+    expect(after.interactions['front-gate'].outcomes).toEqual({
+      arrested: [ARREST],
+    });
+    roundTrips(saved);
+  });
+
+  it('the castle’s arrest survives an edit of the admitted recognition, byte for byte (rpg-project#925)', () => {
+    const saved = outcomesAfter((o) => withTopic(o, 'admitted', 0, 'welcome'));
+    const block = served.slice(
+      served.indexOf('      # Hand edit (rpg-project#925'),
+      served.indexOf('    recipe:\n      ref: site:interactions:front-gate')
+    );
+    expect(block).toContain('      arrested:\n        - arrest:\n');
+    expect(saved).toContain(block);
+    expect(
+      Object.keys(
+        (parse(saved) as Parsed).interactions['front-gate'].outcomes as object
+      )
+    ).toEqual(['admitted', 'arrested']);
+  });
+
+  it('removing the last outcome drops the key and keeps the interaction', () => {
+    const saved = outcomesAfter((o) =>
+      withEntryRemoved(withEntryRemoved(o, 'admitted', 0), 'arrested', 0)
+    );
     const after = parse(saved) as Parsed;
     expect(after.interactions['front-gate']).not.toHaveProperty('outcomes');
     expect(after.interactions['front-gate'].recipe).toEqual(
