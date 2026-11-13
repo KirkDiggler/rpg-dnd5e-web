@@ -1,5 +1,5 @@
-# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#936)
-# at commit 5819a77491cb25f30bdf940c11b3d76e813a96ea, git blob ce90ff694c99d29f74ee31c6fe316371a2c03d11.
+# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#925)
+# at commit dc9b316a6e252d8b48677282babbd366f7c28b41, git blob 7a91d2af93cf949afab6ce1de42151af0e425788.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -2226,6 +2226,21 @@ interactions:
             holder: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed
+      # Hand edit (rpg-project#925, ruled 2026-11-13): the second failed
+      # claim arrests. Taken: the speaker's party standing in the arrest area
+      # or seen by any gate speaker at that moment; wanted: one the gate
+      # speakers saw before and who is not there. The area is the gatehouse,
+      # and the road just outside its south doorway — the cells within two
+      # (the hail's approach) of the doorway's inside cell, where a claimant
+      # who backed out of the door still stands at the gate.
+      arrested:
+        - arrest:
+            cell: region-cells
+            area:
+              regions: [region-gatehouse]
+              cells:
+                - {r: 13, q: [[-8, -5]]}
+                - {r: 14, q: [[-8, -6]]}
     recipe:
       ref: site:interactions:front-gate
       initial: fresh
