@@ -60,6 +60,7 @@ import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
 import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
+import { StudioParty } from './StudioParty';
 import { StudioPlayButton, StudioPublish } from './StudioPublish';
 import {
   currentRefusals,
@@ -87,6 +88,7 @@ import { useStudioLabels } from './useStudioLabels';
 
 const ENCOUNTER_SECTIONS = {
   cast: 'Cast',
+  party: 'Party',
   tables: 'Tables',
   bundles: 'Bundles',
   factions: 'Factions',
@@ -1531,6 +1533,7 @@ function StudioSurface({
             {(
               [
                 'cast',
+                'party',
                 'tables',
                 'bundles',
                 'factions',
@@ -1589,6 +1592,9 @@ function StudioSurface({
                 {session.socialControls[encounterSection]}
               </section>
             )}
+          {home === 'encounter' && encounterSection === 'party' && (
+            <StudioParty session={session} />
+          )}
           {home === 'encounter' && encounterSection === 'endings' && (
             <StudioEndings session={session} focus={focusEnding?.id} />
           )}

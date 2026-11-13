@@ -213,6 +213,11 @@ export interface SiteScope {
   tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  /** The party's settings for this encounter (rpg-project#935), today the
+   * sharing dial `sharing: own | view | knowledge`. CARRIED AS WRITTEN: the
+   * studio judges no word and no key here, the compiler does. Absent is
+   * every setting unmarked. */
+  party?: SiteParty;
   intel?: SiteIntelRecord[];
   /** The way out(s) of this room — `{ id, cell }`, carried verbatim
    * (rpg-project#488 R2). No form yet; the carry is so a hand-written v4
@@ -553,6 +558,9 @@ export const SCOPE_KEYS = [
   'tables',
   'factions',
   'dispositions',
+  // The engine's own root order: `party` sits between `dispositions` and
+  // `intel` in `SingleRoomSpec` (rpg-project#935).
+  'party',
   'intel',
   'exits',
   'endings',
@@ -605,6 +613,15 @@ export function scopeFrom(source: Partial<SiteScope>): SiteScope {
  */
 export function renderScope(scope: SiteScope): SiteScope {
   return scopeFrom(scope);
+}
+
+/** The root `party:` (rpg-project#935): a mapping, every key and value
+ * carried as written. Which words and keys the engine takes is the
+ * compiler's judgement; the studio never refuses one (rpg-project#857). */
+export type SiteParty = Record<string, unknown>;
+
+export function validateSiteParty(value: unknown): SiteParty {
+  return carryUnknownKeys(objectShape(value, 'Site party'), [], {});
 }
 
 /** The site's `intel:` records, in authored order. An id is unique and follows
@@ -993,6 +1010,10 @@ export function validateSiteScope(
   if (Object.hasOwn(raw, 'dispositions')) {
     const dispositions = validateSiteDispositions(raw.dispositions);
     if (dispositions.length > 0) scope.dispositions = dispositions;
+  }
+  if (Object.hasOwn(raw, 'party')) {
+    const party = validateSiteParty(raw.party);
+    if (Object.keys(party).length > 0) scope.party = party;
   }
   if (Object.hasOwn(raw, 'intel')) {
     const intel = validateIntel(raw.intel);

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { RegionResolution } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type { Outcomes } from '../world-building/interactionOutcomes';
+import type { SharingWord } from '../world-building/partySharing';
 import type {
   RoomDoorBinding,
   RoomDraft,
@@ -333,6 +334,9 @@ export interface EncounterStudioSession {
   commitTables(tables: SiteScope['tables']): boolean;
   /** The root `bundles:` (rpg-project#670), one undoable transaction. */
   commitBundles(bundles: SiteScope['bundles']): boolean;
+  /** The party's sharing dial (rpg-project#935), one undoable transaction
+   * that changes only `party.sharing` (`partySharing.withSharing`). */
+  commitPartySharing(word: SharingWord | undefined): boolean;
   /** One interaction's hail distance (rpg-project#923), or null to remove
    * it, one undoable transaction. Refused, with the notice naming why, for
    * a distance outside 1 to Speak reach or an interaction not authored. */
