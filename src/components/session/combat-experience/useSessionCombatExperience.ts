@@ -55,6 +55,7 @@ import {
   toggleMemberTarget,
 } from './memberTargeting';
 import { reactionWindowDeclaration } from './reactionWindow';
+import { ownRelocation, useRelocateCut, type RelocateCut } from './relocateCut';
 import {
   CONVERSATION_MOVED_ON_MESSAGE,
   isKeptRollAct,
@@ -242,6 +243,12 @@ export interface UseSessionCombatExperienceResult {
    * the camera to centre on once per opening. Null when no address stands.
    */
   hailFocus: HailFocus | null;
+  /**
+   * The viewer's own character being set down elsewhere, as a cut
+   * (rpg-project#925): the veil's phase and words, and where the camera goes.
+   * Null when no cut plays.
+   */
+  relocateCut: RelocateCut | null;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -500,6 +507,7 @@ export function useSessionCombatExperience({
   } | null>(null);
   const standingAddressKeyRef = useRef<string | null>(null);
   const hailSequenceRef = useRef(0);
+  const relocate = useRelocateCut();
   const [hailFocus, setHailFocus] = useState<HailFocus | null>(null);
   const approachArgRef = useRef(approach);
   approachArgRef.current = approach;
@@ -2881,6 +2889,12 @@ export function useSessionCombatExperience({
         heard ? viewerCellRef.current : undefined
       );
       pacing.acceptActs(run, metadata);
+      // THE CUT (rpg-project#925): the viewer's own character set down
+      // elsewhere — live only; a catch-up page replays history already lived.
+      if (metadata.source === 'live') {
+        const own = ownRelocation(run, member);
+        if (own) relocate.start(own);
+      }
       // A ROLL IS KEPT (rpg-project#938): the viewer's own waiting line,
       // judged as rolled by the walk that took them away from it. Its window
       // is gone with it, and the player is told why — live only: a catch-up
@@ -2930,7 +2944,7 @@ export function useSessionCombatExperience({
         });
       });
     },
-    [member, pacing, presentation]
+    [member, pacing, presentation, relocate]
   );
 
   const phase = targeting ? 'targeting' : presentation.phase;
@@ -2971,6 +2985,7 @@ export function useSessionCombatExperience({
       onStrike,
       onSpeakTo,
       hailFocus,
+      relocateCut: relocate.cut,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -3009,6 +3024,7 @@ export function useSessionCombatExperience({
       onStrike,
       onSpeakTo,
       hailFocus,
+      relocate.cut,
       onConfirmTargets,
       pacing.notice,
       pacing.monsterTurnIds,

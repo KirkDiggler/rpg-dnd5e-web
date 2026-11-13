@@ -19,6 +19,7 @@ import type { PartySide } from '../partySide';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
+import type { RelocateCut } from './relocateCut';
 import type { VoiceAtPlace } from './speechAtSpeakers';
 import type { ToastRule } from './toastPolicy';
 
@@ -246,6 +247,8 @@ interface CombatExperienceBaseProps {
   /** The run's sharing dial as the server reports it (rpg-project#935);
    * absent or UNSPECIFIED shows nothing. */
   partySharing?: PartySharing;
+  /** The viewer's own relocation cut while it plays (rpg-project#925). */
+  relocateCut?: RelocateCut | null;
   /** Existing observer-disclosed roster; one shared portrait cache for this HUD. */
   portraits?: {
     scopeKey: string;

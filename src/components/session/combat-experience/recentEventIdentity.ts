@@ -163,6 +163,14 @@ export function recentEventIdentity(
           : Clock3,
         'Encounter'
       );
+    case 'relocate':
+      return result(
+        'Taken',
+        Footprints,
+        partyName(body.value.mover, context) || 'Someone'
+      );
+    case 'arrest':
+      return result('Arrest', ShieldX, 'Guards');
     case undefined:
       return result('Unknown event', CircleHelp, 'Unknown actor');
     default: {

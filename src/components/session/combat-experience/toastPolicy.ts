@@ -242,6 +242,12 @@ function toastCase(
       if (doneTo(act, member)) return 'done-to-you';
       return null;
     case Family.STATE:
+      // An arrest taking the viewer is done to them (rpg-project#925): "You
+      // are under arrest." Another member's arrest stays in the log.
+      if (act.body.case === 'arrest')
+        return act.body.value.taken.some((party) => party.id === member)
+          ? 'done-to-you'
+          : null;
       return act.body.case === 'state' && act.body.value.party?.id === member
         ? 'done-to-you'
         : null;

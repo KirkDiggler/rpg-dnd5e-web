@@ -10,6 +10,7 @@ import {
   InfluenceKind,
   Loudness,
   PartyKind,
+  RelocateEnd,
   RollSchema,
   Sense,
   StateKind,
@@ -190,6 +191,25 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       'move'
     ),
     'Gate Guard bars the way',
+  ],
+  relocate: [
+    act(Family.ACT, {
+      case: 'relocate',
+      value: {
+        mover: gate,
+        from: { x: 1, y: 1 },
+        cause: 'dnd5e:consequences:arrest',
+        end: RelocateEnd.LEFT,
+      },
+    }),
+    'Gate Guard is led away under arrest.',
+  ],
+  arrest: [
+    act(Family.STATE, {
+      case: 'arrest',
+      value: { interaction: 'front-gate', taken: [alice], cell: 'cells' },
+    }),
+    'You are under arrest.',
   ],
   speech: [
     act(

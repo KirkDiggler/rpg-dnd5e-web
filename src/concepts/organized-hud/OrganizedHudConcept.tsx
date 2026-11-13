@@ -97,6 +97,9 @@ export function OrganizedHudConcept({
     preferences.kind === 'favorites-v1' ? preferences.byProfile : {};
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   const demoSequence = useRef(0);
+  // Fixture-only: the relocation cut held mid-way (rpg-project#925), for the
+  // visual check of the veil and its words. No act, no RPC.
+  const [cutPreview, setCutPreview] = useState(false);
   const [demoStory, setDemoStory] = useState<{
     scope: string;
     entries: readonly CombatExperienceStoryExchange[];
@@ -466,6 +469,13 @@ export function OrganizedHudConcept({
               >
                 Preview healing toast
               </button>
+              <button
+                type="button"
+                aria-pressed={cutPreview}
+                onClick={() => setCutPreview((on) => !on)}
+              >
+                Preview taken-away cut
+              </button>
               <small>
                 Authored examples only · normal toast lifetime · retained in
                 History.
@@ -627,6 +637,16 @@ export function OrganizedHudConcept({
             iconExperiment ? [...fixture.story, ...demoEntries] : fixture.story
           }
           storyFeedback={iconExperiment ? { scopeKey: storyScope } : undefined}
+          relocateCut={
+            cutPreview
+              ? {
+                  key: 'preview',
+                  words: 'You are taken to the cells.',
+                  phase: 'hold',
+                  reduced: false,
+                }
+              : null
+          }
           diceEvents={[]}
           location={{ name: 'Reference Tomb', area: 'South reliquary' }}
           hoveredTarget={hoveredTarget}
