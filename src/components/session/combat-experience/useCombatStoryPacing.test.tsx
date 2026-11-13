@@ -11,6 +11,7 @@ import {
   ClockMark,
   Family,
   PartyKind,
+  PerceivedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -699,6 +700,36 @@ describe('completion-driven walk presentation', () => {
       'idle',
     ]);
     expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('a walk that came through a friend is not presented, held or hidden (rpg-project#935)', () => {
+    const throughFriend = create(ActSchema, {
+      ...walk('walk-via'),
+      perceived: create(PerceivedSchema, {
+        via: [{ kind: PartyKind.MEMBER, id: 'bea' }],
+      }),
+    });
+    const story = [{ ...storyEntry(0n), id: actStoryId(throughFriend, 0) }];
+    const onPresentWalk = vi.fn();
+    const onTurnBeat = vi.fn();
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        session: 'crypt-run',
+        member: 'aldric',
+        participants,
+        story,
+        onTurnBeat,
+        onPresentWalk,
+        presentableMembers,
+      })
+    );
+    act(() => result.current.acceptActs([throughFriend], { source: 'live' }));
+    // Its row is in the log at once; nothing is held for it.
+    expect(result.current.story).toEqual(story);
+    expect(result.current.heldMovementMembers).toEqual(new Set());
+    act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS * 4));
+    expect(onPresentWalk).not.toHaveBeenCalled();
+    expect(onTurnBeat).not.toHaveBeenCalled();
   });
 
   it('orders world walks by completion without announcing a combat turn', () => {

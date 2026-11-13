@@ -22,6 +22,7 @@ import {
   type QueuedBeat,
 } from '../monsterBeatQueue';
 import { participantNameMap } from '../participantNames';
+import { cameThroughFriend } from '../sharedVia';
 import type { TurnBeat } from '../useTurnOrderFollow';
 import type { PresentWalk } from '../walkPresentation';
 import { actStoryId } from './actStory';
@@ -445,6 +446,10 @@ export function useCombatStoryPacing({
       const named = namedInFightRef.current;
       const paced = run.flatMap<QueuedBeat>((act, index) => {
         learnFight(act, member, named);
+        // WHAT CAME THROUGH A FRIEND IS NOT PACED (rpg-project#935): no walk to
+        // present (its cells are not on the viewer's map), no turn beat to
+        // hold. It shows in the log at once, with its mark.
+        if (cameThroughFriend(act, member)) return [];
         const fight = new Set(named);
         for (const participant of participantsRef.current)
           fight.add(participant.member);

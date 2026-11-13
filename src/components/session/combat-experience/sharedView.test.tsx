@@ -10,6 +10,7 @@ import {
   ActSchema,
   Family,
   Loudness,
+  MoveKind,
   PartyKind,
   PartySchema,
   PerceivedSchema,
@@ -21,8 +22,10 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { refreshKeysForAct } from '../actRefreshKeys';
+import { arrivingWalk, ownWalk } from '../arrivingWalk';
 import { friendNames, throughMark } from '../sharedVia';
 import { buildActStory, type CombatStoryFact } from './actStory';
+import { foldLogRows } from './foldLogRows';
 import { isKeptRollAct } from './selection';
 import { speechAtSpeakers, voicesAtPlaces } from './speechAtSpeakers';
 import { StoryNoticeContent } from './StoryNoticeContent';
@@ -259,5 +262,58 @@ describe('known never', () => {
     });
     expect(isKeptRollAct(kept, viewer)).toBe(true);
     expect(isKeptRollAct(withVia(kept, [bea]), viewer)).toBe(false);
+  });
+});
+
+describe('a move that came through a friend (rpg-project#935)', () => {
+  // Bea steps onto a concealed cell Rin knows about and the viewer does not:
+  // a separate move segment, via Rin, no senses, cells the viewer's map lacks.
+  const viaMove = withVia(
+    create(ActSchema, {
+      session: 's',
+      id: 'r20',
+      act: 'move:9',
+      verb: 'move',
+      family: Family.ACT,
+      body: {
+        case: 'walk',
+        value: {
+          mover: bea,
+          path: [
+            { cell: { x: 7, y: -3 } },
+            { cell: { x: 8, y: -3 }, doors: ['hidden-door'] },
+          ],
+          kind: MoveKind.OWN,
+        },
+      },
+    }),
+    [rin]
+  );
+
+  it('logs with the mark, on its own row, and toasts nothing', () => {
+    const story = buildActStory([fact(viaMove)], context);
+    expect(story[0]!.headline).toBe('Bea moves');
+    expect(story[0]!.detail).toMatch(/· through Rin$/);
+    expect(story[0]!.toastRule).toBeUndefined();
+    expect(foldLogRows(story).map((row) => row.kind)).toEqual(['entry']);
+  });
+
+  it('is never animated: no route for the canvas, whoever moved', () => {
+    expect(arrivingWalk(viaMove, viewer)).toBeUndefined();
+    const ownViaMove = create(ActSchema, {
+      ...viaMove,
+      body: {
+        case: 'walk',
+        value: { ...viaMove.body.value, mover: member(viewer) },
+      },
+    } as never);
+    expect(ownWalk(ownViaMove, viewer)).toBeUndefined();
+    // The same walk seen with the viewer's own senses still animates.
+    const seen = create(ActSchema, { ...viaMove, perceived: undefined });
+    expect(arrivingWalk(seen, viewer)?.cells).toHaveLength(2);
+  });
+
+  it('asks for no refetch of the viewer’s own reads', () => {
+    expect(refreshKeysForAct(viaMove, viewer)).toEqual([]);
   });
 });

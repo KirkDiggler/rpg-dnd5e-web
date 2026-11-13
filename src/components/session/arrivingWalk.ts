@@ -23,6 +23,7 @@ import type { CubeCoord } from '../hex-grid/hexMath';
 import type { MoveKind } from '../hex-grid/moveKind';
 import type { OwnWalk } from './moveController';
 import { positionToCube } from './positionBridge';
+import { cameThroughFriend } from './sharedVia';
 
 export interface ArrivingWalk {
   readonly member: string;
@@ -55,6 +56,10 @@ export function arrivingWalk(
   member: string
 ): ArrivingWalk | undefined {
   if (act.body.case !== 'walk') return undefined;
+  // A WALK THAT CAME THROUGH A FRIEND IS NEVER ANIMATED (rpg-project#935):
+  // its cells are ones the viewer's map lacks, and the viewer's own view is
+  // the authority for where a member is drawn. It is a log row only.
+  if (cameThroughFriend(act, member)) return undefined;
   const mover = act.body.value.mover?.id;
   const kind = walkMoveKind(act.body.value);
   if (!mover || (mover === member && kind === 'own')) return undefined;
@@ -72,6 +77,7 @@ export function arrivingWalk(
  */
 export function ownWalk(act: Act, member: string): OwnWalk | undefined {
   if (act.body.case !== 'walk') return undefined;
+  if (cameThroughFriend(act, member)) return undefined;
   if (!member || act.body.value.mover?.id !== member) return undefined;
   if (walkMoveKind(act.body.value) !== 'own') return undefined;
   const cells = act.body.value.path.flatMap((step) =>
