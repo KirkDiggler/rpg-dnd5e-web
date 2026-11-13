@@ -5183,6 +5183,7 @@ describe('S0 one selection across the homes', () => {
         .map((node) => node.textContent)
     ).toEqual([
       'Cast',
+      'Party',
       'Tables',
       'Bundles',
       'Factions',
@@ -5197,6 +5198,29 @@ describe('S0 one selection across the homes', () => {
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+
+  it('the Party dial moves the real owner’s sharing (rpg-project#935)', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Party' })
+    );
+    const readBack = () =>
+      screen.getByLabelText('Party sharing read back').textContent;
+    expect(readBack()).toBe(
+      "The party's sharing is not set, so it is shared view, the default."
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Each their own' }));
+    expect(readBack()).toBe("The party's sharing is set to each their own.");
+    expect(
+      screen
+        .getByRole('button', { name: 'Each their own' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
   });
 });
 

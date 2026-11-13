@@ -32,6 +32,7 @@ import {
   validateSiteEndings,
   validateSiteExits,
   validateSiteFactions,
+  validateSiteParty,
   validateSiteScenarios,
   validateSiteTables,
   type SiteBundles,
@@ -41,6 +42,7 @@ import {
   type SiteExit,
   type SiteFaction,
   type SiteIntelRecord,
+  type SiteParty,
   type SiteScenarios,
   type SiteScope,
   type SiteTables,
@@ -65,6 +67,8 @@ export interface EncodeSingleRoomDungeonInput {
   tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  /** The root `party:` (rpg-project#935), carried as written. */
+  party?: SiteParty;
   intel?: SiteIntelRecord[];
   /** The way out(s) of this room, the ways it ends, its scenario bindings and
    * its secrets — carried verbatim (rpg-project#488 R2, rpg-project#490). All
@@ -85,6 +89,7 @@ export interface DecodeSingleRoomDungeonResult {
   tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  party?: SiteParty;
   intel?: SiteIntelRecord[];
   exits?: SiteExit[];
   endings?: SiteEnding[];
@@ -121,6 +126,9 @@ const ROOT_KEYS = [
   'tables',
   'factions',
   'dispositions',
+  // `party` sits between `dispositions` and `intel` in `SingleRoomSpec`
+  // (rpg-project#935).
+  'party',
   'intel',
   'exits',
   'endings',
@@ -421,6 +429,9 @@ function decodeSingleRoomRoot(
   const dispositions = Object.hasOwn(root, 'dispositions')
     ? validateSiteDispositions(root.dispositions)
     : [];
+  const party = Object.hasOwn(root, 'party')
+    ? validateSiteParty(root.party)
+    : {};
   const intel = Object.hasOwn(root, 'intel') ? validateIntel(root.intel) : [];
   const exits = Object.hasOwn(root, 'exits')
     ? validateSiteExits(root.exits)
@@ -464,6 +475,7 @@ function decodeSingleRoomRoot(
       tables,
       factions,
       dispositions,
+      party,
       intel,
       exits,
       endings,
@@ -500,6 +512,7 @@ function decodeSingleRoomRoot(
     ...(Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
+    ...(Object.keys(party).length > 0 ? { party } : {}),
     ...(intel.length > 0 ? { intel } : {}),
     ...(exits.length > 0 ? { exits } : {}),
     ...(endings.length > 0 ? { endings } : {}),

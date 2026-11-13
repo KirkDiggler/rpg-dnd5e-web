@@ -82,6 +82,7 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
+import { withSharing, type SharingWord } from './partySharing';
 import { PlacedMonstersContext } from './placedMonstersContext';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { documentPlacementNames } from './placementNames';
@@ -5086,6 +5087,13 @@ export function WorldBuildingConcept({
                 if (bundles === undefined || Object.keys(bundles).length === 0)
                   delete scope.bundles;
                 else scope.bundles = bundles;
+                return commitRoomDocument({ ...current, scope });
+              }
+            ),
+            commitPartySharing: guardSnapshotIntent(
+              (word: SharingWord | undefined): boolean => {
+                const current = roomHistoryRef.current.present;
+                const scope = withSharing(current.scope, word);
                 return commitRoomDocument({ ...current, scope });
               }
             ),
