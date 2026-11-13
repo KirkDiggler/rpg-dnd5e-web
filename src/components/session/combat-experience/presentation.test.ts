@@ -1121,7 +1121,7 @@ describe('the resolved automatic discovery check (rpg-project#523)', () => {
     expect(selectVisibleStory(state)).toMatchObject([
       {
         eyebrow: 'Search',
-        headline: 'Aldric searches',
+        headline: 'You search',
         detail: 'failed perception check, 12 vs 15',
       },
     ]);

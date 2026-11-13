@@ -82,7 +82,7 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
     // his pick is a quiet row beside it.
     expect(said.group).toBe(bump.group);
     expect(said.nested).toBe(true);
-    expect(said.headline).toBe(`Gate Guard says to Alice: “${LINE}”`);
+    expect(said.headline).toBe(`Gate Guard says to you: “${LINE}”`);
     expect(said.toastRule?.case).toBe('answer-to-your-bump');
     expect(rowOf(rows, theGuardAnswers).toastRule).toBeUndefined();
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
@@ -98,7 +98,7 @@ describe('the bump and the guard’s answer, from the wire (rpg-project#842)', (
       'Gate Guard bars the door — Alice at the gate wall door'
     );
     const said = rowOf(rows, hisLineAtTheDoor);
-    expect(said.headline).toBe(`Gate Guard says to Alice: “${SHORTER_LINE}”`);
+    expect(said.headline).toBe(`Gate Guard says to you: “${SHORTER_LINE}”`);
     expect(said.nested).toBe(true);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'answer-to-your-bump',
@@ -184,7 +184,7 @@ describe('the hail, spoken to the viewer by name (rpg-project#923)', () => {
     const rows = story(theHail);
     const said = rowOf(rows, hail);
     expect(said.toastRule?.case).toBe('line-to-you');
-    expect(said.toastText).toContain(`Gate Guard says to Alice: “${HAIL}”`);
+    expect(said.toastText).toContain(`Gate Guard says to you: “${HAIL}”`);
     expect(rows.map((r) => r.toastRule?.case).filter(Boolean)).toEqual([
       'line-to-you',
     ]);

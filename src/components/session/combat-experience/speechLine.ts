@@ -22,21 +22,28 @@ import {
   type Party,
   type Speech,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import { subjectSays, toWhom } from '../sharedVia';
 
-/** Loudness as the verb a line is said with. */
-export function loudnessVerb(loudness: Loudness): string {
+/** Loudness as the verb a line is said with, in its base form. */
+export function loudnessBase(loudness: Loudness): string {
   switch (loudness) {
     case Loudness.WHISPER:
-      return 'whispers';
+      return 'whisper';
     case Loudness.SHOUT:
-      return 'shouts';
+      return 'shout';
     case Loudness.SCREAM:
-      return 'screams';
+      return 'scream';
     default:
       // SPEAK, and UNSPECIFIED which a well-formed Speech never carries: an
       // unmarked line is spoken.
-      return 'says';
+      return 'say';
   }
+}
+
+/** Loudness as the verb a line is said with: "says", "shouts". */
+export function loudnessVerb(loudness: Loudness): string {
+  const base = loudnessBase(loudness);
+  return base === 'say' ? 'says' : `${base}s`;
 }
 
 /** A voice heard with no words, by loudness: "a voice", "a voice shouting". */
@@ -73,22 +80,36 @@ export interface SpeechWords {
 
 /**
  * The line a viewer reads for a `Speech`. `name` turns a party into the name
- * the reader knows it by (the describer's own `partyName`).
+ * the reader knows it by (the describer's own `partyName`); `viewer` is who
+ * reads it, so their own line reads "You say …" and a line said to them
+ * "… to you" (`subjectSays`, `toWhom`).
  */
 export function speechWords(
   speech: Speech,
-  name: (party: Party | undefined) => string
+  name: (party: Party | undefined) => string,
+  viewer = ''
 ): SpeechWords {
-  const verb = loudnessVerb(speech.loudness);
-  const speaker = speech.speaker?.id ? name(speech.speaker) : '';
-  const to = speech.spokenTo?.id ? ` to ${name(speech.spokenTo)}` : '';
+  const speakerParty = speech.speaker;
+  const speaker = speakerParty?.id
+    ? subjectSays(
+        [speakerParty.id],
+        viewer,
+        () => name(speakerParty),
+        loudnessBase(speech.loudness),
+        loudnessVerb(speech.loudness)
+      )
+    : '';
+  const spokenTo = speech.spokenTo;
+  const to = spokenTo?.id
+    ? ` to ${toWhom(spokenTo.id, viewer, () => name(spokenTo))}`
+    : '';
   const where = speaker ? '' : hopsPhrase(speech.hops);
   const caught = speech.words !== undefined;
   let headline: string;
   if (caught) {
-    headline = `${speaker || 'Someone'} ${verb}${to}: “${speech.words}”`;
+    headline = `${speaker || `Someone ${loudnessVerb(speech.loudness)}`}${to}: “${speech.words}”`;
   } else if (speaker) {
-    headline = `${speaker} ${verb}${to}`;
+    headline = `${speaker}${to}`;
   } else {
     headline = `You hear ${voicePhrase(speech.loudness)}`;
   }

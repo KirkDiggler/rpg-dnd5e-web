@@ -103,12 +103,12 @@ describe('without the retired messages', () => {
     );
     expect(story.map((row) => [row.headline, row.toastRule?.case])).toEqual([
       [
-        'Bree says to Gate guard: “We’re the troupe for tonight’s feast.”',
+        'You say to Gate guard: “We’re the troupe for tonight’s feast.”',
         'own-outcome',
       ],
       ['Gate guard: admit', undefined],
       [
-        'Gate guard says to Bree: “Through to the hall, then.”',
+        'Gate guard says to you: “Through to the hall, then.”',
         'answer-to-your-line',
       ],
     ]);

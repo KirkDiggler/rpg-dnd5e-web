@@ -206,7 +206,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       },
       'speak'
     ),
-    'Alice says: “Evening.”',
+    'You say: “Evening.”',
   ],
   state: [
     act(Family.STATE, {
@@ -224,7 +224,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
         heard: { kind: 'footsteps', hops: 2 },
       },
     }),
-    'Alice hears footsteps',
+    'You hear footsteps',
   ],
   clock: [
     act(Family.CLOCK, {

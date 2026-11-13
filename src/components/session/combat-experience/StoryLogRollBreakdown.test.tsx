@@ -121,7 +121,7 @@ describe('rows group by act id', () => {
       context
     );
     expect(story.map((e) => [e.headline, e.nested])).toEqual([
-      ['Aldric says to gate: “Stand aside.”', false],
+      ['You say to gate: “Stand aside.”', false],
       ['gate: refuse', true],
     ]);
     render(<StoryLog {...props} story={story} />);
