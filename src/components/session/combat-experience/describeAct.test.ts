@@ -224,7 +224,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
         heard: { kind: 'footsteps', hops: 2 },
       },
     }),
-    'Alice hears footsteps',
+    'You hear footsteps',
   ],
   clock: [
     act(Family.CLOCK, {

@@ -5754,7 +5754,7 @@ describe('SessionEncounterView production combat integration', () => {
       renderView();
       await screen.findByTestId('session-canvas');
       result.release();
-      expect(await screen.findByText('Aldric searches')).toBeTruthy();
+      expect(await screen.findByText('You search')).toBeTruthy();
       // The server's verdict, not total against `against`: the line says
       // it, and the formula line carries the roll (#1301).
       expect(screen.getByText('failed perception check')).toBeTruthy();

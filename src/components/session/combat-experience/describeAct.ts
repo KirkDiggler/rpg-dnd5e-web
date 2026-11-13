@@ -36,9 +36,9 @@ import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
 import {
   cameThroughFriend,
-  friendNames,
-  perceivers,
+  perceiverSays,
   throughMark,
+  type PerceptionVerb,
 } from '../sharedVia';
 import { hopsPhrase, speechWords } from './speechLine';
 
@@ -614,18 +614,15 @@ function describeWith(
     }
     case 'perception': {
       const p = body.value;
-      // WHO PERCEIVED IT (rpg-project#935): the observer, or the friends it
-      // came through — never the viewer for what they did not perceive.
-      const who = perceivers(act, context.viewerMember);
-      const subject =
-        who.length > 0
-          ? friendNames(who, context.memberNames)
-          : name(p.observer);
+      // WHO PERCEIVED IT, SAID ONE WAY (rpg-project#935): "You hear" for the
+      // viewer's own, "Bea hears" for anyone else's (`perceiverSays`).
+      const says = (verb: PerceptionVerb) =>
+        perceiverSays(act, context.viewerMember, context.memberNames, verb);
       switch (p.sense) {
         case Sense.HEARING:
           return {
             eyebrow: 'Heard',
-            headline: `${subject} hears ${p.heard?.kind ? soundPhrase(p.heard.kind) : 'something'}`,
+            headline: `${says('hear')} ${p.heard?.kind ? soundPhrase(p.heard.kind) : 'something'}`,
             // A sound's hops are ROOMS it crossed, never cells (the same
             // words a Speech's voice uses, `speechLine.hopsPhrase`).
             detail: p.heard ? hopsPhrase(p.heard.hops) : '',
@@ -640,7 +637,7 @@ function describeWith(
           const check = ability ? `${ability} check` : '';
           return {
             eyebrow: 'Search',
-            headline: `${subject} searches`,
+            headline: says('search'),
             detail: rw.withRoll(`${verdict} ${check}`.trim(), roll),
             tone: roll?.beaten ? 'success' : 'neutral',
             roll,
@@ -649,7 +646,7 @@ function describeWith(
         case Sense.REVEAL:
           return {
             eyebrow: 'Found',
-            headline: `${subject} finds ${authoredWords(p.revealed?.concealment ?? 'something')}`,
+            headline: `${says('find')} ${authoredWords(p.revealed?.concealment ?? 'something')}`,
             detail: '',
             tone: 'success',
           };
@@ -666,8 +663,8 @@ function describeWith(
           return {
             eyebrow: 'Seen',
             headline: gained.length
-              ? `${subject} sees ${seen(gained)}`
-              : `${subject} loses sight of ${seen(lost)}`,
+              ? `${says('see')} ${seen(gained)}`
+              : `${says('lose sight of')} ${seen(lost)}`,
             detail:
               gained.length && lost.length
                 ? `loses sight of ${seen(lost)}`

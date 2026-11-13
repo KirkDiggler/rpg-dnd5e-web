@@ -96,3 +96,41 @@ export function perceivers(act: Act, viewer: string): readonly Party[] {
   if (observer?.id === viewer && friends.length) return friends;
   return observer?.id ? [observer] : [];
 }
+
+/** The verbs a perception line is said with, in their base form. */
+export type PerceptionVerb =
+  | 'hear'
+  | 'see'
+  | 'lose sight of'
+  | 'find'
+  | 'search';
+
+const THIRD_PERSON: Readonly<Record<PerceptionVerb, string>> = {
+  hear: 'hears',
+  see: 'sees',
+  'lose sight of': 'loses sight of',
+  find: 'finds',
+  search: 'searches',
+};
+
+/**
+ * THE ONE PLACE A PERCEPTION LINE'S SUBJECT AND VERB ARE DECIDED
+ * (rpg-project#935). The viewer's own perception reads "You hear", "You see",
+ * "You lose sight of", "You find", "You search"; anyone else's reads with
+ * their display name and the verb agreeing: "Bea hears", "Bea and Rin hear".
+ * A perceiver the client has no name for is "A party member" — never a
+ * guessed name or a raw id. Who perceived it is `perceivers` (the observer,
+ * or the friends an entry came through), never inferred.
+ */
+export function perceiverSays(
+  act: Act,
+  viewer: string,
+  names: Readonly<Record<string, string>> | undefined,
+  verb: PerceptionVerb
+): string {
+  const who = perceivers(act, viewer);
+  if (who.length === 1 && who[0]!.id === viewer) return `You ${verb}`;
+  const subject = who.length ? friendNames(who, names) : 'a party member';
+  const said = `${subject.charAt(0).toUpperCase()}${subject.slice(1)}`;
+  return `${said} ${who.length > 1 ? verb : THIRD_PERSON[verb]}`;
+}
