@@ -20,7 +20,7 @@ import {
   StateKind,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-import { cameThroughFriend } from './sharedVia';
+import { isOwnKnowledge } from './sharedVia';
 import type { SessionRefreshKey } from './useCoalescedSessionRefreshes';
 
 const COMBAT: SessionRefreshKey[] = ['characterData', 'afford', 'view'];
@@ -37,7 +37,8 @@ export function refreshKeysForAct(
   // WHAT CAME THROUGH A FRIEND CHANGED NOTHING OF THE VIEWER'S
   // (rpg-project#935: known never): no sheet, no offer, no map to re-read
   // for it. The funnel's always-on `turn` and `afford` still run around it.
-  if (cameThroughFriend(act, member)) return [];
+  // A perception another member made is likewise not the viewer's to re-read.
+  if (!isOwnKnowledge(act, member)) return [];
   const body = act.body;
   switch (body.case) {
     // moved: the mover re-reads where they are; everyone else re-reads view.

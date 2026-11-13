@@ -150,8 +150,9 @@ describe('shown like own', () => {
       [bea]
     );
     const [row] = buildActStory([fact(clang)], context);
-    expect(row!.headline).toBe('Bea hears clang');
-    expect(row!.detail).toBe('1 room away · through Bea');
+    // The headline already names Bea as the one who heard it: no mark.
+    expect(row!.headline).toBe('Bea hears metal clanging');
+    expect(row!.detail).toBe('1 room away');
     expect(row!.toastRule?.case).toBe('heard-sound');
     // Another member's sound that did NOT reach the viewer is still not news.
     const notShared = perception('r4', {
@@ -164,7 +165,7 @@ describe('shown like own', () => {
     );
   });
 
-  it('a friend’s discovery stays in the log, marked', () => {
+  it('a friend’s discovery stays in the log, named for the friend who made it', () => {
     const found = withVia(
       perception('r5', {
         observer: bea,
@@ -174,8 +175,45 @@ describe('shown like own', () => {
       [bea]
     );
     const [row] = buildActStory([fact(found)], context);
-    expect(row!.detail).toBe('through Bea');
+    expect(row!.headline).toBe('Bea finds hidden door');
+    expect(row!.detail).toBe('');
     expect(row!.toastRule).toBeUndefined();
+    // A friend named in via but not as the observer still carries the mark.
+    const both = withVia(found, [bea, rin]);
+    expect(buildActStory([fact(both)], context)[0]!.detail).toBe('through Rin');
+  });
+
+  it('the viewer is never said to have perceived what came through a friend', () => {
+    const misnamed = withVia(
+      perception('r13', {
+        observer: member(viewer),
+        sense: Sense.HEARING,
+        heard: { kind: 'crash', hops: 2 },
+      }),
+      [bea]
+    );
+    const [row] = buildActStory([fact(misnamed)], context);
+    expect(row!.headline).toBe('Bea hears a crash');
+    expect(row!.headline).not.toMatch(/^Tam/);
+  });
+
+  it('a friend’s sighting is a log row; the viewer’s own is not', () => {
+    const seen = perception('r14', {
+      observer: bea,
+      sense: Sense.SIGHT,
+      sighted: { gained: ['gate-1'], lost: [] },
+    });
+    expect(
+      buildActStory([fact(withVia(seen, [bea]))], context).map(
+        (row) => row.headline
+      )
+    ).toEqual(['Bea sees Gate guard']);
+    const own = perception('r15', {
+      observer: member(viewer),
+      sense: Sense.SIGHT,
+      sighted: { gained: ['gate-1'] },
+    });
+    expect(buildActStory([fact(own)], context)).toEqual([]);
   });
 
   it('one utterance shows once, whoever’s version arrives second', () => {
@@ -315,5 +353,30 @@ describe('a move that came through a friend (rpg-project#935)', () => {
 
   it('asks for no refetch of the viewer’s own reads', () => {
     expect(refreshKeysForAct(viaMove, viewer)).toEqual([]);
+  });
+});
+
+describe('today’s streams, with no via, are unchanged', () => {
+  it('own entries carry no mark, toast as before and refresh as before', () => {
+    const heard = perception('r30', {
+      observer: member(viewer),
+      sense: Sense.HEARING,
+      heard: { kind: 'clang', hops: 1 },
+    });
+    const [row] = buildActStory([fact(heard)], context);
+    expect(row!.detail).toBe('1 room away');
+    expect(row!.toastRule?.case).toBe('heard-sound');
+    const cells = perception('r31', {
+      observer: member(viewer),
+      sense: Sense.CELLS,
+    });
+    expect(refreshKeysForAct(cells, viewer)).toEqual(['view', 'roster']);
+    const line = speech('r32', { speaker: guard, words: 'Halt!' }, [
+      Sense.SIGHT,
+      Sense.HEARING,
+    ]);
+    const [said] = buildActStory([fact(line)], context);
+    expect(said!.detail).toBe('');
+    expect(speechAtSpeakers([said!]).get('gate-1')).toBe('Halt!');
   });
 });

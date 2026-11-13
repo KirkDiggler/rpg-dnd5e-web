@@ -8,7 +8,7 @@ import {
   assertPropPresentations,
   assertPropSightings,
 } from '@/components/session/propPresentations';
-import { cameThroughFriend } from '@/components/session/sharedVia';
+import { isOwnKnowledge } from '@/components/session/sharedVia';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
 import { nextViewerHoldingsFromAct } from '@/components/session/viewerHoldings';
 import { mark } from '@/dev/perfMarks';
@@ -107,8 +107,10 @@ export function useSessionKnowledge(session: string, member: string) {
       // SHOWN, NOT KNOWN (rpg-project#935): a friend's revealed cells or found
       // secret, reaching the viewer at shared view, is in their story and
       // never on their map or among their known secrets.
+      // Own means both: nothing came through a friend AND the viewer is the
+      // observer. A perception naming anyone else patches nothing.
       const perceived =
-        act.body.case === 'perception' && !cameThroughFriend(act, member)
+        act.body.case === 'perception' && isOwnKnowledge(act, member)
           ? act.body.value
           : undefined;
       const cells = perceived?.cells
@@ -260,7 +262,7 @@ export function useSessionKnowledge(session: string, member: string) {
         if (
           act.body.case === 'perception' &&
           act.body.value.cells &&
-          !cameThroughFriend(act, member)
+          isOwnKnowledge(act, member)
         ) {
           // SEEN-NOW SURVIVES A REVEAL PATCH (see `ticket`).
           const patched = ++ticket.current;

@@ -1086,3 +1086,65 @@ describe('what came through a friend is shown, not known (rpg-project#935)', () 
     ]);
   });
 });
+
+describe('own knowledge is the viewer’s own observation with nothing through a friend (rpg-project#935)', () => {
+  const door = () =>
+    revealAct({
+      concealment: 'hidden',
+      cells: [{ x: 1, y: 0 }],
+      structuralDoors: [doorRecord('hidden-door')],
+    });
+  const as = (
+    act: ReturnType<typeof revealAct>,
+    observerId: string,
+    via: string[]
+  ) =>
+    create(ActSchema, {
+      ...act,
+      body: {
+        case: 'perception',
+        value: {
+          ...(act.body.value as object),
+          observer: { kind: PartyKind.MEMBER, id: observerId },
+        },
+      },
+      perceived: create(PerceivedSchema, {
+        via: via.map((id) => ({ kind: PartyKind.MEMBER, id })),
+      }),
+    } as never) as ReturnType<typeof revealAct>;
+
+  it.each([
+    ['both own: empty via, observer is the viewer', 'a', [], true],
+    ['empty via, observer another member', 'bea', [], false],
+    ['via a friend, observer the viewer', 'a', ['bea'], false],
+    ['via a friend, observer the friend', 'bea', ['bea'], false],
+  ] as const)('%s', async (_, observerId, via, patches) => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptAct(as(door(), observerId, [...via]));
+    });
+    expect(
+      result.current.atlas?.structuralDoors.map((d) => d.id) ?? []
+    ).toEqual(patches ? ['hidden-door'] : []);
+  });
+
+  it('today’s stream, with no Perceived at all, patches exactly as before', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const plain = door();
+    expect(plain.perceived).toBeUndefined();
+    act(() => {
+      result.current.acceptAct(plain);
+    });
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'hidden-door',
+    ]);
+  });
+});

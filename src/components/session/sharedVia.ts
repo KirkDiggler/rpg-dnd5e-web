@@ -62,6 +62,37 @@ export function throughMark(
   viewer: string,
   names: Readonly<Record<string, string>> | undefined
 ): string {
-  const friends = throughFriends(act, viewer);
+  // A perception's headline already names who perceived it ("Bea hears
+  // metal clanging"); the mark names only the friends it does not.
+  const named = new Set(
+    act ? perceivers(act, viewer).map((party) => party.id) : []
+  );
+  const friends = throughFriends(act, viewer).filter((p) => !named.has(p.id));
   return friends.length ? `through ${friendNames(friends, names)}` : '';
+}
+
+/**
+ * Whether an act is the viewer's own KNOWLEDGE (rpg-project#935): nothing of
+ * it came through a friend, AND — for a perception — the viewer is the one
+ * who perceived it. Either saying otherwise makes the entry shown, never
+ * known: no map or secret patch, no refetch of the viewer's own reads.
+ */
+export function isOwnKnowledge(act: Act | undefined, viewer: string): boolean {
+  if (!act || cameThroughFriend(act, viewer)) return false;
+  if (act.body.case !== 'perception') return true;
+  return act.body.value.observer?.id === viewer;
+}
+
+/**
+ * Who a perception names as its perceiver, as parties: the observer — or,
+ * should a server name the viewer as observer of an entry that came through
+ * friends, those friends, so the viewer is never said to have perceived what
+ * they did not.
+ */
+export function perceivers(act: Act, viewer: string): readonly Party[] {
+  if (act.body.case !== 'perception') return [];
+  const observer = act.body.value.observer;
+  const friends = throughFriends(act, viewer);
+  if (observer?.id === viewer && friends.length) return friends;
+  return observer?.id ? [observer] : [];
 }

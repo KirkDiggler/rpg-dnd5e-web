@@ -31,9 +31,15 @@ import {
   type Party,
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import { soundPhrase } from '../heardBeat';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
-import { throughMark } from '../sharedVia';
+import {
+  cameThroughFriend,
+  friendNames,
+  perceivers,
+  throughMark,
+} from '../sharedVia';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -608,11 +614,18 @@ function describeWith(
     }
     case 'perception': {
       const p = body.value;
+      // WHO PERCEIVED IT (rpg-project#935): the observer, or the friends it
+      // came through — never the viewer for what they did not perceive.
+      const who = perceivers(act, context.viewerMember);
+      const subject =
+        who.length > 0
+          ? friendNames(who, context.memberNames)
+          : name(p.observer);
       switch (p.sense) {
         case Sense.HEARING:
           return {
             eyebrow: 'Heard',
-            headline: `${name(p.observer)} hears ${authoredWords(p.heard?.kind ?? 'something')}`,
+            headline: `${subject} hears ${p.heard?.kind ? soundPhrase(p.heard.kind) : 'something'}`,
             // A sound's hops are ROOMS it crossed, never cells (the same
             // words a Speech's voice uses, `speechLine.hopsPhrase`).
             detail: p.heard ? hopsPhrase(p.heard.hops) : '',
@@ -627,7 +640,7 @@ function describeWith(
           const check = ability ? `${ability} check` : '';
           return {
             eyebrow: 'Search',
-            headline: `${name(p.observer)} searches`,
+            headline: `${subject} searches`,
             detail: rw.withRoll(`${verdict} ${check}`.trim(), roll),
             tone: roll?.beaten ? 'success' : 'neutral',
             roll,
@@ -636,12 +649,34 @@ function describeWith(
         case Sense.REVEAL:
           return {
             eyebrow: 'Found',
-            headline: `${name(p.observer)} finds ${authoredWords(p.revealed?.concealment ?? 'something')}`,
+            headline: `${subject} finds ${authoredWords(p.revealed?.concealment ?? 'something')}`,
             detail: '',
             tone: 'success',
           };
+        case Sense.SIGHT: {
+          // The viewer's own sightings are drawn on the canvas, not logged.
+          // A friend's (rpg-project#935) cannot be drawn — shown, never
+          // known — so it is a log row: who they saw come or go.
+          if (!cameThroughFriend(act, context.viewerMember)) return null;
+          const seen = (ids: readonly string[]) =>
+            ids.map((id) => context.memberNames?.[id] ?? id).join(', ');
+          const gained = p.sighted?.gained ?? [];
+          const lost = p.sighted?.lost ?? [];
+          if (gained.length === 0 && lost.length === 0) return null;
+          return {
+            eyebrow: 'Seen',
+            headline: gained.length
+              ? `${subject} sees ${seen(gained)}`
+              : `${subject} loses sight of ${seen(lost)}`,
+            detail:
+              gained.length && lost.length
+                ? `loses sight of ${seen(lost)}`
+                : '',
+            tone: 'neutral',
+          };
+        }
         default:
-          return null; // sight and cells: the canvas draws them
+          return null; // cells: the canvas draws them
       }
     }
     case 'clock': {
