@@ -19,6 +19,7 @@ import {
   ClockMark,
   Family,
   PartyKind,
+  PerceivedSchema,
   Sense,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -995,5 +996,93 @@ describe('the act stream intake (rpg-project#630)', () => {
       )
     );
     expect(result.current.snapshot).toBe(before);
+  });
+});
+
+describe('what came through a friend is shown, not known (rpg-project#935)', () => {
+  const throughBea = <T extends ReturnType<typeof revealAct>>(act: T): T =>
+    create(ActSchema, {
+      ...act,
+      perceived: create(PerceivedSchema, {
+        senses: [Sense.SIGHT],
+        via: [{ kind: PartyKind.MEMBER, id: 'bea' }],
+      }),
+    }) as T;
+
+  it('a friend’s reveal and a friend’s learned cells patch nothing', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const before = result.current.atlas;
+    act(() => {
+      result.current.acceptAct(
+        throughBea(
+          revealAct({
+            concealment: 'hidden',
+            cells: [{ x: 1, y: 0 }],
+            structuralDoors: [doorRecord('hidden-door')],
+          })
+        )
+      );
+      result.current.acceptAct(
+        throughBea(
+          cellsAct({
+            regions: [{ id: 'crypt', cells: [{ x: 1, y: 0 }] }],
+            structuralWalls: [wallRecord('w', ['cut-1'])],
+          })
+        )
+      );
+    });
+    expect(result.current.atlas).toBe(before);
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+  });
+
+  it('the same reveal with empty via patches as today', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const own = create(ActSchema, {
+      ...revealAct({
+        concealment: 'hidden',
+        cells: [{ x: 1, y: 0 }],
+        structuralDoors: [doorRecord('hidden-door')],
+      }),
+      perceived: create(PerceivedSchema, { senses: [Sense.SIGHT], via: [] }),
+    });
+    act(() => {
+      result.current.acceptAct(own);
+    });
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'hidden-door',
+    ]);
+  });
+
+  it('a via naming only the viewer is the viewer’s own, and patches', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptAct(
+        create(ActSchema, {
+          ...revealAct({
+            concealment: 'hidden',
+            cells: [{ x: 1, y: 0 }],
+            structuralDoors: [doorRecord('hidden-door')],
+          }),
+          perceived: create(PerceivedSchema, {
+            via: [{ kind: PartyKind.MEMBER, id: 'a' }],
+          }),
+        })
+      );
+    });
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'hidden-door',
+    ]);
   });
 });

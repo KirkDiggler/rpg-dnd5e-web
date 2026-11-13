@@ -33,6 +33,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
+import { throughMark } from '../sharedVia';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -223,11 +224,23 @@ export function describeAct(
   act: Act,
   context: DescribeContext
 ): DescribedAct | null {
-  const described = describeWith(act, context, WITH_ROLLS);
+  const marked = withThroughMark(act, context);
+  const described = marked(describeWith(act, context, WITH_ROLLS));
   if (!described) return null;
-  const plain = describeWith(act, context, WITHOUT_ROLLS);
+  const plain = marked(describeWith(act, context, WITHOUT_ROLLS));
   const outcome = (plain ?? described).detail;
   return { ...described, text: describedLine(plain ?? described), outcome };
+}
+
+/**
+ * WHAT CAME THROUGH A FRIEND SAYS SO (rpg-project#935): the mark "through
+ * Bea" closes the line's detail, so the log row, the toast and every form
+ * that reads the describer carry it. The viewer's own entry has no mark.
+ */
+function withThroughMark(act: Act, context: DescribeContext) {
+  const mark = throughMark(act, context.viewerMember, context.memberNames);
+  return <T extends { detail: string }>(d: T | null): T | null =>
+    d && mark ? { ...d, detail: d.detail ? `${d.detail} · ${mark}` : mark } : d;
 }
 
 /** The roll wording a describer pass uses: the log's detail, or none. */

@@ -193,6 +193,7 @@ describe('the hail, spoken to the viewer by name (rpg-project#923)', () => {
 
   it('a voice heard under another tag is not this line, and still toasts', () => {
     const elsewhere = lineWith({
+      utterance: 'u-elsewhere',
       speaker: undefined,
       spokenTo: undefined,
       words: undefined,

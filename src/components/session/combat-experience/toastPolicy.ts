@@ -50,6 +50,8 @@ import {
   type Speech,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 
+import { cameThroughFriend } from '../sharedVia';
+
 export type ToastCase =
   | 'own-outcome'
   | 'done-to-you'
@@ -253,10 +255,15 @@ function toastCase(
         return fightIncludes(act, member) ? 'fight-ended' : null;
       return windowFor(act, member) ? 'your-window' : null;
     }
+    // A sound heard is the observer's cue — and, at shared view, the cue of
+    // the viewer it reached through that friend (rpg-project#935: shown like
+    // own). Another member's perception that did not reach the viewer is
+    // still not news.
     case Family.PERCEPTION:
       return act.body.case === 'perception' &&
         act.body.value.sense === Sense.HEARING &&
-        act.body.value.observer?.id === member
+        (act.body.value.observer?.id === member ||
+          cameThroughFriend(act, member))
         ? 'heard-sound'
         : null;
     // A TABLE PICK NEVER TOASTS (rpg-project#934). Whatever a creature says

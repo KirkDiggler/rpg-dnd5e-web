@@ -8,6 +8,7 @@ import {
   assertPropPresentations,
   assertPropSightings,
 } from '@/components/session/propPresentations';
+import { cameThroughFriend } from '@/components/session/sharedVia';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
 import { nextViewerHoldingsFromAct } from '@/components/session/viewerHoldings';
 import { mark } from '@/dev/perfMarks';
@@ -103,8 +104,13 @@ export function useSessionKnowledge(session: string, member: string) {
    */
   const applyAct = useCallback(
     (state: GetKnowledgeResponse, act: Act): GetKnowledgeResponse => {
+      // SHOWN, NOT KNOWN (rpg-project#935): a friend's revealed cells or found
+      // secret, reaching the viewer at shared view, is in their story and
+      // never on their map or among their known secrets.
       const perceived =
-        act.body.case === 'perception' ? act.body.value : undefined;
+        act.body.case === 'perception' && !cameThroughFriend(act, member)
+          ? act.body.value
+          : undefined;
       const cells = perceived?.cells
         ? cellsPatchOf(perceived.cells)
         : undefined;
@@ -251,7 +257,11 @@ export function useSessionKnowledge(session: string, member: string) {
         const after = applyAct(before, act);
         if (after === before) return;
         install(after);
-        if (act.body.case === 'perception' && act.body.value.cells) {
+        if (
+          act.body.case === 'perception' &&
+          act.body.value.cells &&
+          !cameThroughFriend(act, member)
+        ) {
           // SEEN-NOW SURVIVES A REVEAL PATCH (see `ticket`).
           const patched = ++ticket.current;
           const seen = before.view?.visibleCells ?? [];
@@ -267,7 +277,7 @@ export function useSessionKnowledge(session: string, member: string) {
         if (reason instanceof MissingStructuralWallError) void refetch();
       }
     },
-    [applyAct, install, refetch, session]
+    [applyAct, install, member, refetch, session]
   );
 
   useEffect(() => {

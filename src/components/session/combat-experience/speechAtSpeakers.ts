@@ -15,8 +15,21 @@
  * the message as sent.
  */
 import { speechSound } from '../heardBeat';
+import { throughMark } from '../sharedVia';
 import { speechWords } from './speechLine';
 import type { CombatExperienceStoryExchange } from './types';
+
+/**
+ * A line with whose senses it came through, when a friend's (rpg-project#935):
+ * "Halt! — through Bea". The viewer's own line is unmarked.
+ */
+function marked(entry: CombatExperienceStoryExchange, line: string): string {
+  const context = entry.describeContext;
+  const mark = context
+    ? throughMark(entry.act, context.viewerMember, context.memberNames)
+    : '';
+  return mark ? `${line} — ${mark}` : line;
+}
 
 /** Each speaker's line on screen, by member id; the newest line wins. */
 export function speechAtSpeakers(
@@ -27,7 +40,7 @@ export function speechAtSpeakers(
     const act = entry.act;
     if (!entry.toastRule || act?.body.case !== 'speech') continue;
     const { speaker, words } = act.body.value;
-    if (speaker?.id && words) speech.set(speaker.id, words);
+    if (speaker?.id && words) speech.set(speaker.id, marked(entry, words));
   }
   return speech;
 }
@@ -70,9 +83,11 @@ export function voicesAtPlaces(
         id: entry.id,
         x: sound.position.x,
         y: sound.position.y,
-        line:
+        line: marked(
+          entry,
           speech.words ??
-          speechWords(speech, () => '').headline.replace(/^You hear /, ''),
+            speechWords(speech, () => '').headline.replace(/^You hear /, '')
+        ),
       })
     );
   };

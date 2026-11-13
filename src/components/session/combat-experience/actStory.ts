@@ -153,10 +153,19 @@ export function buildActStory(
   // Each bump by act tag, so the barrier's answer under it is told apart as
   // speech to the member who bumped (toast case `answer-to-your-bump`).
   const bumps = new Map<string, Bump>();
+  // ONE SPOKEN THING SHOWS ONCE (rpg-project#935). At shared view the server
+  // sends one merged version of an utterance; should the viewer's own and a
+  // friend's both arrive, the first wins, never a second row and toast.
+  const utterances = new Set<string>();
   for (const fact of facts) {
     const id = actStoryId(fact.act, fact.index);
     if (seen.has(id)) continue;
     seen.add(id);
+    if (fact.act.body.case === 'speech' && fact.act.body.value.utterance) {
+      const utterance = fact.act.body.value.utterance;
+      if (utterances.has(utterance)) continue;
+      utterances.add(utterance);
+    }
     const act = fact.act;
     let fightEdge: 'formed' | 'dissolved' | undefined;
     if (act.body.case === 'clock' && fightIncludes(act, context.viewerMember)) {

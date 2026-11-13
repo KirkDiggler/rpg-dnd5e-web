@@ -5,6 +5,7 @@ import {
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { ReactElement } from 'react';
+import { friendNames, throughFriends } from '../sharedVia';
 import {
   damageWord,
   formatRollFormula,
@@ -17,7 +18,7 @@ import styles from './StoryNotices.module.css';
 import type { CombatExperienceStoryExchange } from './types';
 
 /** Applied amounts and roll components are distinct provider facts, never a client sum. */
-export function StoryNoticeContent({
+function NoticeContent({
   entry,
   showDescription = true,
 }: {
@@ -139,6 +140,34 @@ const LOUDNESS_WORD: Readonly<Record<Loudness, string>> = {
  * viewer perceived it, and plainly what they did not. Read off the message
  * only — an absent part is "not seen" or "not caught", never a guess.
  */
+/**
+ * A notice's Details (rpg-project#934, #935): the act's own content, and —
+ * for an entry that came through a friend — whose senses it came through, as
+ * a row ("Through: Bea"). A spoken thing carries that row in its own facts.
+ */
+export function StoryNoticeContent(props: {
+  entry: CombatExperienceStoryExchange;
+  showDescription?: boolean;
+}): ReactElement {
+  const { act, describeContext: context } = props.entry;
+  const friends =
+    act && context && act.body.case !== 'speech'
+      ? throughFriends(act, context.viewerMember)
+      : [];
+  if (friends.length === 0) return <NoticeContent {...props} />;
+  return (
+    <>
+      <NoticeContent {...props} />
+      <dl className={styles.facts} data-testid="through-facts">
+        <div>
+          <dt>Through</dt>
+          <dd>{friendNames(friends, context?.memberNames)}</dd>
+        </div>
+      </dl>
+    </>
+  );
+}
+
 function SpeechFacts({ act, context }: { act: Act; context: DescribeContext }) {
   if (act.body.case !== 'speech') return null;
   const speech = act.body.value;
@@ -169,6 +198,9 @@ function SpeechFacts({ act, context }: { act: Act; context: DescribeContext }) {
   ];
   const where = hopsPhrase(speech.hops);
   if (!speech.speaker?.id && where) rows.push(['From', where]);
+  const friends = throughFriends(act, context.viewerMember);
+  if (friends.length)
+    rows.push(['Through', friendNames(friends, context.memberNames)]);
   return (
     <dl className={styles.facts} data-testid="speech-facts">
       {rows.map(([term, value]) => (

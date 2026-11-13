@@ -7,6 +7,7 @@ import {
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import { cameThroughFriend } from '../sharedVia';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import type { CombatExperiencePresentationState } from './types';
 
@@ -40,10 +41,12 @@ export function isKeptRollAct(act: Act, viewer: string): boolean {
     return false;
   // The viewer's own Speech, with its roll, inside another verb's act
   // (rpg-project#934).
+  // The viewer's own roll, never one shown through a friend (rpg-project#935).
   return (
     act.body.case === 'speech' &&
     act.body.value.speaker?.id === viewer &&
-    act.body.value.roll !== undefined
+    act.body.value.roll !== undefined &&
+    !cameThroughFriend(act, viewer)
   );
 }
 
