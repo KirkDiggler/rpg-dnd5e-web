@@ -555,7 +555,7 @@ describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
     expect(hoisted.scheduleRefresh).toHaveBeenCalledWith(['turn', 'afford']);
   });
 
-  it('FAILED_PRECONDITION on a line believed free re-reads the same way, and the line comes back pending', async () => {
+  it('FAILED_PRECONDITION on a line believed free re-reads the same way, says the server sentence (rpg-project#925), and the line comes back pending', async () => {
     hoisted.speakFn.mockRejectedValueOnce(
       new ConnectError('line reserved', Code.FailedPrecondition)
     );
@@ -567,6 +567,7 @@ describe('gate slice 4: reserve before dice (rpg-project#924)', () => {
       latest.onSpeakOption('threat');
     });
     expect(screen.getByTestId('notice').textContent).not.toContain('failed');
+    expect(screen.getByTestId('notice').textContent).toBe('line reserved');
 
     // The refreshed offer mints a new selector and holds the line.
     rerender(<Harness declarations={[heldDeclaration('v2.speak.sealed.2')]} />);
