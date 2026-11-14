@@ -65,7 +65,7 @@ function notice(a: Act) {
   );
   const article = container.querySelector('article')!;
   return {
-    tag: article.querySelector('header span')!.textContent,
+    tag: article.querySelector('header [data-part="tag"]')!.textContent,
     sentence: article.querySelector('header + p')!.textContent,
     text: article.textContent ?? '',
   };
