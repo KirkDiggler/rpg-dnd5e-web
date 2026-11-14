@@ -239,6 +239,8 @@ export interface UseSessionCombatExperienceResult {
   /** The floor walk a prop's click becomes when its menu did not open: on
    * arrival the menu opens if the fresh offer lists anything for it. */
   propMenuOnArrival: (prop: string) => MoveOutcome;
+  /** A plain walk elsewhere drops a prop's carried click. */
+  cancelPropArrival: () => void;
   /**
    * A click on a creature or prop while Speak is armed, from the map. One the
    * offer already lists is chosen exactly as `onChooseSpeakTarget` would;
@@ -1636,8 +1638,16 @@ export function useSessionCombatExperience({
   useEffect(() => {
     const intent = approachRef.current;
     if (!intent?.walked || !authorityFresh) return;
-    approachRef.current = null;
-    if (interactionRef.current.armedDeclarationId !== null) return;
+    // A PROP'S CLICK WAITS FOR ITS ARRIVAL (rpg-project#959). On the world
+    // clock a walk goes on from the stream after its answer, so the first
+    // fresh offer can be read mid-walk, before the prop is in reach. The
+    // carried click stays until an offer lists the prop (its menu opens), the
+    // player arms something else, or the next walk or click replaces it.
+    if (!intent.menuOnly) approachRef.current = null;
+    if (interactionRef.current.armedDeclarationId !== null) {
+      approachRef.current = null;
+      return;
+    }
     const speaks = declarations.filter(
       (declaration) =>
         declaration.verb === Verb.SPEAK &&
@@ -1652,6 +1662,7 @@ export function useSessionCombatExperience({
     // A prop's click (rpg-project#959) opens its menu or nothing: the walk
     // was the click, and an empty offer is not a reason to open Speak.
     if (intent.menuOnly && !offered) return;
+    approachRef.current = null;
     setInteraction({
       ...EMPTY_INTERACTION,
       armedDeclarationId: declaration.id,
@@ -1878,6 +1889,11 @@ export function useSessionCombatExperience({
    * if the fresh offer lists anything for it. THE WEB COMPUTES NO REACH: the
    * walk is the click's own, never redirected.
    */
+  /** Drop a prop's carried click: a plain walk elsewhere replaces it. */
+  const cancelPropArrival = useCallback((): void => {
+    if (approachRef.current?.menuOnly) approachRef.current = null;
+  }, []);
+
   const propMenuOnArrival = useCallback((prop: string): MoveOutcome => {
     const intent = {
       target: { case: 'propId', value: prop } as SpeakTarget,
@@ -3157,6 +3173,7 @@ export function useSessionCombatExperience({
       onInteractOption,
       onPropClick,
       propMenuOnArrival,
+      cancelPropArrival,
       onApproachTarget,
       onStrike,
       onSpeakTo,
@@ -3199,6 +3216,7 @@ export function useSessionCombatExperience({
       onInteractOption,
       onPropClick,
       propMenuOnArrival,
+      cancelPropArrival,
       onApproachTarget,
       onStrike,
       onSpeakTo,
