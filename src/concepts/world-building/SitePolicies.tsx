@@ -117,12 +117,17 @@ import {
 import {
   addOptionApproach,
   addOptionRow,
+  asDone,
+  asSaid,
   holdablePropIds,
+  isDoneOption,
+  normalizeOption,
   patchOption,
   patchOptionApproach,
   patchOptionRow,
   removeOptionApproach,
   removeOptionRow,
+  withSeen,
 } from './optionEdits';
 import { ParamChip, ParamSlot } from './ParamSlot';
 import { PlacedMonstersContext } from './placedMonstersContext';
@@ -3116,18 +3121,78 @@ export function OptionsEditor({
                 }
               />
             </label>
-            <label>
-              <span>Says</span>
-              <textarea
-                aria-label={`Line ${n} for ${owner}`}
-                placeholder="What the character says"
-                rows={Math.max(2, Math.ceil(option.say.length / 36))}
-                value={option.say}
-                onChange={(event) =>
-                  commit(patchOption(option, { say: event.target.value }))
-                }
-              />
-            </label>
+            {isProp && (
+              // SAID OR DONE (rpg-project#959): a prop's option either says
+              // a line (heard) or does something (seen, not heard). The
+              // words move across; a loudness goes, a line done has none.
+              <fieldset className="wb-option-kind">
+                <legend>Line {n} is</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name={`option-kind-${owner}-${index}`}
+                    aria-label={`Line ${n} of ${owner} is said`}
+                    checked={!isDoneOption(option)}
+                    onChange={() => commit(asSaid(option))}
+                  />
+                  Said
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name={`option-kind-${owner}-${index}`}
+                    aria-label={`Line ${n} of ${owner} is done`}
+                    checked={isDoneOption(option)}
+                    onChange={() => commit(asDone(option))}
+                  />
+                  Done
+                </label>
+              </fieldset>
+            )}
+            {isDoneOption(option) ? (
+              <>
+                <label>
+                  <span>Does</span>
+                  <textarea
+                    aria-label={`Line ${n} does for ${owner}`}
+                    placeholder="What the doer is told they do — “You lift the grate.”"
+                    rows={Math.max(2, Math.ceil((option.do ?? '').length / 36))}
+                    value={option.do ?? ''}
+                    onChange={(event) =>
+                      commit(
+                        normalizeOption({ ...option, do: event.target.value })
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Seen as</span>
+                  <textarea
+                    aria-label={`Line ${n} seen as for ${owner}`}
+                    placeholder="What a witness sees — “lifts the grate.” Empty: “<name> uses <thing>”."
+                    rows={2}
+                    value={option.seen ?? ''}
+                    onChange={(event) =>
+                      commit(withSeen(option, event.target.value))
+                    }
+                  />
+                </label>
+                <p className="wb-help">Seen, not heard: nobody hears it.</p>
+              </>
+            ) : (
+              <label>
+                <span>Says</span>
+                <textarea
+                  aria-label={`Line ${n} for ${owner}`}
+                  placeholder="What the character says"
+                  rows={Math.max(2, Math.ceil((option.say ?? '').length / 36))}
+                  value={option.say ?? ''}
+                  onChange={(event) =>
+                    commit(patchOption(option, { say: event.target.value }))
+                  }
+                />
+              </label>
+            )}
             <div className="wb-option-check">
               <span>Check — any one of these</span>
               <CheckApproachRows
@@ -3306,11 +3371,15 @@ export function OptionsEditor({
   );
 }
 
-/** A line as one sentence, for the read-only readout. */
+/** A line as one sentence, for the read-only readout. A line done reads as
+ * done (rpg-project#959), never as a line with empty words. */
 function optionText(option: OptionShape): string {
   const check = (option.check ?? [])
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');
   const gate = requiresGate(option.requires);
-  return `${option.id}: “${option.say}” · ${check}${gate}`;
+  const words = isDoneOption(option)
+    ? `does “${option.do ?? ''}”`
+    : `“${option.say ?? ''}”`;
+  return `${option.id}: ${words} · ${check}${gate}`;
 }

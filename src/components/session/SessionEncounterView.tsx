@@ -946,7 +946,7 @@ function SessionEncounterScope({
     combat.presentationState.armedDeclarationId !== null &&
     !combat.presentationState.movementSelected;
   const handleGroundClick = useCallback(
-    (coord: CubeCoord) => {
+    (coord: CubeCoord, prop?: string) => {
       if (combat.cellCastArmed) {
         // The exact conversion a walk's path cells go through — one
         // coordinate space, one converter, no second opinion about which of
@@ -958,10 +958,16 @@ function SessionEncounterScope({
         (experienceClock === ClockKind.WORLD && !worldOfferArmed) ||
         (experienceClock === ClockKind.TURN && combat.movementEnabled)
       ) {
-        walkTo(coord);
+        // A PROP'S CLICK STAYS THE WALK IT ALWAYS WAS (rpg-project#959): the
+        // same cell, the same path. It only carries the prop, so its menu
+        // opens on arrival when the fresh offer lists anything for it.
+        if (prop) {
+          const outcome = combat.propMenuOnArrival(prop);
+          if (!walkToCell(coord, outcome)) outcome.refused();
+        } else walkTo(coord);
       }
     },
-    [combat, experienceClock, walkTo, worldOfferArmed]
+    [combat, experienceClock, walkTo, walkToCell, worldOfferArmed]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -2299,14 +2305,20 @@ function SessionEncounterScope({
                     onHexClick={
                       runEnded === null
                         ? (coord: CubeCoord) => {
-                            const prop = onApproachClick
-                              ? atlasPropAt(coord)
-                              : undefined;
-                            if (prop) {
-                              onApproachClick!({ case: 'propId', value: prop });
+                            const prop = atlasPropAt(coord);
+                            if (prop && onApproachClick) {
+                              onApproachClick({ case: 'propId', value: prop });
                               return;
                             }
-                            handleGroundClick(coord);
+                            // CLICK A THING (rpg-project#959): with nothing
+                            // armed, a prop the offer lists opens its menu.
+                            if (
+                              prop &&
+                              !combat.cellCastArmed &&
+                              combat.onPropClick(prop)
+                            )
+                              return;
+                            handleGroundClick(coord, prop);
                           }
                         : undefined
                     }
@@ -2401,6 +2413,7 @@ function SessionEncounterScope({
             onChooseSpeakTarget={combat.onChooseSpeakTarget}
             onApproachTarget={combat.onApproachTarget}
             onSpeakOption={combat.onSpeakOption}
+            onInteractOption={combat.onInteractOption}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
             // The log's own mode switch is deliberately NOT gated on the run

@@ -99,6 +99,9 @@ export function actorOf(act: Act): Party | undefined {
     // saw them (rpg-project#934); an unseen speaker is no actor at all.
     case 'speech':
       return body.value.speaker;
+    // A thing done (rpg-project#959): the doer, always set.
+    case 'interact':
+      return body.value.actor;
     case 'attack':
     case 'cast':
     case 'activate':

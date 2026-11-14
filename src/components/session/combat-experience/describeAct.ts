@@ -28,6 +28,7 @@ import {
   Sense,
   StateKind,
   type Act,
+  type InteractAct,
   type Party,
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -45,6 +46,7 @@ import {
   relocateEyebrow,
   relocateSentence,
 } from './relocateLine';
+import { speakSkillName } from './speakOptions';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -556,6 +558,16 @@ function describeWith(
           roll: t.dealt.roll,
         };
       }
+      // A PROP'S ANSWER IS NARRATED (rpg-project#959): a prop has no voice,
+      // so its words stand alone, as the author wrote them, with no speaker.
+      if (t.narration)
+        return {
+          eyebrow: 'Narration',
+          headline: t.narration,
+          detail: rw.withRoll('', t.roll),
+          tone: 'neutral',
+          roll: t.roll,
+        };
       return {
         eyebrow: 'Answer',
         // The pick only: whatever the creature said is its own Speech.
@@ -791,6 +803,8 @@ function describeWith(
         detail: '',
         tone: 'neutral',
       };
+    case 'interact':
+      return describeInteract(body.value, context, name, rw);
     case 'arrest':
       return {
         eyebrow: 'Arrest',
@@ -947,6 +961,12 @@ export function formatRollFormula(
     }
     case 'speech':
       return rollFormula(body.value.skill || 'Check', body.value.roll, 'DC');
+    case 'interact':
+      return rollFormula(
+        body.value.skill ? speakSkillName(body.value.skill) : 'Check',
+        body.value.roll,
+        'DC'
+      );
     case 'sneak':
       return rollFormula('Stealth', body.value.roll, 'DC');
     case 'deathSave':
@@ -976,4 +996,55 @@ export function formatRollFormula(
     default:
       return '';
   }
+}
+
+/**
+ * A THING DONE TO A PROP, as this viewer saw it (rpg-project#959). Every word
+ * is content's; the client words only the generic when none was authored.
+ *
+ * - The doer's version is the one whose `actor` is the viewer's own
+ *   character (never keyed on `words`): their own `do` words, with the check
+ *   when there was one.
+ * - A witness shown the thing: the actor's name and the authored seen words,
+ *   or "<name> uses <thing>" when none were written.
+ * - A witness who saw the actor and not the thing (`place` set, no `prop`):
+ *   "<name> does something over there". Nothing names the thing.
+ */
+function describeInteract(
+  i: InteractAct,
+  context: DescribeContext,
+  name: (p: Party | undefined) => string,
+  rw: RollWords
+): Omit<DescribedAct, 'text' | 'outcome'> {
+  const actor = name(i.actor) || 'Someone';
+  const own = Boolean(
+    context.viewerMember && i.actor?.id === context.viewerMember
+  );
+  if (own) {
+    const skill = i.skill ? speakSkillName(i.skill) : '';
+    return {
+      eyebrow: `Done${skill && i.roll ? ` · ${skill}` : ''}`,
+      headline: i.words || (i.prop ? `You use ${name(i.prop)}` : 'You do it'),
+      detail: rw.withRoll(skill ? `${skill} check` : '', i.roll),
+      tone: i.beaten === false ? 'danger' : 'neutral',
+      roll: i.roll,
+    };
+  }
+  if (!i.prop?.id)
+    return {
+      eyebrow: 'Done',
+      headline: i.place
+        ? `${actor} does something over there`
+        : `${actor} does something`,
+      detail: '',
+      tone: 'neutral',
+    };
+  return {
+    eyebrow: 'Done',
+    headline: i.words
+      ? `${actor}: ${i.words}`
+      : `${actor} uses ${name(i.prop)}`,
+    detail: '',
+    tone: 'neutral',
+  };
 }

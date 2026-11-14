@@ -409,7 +409,13 @@ function optionSentence(
   document: Readonly<RoomDraftDocument>,
   option: OptionShape
 ): ReadBackSentence {
-  const parts = [quotedLine(option.say, option.loudness)];
+  // A line done (rpg-project#959) says back as done, seen and not heard,
+  // never as a line with empty words.
+  const parts = [
+    option.say === undefined && option.do !== undefined
+      ? `Does “${option.do}”${option.seen ? `; seen as “${option.seen}”` : ''}. Seen, not heard.`
+      : quotedLine(option.say ?? '', option.loudness),
+  ];
   const refs: ReadBackRef[] = [];
   const facts: string[] = [];
   if (option.requires !== undefined) {

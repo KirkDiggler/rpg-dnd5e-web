@@ -61,6 +61,8 @@ export interface TargetSurfaceProps {
   onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
   /** Say one of the chosen target's lines. */
   onSpeakOption?: (optionId: string) => void;
+  /** Do one of the chosen prop's things (rpg-project#959). */
+  onInteractOption?: (optionId: string) => void;
   /** Walk toward a creature or prop the armed Speak does not list. */
   onApproachTarget?: (target: SpeakTarget) => void;
   onConfirmTargets?: () => void;
@@ -96,6 +98,7 @@ export function TargetSurface({
   speakTarget,
   onChooseSpeakTarget,
   onSpeakOption,
+  onInteractOption,
   onApproachTarget,
   onConfirmTargets,
   onCancelSelection,
@@ -390,6 +393,7 @@ export function TargetSurface({
           onTargetClick={onTargetClick}
           onChooseTarget={onChooseSpeakTarget}
           onSpeakOption={onSpeakOption}
+          onInteractOption={onInteractOption}
           onCancel={onCancelSelection}
         />
       )}

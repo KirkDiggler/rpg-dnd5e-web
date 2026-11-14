@@ -57,10 +57,11 @@ export function nextOptionId(options: Options): string {
 /** Preserve absence (a plain line) separately from an authored empty check,
  * which remains invalid until the author supplies an approach. */
 export function normalizeOption(option: OptionShape): OptionShape {
-  const next: OptionShape = {
-    id: option.id,
-    say: option.say,
-  };
+  const next: OptionShape = { id: option.id };
+  // An option that does (rpg-project#959) has no `say` to write.
+  if (option.say !== undefined) next.say = option.say;
+  if (option.do !== undefined) next.do = option.do;
+  if (option.seen !== undefined) next.seen = option.seen;
   if (option.check !== undefined)
     next.check = option.check.map((approach) => {
       const row: AnswerApproachShape = {
@@ -221,4 +222,43 @@ export function holdablePropIds(room: RoomGameplayData): string[] {
   return Object.keys(room.propDeclarations).filter(
     (id) => room.propBindings?.[id]?.holdable === true
   );
+}
+
+// ---------------------------------------------------------------------------
+// SAID OR DONE (rpg-project#959): an option says (`say:`, heard) or does
+// (`do:`, seen, not heard), never both. A done option carries `seen:` for a
+// witness and no `loudness` (nobody hears it).
+
+/** Whether this option does rather than says. */
+export function isDoneOption(option: OptionShape): boolean {
+  return option.say === undefined && option.do !== undefined;
+}
+
+/** The option as something done: its words move from `say` to `do`; its
+ * loudness goes. Unchanged when it already is. */
+export function asDone(option: OptionShape): OptionShape {
+  if (isDoneOption(option)) return option;
+  const rest: OptionShape = { ...option };
+  const say = rest.say;
+  delete rest.say;
+  delete rest.loudness;
+  return normalizeOption({ ...rest, do: say ?? '' });
+}
+
+/** The option as a line said: its words move from `do` to `say`; `seen`
+ * goes. Unchanged when it already is. */
+export function asSaid(option: OptionShape): OptionShape {
+  if (!isDoneOption(option)) return option;
+  const rest: OptionShape = { ...option };
+  const done = rest.do;
+  delete rest.do;
+  delete rest.seen;
+  return normalizeOption({ ...rest, say: done ?? '' });
+}
+
+/** Set (or, empty, drop) what a witness is told. */
+export function withSeen(option: OptionShape, seen: string): OptionShape {
+  const rest: OptionShape = { ...option };
+  delete rest.seen;
+  return normalizeOption(seen === '' ? rest : { ...rest, seen });
 }

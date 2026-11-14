@@ -100,6 +100,14 @@ export function refreshKeysForAct(
       return body.value.mover?.id === member
         ? ['where', 'afford', 'turn', 'view', 'roster']
         : ['view', 'roster'];
+    // A thing done to a prop (rpg-project#959): the doer re-reads what a
+    // spoken line's result re-reads (the call's own refresh carries it too);
+    // a witness re-reads what the deed may have changed in sight, as for a
+    // line heard.
+    case 'interact':
+      return body.value.actor?.id === member
+        ? ['characterData', 'afford']
+        : ['afford', 'view'];
     // An arrest changes what the taken may do (they are held).
     case 'arrest':
       return body.value.taken.some((party) => party.id === member)
