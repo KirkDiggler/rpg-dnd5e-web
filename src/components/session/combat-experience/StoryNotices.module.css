@@ -37,19 +37,52 @@
 }
 .identity {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   color: #dfc593;
 }
-.identity strong {
+/* The name and the tag share one wrapping row. A flex line breaks on each
+   item's full (max-content) width, so a name and a tag that do not fit side
+   by side put the tag on its own line beneath the name; the name is never
+   shrunk to make room for the tag. */
+.who {
+  display: flex;
   flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
   min-width: 0;
-  overflow-wrap: anywhere;
+  min-height: 32px;
 }
-.identity span {
+/* The icon travels with the name. The name wraps only between words; a
+   single word wider than the toast ends in an ellipsis rather than
+   breaking. */
+.name {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+.name svg {
+  flex: none;
+}
+.name strong {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-overflow: ellipsis;
+}
+.tag {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 12px;
 }
 .identity button {
+  flex: none;
   display: grid;
   place-items: center;
   min-width: 32px;
