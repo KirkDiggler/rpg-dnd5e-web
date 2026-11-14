@@ -569,15 +569,22 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
               success: admitted
               failure: troupe-failed
 `;
-  // The castle authors no `not` of an interaction; the captain's stand-aside
-  // gets one here, withheld once the party is arrested.
+  // The captain's stand-aside authors its own `not`s since rpg-project#925
+  // (closed to the wanted and the arrested). The castle authors no `not` of
+  // an interaction; one more is added here, withheld once the party is
+  // arrested, so that form is round-tripped too.
   const STAND_ASIDE_REQUIRES = `            requires:
-              not:
-                interaction: { id: front-gate, in: [arrested] }
+              - not:
+                  recognized: wanted
+              - not:
+                  recognized: arrested
+`;
+  const NOT_INTERACTION = `              - not:
+                  interaction: { id: front-gate, in: [arrested] }
 `;
   const gate = served.replace(
-    '            say: Stand aside or bleed.\n',
-    `            say: Stand aside or bleed.\n${STAND_ASIDE_REQUIRES}`
+    STAND_ASIDE_REQUIRES,
+    `${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`
   );
 
   type Parsed = {
@@ -606,7 +613,8 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
   it('the served castle carries every new form', () => {
     expect(ROOT_INTERACTIONS).toContain('  front-gate:\n');
     expect(served.split(TROUPE_REQUIRES)).toHaveLength(4);
-    expect(gate).toContain(STAND_ASIDE_REQUIRES);
+    expect(served.split(STAND_ASIDE_REQUIRES)).toHaveLength(2);
+    expect(gate).toContain(`${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`);
     const captain = parse(gate).room.room.monsterBindings.captain.options;
     const option = (id: string) =>
       captain.find((o: { id: string }) => o.id === id);
@@ -624,9 +632,11 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     expect(option('guest').requires).toEqual([
       { interaction: { id: 'front-gate', in: ['fresh', 'warned-troupe'] } },
     ]);
-    expect(option('stand-aside').requires).toEqual({
-      not: { interaction: { id: 'front-gate', in: ['arrested'] } },
-    });
+    expect(option('stand-aside').requires).toEqual([
+      { not: { recognized: 'wanted' } },
+      { not: { recognized: 'arrested' } },
+      { not: { interaction: { id: 'front-gate', in: ['arrested'] } } },
+    ]);
   });
 
   it('imports, keeps each list as a list, and an unedited download is byte-identical', () => {
@@ -678,7 +688,7 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     ]);
     expect(saved).toContain(ROOT_INTERACTIONS);
     expect(saved.split(TROUPE_REQUIRES)).toHaveLength(4);
-    expect(saved).toContain(STAND_ASIDE_REQUIRES);
+    expect(saved).toContain(`${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`);
     // It re-parses, and re-imports with the same grammar.
     expect(grammarOf(parse(saved))).toEqual(grammarOf(parse(gate)));
     const again = read(saved);

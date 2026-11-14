@@ -301,6 +301,20 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
       '      - {fact: prisoners-escaped, then: hostile}\n'
     );
     expect(saved.split('say: We’ll come quietly.').length - 1).toBe(3);
+    // The refusal line with its shouted answer, the garrison's row for it,
+    // and the jail's step back into itself (rpg-project#925).
+    expect(saved.split('say: You will never take me alive.').length - 1).toBe(
+      3
+    );
+    expect(
+      saved.split(
+        '                loudness: shout\n                fact: refused-arrest\n'
+      ).length - 1
+    ).toBe(3);
+    expect(saved).toContain('      - {fact: refused-arrest, then: hostile}\n');
+    expect(saved).toContain(
+      '            - { on: came-quietly, to: jailed, reason: another arrested went quietly }\n'
+    );
     expect(
       Object.keys(
         (parse(saved) as Parsed).interactions['front-gate'].outcomes as object
