@@ -412,7 +412,14 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     const indent = column(map.range![0]);
     const text = block({ [key]: value }, indent);
     if ('before' in anchor) {
-      const at = commentsAbove((anchor.before.key as Node).range![0]);
+      const keyStart = (anchor.before.key as Node).range![0];
+      // The first key of a sequence item shares its line with the dash
+      // (`- relocate:`): the new key takes the dash's place on that line and
+      // the old key moves down to the next, never above the dash, where it
+      // would be read as the sequence's own key (rpg-project#958).
+      if (source.slice(lineStart(keyStart), keyStart).trim() !== '')
+        return edit(keyStart, keyStart, `${text}\n${' '.repeat(indent)}`);
+      const at = commentsAbove(keyStart);
       return edit(at, at, `${' '.repeat(indent)}${text}\n`);
     }
     const at = lineEnd(pairEnd(anchor.after));

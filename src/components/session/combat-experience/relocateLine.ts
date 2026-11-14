@@ -30,6 +30,13 @@ const CAUSE_SENTENCES: Readonly<
     arrived: '{name} is brought in under arrest.',
     both: '{name} is led away under arrest.',
   },
+  // A line's own way through (rpg-project#958, encounter passage.go
+  // `relocateCause`): the tunnel names no place, and neither does this.
+  'dnd5e:consequences:relocate': {
+    left: '{name} slips away.',
+    arrived: '{name} appears.',
+    both: '{name} slips away.',
+  },
 };
 
 /** The generic wording for a cause the table does not know. */
@@ -38,6 +45,12 @@ const FALLBACK = {
   arrived: '{name} is brought in.',
   both: '{name} is led away.',
 } as const;
+
+/** The log row's tag: an arrest's relocation is "Taken"; any other way of
+ * being set down (a passage, rpg-project#958) is "Moved". */
+export function relocateEyebrow(relocate: RelocateAct): string {
+  return relocate.cause === 'dnd5e:consequences:arrest' ? 'Taken' : 'Moved';
+}
 
 /** Which end this viewer saw, as the table's key. */
 function endKey(end: RelocateEnd): 'left' | 'arrived' | 'both' {

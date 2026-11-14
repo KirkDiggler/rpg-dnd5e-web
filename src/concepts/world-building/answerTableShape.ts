@@ -545,10 +545,16 @@ function validateAnswerEntry(
   if (words.length > ANSWER_ENTRY_RULES.maximumWords)
     fail(path, entryDoesOneThingRefusal(words));
 
-  // The rule is READ from the declaration, not restated here.
+  // The rule is READ from the declaration, not restated here. A word this
+  // build does not read (`tells`, `relocate`, rpg-project#958) is a word the
+  // engine judges, carried below; an entry holding one is not empty here.
+  const carriedWords = Object.keys(value).filter(
+    (key) => !ENTRY_KEYS.includes(key) && value[key] !== undefined
+  );
   if (
     ANSWER_ENTRY_RULES.wordRequiredUnlessSaid &&
     words.length === 0 &&
+    carriedWords.length === 0 &&
     entry.say === undefined
   )
     fail(path, EMPTY_ENTRY_REFUSAL);

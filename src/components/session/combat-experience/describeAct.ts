@@ -40,7 +40,11 @@ import {
   taggedThrough,
   type PerceptionVerb,
 } from '../sharedVia';
-import { arrestSentence, relocateSentence } from './relocateLine';
+import {
+  arrestSentence,
+  relocateEyebrow,
+  relocateSentence,
+} from './relocateLine';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -782,7 +786,7 @@ function describeWith(
     // (rpg-project#925). LEFT never names a destination.
     case 'relocate':
       return {
-        eyebrow: 'Taken',
+        eyebrow: relocateEyebrow(body.value),
         headline: relocateSentence(body.value, context.viewerMember, name),
         detail: '',
         tone: 'neutral',
