@@ -56,6 +56,12 @@ describe('answer table shape', () => {
     expect(table({ time: [{}] })).toThrow(
       /this entry does nothing and says nothing/
     );
+    // A word this build does not read is the engine's to judge: an entry
+    // holding only one is carried, not refused as empty (rpg-project#958).
+    const relocate = {
+      time: [{ relocate: { to: 'region-chapel', words: 'Up.', rounds: 1 } }],
+    };
+    expect(validateAnswerTable(relocate, 'on')).toEqual(relocate);
   });
 
   /** One option whose `success` rows are the given ones — where a social

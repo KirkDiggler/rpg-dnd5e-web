@@ -145,6 +145,33 @@ describe('the log line, by end', () => {
     ).toBe('Barbarian is brought in under arrest.');
   });
 
+  it('a passage names no place: the witness reads a slip away and an appearance (rpg-project#958)', () => {
+    const passage = (end: RelocateEnd) =>
+      row(
+        relocate({
+          mover: member('barbarian'),
+          cause: 'dnd5e:consequences:relocate',
+          end,
+        })
+      ).headline;
+    expect(passage(RelocateEnd.LEFT)).toBe('Barbarian slips away.');
+    expect(passage(RelocateEnd.ARRIVED)).toBe('Barbarian appears.');
+    expect(passage(RelocateEnd.BOTH)).toBe('Barbarian slips away.');
+    expect(
+      row(
+        relocate({
+          mover: member('barbarian'),
+          cause: 'dnd5e:consequences:relocate',
+          end: RelocateEnd.LEFT,
+        })
+      ).eyebrow
+    ).toBe('Moved');
+    expect(
+      row(relocate({ mover: member('barbarian'), end: RelocateEnd.LEFT }))
+        .eyebrow
+    ).toBe('Taken');
+  });
+
   it('an unknown cause falls back to the generic words', () => {
     expect(
       row(
