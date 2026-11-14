@@ -3604,6 +3604,82 @@ describe('SessionScene', () => {
       await second.unmount();
     });
 
+    it('a ground click on a GHOST’s cell is the floor: it walks there (rpg-project#961); a live member’s cell still targets them', async () => {
+      const sceneProps = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        myPosition: { x: 0, y: 0, z: 0 },
+        classRefId: undefined,
+        attackableTargets: ['skeleton-1'],
+      };
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const ghost = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(ghost), { x: 1, y: -1, z: 0 });
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: -1, z: 0 });
+      expect(onEntityClick).not.toHaveBeenCalled();
+      await ghost.unmount();
+
+      onHexClick.mockClear();
+      const live = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(live), { x: 1, y: -1, z: 0 });
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onHexClick).not.toHaveBeenCalled();
+      await live.unmount();
+    });
+
+    it('a ghost standing on a thing’s cell does not hide it: its figure takes no click, and the cell reaches the floor route that opens the thing (rpg-project#959, #961)', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const onPropUnderFigure = vi.fn(() => true);
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Self"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          attackableTargets={[]}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+          onPropUnderFigure={onPropUnderFigure}
+        />
+      );
+      // The ghost's figure is inert: a click on it is never its own.
+      fireEveryEntityClick(renderer);
+      expect(onEntityClick).not.toHaveBeenCalled();
+      // A click on its cell is the floor's, where the view's prop route
+      // (`atlasPropAt` → the thing's menu) or the walk takes it.
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: -1, z: 0 });
+      expect(onEntityClick).not.toHaveBeenCalled();
+      await renderer.unmount();
+    });
+
     it('an explicitly offered world member selects through targeting instead of opening interaction', async () => {
       const onEntityClick = vi.fn();
       const onInteractClick = vi.fn();
