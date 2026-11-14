@@ -3604,6 +3604,49 @@ describe('SessionScene', () => {
       await second.unmount();
     });
 
+    it('a ground click on a GHOST’s cell is the floor: it walks there (rpg-project#961); a live member’s cell still targets them', async () => {
+      const sceneProps = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        myPosition: { x: 0, y: 0, z: 0 },
+        classRefId: undefined,
+        attackableTargets: ['skeleton-1'],
+      };
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const ghost = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(ghost), { x: 1, y: -1, z: 0 });
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: -1, z: 0 });
+      expect(onEntityClick).not.toHaveBeenCalled();
+      await ghost.unmount();
+
+      onHexClick.mockClear();
+      const live = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...sceneProps}
+          otherMembers={oneMember}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(live), { x: 1, y: -1, z: 0 });
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onHexClick).not.toHaveBeenCalled();
+      await live.unmount();
+    });
+
     it('an explicitly offered world member selects through targeting instead of opening interaction', async () => {
       const onEntityClick = vi.fn();
       const onInteractClick = vi.fn();

@@ -704,8 +704,12 @@ export function SessionScene({
         handleTargetClick(characterId);
         return;
       }
+      // A GHOST IS NOT A HIT (rpg-project#961): a remembered member is
+      // where someone was last seen, not someone standing there, and pathing
+      // already walks through it (`occupantPassages`). Its cell is the floor:
+      // the ordinary walk, or the thing standing on it (rpg-project#959).
       const hit = otherMembers?.find(
-        (member) => coordToKey(member.position) === key
+        (member) => !member.remembered && coordToKey(member.position) === key
       );
       if (hit) {
         handleTargetClick(hit.subject);
