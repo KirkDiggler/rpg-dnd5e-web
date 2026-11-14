@@ -40,6 +40,7 @@ import {
   FootprintShape,
   GridKind,
   HexLayout,
+  InteractOptionSchema,
   LifeState,
   MemberKind,
   Passage,
@@ -7344,5 +7345,85 @@ describe('the run’s sharing mode (rpg-project#935)', () => {
     expect(within(plate).getByText('Free roam')).toBeTruthy();
     await waitFor(() => expect(hoisted.getStatusFn).toHaveBeenCalled());
     expect(screen.queryByTestId('sharing-mode')).toBeNull();
+  });
+});
+
+describe('click a placed prop (rpg-project#959, the operator’s grate)', () => {
+  /** The kitchen: the grate is a PLACED footprint on cell (1,0), and the
+   * Speak row offers its two ways. */
+  function kitchen(where = { x: 0, y: 0 }) {
+    readyScene();
+    hoisted.whereResult.position = where;
+    hoisted.atlasResult.atlas = pointyAtlas({
+      placed: [{ id: 'grate', cells: [{ x: 1, y: 0 }] }],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [
+        create(DeclarationSchema, {
+          id: 'v2.speak.sealed.1',
+          verb: Verb.SPEAK,
+          available: true,
+          targetKind: TargetKind.MEMBER,
+          interactOptions: [
+            create(InteractOptionSchema, {
+              propId: 'grate',
+              optionId: 'to-chapel',
+              doWords: 'You lift the grate and take the way up.',
+              available: true,
+            }),
+          ],
+        }),
+      ],
+    });
+  }
+  const GRATE = { x: 1, y: -1, z: 0 };
+
+  it('a click on the grate’s cell opens its menu, and walks nowhere', async () => {
+    kitchen();
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalled());
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onHexClick?.(GRATE);
+    });
+    expect(await screen.findByText('What do you do with grate?')).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: 'You lift the grate and take the way up.',
+      })
+    ).toBeTruthy();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('standing on the grate, a click on your own figure (or a friend on it) opens its menu', async () => {
+    kitchen({ x: 1, y: 0 });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalled());
+    let opened = false;
+    await act(async () => {
+      opened =
+        hoisted.lastCanvasProps.current?.onPropUnderFigure?.(GRATE) ?? false;
+    });
+    expect(opened).toBe(true);
+    expect(await screen.findByText('What do you do with grate?')).toBeTruthy();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('a figure on a cell with no prop keeps its click', async () => {
+    kitchen();
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    let opened = true;
+    await act(async () => {
+      opened =
+        hoisted.lastCanvasProps.current?.onPropUnderFigure?.({
+          x: 0,
+          y: 0,
+          z: 0,
+        }) ?? true;
+    });
+    expect(opened).toBe(false);
   });
 });

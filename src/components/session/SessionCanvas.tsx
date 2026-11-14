@@ -244,6 +244,13 @@ export interface SessionCanvasProps {
    * called in that case unless `cellAimEnabled` gives the occupied cell to
    * CELL aiming instead. */
   onEntityClick?: (subject: string) => void;
+  /**
+   * A click on a figure that has nothing of its own to do, standing on a
+   * cell: true when the cell's prop took the click (rpg-project#959) — a
+   * friend standing on the grate does not hide the grate. False leaves the
+   * click as it was (nothing).
+   */
+  onPropUnderFigure?: (cell: CubeCoord) => boolean;
   /** Fires when a click lands on a live, sighted creature that is NOT in
    * `attackableTargets`, while the caller offers an approach (an armed
    * Speak choosing who to talk to — rpg-project#753 R4). The walk toward
@@ -398,6 +405,7 @@ export function SessionScene({
   onHexClick,
   onCancelSelection,
   onEntityClick,
+  onPropUnderFigure,
   onApproachClick,
   onBumpClick,
   clickToAct,
@@ -652,8 +660,11 @@ export function SessionScene({
         case 'speak':
           onSpeakToClick?.(subject);
           return;
-        case 'menu':
         case 'none':
+          if (observed && !memberTargeting)
+            onPropUnderFigure?.(observed.position);
+          return;
+        case 'menu':
           return;
       }
     },
@@ -670,6 +681,7 @@ export function SessionScene({
       onBumpClick,
       onStrikeClick,
       onSpeakToClick,
+      onPropUnderFigure,
       bumpArmed,
       verbsFor,
     ]
@@ -1056,7 +1068,17 @@ export function SessionScene({
         entityId={characterId}
         targetMarker={targetMarkerFor(characterId)}
         speech={speech?.get(characterId)}
-        onClick={memberTargeting ? handleTargetClick : undefined}
+        // YOUR OWN FIGURE NEVER HIDES WHAT YOU STAND ON (rpg-project#959):
+        // the figure's mesh takes every click on it (and stops it reaching
+        // the floor), so off targeting, a click on it is a click on the prop
+        // under it, if any.
+        onClick={
+          memberTargeting
+            ? handleTargetClick
+            : onPropUnderFigure
+              ? () => onPropUnderFigure(myPosition)
+              : undefined
+        }
         onPointerOver={memberTargeting ? setMeshHoveredSubject : undefined}
         onPointerOut={
           memberTargeting ? () => setMeshHoveredSubject(null) : undefined

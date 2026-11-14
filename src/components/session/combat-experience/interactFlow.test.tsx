@@ -244,6 +244,68 @@ describe('click a thing', () => {
     ]);
   });
 
+  it('the first fresh offer mid-walk does not list it yet: the carried click waits, and opens on the offer that does', () => {
+    const { rerender } = render(<Harness declarations={[speakRow([], [])]} />);
+    act(() => {
+      latest.propMenuOnArrival('grate').accepted(null);
+    });
+    // A world-clock walk goes on from the stream: the first fresh offer is
+    // read while the walker is still far from the grate.
+    rerender(
+      <Harness declarations={[speakRow([], [])]} authorityFresh={false} />
+    );
+    rerender(
+      <Harness declarations={[speakRow([], [], 'v2.speak.sealed.2')]} />
+    );
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+    // Arrived: the next offer lists the grate, and its menu opens.
+    rerender(
+      <Harness
+        declarations={[speakRow([], [], 'v2.speak.sealed.2')]}
+        authorityFresh={false}
+      />
+    );
+    rerender(
+      <Harness
+        declarations={[speakRow([TO_CHAPEL], [], 'v2.speak.sealed.3')]}
+      />
+    );
+    expect(screen.getByTestId('armed').textContent).toBe('v2.speak.sealed.3');
+    expect(buttonsIn(/^Things to do with/)).toEqual([
+      'You lift the grate and take the way up.',
+    ]);
+  });
+
+  it('a plain walk elsewhere drops the carried click', () => {
+    const { rerender } = render(<Harness declarations={[speakRow([], [])]} />);
+    act(() => {
+      latest.propMenuOnArrival('grate').accepted(null);
+      latest.cancelPropArrival();
+    });
+    rerender(
+      <Harness declarations={[speakRow([], [])]} authorityFresh={false} />
+    );
+    rerender(
+      <Harness
+        declarations={[speakRow([TO_CHAPEL], [], 'v2.speak.sealed.2')]}
+      />
+    );
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+
+  it('armed Speak lists a prop with only things to do, and picking it shows them first', () => {
+    const declaration = speakRow();
+    render(<Harness declarations={[declaration]} />);
+    act(() => latest.onSelectDeclaration(declaration));
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'grate' }));
+    });
+    expect(buttonsIn(/^Things to do with/)).toEqual([
+      'You lift the grate and take the way up.',
+      'You lift the grate and take the way down.',
+    ]);
+  });
+
   it('beyond reach, still nothing on arrival: nothing opens (not even the Speak list)', () => {
     const { rerender } = render(<Harness declarations={[speakRow([], [])]} />);
     act(() => {

@@ -66,12 +66,7 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import {
-  coordToKey,
-  type CubeCoord,
-  cubeToWorld,
-  HEX_SIZE,
-} from '../hex-grid/hexMath';
+import { type CubeCoord, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -84,6 +79,10 @@ import {
   buildAtlasPathIndex,
   INTERACTION_REACH,
 } from './atlasPath';
+import {
+  atlasPropAt as atlasPropAtOf,
+  atlasPropCell as atlasPropCellOf,
+} from './atlasPropAt';
 import { regionAt } from './atlasRegion';
 import {
   applyCellKnowledge,
@@ -964,7 +963,10 @@ function SessionEncounterScope({
         if (prop) {
           const outcome = combat.propMenuOnArrival(prop);
           if (!walkToCell(coord, outcome)) outcome.refused();
-        } else walkTo(coord);
+        } else {
+          combat.cancelPropArrival();
+          walkTo(coord);
+        }
       }
     },
     [combat, experienceClock, walkTo, walkToCell, worldOfferArmed]
@@ -998,25 +1000,17 @@ function SessionEncounterScope({
         : atlasPropCell(target.value);
     return cell ? approach(cell, INTERACTION_REACH, outcome) : false;
   };
-  const atlasPropCell = (prop: string): CubeCoord | undefined => {
-    const at = atlas?.props.find((candidate) => candidate.id === prop)?.at;
-    return at ? positionToCube(at) : undefined;
-  };
+  const atlasPropCell = (prop: string): CubeCoord | undefined =>
+    atlasPropCellOf(atlas, prop);
   // A floor click on a prop's cell, while Speak offers an approach, is a
   // click on that prop (a prop has no mesh handler of its own). ANY prop
   // with an id counts, a passable floor prop such as a rug included, so with
   // Speak armed a click on a rug's cell approaches the rug rather than
-  // walking onto it; two props on one cell resolve to the first in atlas
-  // order. A creature on the cell wins: its click never reaches the floor.
-  const atlasPropAt = (coord: CubeCoord): string | undefined => {
-    const key = coordToKey(coord);
-    return atlas?.props.find(
-      (prop) =>
-        prop.id.length > 0 &&
-        prop.at &&
-        coordToKey(positionToCube(prop.at)) === key
-    )?.id;
-  };
+  // walking onto it. Cell scenery and placed footprints both count
+  // (`atlasPropAt`). A creature on the cell wins: its click never reaches
+  // the floor.
+  const atlasPropAt = (coord: CubeCoord): string | undefined =>
+    atlasPropAtOf(atlas, coord);
 
   const localWorldDieOpenDoors = useMemo(
     () =>
@@ -2325,6 +2319,18 @@ function SessionEncounterScope({
                     onCancelSelection={combat.onCancelSelection}
                     onEntityClick={
                       runEnded === null ? onTargetClick : undefined
+                    }
+                    onPropUnderFigure={
+                      runEnded === null
+                        ? (cell: CubeCoord) => {
+                            const prop = atlasPropAt(cell);
+                            return (
+                              prop !== undefined &&
+                              !combat.cellCastArmed &&
+                              combat.onPropClick(prop)
+                            );
+                          }
+                        : undefined
                     }
                     onApproachClick={
                       runEnded === null && onApproachClick
