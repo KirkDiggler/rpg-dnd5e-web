@@ -3,6 +3,7 @@ import { getSkillDisplay, getSkillEnum } from '@/utils/enumDisplay';
 import { refId, refLabel } from '@/utils/refs';
 import type {
   Declaration,
+  InteractOption,
   SpeakOption,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -41,7 +42,7 @@ function shown(option: SpeakOption): boolean {
  * holder the viewer cannot place is "a roll", not a string of hex.
  */
 export function speakLineWaitingLabel(
-  option: SpeakOption,
+  option: Pick<SpeakOption, 'pendingOnMemberId'>,
   memberNames: ReadonlyMap<string, string>
 ): string {
   const holder = option.pendingOnMemberId
@@ -85,23 +86,74 @@ export function speakLinesFor(
 }
 
 /**
- * Every target with at least one available or pending line, each once, in
- * first-seen order. A target whose every line is gated is not listed: there
- * is nothing the player could say to it.
+ * THINGS TO DO ON A PROP (rpg-project#959): seen, not heard. They ride the
+ * Speak row's `interact_options` and are read exactly as its lines are: an
+ * available or pending row is drawn, a pending one never sent, a gated one
+ * not drawn at all. Only a prop offers them.
+ */
+function shownThing(option: InteractOption): boolean {
+  return (
+    (option.available || option.pending) &&
+    option.optionId.length > 0 &&
+    option.propId.length > 0
+  );
+}
+
+/** The things to do drawn for one target, in the order the server sent
+ * them; none for a creature. */
+export function interactThingsFor(
+  declaration: Declaration | null | undefined,
+  target: SpeakTarget | null | undefined
+): InteractOption[] {
+  if (!declaration || target?.case !== 'propId') return [];
+  return declaration.interactOptions.filter(
+    (option) => shownThing(option) && option.propId === target.value
+  );
+}
+
+/** The one drawn thing for this prop and option id, or undefined: exactly
+ * one, as `speakLine`. */
+export function interactThing(
+  declaration: Declaration | null | undefined,
+  target: SpeakTarget | null | undefined,
+  optionId: string
+): InteractOption | undefined {
+  const matches = interactThingsFor(declaration, target).filter(
+    (option) => option.optionId === optionId
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Whether a target offers anything at all: a line, or a thing to do. */
+export function offersAnything(
+  declaration: Declaration | null | undefined,
+  target: SpeakTarget | null | undefined
+): boolean {
+  return (
+    speakLinesFor(declaration, target).length > 0 ||
+    interactThingsFor(declaration, target).length > 0
+  );
+}
+
+/**
+ * Every target with at least one available or pending line or thing to do,
+ * each once, in first-seen order (lines first, then props that only offer
+ * things). A target whose every row is gated is not listed: there is nothing
+ * the player could say to it or do with it.
  */
 export function speakTargetsOf(
   declaration: Declaration | null | undefined
 ): SpeakTarget[] {
   if (!declaration) return [];
   const targets: SpeakTarget[] = [];
-  for (const option of declaration.speakOptions) {
-    if (!shown(option)) continue;
-    const target = targetOf(option);
-    if (!target) continue;
-    if (!targets.some((seen) => sameSpeakTarget(seen, target))) {
+  const add = (target: SpeakTarget | null): void => {
+    if (target && !targets.some((seen) => sameSpeakTarget(seen, target)))
       targets.push(target);
-    }
-  }
+  };
+  for (const option of declaration.speakOptions)
+    if (shown(option)) add(targetOf(option));
+  for (const option of declaration.interactOptions)
+    if (shownThing(option)) add({ case: 'propId', value: option.propId });
   return targets;
 }
 

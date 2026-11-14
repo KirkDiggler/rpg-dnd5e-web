@@ -20,7 +20,7 @@ import {
   StateKind,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-import { isOwnKnowledge } from './sharedVia';
+import { cameThroughFriend, isOwnKnowledge } from './sharedVia';
 import type { SessionRefreshKey } from './useCoalescedSessionRefreshes';
 
 const COMBAT: SessionRefreshKey[] = ['characterData', 'afford', 'view'];
@@ -38,6 +38,14 @@ export function refreshKeysForAct(
   // (rpg-project#935: known never): no sheet, no offer, no map to re-read
   // for it. The funnel's always-on `turn` and `afford` still run around it.
   // A perception another member made is likewise not the viewer's to re-read.
+  // A DEED SHOWN THROUGH A FRIEND (rpg-project#959, shared view): the
+  // viewer may have watched it too and so come to know the thing ("if you
+  // saw it, you know it"), but at shared view their own reveal is merged into
+  // the friend's version and never arrives on its own. This act is all that
+  // does, so it re-reads the atlas (the thing drawn, its cell clickable); the
+  // offer is re-read on every act anyway.
+  if (act.body.case === 'interact' && cameThroughFriend(act, member))
+    return ['atlas'];
   if (!isOwnKnowledge(act, member)) return [];
   const body = act.body;
   switch (body.case) {
@@ -100,6 +108,14 @@ export function refreshKeysForAct(
       return body.value.mover?.id === member
         ? ['where', 'afford', 'turn', 'view', 'roster']
         : ['view', 'roster'];
+    // A thing done to a prop (rpg-project#959): the doer re-reads what a
+    // spoken line's result re-reads (the call's own refresh carries it too);
+    // a witness re-reads what the deed may have changed in sight, as for a
+    // line heard.
+    case 'interact':
+      return body.value.actor?.id === member
+        ? ['characterData', 'afford']
+        : ['afford', 'view'];
     // An arrest changes what the taken may do (they are held).
     case 'arrest':
       return body.value.taken.some((party) => party.id === member)

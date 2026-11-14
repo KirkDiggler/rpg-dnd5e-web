@@ -247,6 +247,7 @@ function CombatExperienceContent({
   onChooseSpeakTarget,
   onApproachTarget,
   onSpeakOption,
+  onInteractOption,
   onConfirmTargets,
   onEndTurn,
   onLogModeChange,
@@ -575,6 +576,7 @@ function CombatExperienceContent({
             onChooseSpeakTarget={onChooseSpeakTarget}
             onApproachTarget={onApproachTarget}
             onSpeakOption={onSpeakOption}
+            onInteractOption={onInteractOption}
             onConfirmTargets={onConfirmTargets}
             onCancelSelection={
               actionPresentation?.mode === 'organized-hud'

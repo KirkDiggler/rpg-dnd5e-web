@@ -13,6 +13,7 @@ import { setConcealment } from '../world-building/concealmentEdits';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import {
   addOption,
+  normalizeOption,
   patchOption,
   patchOptionRow,
 } from '../world-building/optionEdits';
@@ -194,9 +195,10 @@ describe('the kitchen passage loads and writes back (rpg-project#958)', () => {
     const result = read(served);
     const saved = save(
       result,
-      grateEdit(result, 0, (o) => patchOption(o, { say: '(climb)' }))
+      // The grate's lines are done since rpg-project#959: the doer's words.
+      grateEdit(result, 0, (o) => normalizeOption({ ...o, do: '(climb)' }))
     );
-    expect(changedLines(served, saved)).toEqual(['            say: (climb)']);
+    expect(changedLines(served, saved)).toEqual(['            do: (climb)']);
     expectPassageKept(saved);
   });
 

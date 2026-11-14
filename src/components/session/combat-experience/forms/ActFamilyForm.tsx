@@ -33,6 +33,10 @@ export function ActFamilyForm({
       // A line shows its formula only when a roll reached this viewer.
       rolled = body.value.roll !== undefined;
       break;
+    // A thing done (rpg-project#959): the check reaches the doer alone.
+    case 'interact':
+      rolled = body.value.roll !== undefined;
+      break;
     // RETIRED (rpg-project#934): a `speak` body is no longer sent.
     case 'speak':
     case 'walk':

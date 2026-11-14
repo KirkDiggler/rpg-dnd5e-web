@@ -351,6 +351,9 @@ interface CombatExperienceBaseProps {
   onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
   /** Say one of the chosen target's lines: the option id, echoed verbatim. */
   onSpeakOption?: (optionId: string) => void;
+  /** Do one of the chosen prop's things (rpg-project#959): the option id,
+   * echoed verbatim. */
+  onInteractOption?: (optionId: string) => void;
   /** A map click on a Speak target the offer does not list: walk toward it. */
   onApproachTarget?: (target: SpeakTarget) => void;
   onConfirmTargets?: () => void;

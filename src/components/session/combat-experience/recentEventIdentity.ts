@@ -32,6 +32,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { partyName, type DescribeContext } from './describeAct';
+import { relocateEyebrow } from './relocateLine';
 import { actorOf } from './toastPolicy';
 
 export interface RecentEventIdentity {
@@ -165,12 +166,20 @@ export function recentEventIdentity(
       );
     case 'relocate':
       return result(
-        'Taken',
+        relocateEyebrow(body.value),
         Footprints,
         partyName(body.value.mover, context) || 'Someone'
       );
     case 'arrest':
       return result('Arrest', ShieldX, 'Guards');
+    // A thing done to a prop (rpg-project#959): the doer is named, the thing
+    // never (a witness not shown it has no name for it).
+    case 'interact':
+      return result(
+        'Done',
+        Hand,
+        partyName(body.value.actor, context) || 'Someone'
+      );
     case undefined:
       return result('Unknown event', CircleHelp, 'Unknown actor');
     default: {

@@ -204,6 +204,17 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
     }),
     'Gate Guard is led away under arrest.',
   ],
+  interact: [
+    act(Family.ACT, {
+      case: 'interact',
+      value: {
+        actor: gate,
+        prop: { kind: PartyKind.PROP, id: 'grate' },
+        words: 'lifts the grate and climbs in.',
+      },
+    }),
+    'Gate Guard: lifts the grate and climbs in.',
+  ],
   arrest: [
     act(Family.STATE, {
       case: 'arrest',
