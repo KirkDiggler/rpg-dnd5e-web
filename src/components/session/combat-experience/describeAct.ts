@@ -804,7 +804,13 @@ function describeWith(
         tone: 'neutral',
       };
     case 'interact':
-      return describeInteract(body.value, context, name, rw);
+      return describeInteract(
+        body.value,
+        context,
+        name,
+        rw,
+        cameThroughFriend(act, context.viewerMember)
+      );
     case 'arrest':
       return {
         eyebrow: 'Arrest',
@@ -1014,7 +1020,8 @@ function describeInteract(
   i: InteractAct,
   context: DescribeContext,
   name: (p: Party | undefined) => string,
-  rw: RollWords
+  rw: RollWords,
+  throughFriend: boolean
 ): Omit<DescribedAct, 'text' | 'outcome'> {
   const actor = name(i.actor) || 'Someone';
   const own = Boolean(
@@ -1039,11 +1046,18 @@ function describeInteract(
       detail: '',
       tone: 'neutral',
     };
+  // THE DOER'S OWN VERSION, SHOWN THROUGH A FRIEND (shared view): its words
+  // are the doer's second person ("You lift the grate…") and never this
+  // viewer's line. Only the doer's version sets `option`; a version through
+  // a friend may be theirs. Either way the generic third person stands in,
+  // and the corner tag says whose eyes it came through.
+  const doersWords = i.option !== '' || throughFriend;
   return {
     eyebrow: 'Done',
-    headline: i.words
-      ? `${actor}: ${i.words}`
-      : `${actor} uses ${name(i.prop)}`,
+    headline:
+      i.words && !doersWords
+        ? `${actor}: ${i.words}`
+        : `${actor} uses ${name(i.prop)}`,
     detail: '',
     tone: 'neutral',
   };

@@ -125,13 +125,44 @@ describe('a witness reads what they saw', () => {
     expect(said(leaked).toLowerCase()).not.toContain('grate');
   });
 
-  it('through a friend’s eyes at shared view: the corner tag says so', () => {
+  it('through a friend’s eyes at shared view: the corner tag says so, and the line is third person', () => {
     const seen = interact(
       { actor: member('bea'), prop: grate, words: 'lifts the grate.' },
       { via: ['vex'] }
     );
     expect(row(seen).eyebrow).toBe('Done · through Vex');
-    expect(row(seen).headline).toBe('Bea: lifts the grate.');
+    expect(row(seen).headline).toBe('Bea uses the grate');
+  });
+
+  it('the doer’s own version shown through the doer (shared view): never their second person as this viewer’s line', () => {
+    // What the api sends every friend (rpg-api#1243): the doer's version,
+    // `option` and `beaten` set, `perceived.via` = the doer.
+    const doers = interact(
+      {
+        actor: member('bea'),
+        prop: grate,
+        option: 'to-chapel',
+        words: 'You lift the grate and take the way up.',
+        beaten: true,
+      },
+      { via: ['bea'] }
+    );
+    const r = row(doers);
+    expect(r.headline).toBe('Bea uses the grate');
+    expect(r.eyebrow).toBe('Done · through Bea');
+    expect(said(doers)).not.toContain('You lift');
+    // The same version without the mark (a producer that dropped `via`):
+    // `option` alone says it is the doer's, so still third person.
+    expect(
+      row(
+        interact({
+          actor: member('bea'),
+          prop: grate,
+          option: 'to-chapel',
+          words: 'You lift the grate and take the way up.',
+        })
+      ).headline
+    ).toBe('Bea uses the grate');
   });
 });
 
@@ -157,6 +188,23 @@ describe('a prop’s answer is narrated', () => {
 });
 
 describe('the refresh each version asks for', () => {
+  it('a deed shown through a friend re-reads the atlas: the watcher who came to know the thing sees it drawn', () => {
+    expect(
+      refreshKeysForAct(
+        interact(
+          {
+            actor: member('bea'),
+            prop: grate,
+            option: 'to-chapel',
+            words: 'You lift the grate and take the way up.',
+          },
+          { via: ['bea'] }
+        ),
+        viewer
+      )
+    ).toEqual(['atlas']);
+  });
+
   it('the doer re-reads their sheet and offers; a witness, offers and sight', () => {
     expect(
       refreshKeysForAct(

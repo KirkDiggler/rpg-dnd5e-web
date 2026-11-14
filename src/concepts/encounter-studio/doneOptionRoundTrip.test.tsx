@@ -4,8 +4,8 @@
  * loads it, shows it as something DONE (never as a line with empty words),
  * keeps it through every edit around it, and writes it back byte for byte.
  *
- * Until the served castle carries one, the grate's `to-chapel` line is made
- * a deed here, by text, from the served castle.
+ * The served castle carries them: the grate's two ways and the altar's
+ * examine are deeds (rpg-api#1243).
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -25,11 +25,10 @@ import served from './fixtures/the-mad-king-served.yaml?raw';
 
 afterEach(cleanup);
 
-const SAID = '            say: (lift the grate and take the way up)\n';
 const DONE =
   '            do: You lift the grate and take the way up.\n' +
-  '            seen: lifts the grate and climbs in.\n';
-const castle = served.replace(SAID, DONE);
+  '            seen: lifts the grate by the hearth and climbs down into the dark\n';
+const castle = served;
 
 function read(text: string) {
   const result = readDraftYaml(text);
@@ -73,12 +72,17 @@ describe('a line done loads and writes back (rpg-project#959)', () => {
     const option = result.draft.room.propBindings!.grate.options![0]!;
     expect(option).not.toHaveProperty('say');
     expect(option.do).toBe('You lift the grate and take the way up.');
-    expect(option.seen).toBe('lifts the grate and climbs in.');
+    expect(option.seen).toBe(
+      'lifts the grate by the hearth and climbs down into the dark'
+    );
     expect(isDoneOption(option)).toBe(true);
   });
 
   it('an option with neither `say` nor `do` is still refused, in the engine’s words', () => {
-    const neither = served.replace(SAID, '');
+    const neither = served.replace(
+      '            do: You lift the grate and take the way up.\n',
+      ''
+    );
     const result = readDraftYaml(neither);
     expect(result.ok).toBe(false);
     if (!result.ok)
@@ -101,10 +105,10 @@ describe('a line done loads and writes back (rpg-project#959)', () => {
   it('editing the line beside it keeps the deed byte for byte', () => {
     const result = read(castle);
     const saved = grateEdit(result, 1, (o) =>
-      patchOption(o, { say: '(climb down)' })
+      withSeen(o, 'drops out of sight')
     );
     expect(changedLines(castle, saved)).toEqual([
-      '            say: (climb down)',
+      '            seen: drops out of sight',
     ]);
     expect(saved).toContain(DONE);
   });
@@ -132,18 +136,25 @@ describe('a line done loads and writes back (rpg-project#959)', () => {
     ]);
   });
 
-  it('said ↔ done moves the words and nothing else; both ways round-trip', () => {
+  it('done → said moves the words to `say` and drops `seen`; said → done moves them back', () => {
     const result = read(served);
-    const done = grateEdit(result, 0, (o) => asDone(o));
-    expect(done).toContain(
-      '          - id: to-chapel\n            do: (lift the grate and take the way up)\n'
+    const said = grateEdit(result, 0, (o) => asSaid(o));
+    expect(said).toContain(
+      '          - id: to-chapel\n            say: You lift the grate and take the way up.\n'
     );
-    expect(
-      parse(done).room.room.propBindings.grate.options[0]
-    ).not.toHaveProperty('say');
-    const again = read(done);
-    const back = grateEdit(again, 0, (o) => asSaid(o));
-    expect(back).toBe(served);
+    const option = parse(said).room.room.propBindings.grate.options[0];
+    expect(option).not.toHaveProperty('do');
+    expect(option).not.toHaveProperty('seen');
+    const again = read(said);
+    const back = grateEdit(again, 0, (o) => asDone(o));
+    // Back to done: the words return to `do`; the seen words were the said
+    // line's to drop, so they are the one line not restored.
+    expect(back).toBe(
+      served.replace(
+        '            seen: lifts the grate by the hearth and climbs down into the dark\n            success:\n              - relocate:\n                  to: region-chapel',
+        '            success:\n              - relocate:\n                  to: region-chapel'
+      )
+    );
   });
 });
 
@@ -173,18 +184,20 @@ describe('the studio shows a deed as done', () => {
     expect(
       (screen.getByLabelText('Line 1 seen as for grate') as HTMLTextAreaElement)
         .value
-    ).toBe('lifts the grate and climbs in.');
+    ).toBe('lifts the grate by the hearth and climbs down into the dark');
     expect(screen.queryByLabelText('Line 1 for grate')).toBeNull();
-    // The line beside it is still said.
+    // Turning the line beside it into a line said moves its words to `say`.
     expect(
-      (screen.getByLabelText('Line 2 of grate is said') as HTMLInputElement)
+      (screen.getByLabelText('Line 2 of grate is done') as HTMLInputElement)
         .checked
     ).toBe(true);
-    fireEvent.click(screen.getByLabelText('Line 2 of grate is done'));
+    fireEvent.click(screen.getByLabelText('Line 2 of grate is said'));
     expect(onChange).toHaveBeenLastCalledWith(
       1,
-      expect.objectContaining({ do: '(lift the grate and take the way down)' })
+      expect.objectContaining({
+        say: 'You lift the grate and take the way down.',
+      })
     );
-    expect(onChange.mock.lastCall![1]).not.toHaveProperty('say');
+    expect(onChange.mock.lastCall![1]).not.toHaveProperty('do');
   });
 });

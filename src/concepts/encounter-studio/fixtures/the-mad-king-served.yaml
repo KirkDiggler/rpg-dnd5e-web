@@ -1,5 +1,5 @@
-# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#958)
-# at commit 56f81058ff8788e971f6bfbf36b24a739691d881, git blob 99fd9af930f01f3282bd5f111d32d7f323704dd1.
+# SYNCED FIXTURE (rpg-project#857): rpg-api content/the-mad-king.yaml (rpg-project#959)
+# at commit 11842845ff585e1c56ddcf32fad358ab0a1e9dfe, git blob 98604c5d45bfde44bd725444e71e44eb9897c4f3.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -2343,19 +2343,23 @@ room:
       purse:
         holdable: true
       # Hand edit (rpg-project#958, Passages S1): the passage's kitchen end.
-      # One line per destination; nothing at either far end, so the way is
-      # one-way.
+      # One thing to do per destination; nothing at either far end, so the
+      # way is one-way. Hand edit (rpg-project#959, Passages S2): they are
+      # done, not said — seen, not heard — and what a witness sees names no
+      # destination.
       grate:
         options:
           - id: to-chapel
-            say: (lift the grate and take the way up)
+            do: You lift the grate and take the way up.
+            seen: lifts the grate by the hearth and climbs down into the dark
             success:
               - relocate:
                   to: region-chapel
                   words: The tunnel climbs, and you come up through a flagstone behind the chapel's altar.
                   rounds: 1
           - id: to-cells
-            say: (lift the grate and take the way down)
+            do: You lift the grate and take the way down.
+            seen: lifts the grate by the hearth and climbs down into the dark
             success:
               - relocate:
                   to: region-cells
@@ -2369,10 +2373,13 @@ room:
         holdable: true
         holds:
           - cooks-ledger
+      # Hand edit (rpg-project#959, Passages S2): the altar is examined by
+      # doing, not by saying; nobody says it aloud.
       altar:
         options:
           - id: examine
-            say: Examine the altar.
+            do: You examine the altar.
+            seen: looks the altar over
             check:
               - ability: religion
                 dc: 12
