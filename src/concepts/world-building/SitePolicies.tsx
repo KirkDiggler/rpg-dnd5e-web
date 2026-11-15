@@ -54,6 +54,7 @@ import {
   Fragment,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -157,7 +158,13 @@ import { WEAPON_REF_RE } from './roomDraft';
 import { RouteEditor, WaypointChips } from './RouteEditor';
 import { isRouteValue, waypointOf } from './routeEdits';
 import { RowRefusalLines } from './RowRefusalLines';
-import { rowPathLabel, useRowRefusalsAt } from './rowRefusals';
+import {
+  isUnder,
+  lineRefusals,
+  rowPathLabel,
+  useRowRefusals,
+  useRowRefusalsAt,
+} from './rowRefusals';
 import { SayActivityFields } from './SayActivityFields';
 import { SelectorTarget } from './SelectorTarget';
 import {
@@ -1564,11 +1571,15 @@ function FactionTableEditor({
   faction,
   room,
   onChange,
+  at,
 }: {
   scope: SiteScope;
   faction: SiteFaction;
   room?: RoomGameplayData;
   onChange: (next: SiteScope) => void;
+  /** The faction's path in the file (`factions[i]`), so each row shows the
+   * engine's refusal under it (R34). */
+  at?: string;
 }) {
   const table = faction.on ?? {};
   const authored = Object.keys(table);
@@ -1604,6 +1615,7 @@ function FactionTableEditor({
                 key={key}
                 trigger={trigger}
                 entry={entry}
+                at={at ? [`${at}.on.${trigger}[${index}]`] : undefined}
                 onCommit={(next) =>
                   onChange(
                     patchSiteAnswerEntry(
@@ -1767,6 +1779,22 @@ function FactionRow({
 }) {
   const [typedId, setTypedId] = useState(faction.id);
   useEffect(() => setTypedId(faction.id), [faction.id, scope]);
+  /** Where the engine addresses this faction (`factions[i]`): its rows and
+   * lines show their own refusal, and the faction opens on one (R34). */
+  const at = `factions[${(scope.factions ?? []).indexOf(faction)}]`;
+  const { refusals } = useRowRefusals();
+  const refused = refusals.some((r) => isUnder(r.path, at));
+  /** The faction's own: under it but not under one of its rows or lines,
+   * which show theirs. Said at its head, so what it opened for shows. */
+  const own = refusals.filter(
+    (r) =>
+      isUnder(r.path, at) &&
+      !/^\.(?:on\.[^.[]+\[\d+\]|options\[\d+\])/.test(r.path.slice(at.length))
+  );
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (refused && detailsRef.current) detailsRef.current.open = true;
+  }, [refused]);
   const commitId = () => {
     if (typedId === faction.id) return;
     if (typedId.trim() === '') {
@@ -1788,12 +1816,17 @@ function FactionRow({
   };
   return (
     <li className="wb-policy-faction" data-faction-id={faction.id}>
-      <details className="wb-policy-row" data-testid={`faction-${faction.id}`}>
+      <details
+        ref={detailsRef}
+        className="wb-policy-row"
+        data-testid={`faction-${faction.id}`}
+      >
         {/* THE LINE IS THE ID (rpg-dnd5e-web#1178 follow-up): a faction is one
             noun, and its id is what names it. Its temper and its shared answer
             table are the form behind it. */}
         <summary aria-label={`Faction ${faction.id}`}>{faction.id}</summary>
         <div className="wb-policy-form">
+          <RowRefusalLines refusals={own} />
           <label>
             <span>Id</span>
             <input
@@ -1894,6 +1927,7 @@ function FactionRow({
             faction={faction}
             room={room}
             onChange={onChange}
+            at={at}
           />
 
           {/* THE SIDE'S LINES (rpg-project#718): what a character can say to
@@ -1912,6 +1946,7 @@ function FactionRow({
               <OptionsEditor
                 titled={false}
                 owner={faction.id}
+                at={at}
                 options={faction.options ?? []}
                 room={room}
                 isProp={false}
@@ -2916,6 +2951,7 @@ export function CreatureOrders({
           <OptionsEditor
             titled={false}
             owner={monster.id}
+            at={`room.room.monsterBindings.${monster.id}`}
             options={binding?.options ?? []}
             room={room}
             isProp={false}
@@ -3060,6 +3096,7 @@ const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
  */
 export function OptionsEditor({
   owner,
+  at,
   titled = true,
   options,
   room,
@@ -3070,6 +3107,10 @@ export function OptionsEditor({
 }: {
   /** The binding's id — what every control here is named for. */
   owner: string;
+  /** The owner's path in the file (`room.room.monsterBindings.<id>`,
+   * `factions[i]`): each line shows the engine's refusal of it and each
+   * verdict row its own (R34). Absent: no refusal is placed here. */
+  at?: string;
   /** The "Options" heading; CreatureOrders titles its own sub-section. */
   titled?: boolean;
   options: readonly OptionShape[];
@@ -3081,6 +3122,7 @@ export function OptionsEditor({
   onRemove: (index: number) => void;
 }) {
   const holdable = holdablePropIds(room);
+  const { refusals } = useRowRefusals();
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
       {titled && <h6>Options — what a character can say</h6>}
@@ -3105,12 +3147,16 @@ export function OptionsEditor({
         const heldId =
           requiresForm === 'holds' ? requiresId(option.requires) : undefined;
         const commit = (next: OptionShape) => onChange(index, next);
+        const line = at ? `${at}.options[${index}]` : undefined;
         return (
           <div
             key={index}
             className="wb-option wb-policy-block"
             data-testid={`option-${owner}-${index}`}
           >
+            {line && (
+              <RowRefusalLines refusals={lineRefusals(refusals, line)} />
+            )}
             <label>
               <span>Id</span>
               <input
@@ -3326,6 +3372,9 @@ export function OptionsEditor({
                       key={key}
                       trigger={verdict}
                       label={`${of} ${verdict}`}
+                      at={
+                        line ? [`${line}.${verdict}[${rowIndex}]`] : undefined
+                      }
                       entry={row}
                       allowNoWord
                       excludeWords={isProp ? ['flee'] : []}

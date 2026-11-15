@@ -47,7 +47,11 @@ export type RefusalTarget =
        * (rpg-project#720). Absent for a refusal of the whole noun. */
       row?: string;
     }
-  | { kind: 'ending'; id: string };
+  | { kind: 'ending'; id: string }
+  /** The draft's key, refused by the server (R16): Save opens at the key
+   * field. Never produced from a field path here; the surface adds it from
+   * `keyRefusalOf`. */
+  | { kind: 'key' };
 
 export interface RefusalJump {
   path: string;

@@ -65,16 +65,22 @@ export function keyRefusalOf(publishing: StudioPublishing): string | null {
       );
     return match ? match[1]! : null;
   };
-  const field = [...publishing.preview.errors, ...publishing.saver.errors].find(
-    (error) => error.path === '' && /^key\b/.test(error.message)
-  );
+  const { saver, preview, yaml } = publishing;
+  // ONLY THE CURRENT BYTES' (R34): a save is current while it submitted
+  // exactly these bytes (the key is in them), a check while bytes exist.
+  const saverCurrent = saver.submittedYaml === yaml;
+  const previewCurrent = yaml !== null;
+  const field = [
+    ...(previewCurrent ? preview.errors : []),
+    ...(saverCurrent ? saver.errors : []),
+  ].find((error) => error.path === '' && /^key\b/.test(error.message));
   return (
     fromTransport(publishing.error) ??
-    (publishing.saver.status === 'error'
-      ? fromTransport(publishing.saver.message)
+    (saverCurrent && saver.status === 'error'
+      ? fromTransport(saver.message)
       : null) ??
-    (publishing.preview.status === 'unreachable'
-      ? fromTransport(publishing.preview.message)
+    (previewCurrent && preview.status === 'unreachable'
+      ? fromTransport(preview.message)
       : null) ??
     field?.message ??
     null
@@ -92,7 +98,7 @@ export function currentRefusals(
   const errors =
     saver.status === 'invalid' && saver.submittedYaml === yaml
       ? saver.errors
-      : gate === 'live' && preview.status === 'errors'
+      : gate === 'live' && yaml !== null && preview.status === 'errors'
         ? preview.errors
         : [];
   return errors.filter(

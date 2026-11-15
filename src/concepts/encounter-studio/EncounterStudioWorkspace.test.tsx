@@ -2,6 +2,7 @@ import type { CompositionSource } from '@/compositions/compositionSource';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { documentPlacementNames } from '../world-building/placementNames';
 import { projectStudioArrange } from '../world-building/studioArrange';
 import type {
   WorldBuildingCanvasOptions,
@@ -85,6 +86,20 @@ vi.mock('@/author/useAuthoringGate', () => ({
   useAuthoringGate: () => ({ state: gate.state, retry: vi.fn() }),
 }));
 
+/** The refusals the header reads (R34), set by a test; null reads the real
+ * publishing hook, which with the gate off holds none. */
+const refusals = vi.hoisted(() => ({
+  current: null as Array<{ path: string; message: string }> | null,
+}));
+vi.mock('./studioPublishing', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./studioPublishing')>();
+  return {
+    ...real,
+    currentRefusals: (...args: Parameters<typeof real.currentRefusals>) =>
+      refusals.current ?? real.currentRefusals(...args),
+  };
+});
+
 vi.mock('./LayoutViewport', () => ({
   LayoutViewport: (props: LayoutViewportProps) => {
     observed.layoutProps = props;
@@ -146,6 +161,7 @@ function createSession(): EncounterStudioSession {
 
 beforeEach(() => {
   gate.state = 'gate-off';
+  refusals.current = null;
   observed.session = createSession();
   observed.ownerMounts =
     observed.ownerUnmounts =
@@ -889,5 +905,128 @@ describe('shared Arrange context lifecycle', () => {
     expect(
       within(inspector()).getByRole('heading', { name: 'Room' })
     ).toBeTruthy();
+  });
+
+  describe('a refusal is seen from anywhere (R34)', () => {
+    const SAYS_AND_DOES =
+      'an option is said or done, not both: write `say` or `do`';
+    const refused = {
+      path: 'room.room.monsterBindings.goblin-1.options[0].do',
+      message: SAYS_AND_DOES,
+    };
+    /** A document that places goblin-1, so its refusal is a jump. */
+    const placeGoblin = (): void => {
+      observed.session = {
+        ...observed.session!,
+        document: createPopulatedStudioDocument(),
+      };
+    };
+    const count = (): HTMLElement | null =>
+      within(document.querySelector('.es-header') as HTMLElement).queryByRole(
+        'button',
+        { name: /refusal/ }
+      );
+
+    it('with no refusal the header shows no count', () => {
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()).toBeNull();
+      click('Encounter');
+      expect(count()).toBeNull();
+    });
+
+    it('with one refusal the header names the count on Build and on Encounter, in both views', () => {
+      refusals.current = [refused];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()?.textContent).toBe('1 refusal');
+      click('3D');
+      expect(count()?.textContent).toBe('1 refusal');
+      click('Encounter');
+      expect(count()?.textContent).toBe('1 refusal');
+      click('Build');
+      click('Layout');
+      expect(count()?.textContent).toBe('1 refusal');
+    });
+
+    it('two refusals are counted as two', () => {
+      refusals.current = [refused, { path: 'line 3', message: 'bad yaml' }];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()?.textContent).toBe('2 refusals');
+    });
+
+    it("activating the count lists each refusal in the engine's words without opening Save", () => {
+      refusals.current = [refused, { path: 'line 3', message: 'bad yaml' }];
+      placeGoblin();
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      click('Encounter');
+      const button = count()!;
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(button);
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      const list = within(
+        screen.getByRole('group', { name: 'Current refusals' })
+      );
+      const name = documentPlacementNames(observed.session!.document).get(
+        'goblin-1'
+      )!;
+      expect(
+        list.getByRole('button', { name: `${name}: ${SAYS_AND_DOES}` })
+      ).toBeTruthy();
+      // A refusal with no noun stays a sentence, with its path.
+      expect(list.getByText('bad yaml')).toBeTruthy();
+      expect(
+        list.getAllByRole('button').map((button) => button.textContent)
+      ).toEqual([`${name}: ${SAYS_AND_DOES}`, 'Close refusals']);
+      expect(
+        screen.queryByRole('region', { name: 'Save and Play' })
+      ).toBeNull();
+    });
+
+    it('Escape or Close closes the list and returns focus to the count', () => {
+      refusals.current = [refused];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      fireEvent.click(count()!);
+      fireEvent.keyDown(
+        screen.getByRole('group', { name: 'Current refusals' }),
+        { key: 'Escape' }
+      );
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+      fireEvent.click(count()!);
+      fireEvent.click(screen.getByRole('button', { name: 'Close refusals' }));
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+    });
+
+    it('the jump selects the creature and opens its inspector on Build', () => {
+      refusals.current = [refused];
+      placeGoblin();
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      click('Encounter');
+      fireEvent.click(count()!);
+      const name = documentPlacementNames(observed.session!.document).get(
+        'goblin-1'
+      )!;
+      fireEvent.click(
+        screen.getByRole('button', { name: `${name}: ${SAYS_AND_DOES}` })
+      );
+      expect(observed.session!.creatures.select).toHaveBeenLastCalledWith(
+        'goblin-1'
+      );
+      expect(
+        screen
+          .getByRole('button', { name: 'Build' })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+      expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+      // The list closes on the jump; the count stays while the refusal does.
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(count()?.textContent).toBe('1 refusal');
+    });
   });
 });
