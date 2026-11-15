@@ -82,6 +82,9 @@ export interface StudioPublishProps {
   /** The surface routes a jump to the selection or home section. */
   onJump(target: RefusalTarget): void;
   onClose?(): void;
+  /** A new value focuses the key field: the header's jump to a refused key
+   * (R34, R16). */
+  focusKey?: number;
   copy?: boolean;
   copySourceKey?: string | null;
 }
@@ -96,6 +99,7 @@ export function StudioPublish({
   nameOf,
   onJump,
   onClose,
+  focusKey = 0,
   copy = false,
   copySourceKey = null,
 }: StudioPublishProps): React.JSX.Element {
@@ -110,6 +114,10 @@ export function StudioPublish({
     encodeError,
   } = publishing;
   const replaceRef = useRef<HTMLButtonElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusKey) keyRef.current?.focus();
+  }, [focusKey]);
   useEffect(() => {
     if (overwritePending) replaceRef.current?.focus();
   }, [overwritePending]);
@@ -151,6 +159,7 @@ export function StudioPublish({
             </FieldHelp>
           </span>
           <input
+            ref={keyRef}
             aria-label="File key"
             value={key}
             disabled={busy}

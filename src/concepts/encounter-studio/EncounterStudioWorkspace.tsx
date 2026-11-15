@@ -49,7 +49,11 @@ import {
   writePublication,
   type PublicationRecord,
 } from './publicationMemory';
-import { refusalJumps, type RefusalTarget } from './refusalJump';
+import {
+  refusalJumps,
+  type RefusalJump,
+  type RefusalTarget,
+} from './refusalJump';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
@@ -69,6 +73,7 @@ import {
 } from './StudioPublish';
 import {
   currentRefusals,
+  keyRefusalOf,
   PUBLISH_RUNNING_TITLE,
   publishStatusText,
 } from './studioPublishing';
@@ -593,6 +598,16 @@ function StudioSurface({
   );
   /** The header's list of the current refusals is open (R34). */
   const [refusalsOpen, setRefusalsOpen] = useState(false);
+  /** The header counts a refused KEY too (R34), in the server's words; the
+   * Save panel shows that sentence at the key field instead of its list
+   * (R16), so it joins the header's list only. */
+  const keyRefusal = keyRefusalOf(publishing);
+  const headerJumps: RefusalJump[] = keyRefusal
+    ? [{ path: '', message: keyRefusal, target: { kind: 'key' } }, ...jumps]
+    : jumps;
+  /** A key jump asks the Save panel to focus the key field; a new nonce is
+   * a new jump. */
+  const [keyFocus, setKeyFocus] = useState(0);
   /** The row a refusal's jump asked for (rpg-project#720, R17). */
   const [focusRow, setFocusRow] = useState<{
     path: string;
@@ -739,6 +754,8 @@ function StudioSurface({
           : ENCOUNTER_SECTIONS[target.section];
       case 'ending':
         return `Ending ${target.id}`;
+      case 'key':
+        return 'File key';
     }
   };
   /** A refusal lands at the thing (R17): a placed thing, door, hex or cast
@@ -776,6 +793,10 @@ function StudioSurface({
         setFocusEnding({ id: target.id });
         changeHome('encounter');
         setEncounterSection('endings');
+        return;
+      case 'key':
+        changeSiteOperation('save');
+        setKeyFocus((was) => was + 1);
         return;
     }
   };
@@ -937,7 +958,7 @@ function StudioSurface({
           </button>
         </nav>
         <StudioRefusalCount
-          count={jumps.length}
+          count={headerJumps.length}
           open={refusalsOpen}
           onPress={() => setRefusalsOpen((open) => !open)}
         />
@@ -979,7 +1000,7 @@ function StudioSurface({
           this draft.
         </p>
       )}
-      {refusalsOpen && jumps.length > 0 && (
+      {refusalsOpen && headerJumps.length > 0 && (
         <section
           id="studio-refusals"
           className="es-refusals-panel"
@@ -990,7 +1011,7 @@ function StudioSurface({
             The engine refuses this draft. Each refusal opens the thing to fix.
           </p>
           <RefusalList
-            jumps={jumps}
+            jumps={headerJumps}
             nameOf={refusalNounName}
             onJump={(target) => {
               setRefusalsOpen(false);
@@ -1050,6 +1071,7 @@ function StudioSurface({
               gate={gate}
               characterId={playCharacter}
               jumps={jumps}
+              focusKey={keyFocus}
               nameOf={refusalNounName}
               onJump={(target) => {
                 changeSiteOperation(null);
