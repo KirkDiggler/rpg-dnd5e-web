@@ -15,6 +15,7 @@ export function StudioSidebar({
   sections = [],
   keyboardEnabled = true,
   compact = false,
+  resize,
 }: {
   open: boolean;
   section: StudioSidebarSection;
@@ -25,6 +26,8 @@ export function StudioSidebar({
   sections?: readonly { id: StudioSidebarSection; label: string }[];
   keyboardEnabled?: boolean;
   compact?: boolean;
+  /** The inner-edge resize handle (rpg-project#979), when the slot has one. */
+  resize?: ReactNode;
 }): React.JSX.Element {
   useEffect(() => {
     if (!keyboardEnabled) return;
@@ -61,6 +64,7 @@ export function StudioSidebar({
       hidden={!open}
       className={`es-sidebar ${compact ? 'es-sidebar-compact' : ''}`}
     >
+      {resize}
       <div className="es-sidebar-header">
         {sections.length > 0 && (
           <nav className="es-buttons" aria-label="Sidebar sections">

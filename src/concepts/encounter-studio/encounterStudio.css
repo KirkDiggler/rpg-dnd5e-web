@@ -453,6 +453,7 @@
 
 /* One options slot. Hiding a section never removes its form from the tree. */
 .es-sidebar {
+  position: relative;
   pointer-events: auto;
   align-self: flex-end;
   width: 100%;
@@ -468,7 +469,38 @@
   box-sizing: border-box;
 }
 .es-sidebar-compact {
-  width: min(24rem, 100%);
+  width: min(var(--es-inspector-width, 24rem), 100%);
+}
+/* THE INSPECTOR'S WIDTH (rpg-project#979). The root carries
+ * `--es-inspector-width` (the viewer's, clamped to half the workspace); the
+ * open inspector takes it, and above the narrow breakpoint the map stops at
+ * the inspector's edge instead of running under it, so the map and the 3D
+ * scene tree take the rest (rpg-dnd5e-web#1278). */
+.encounter-studio[data-inspector='open'] .es-context-layer {
+  width: min(var(--es-inspector-width), calc(100% - 1.5rem));
+}
+@media (min-width: 801px) {
+  .encounter-studio[data-inspector='open'] .es-map-workspace {
+    right: calc(var(--es-inspector-width) + 1.5rem);
+  }
+}
+/* The handle on the inspector's inner edge: quiet at rest, the accent when
+ * pointed at or focused. */
+.es-inspector-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  border-left: 2px solid transparent;
+}
+.es-inspector-resize:hover,
+.es-inspector-resize:focus-visible {
+  border-left-color: var(--wb-accent);
+  outline: none;
 }
 .es-sidebar [hidden],
 .es-sidebar[hidden] {
