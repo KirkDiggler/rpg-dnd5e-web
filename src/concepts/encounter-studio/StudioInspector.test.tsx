@@ -35,6 +35,7 @@ import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { castleEngineReadBack } from './fixtures/engineReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import { StudioInspector, type StudioInspectorProps } from './StudioInspector';
 import {
   studioInspectionOf,
@@ -1188,9 +1189,12 @@ describe('StudioInspector', () => {
       const readBack = within(region()).getByRole('region', {
         name: 'Read back',
       });
+      fireEvent.click(within(readBack).getByRole('button', { name: 'Full' }));
       expect(readBack.textContent).toContain(
         'Guard (gate-1) runs the routine `gate-1-policy` (as `policy`)'
       );
+      // The choice is remembered per viewer; later tests start Folded.
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
       fireEvent.click(
         within(readBack).getAllByRole('button', {
           name: 'Open topic admitted',

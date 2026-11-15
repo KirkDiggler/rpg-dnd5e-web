@@ -19,6 +19,9 @@
 import type {
   ReadBack,
   ReadBackConnection,
+  ReadBackFoldedItem,
+  ReadBackGroup,
+  ReadBackSection,
   ReadBackStatement,
   ReadBackSubject,
   ReadBackUnsaid,
@@ -63,32 +66,140 @@ export function readBackOfSelection(
   selection: ReadBackSelection,
   document: Readonly<RoomDraftDocument>
 ): SelectedReadBack {
-  const groups = readBack.sections.flatMap((section) => section.groups);
-  const own = groups.map((group) => ({
-    group,
-    statements: group.statements.filter((statement) =>
-      same(statement.about, selection.kind, selection.id)
-    ),
-  }));
+  const groups = selectedGroups(readBack, selection).map(
+    ({ group, statements }) => ({
+      title: group.title,
+      about: group.about,
+      statements,
+    })
+  );
+  const notYetSaid = readBack.notYetSaid.filter((unsaid) =>
+    landsOn(targetOfPath(unsaid.path, document), selection)
+  );
+  return { groups, notYetSaid };
+}
+
+/** The selection's statements with the full section and group each sits
+ * in: rule 1 and rule 2 above, in the engine's order. */
+function selectedGroups(
+  readBack: ReadBack,
+  selection: ReadBackSelection
+): {
+  section: ReadBackSection;
+  group: ReadBackGroup;
+  statements: ReadBackStatement[];
+}[] {
+  const own = readBack.sections.flatMap((section) =>
+    section.groups.map((group) => ({
+      section,
+      group,
+      statements: group.statements.filter((statement) =>
+        same(statement.about, selection.kind, selection.id)
+      ),
+    }))
+  );
   const used = new Set<string>();
   for (const { statements } of own)
     for (const statement of statements)
       for (const connection of statement.connects)
         if (connection.role === USES_ROLE)
           used.add(`${connection.kind}\u0000${connection.id}`);
-  const out: SelectedReadBackGroup[] = [];
-  own.forEach(({ group, statements }) => {
-    const about = group.about;
-    const isUsed =
-      about !== undefined && used.has(`${about.kind}\u0000${about.id}`);
-    const shown = isUsed ? group.statements : statements;
-    if (shown.length > 0)
-      out.push({ title: group.title, about, statements: shown });
-  });
-  const notYetSaid = readBack.notYetSaid.filter((unsaid) =>
-    landsOn(targetOfPath(unsaid.path, document), selection)
-  );
-  return { groups: out, notYetSaid };
+  return own
+    .map((entry) => {
+      const about = entry.group.about;
+      const isUsed =
+        about !== undefined && used.has(`${about.kind}\u0000${about.id}`);
+      return isUsed ? { ...entry, statements: entry.group.statements } : entry;
+    })
+    .filter((entry) => entry.statements.length > 0);
+}
+
+/** One folded entry shown for the selection: the engine's text, the full
+ * statements it stands for that the selection chose (those of its own
+ * section set at one of its own `paths`, in the engine's order), and its
+ * entries, each the same. */
+export interface ShownFoldedItem {
+  item: ReadBackFoldedItem;
+  statements: ReadBackStatement[];
+  items: ShownFoldedItem[];
+}
+
+export interface SelectedFoldedReadBack {
+  /** The engine's folded sections that hold the selection's entries, in the
+   * engine's order, under the engine's titles. */
+  sections: { title: string; items: ShownFoldedItem[] }[];
+  /** A selected statement behind no shown entry: listed in full under the
+   * folded view so nothing the Full view shows is lost. */
+  unreached: ReadBackStatement[];
+}
+
+/**
+ * THE ENGINE'S FOLDED READ-BACK, FILTERED TO ONE SELECTION (rpg-project#978).
+ *
+ * A folded entry carries no subject, only the whole path of every statement
+ * it stands for, and one path can be set by statements about several things
+ * (a grate's relocate row is also the path of the join it makes). So:
+ * - the selection's statements are chosen by the rule above;
+ * - in the folded section titled as the full section they sit in (the engine
+ *   folds each full section into the folded one of the same title), a path
+ *   is the selection's own when every statement of that section set at it is
+ *   a selected one;
+ * - an entry is shown, whole and with every entry under it, when one of its
+ *   own `paths` is the selection's own; otherwise its entries are tried the
+ *   same way. The shallowest match wins.
+ * An entry the engine folded across things ("has the same 3 lines as Guard
+ * (gate-1)") is shown as the engine wrote it. The studio folds, joins and
+ * rewords nothing.
+ */
+export function foldedOfSelection(
+  readBack: ReadBack,
+  selection: ReadBackSelection
+): SelectedFoldedReadBack {
+  const selected = selectedGroups(readBack, selection);
+  const chosen = new Set(selected.flatMap(({ statements }) => statements));
+  const sections: SelectedFoldedReadBack['sections'] = [];
+  const reached = new Set<ReadBackStatement>();
+  for (const folded of readBack.folded) {
+    const full = readBack.sections.find(
+      (section) => section.title === folded.title
+    );
+    if (!full || !selected.some(({ section }) => section === full)) continue;
+    const everyStatement = full.groups.flatMap((group) => group.statements);
+    const atPath = new Map<string, ReadBackStatement[]>();
+    for (const statement of everyStatement)
+      atPath.set(statement.path, [
+        ...(atPath.get(statement.path) ?? []),
+        statement,
+      ]);
+    const own = new Set(
+      [...atPath]
+        .filter(([, statements]) => statements.every((st) => chosen.has(st)))
+        .map(([path]) => path)
+    );
+    const shown = (item: ReadBackFoldedItem): ShownFoldedItem => {
+      const paths = new Set(item.paths);
+      // Only the selection's own: a path shared with another thing (three
+      // creatures speaking one faction's lines) never opens to its
+      // statements.
+      const statements = everyStatement.filter(
+        (st) => paths.has(st.path) && chosen.has(st)
+      );
+      for (const statement of statements) reached.add(statement);
+      return { item, statements, items: item.items.map(shown) };
+    };
+    const pick = (items: readonly ReadBackFoldedItem[]): ShownFoldedItem[] =>
+      items.flatMap((item) =>
+        item.paths.some((path) => own.has(path))
+          ? [shown(item)]
+          : pick(item.items)
+      );
+    const items = pick(folded.items);
+    if (items.length > 0) sections.push({ title: folded.title, items });
+  }
+  const unreached = selected
+    .flatMap(({ statements }) => statements)
+    .filter((statement) => !reached.has(statement));
+  return { sections, unreached };
 }
 
 /** Whether a path's target is the selection itself. */

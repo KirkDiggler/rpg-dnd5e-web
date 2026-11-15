@@ -128,6 +128,7 @@ import {
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
@@ -7267,13 +7268,25 @@ describe('the inspector speaks the engine’s sentences (rpg-project#968)', () =
     const readBack = within(
       screen.getByRole('region', { name: 'Inspector' })
     ).getByRole('region', { name: 'Read back' });
+    // Folded by default (rpg-project#978): his routine and its states, in
+    // the engine's folded entries.
     await waitFor(() =>
       expect(readBack.textContent).toContain(
-        'In the state `ready`, Guard Captain (captain) listens for 7 beats.'
+        'Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`'
       )
+    );
+    expect(readBack.textContent).toContain(
+      'In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).'
+    );
+    // Full is today's view, word for word.
+    fireEvent.click(within(readBack).getByRole('button', { name: 'Full' }));
+    expect(readBack.textContent).toContain(
+      'In the state `ready`, Guard Captain (captain) listens for 7 beats.'
     );
     expect(readBack.textContent).toContain(
       'Guard Captain (captain) runs the routine `captain-policy`'
     );
+    // The choice is remembered per viewer; later tests start Folded.
+    localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
   });
 });
