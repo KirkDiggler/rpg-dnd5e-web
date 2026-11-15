@@ -882,9 +882,13 @@ describe('S6 Save & Play', () => {
       'key must match [a-z0-9-]+'
     );
     expect(document.activeElement).toBe(keyIn(save));
+    // The focus is the jump's, once: Save opened again later leaves it.
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    expect(document.activeElement).not.toBe(keyIn(panel()));
     // Fixing the key clears the count.
     const fixed = validates().length;
-    fireEvent.change(keyIn(save), { target: { value: 'good-key' } });
+    fireEvent.change(keyIn(panel()), { target: { value: 'good-key' } });
     await waitFor(() => expect(validates().length).toBeGreaterThan(fixed), {
       timeout: 2000,
     });
@@ -896,6 +900,53 @@ describe('S6 Save & Play', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /refusal/ })).toBeNull()
     );
+  });
+
+  it('the count holds through a check and its list does not reopen on its own (R34)', async () => {
+    mount(createCastleS4Document(), { characterId: null });
+    await settled();
+    await previewRefuses([{ path: 'line 3', message: 'refused once' }]);
+    const count = () =>
+      screen.queryByRole('button', { name: /^\d+ refusals?$/ });
+    fireEvent.click(count()!);
+    expect(
+      screen.getByRole('group', { name: 'Current refusals' })
+    ).toBeTruthy();
+    const validates = () => sink.puts.filter((put) => put.request.validateOnly);
+    const recheck = async (key: string): Promise<void> => {
+      const before = validates().length;
+      fireEvent.change(keyIn(panel()), { target: { value: key } });
+      fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+      await waitFor(() => expect(validates().length).toBeGreaterThan(before), {
+        timeout: 2000,
+      });
+    };
+    // While the next check is out, the last settled count stays.
+    await recheck('other-key');
+    expect(count()?.textContent).toBe('1 refusal');
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    await waitFor(() => expect(count()).toBeNull());
+    expect(
+      screen.queryByRole('group', { name: 'Current refusals' })
+    ).toBeNull();
+    // Refused again: counted, but the list stays closed until asked.
+    await recheck('third-key');
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({
+          errors: [{ path: 'line 4', message: 'refused twice' }],
+        } as never)
+    );
+    await waitFor(() => expect(count()?.textContent).toBe('1 refusal'));
+    expect(count()!.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('group', { name: 'Current refusals' })
+    ).toBeNull();
   });
 
   it('a refused faction row and faction line show their own refusal on Factions (R34)', async () => {
@@ -920,6 +971,10 @@ describe('S6 Save & Play', () => {
         path: `factions[${index}].options[0].say`,
         message: 'a faction line is refused here',
       },
+      {
+        path: `factions[${index}].mind`,
+        message: 'the faction itself is refused here',
+      },
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
     fireEvent.click(
@@ -933,7 +988,10 @@ describe('S6 Save & Play', () => {
     const lines = within(faction)
       .getAllByTestId('row-refusal')
       .map((line) => line.textContent);
+    // What the faction opened for is said at its own head, then each row's
+    // and line's own.
     expect(lines).toEqual([
+      'the faction itself is refused here',
       'a hold row is refused here',
       'a faction line is refused here',
     ]);

@@ -8,7 +8,7 @@
  * opens — the key, Save to server, the overwrite ask, the refusals as jumps,
  * and one sentence per failure. It holds no transaction state of its own.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type Ref } from 'react';
 import { FieldHelp } from './FieldHelp';
 import type { RefusalJump, RefusalTarget } from './refusalJump';
 import {
@@ -83,8 +83,9 @@ export interface StudioPublishProps {
   onJump(target: RefusalTarget): void;
   onClose?(): void;
   /** A new value focuses the key field: the header's jump to a refused key
-   * (R34, R16). */
+   * (R34, R16). Consumed once: `onKeyFocused` resets it. */
   focusKey?: number;
+  onKeyFocused?(): void;
   copy?: boolean;
   copySourceKey?: string | null;
 }
@@ -100,6 +101,7 @@ export function StudioPublish({
   onJump,
   onClose,
   focusKey = 0,
+  onKeyFocused,
   copy = false,
   copySourceKey = null,
 }: StudioPublishProps): React.JSX.Element {
@@ -116,7 +118,11 @@ export function StudioPublish({
   const replaceRef = useRef<HTMLButtonElement>(null);
   const keyRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (focusKey) keyRef.current?.focus();
+    if (!focusKey) return;
+    keyRef.current?.focus();
+    onKeyFocused?.();
+    // Only a new jump focuses; the callback's identity is not one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey]);
   useEffect(() => {
     if (overwritePending) replaceRef.current?.focus();
@@ -330,14 +336,18 @@ export function StudioRefusalCount({
   count,
   open,
   onPress,
+  ref,
 }: {
   count: number;
   open: boolean;
   onPress(): void;
+  /** The list returns focus here when it closes. */
+  ref?: Ref<HTMLButtonElement>;
 }): React.JSX.Element | null {
   if (count === 0) return null;
   return (
     <button
+      ref={ref}
       type="button"
       className="es-refusal-count"
       aria-expanded={open}

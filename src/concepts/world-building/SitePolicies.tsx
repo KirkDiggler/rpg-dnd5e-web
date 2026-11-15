@@ -1784,6 +1784,13 @@ function FactionRow({
   const at = `factions[${(scope.factions ?? []).indexOf(faction)}]`;
   const { refusals } = useRowRefusals();
   const refused = refusals.some((r) => isUnder(r.path, at));
+  /** The faction's own: under it but not under one of its rows or lines,
+   * which show theirs. Said at its head, so what it opened for shows. */
+  const own = refusals.filter(
+    (r) =>
+      isUnder(r.path, at) &&
+      !/^\.(?:on\.[^.[]+\[\d+\]|options\[\d+\])/.test(r.path.slice(at.length))
+  );
   const detailsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     if (refused && detailsRef.current) detailsRef.current.open = true;
@@ -1819,6 +1826,7 @@ function FactionRow({
             table are the form behind it. */}
         <summary aria-label={`Faction ${faction.id}`}>{faction.id}</summary>
         <div className="wb-policy-form">
+          <RowRefusalLines refusals={own} />
           <label>
             <span>Id</span>
             <input

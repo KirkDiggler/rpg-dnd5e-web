@@ -95,6 +95,7 @@ import {
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
 import { StudioWallControls } from './StudioWallControls';
+import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
 const ENCOUNTER_SECTIONS = {
@@ -606,8 +607,21 @@ function StudioSurface({
   const headerJumps: RefusalJump[] = keyRefusal
     ? [{ path: '', message: keyRefusal, target: { kind: 'key' } }, ...jumps]
     : jumps;
+  /** What the header shows: the last settled refusals while a check is out. */
+  const shownRefusals = useSettledRefusals(
+    headerJumps,
+    publishing.preview.status === 'validating',
+    draftId
+  );
+  // At zero the list closes, so it never reopens on its own.
+  if (refusalsOpen && shownRefusals.length === 0) setRefusalsOpen(false);
+  const refusalCountRef = useRef<HTMLButtonElement>(null);
+  const closeRefusals = (): void => {
+    setRefusalsOpen(false);
+    refusalCountRef.current?.focus();
+  };
   /** A key jump asks the Save panel to focus the key field; a new nonce is
-   * a new jump. */
+   * a new jump, consumed once. */
   const [keyFocus, setKeyFocus] = useState(0);
   /** The row a refusal's jump asked for (rpg-project#720, R17). */
   const [focusRow, setFocusRow] = useState<{
@@ -616,12 +630,12 @@ function StudioSurface({
   } | null>(null);
   const rowRefusals = useMemo(
     () => ({
-      refusals: jumps.map(({ path, message }) => ({ path, message })),
+      refusals: shownRefusals.map(({ path, message }) => ({ path, message })),
       focus: focusRow,
     }),
-    // `jumps` is rebuilt every render; its words are what matter.
+    // The list is rebuilt every render; its words are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(jumps.map((j) => [j.path, j.message])), focusRow]
+    [JSON.stringify(shownRefusals.map((j) => [j.path, j.message])), focusRow]
   );
   /** PICK ON MAP (rpg-project#720). A row under Encounter asks for a cell or
    * a route; Build opens on the Layout armed for it, each click is a
@@ -959,7 +973,8 @@ function StudioSurface({
           </button>
         </nav>
         <StudioRefusalCount
-          count={headerJumps.length}
+          ref={refusalCountRef}
+          count={shownRefusals.length}
           open={refusalsOpen}
           onPress={() => setRefusalsOpen((open) => !open)}
         />
@@ -1001,25 +1016,30 @@ function StudioSurface({
           this draft.
         </p>
       )}
-      {refusalsOpen && headerJumps.length > 0 && (
+      {refusalsOpen && shownRefusals.length > 0 && (
         <section
           id="studio-refusals"
           className="es-refusals-panel"
           role="group"
           aria-label="Current refusals"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.stopPropagation();
+            closeRefusals();
+          }}
         >
           <p className="es-help">
             The engine refuses this draft. Each refusal opens the thing to fix.
           </p>
           <RefusalList
-            jumps={headerJumps}
+            jumps={shownRefusals}
             nameOf={refusalNounName}
             onJump={(target) => {
               setRefusalsOpen(false);
               jumpTo(target);
             }}
           />
-          <button type="button" onClick={() => setRefusalsOpen(false)}>
+          <button type="button" onClick={closeRefusals}>
             Close refusals
           </button>
         </section>
@@ -1073,6 +1093,7 @@ function StudioSurface({
               characterId={playCharacter}
               jumps={jumps}
               focusKey={keyFocus}
+              onKeyFocused={() => setKeyFocus(0)}
               nameOf={refusalNounName}
               onJump={(target) => {
                 changeSiteOperation(null);

@@ -981,6 +981,26 @@ describe('shared Arrange context lifecycle', () => {
       ).toBeNull();
     });
 
+    it('Escape or Close closes the list and returns focus to the count', () => {
+      refusals.current = [refused];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      fireEvent.click(count()!);
+      fireEvent.keyDown(
+        screen.getByRole('group', { name: 'Current refusals' }),
+        { key: 'Escape' }
+      );
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+      fireEvent.click(count()!);
+      fireEvent.click(screen.getByRole('button', { name: 'Close refusals' }));
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+    });
+
     it('the jump selects the creature and opens its inspector on Build', () => {
       refusals.current = [refused];
       placeGoblin();

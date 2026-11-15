@@ -1,3 +1,10 @@
+/* The warning colours, on the root: `.es-warning` is also rendered outside
+ * the studio (World Builder's creature orders), so the tokens reach both. */
+:root {
+  --es-warning-text: #ffe2a6;
+  --es-warning-bg: #332b20;
+}
+
 .encounter-studio {
   --wb-bg: #101923;
   --wb-panel: #15222c;
@@ -6,8 +13,6 @@
   --wb-text: #e4eff4;
   --wb-muted: #b4c8d3;
   --wb-accent: #83e6cf;
-  --es-warning-text: #ffe2a6;
-  --es-warning-bg: #332b20;
   position: fixed;
   inset: 0;
   height: 100vh;
@@ -202,7 +207,7 @@
 .es-dimensions [role='alert'],
 .es-label-controls [role='alert'] {
   width: 100%;
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 .es-map-labels text:focus-visible {
   outline: none;
@@ -398,7 +403,7 @@
   font-variant-numeric: tabular-nums;
 }
 .es-arrange [role='alert'] {
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 
 .es-wall-finish {
