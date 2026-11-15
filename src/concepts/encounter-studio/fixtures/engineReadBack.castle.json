@@ -1254,6 +1254,161 @@
               "path": "room.room.monsterBindings.captain.options[8].success[0]"
             }
           ]
+        },
+        {
+          "title": "Knight (keep-1)",
+          "about": {
+            "kind": "creature",
+            "id": "keep-1"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "keep-1"
+              },
+              "sentence": "Knight (keep-1) is a dnd5e:monsters:knight of the faction `loyalists`, standing at q 6, r -19 in Throne room (region-throne-room); it looks like dnd5e:npcs:kingdom:soldier-male-01.",
+              "path": "room.room.monsterDeclarations[7]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "creature.routine",
+              "about": {
+                "kind": "creature",
+                "id": "keep-1"
+              },
+              "sentence": "Knight (keep-1) runs the routine `keep-1-policy` (as `policy`).",
+              "path": "room.room.monsterBindings.keep-1.behaviors[0]",
+              "connects": [
+                {
+                  "kind": "routine",
+                  "id": "keep-1-policy",
+                  "role": "uses"
+                }
+              ]
+            },
+            {
+              "kind": "creature.lines",
+              "about": {
+                "kind": "creature",
+                "id": "keep-1"
+              },
+              "sentence": "Knight (keep-1) has no lines of its own; the speaker can say to it the faction `loyalists`'s lines (said under that faction).",
+              "path": "factions[1].options",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "speaks-lines-of"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Knight (keep-2)",
+          "about": {
+            "kind": "creature",
+            "id": "keep-2"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "keep-2"
+              },
+              "sentence": "Knight (keep-2) is a dnd5e:monsters:knight of the faction `loyalists`, standing at q 14, r -19 in Throne room (region-throne-room); it looks like dnd5e:npcs:kingdom:soldier-male-01.",
+              "path": "room.room.monsterDeclarations[8]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "creature.routine",
+              "about": {
+                "kind": "creature",
+                "id": "keep-2"
+              },
+              "sentence": "Knight (keep-2) runs the routine `keep-2-policy` (as `policy`).",
+              "path": "room.room.monsterBindings.keep-2.behaviors[0]",
+              "connects": [
+                {
+                  "kind": "routine",
+                  "id": "keep-2-policy",
+                  "role": "uses"
+                }
+              ]
+            },
+            {
+              "kind": "creature.lines",
+              "about": {
+                "kind": "creature",
+                "id": "keep-2"
+              },
+              "sentence": "Knight (keep-2) has no lines of its own; the speaker can say to it the faction `loyalists`'s lines (said under that faction).",
+              "path": "factions[1].options",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "speaks-lines-of"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "The Mad King (king)",
+          "about": {
+            "kind": "creature",
+            "id": "king"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "king"
+              },
+              "sentence": "The Mad King (king) is a dnd5e:monsters:mad-king of the faction `loyalists`, standing at q 3, r -17 in Throne room (region-throne-room), facing e; it looks like dnd5e:npcs:kingdom:prince-01.",
+              "path": "room.room.monsterDeclarations[9]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "creature.lines",
+              "about": {
+                "kind": "creature",
+                "id": "king"
+              },
+              "sentence": "The Mad King (king) has no lines of its own; the speaker can say to it the faction `loyalists`'s lines (said under that faction).",
+              "path": "factions[1].options",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "speaks-lines-of"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1937,6 +2092,47 @@
                   ]
                 }
               ]
+            }
+          ]
+        },
+        {
+          "text": "Knight (keep-1): a dnd5e:monsters:knight of `loyalists` at q 6, r -19 in Throne room; looks like dnd5e:npcs:kingdom:soldier-male-01",
+          "paths": ["room.room.monsterDeclarations[7]"],
+          "base": "room.room.monsterBindings.keep-1",
+          "items": [
+            {
+              "text": "Runs the routine `keep-1-policy` (as `policy`).",
+              "paths": ["room.room.monsterBindings.keep-1.behaviors[0]"]
+            },
+            {
+              "text": "No lines of its own: the speaker can say to the knight the faction `loyalists`'s lines (said under that faction).",
+              "paths": ["factions[1].options"]
+            }
+          ]
+        },
+        {
+          "text": "Knight (keep-2): a dnd5e:monsters:knight of `loyalists` at q 14, r -19 in Throne room; looks like dnd5e:npcs:kingdom:soldier-male-01",
+          "paths": ["room.room.monsterDeclarations[8]"],
+          "base": "room.room.monsterBindings.keep-2",
+          "items": [
+            {
+              "text": "Runs the routine `keep-2-policy` (as `policy`).",
+              "paths": ["room.room.monsterBindings.keep-2.behaviors[0]"]
+            },
+            {
+              "text": "No lines of its own: the speaker can say to the knight the faction `loyalists`'s lines (said under that faction).",
+              "paths": ["factions[1].options"]
+            }
+          ]
+        },
+        {
+          "text": "The Mad King (king): a dnd5e:monsters:mad-king of `loyalists` at q 3, r -17 in Throne room, facing e; looks like dnd5e:npcs:kingdom:prince-01",
+          "paths": ["room.room.monsterDeclarations[9]"],
+          "base": "room.room.monsterBindings.king",
+          "items": [
+            {
+              "text": "No lines of its own: the speaker can say to the mad king the faction `loyalists`'s lines (said under that faction).",
+              "paths": ["factions[1].options"]
             }
           ]
         }

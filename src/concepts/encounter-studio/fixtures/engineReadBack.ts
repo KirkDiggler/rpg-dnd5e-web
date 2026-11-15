@@ -9,10 +9,11 @@
  *
  * Trimmed to what the tests read. Statements: the Guard Captain's group and
  * the routine he uses (`captain-policy`); gate-1's first twelve statements
- * and its `troupe` line; from the place, the statements about the grate, the
+ * and its `troupe` line; Knight keep-1, Knight keep-2 and the Mad King, whose
+ * "No lines of its own" entries share one path; from the place, the statements about the grate, the
  * altar, the gate door and the kitchen passage, and the two joins set at the
- * grate's relocate paths. Folded: the captain's and gate-1's entries (gate-1
- * cut to the entries over those statements), `captain-policy`, and the
+ * grate's relocate paths. Folded: the captain's, gate-1's (cut to the
+ * entries over those statements), keep-1's, keep-2's and the king's entries, `captain-policy`, and the
  * place's entries over the kept statements. Every kept sentence and entry
  * text is the engine's, unedited.
  */

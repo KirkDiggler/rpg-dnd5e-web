@@ -11,7 +11,7 @@ Slice [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978) o
 
 - An entry is shown for the selection when one of its own `paths` is the selection's own (every statement of the matching full section set at that path is a selected statement); otherwise its entries are tried; the shallowest match is shown whole. This is because a folded entry carries no subject and paths collide across subjects: 135 of the castle's 479 paths are set by statements about more than one thing (the grate's relocate rows are also the paths of the joins they make) — [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978).
 - Only the folded section with the same title as a full section that holds a selected statement is searched, because `Folded()` folds each full section into the folded one of the same title — [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978).
-- An opened entry shows every statement of its section set at one of its own paths, not only the selected ones, because the entry stands for those statements — [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978).
+- An opened entry shows only the selected statements set at its own paths, because a path can be shared with other things (keep-1, keep-2 and the Mad King all speak `factions[1].options`) and the inspector speaks of the selection — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1438#pullrequestreview-5912930474).
 - `base` is not rendered: opened statements already show their whole path as the Full view does, and `base` is a display hint for the engine's text writer — [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978).
 - A selected statement behind no shown entry is listed under "Said in full only" rather than dropped — [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978).
 
@@ -24,4 +24,4 @@ Slice [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978) o
 
 ## Mistaken
 
-- none observed
+- The first head opened an entry to every statement at its paths, so keep-1's "No lines of its own" opened to keep-2's and the king's sentences; the trimmed fixture held no shared entry, so no test saw it. Review found it on the untrimmed castle; the fixture now carries the three knights' and king's entries and a test fails without the fix — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1438#pullrequestreview-5912930474).

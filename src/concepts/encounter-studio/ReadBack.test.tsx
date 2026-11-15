@@ -483,6 +483,62 @@ describe('ReadBack: the engine’s folded read-back (rpg-project#978)', () => {
     ).toHaveLength(1);
   });
 
+  it('an opened entry shows only the selection’s statements, even at a path it shares', () => {
+    // keep-1, keep-2 and the Mad King each have one "No lines of its own"
+    // entry, all three set at `factions[1].options`.
+    const readBack = castleEngineReadBack();
+    const subjects = ['keep-1', 'keep-2', 'king'];
+    for (const id of subjects) {
+      const view = foldedOfSelection(readBack, { kind: 'creature', id });
+      const opened = view.sections.flatMap((section) =>
+        section.items.flatMap(function all(item): typeof item.statements {
+          return [...item.statements, ...item.items.flatMap(all)];
+        })
+      );
+      expect(opened.length).toBeGreaterThan(0);
+      for (const statement of opened)
+        expect(statement.about).toMatchObject({ kind: 'creature', id });
+    }
+    // And on screen: keep-1's "No lines" entry opens to keep-1's sentence
+    // alone.
+    render(
+      <ReadBack
+        document={castle}
+        selection={{ kind: 'creature', id: 'keep-1' }}
+        state={folded()}
+      />
+    );
+    fireEvent.click(disclosure(/^Full sentences: No lines of its own/));
+    const text = panel().textContent ?? '';
+    expect(text).toContain('Knight (keep-1)');
+    expect(text).not.toContain('Knight (keep-2)');
+    expect(text).not.toContain('The Mad King (king)');
+  });
+
+  it('an entry whose only path is shared with another thing is not the selection’s', () => {
+    // The joins the grate makes are set at the grate's relocate paths, which
+    // the join statements share: they are the joins', not the grate's.
+    const view = foldedOfSelection(castleEngineReadBack(), {
+      kind: 'prop',
+      id: 'grate',
+    });
+    const texts = view.sections.flatMap((section) =>
+      section.items.map((item) => item.item.text)
+    );
+    expect(texts.some((text) => text.includes('is a passage to'))).toBe(false);
+    expect(texts).toHaveLength(3);
+  });
+
+  it('the disclosure’s name follows its state and names its entry', () => {
+    render(<ReadBack document={castle} selection={captain} state={folded()} />);
+    const open = disclosure(/^Full sentences: .*has the same 3 lines/);
+    fireEvent.click(open);
+    expect(open.getAttribute('aria-label')).toMatch(
+      /^Hide full sentences: .*has the same 3 lines/
+    );
+    expect(open.textContent).toBe('Hide full sentences');
+  });
+
   it('the Full switch shows today’s view, and the choice is remembered', () => {
     const { unmount } = render(
       <ReadBack document={castle} selection={captain} state={folded()} />

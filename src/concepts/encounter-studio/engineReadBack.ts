@@ -115,8 +115,9 @@ function selectedGroups(
 }
 
 /** One folded entry shown for the selection: the engine's text, the full
- * statements it stands for (those of its own section set at one of its own
- * `paths`, in the engine's order), and its entries, each the same. */
+ * statements it stands for that the selection chose (those of its own
+ * section set at one of its own `paths`, in the engine's order), and its
+ * entries, each the same. */
 export interface ShownFoldedItem {
   item: ReadBackFoldedItem;
   statements: ReadBackStatement[];
@@ -177,7 +178,12 @@ export function foldedOfSelection(
     );
     const shown = (item: ReadBackFoldedItem): ShownFoldedItem => {
       const paths = new Set(item.paths);
-      const statements = everyStatement.filter((st) => paths.has(st.path));
+      // Only the selection's own: a path shared with another thing (three
+      // creatures speaking one faction's lines) never opens to its
+      // statements.
+      const statements = everyStatement.filter(
+        (st) => paths.has(st.path) && chosen.has(st)
+      );
       for (const statement of statements) reached.add(statement);
       return { item, statements, items: item.items.map(shown) };
     };

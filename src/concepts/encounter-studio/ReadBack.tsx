@@ -230,7 +230,7 @@ function FoldedEntry({
           type="button"
           className="es-link es-readback-open"
           aria-expanded={open}
-          aria-label={`Full sentences: ${item.text}`}
+          aria-label={`${open ? 'Hide full sentences' : 'Full sentences'}: ${item.text}`}
           onClick={() => setOpen((was) => !was)}
         >
           {open ? 'Hide full sentences' : 'Full sentences'}
