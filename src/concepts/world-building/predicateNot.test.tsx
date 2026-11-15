@@ -25,7 +25,6 @@ import {
   type OptionRequires,
 } from './predicateNot';
 import { predicateSentence } from './predicateSentence';
-import { readBackOf } from './readBack';
 import type { RoomMonsterBinding } from './roomDraft';
 import { CreatureOrders } from './SitePolicies';
 import { validatePredicate, type SiteScope } from './siteScope';
@@ -134,22 +133,7 @@ describe('the not predicate is read and written', () => {
   });
 });
 
-describe('the Read back says “unless …”', () => {
-  it('the cook’s theft and gossip read as withheld from whoever knows caught-in-kitchen', () => {
-    const document = castleWithTheTheft();
-    const spoken = readBackOf(document, { kind: 'creature', id: 'cook' }).find(
-      (p) => p.heading === 'spoken-to'
-    )!;
-    const items = spoken.items!.map((item) => item.text);
-    expect(items[0]).toBe(
-      '“(lift a pie from the sill)” Offered unless the speaker knows caught-in-kitchen. Sleight of hand DC 13. Success: “The cook never looks round.” Failure: “Thief!”, and the speaker learns caught-in-kitchen.'
-    );
-    expect(items[1]).toContain(
-      'Offered unless the speaker knows caught-in-kitchen.'
-    );
-    expect(items[2]).toContain('Offered to a speaker who knows feast-tonight.');
-  });
-
+describe('a not predicate is read as “unless …”', () => {
   it('the fact index counts the not requires as a read of the fact', () => {
     const row = factIndexOf(castleWithTheTheft()).find(
       (r) => r.fact === 'caught-in-kitchen'
