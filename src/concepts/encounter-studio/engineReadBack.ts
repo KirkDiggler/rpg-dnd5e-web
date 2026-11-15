@@ -120,6 +120,15 @@ export function connectionJump(
     return target ? { kind: 'target', target } : null;
   };
   const { kind, id } = connection;
+  /** `<list>[i]` for the entry with this id, or null when none has it. */
+  const indexed = (
+    list: string,
+    entries: readonly { id: string }[] | undefined
+  ): ReadBackJump | null => {
+    const index = entries?.findIndex((entry) => entry.id === id) ?? -1;
+    return index < 0 ? null : through(`${list}[${index}]`);
+  };
+  const scope = document.scope;
   switch (kind) {
     case 'fact':
     case 'topic':
@@ -130,14 +139,19 @@ export function connectionJump(
       return through(`room.room.propBindings.${id}`);
     case 'door':
       return through(`room.room.doorBindings.${id}`);
-    case 'region': {
-      const index = document.draft.room.regions.findIndex(
-        (region) => region.id === id
-      );
-      return index < 0 ? null : through(`room.room.regions[${index}]`);
-    }
+    case 'region':
+      return indexed('room.room.regions', document.draft.room.regions);
     case 'conversation':
       return through(`interactions.${id}`);
+    case 'faction':
+      return indexed('factions', scope.factions);
+    case 'record':
+      return indexed('intel', scope.intel);
+    case 'bundle':
+      return through(`bundles.${id}`);
+    case 'exit':
+      return indexed('exits', scope.exits);
+    // `routine` has no studio home yet (rpg-project#970): it stays text.
     default:
       return null;
   }
