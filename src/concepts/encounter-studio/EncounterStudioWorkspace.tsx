@@ -37,6 +37,13 @@ import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
+import {
+  clampInspectorWidth,
+  INSPECTOR_DEFAULT_WIDTH,
+  inspectorMaxWidth,
+  readInspectorWidth,
+  writeInspectorWidth,
+} from './inspectorWidth';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
@@ -62,6 +69,7 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
@@ -235,6 +243,23 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** The inspector's width (rpg-project#979): the viewer's own, kept in the
+   * browser, clamped to half the workspace as the window changes. */
+  const [inspectorWidth, setInspectorWidth] = useState(
+    () => readInspectorWidth(storage) ?? INSPECTOR_DEFAULT_WIDTH
+  );
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const measure = (): void => setWorkspaceWidth(window.innerWidth);
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const inspectorMax = inspectorMaxWidth(workspaceWidth);
+  const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
+  const commitInspectorWidth = (width: number): void => {
+    setInspectorWidth(width);
+    writeInspectorWidth(storage, width);
+  };
   const [sections, setSections] = useState<
     Record<StudioHome, StudioSidebarSection>
   >({ build: 'inspector', encounter: 'tables' });
@@ -883,6 +908,10 @@ function StudioSurface({
       className="encounter-studio"
       aria-label="Encounter Studio workspace"
       data-home={home}
+      data-inspector={spatial && sidebarOpen ? 'open' : undefined}
+      style={
+        { '--es-inspector-width': `${inspectorShown}px` } as React.CSSProperties
+      }
     >
       <header className="es-header">
         {onBack && (
@@ -1409,6 +1438,13 @@ function StudioSurface({
             onToggle={() => setSidebarOpen((open) => !open)}
             keyboardEnabled={spatial}
             compact={home === 'build'}
+            resize={
+              <StudioInspectorResize
+                width={inspectorShown}
+                max={inspectorMax}
+                onCommit={commitInspectorWidth}
+              />
+            }
           >
             {home === 'build' && (
               <StudioInspector

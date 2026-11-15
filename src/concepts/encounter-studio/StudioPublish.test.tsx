@@ -1002,6 +1002,27 @@ describe('S6 Save & Play', () => {
     ).toBe('a faction line is refused here');
   });
 
+  it('resizing the inspector leaves the draft and its file byte for byte (rpg-project#979)', async () => {
+    const { storage } = mount(createCastleS4Document(), { characterId: null });
+    await settled();
+    const draftBytes = () => storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const before = draftBytes();
+    const key = defaultDraftKey(storage.document());
+    const fileBefore = exportDraftYaml(storage.document(), key);
+    const handle = screen.getByRole('separator', { name: 'Resize inspector' });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    fireEvent.keyDown(handle, { key: 'End' });
+    fireEvent.pointerDown(handle, { clientX: 600, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 650, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 650, pointerId: 1 });
+    expect(draftBytes()).toBe(before);
+    expect(exportDraftYaml(storage.document(), key)).toBe(fileBefore);
+    // The width lives under its own key, never in the draft.
+    expect(
+      storage.bytes.get('rpg.concepts.encounter-studio.inspector-width.v1')
+    ).toBeDefined();
+  });
+
   it("the live preview's refusals jump too", async () => {
     const document = createCastleS4Document();
     mount(document, { characterId: null });

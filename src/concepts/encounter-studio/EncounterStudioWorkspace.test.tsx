@@ -1030,3 +1030,136 @@ describe('shared Arrange context lifecycle', () => {
     });
   });
 });
+
+describe('the author sets the inspector width (rpg-project#979)', () => {
+  const WIDTH_KEY = 'rpg.concepts.encounter-studio.inspector-width.v1';
+  /** A per-test store; the width is the only thing the shell writes. */
+  function memory(initial: Record<string, string> = {}) {
+    const bytes = new Map(Object.entries(initial));
+    return {
+      bytes,
+      getItem: vi.fn((key: string) => bytes.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        bytes.set(key, value);
+      }),
+    };
+  }
+  const handle = (): HTMLElement =>
+    screen.getByRole('separator', { name: 'Resize inspector' });
+  const now = (): number => Number(handle().getAttribute('aria-valuenow'));
+  const cssWidth = (): string =>
+    (
+      document.querySelector('.encounter-studio') as HTMLElement
+    ).style.getPropertyValue('--es-inspector-width');
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1280,
+    });
+  });
+
+  it('the handle is a vertical separator with its limits: default 384, min 320, max half the workspace', () => {
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={memory()} />
+    );
+    expect(handle().getAttribute('aria-orientation')).toBe('vertical');
+    expect(handle().getAttribute('aria-controls')).toBe('studio-sidebar');
+    expect(handle().tabIndex).toBe(0);
+    expect(now()).toBe(384);
+    expect(handle().getAttribute('aria-valuemin')).toBe('320');
+    expect(handle().getAttribute('aria-valuemax')).toBe('640');
+    expect(cssWidth()).toBe('384px');
+  });
+
+  it('arrows step the width within the limits, Home and End go to them, and the width is kept', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(400);
+    expect(cssWidth()).toBe('400px');
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    expect(now()).toBe(368);
+    fireEvent.keyDown(handle(), { key: 'Home' });
+    expect(now()).toBe(320);
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    expect(now()).toBe(320);
+    fireEvent.keyDown(handle(), { key: 'End' });
+    expect(now()).toBe(640);
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(640);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('640');
+    // Double-click resets to the default.
+    fireEvent.doubleClick(handle());
+    expect(now()).toBe(384);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('384');
+  });
+
+  it('a drag on the inner edge widens toward the map, previews without committing, and commits on release', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1 });
+    // The preview is the CSS variable alone; nothing is kept yet.
+    expect(cssWidth()).toBe('484px');
+    expect(storage.bytes.has(WIDTH_KEY)).toBe(false);
+    fireEvent.pointerUp(handle(), { clientX: 700, pointerId: 1 });
+    expect(now()).toBe(484);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('484');
+    // Past the limit it stops at the limit.
+    fireEvent.pointerDown(handle(), { clientX: 700, pointerId: 2 });
+    fireEvent.pointerMove(handle(), { clientX: -2000, pointerId: 2 });
+    fireEvent.pointerUp(handle(), { clientX: -2000, pointerId: 2 });
+    expect(now()).toBe(640);
+  });
+
+  it('the width is restored from storage on mount, clamped, and clamped again when the window narrows', () => {
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: '560' })}
+      />
+    );
+    expect(now()).toBe(560);
+    act(() => {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 1000,
+      });
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(handle().getAttribute('aria-valuemax')).toBe('500');
+    expect(now()).toBe(500);
+    expect(cssWidth()).toBe('500px');
+  });
+
+  it('a store that throws or holds nonsense leaves the default', () => {
+    const throwing = {
+      getItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+    };
+    const first = render(
+      <EncounterStudioWorkspace compositionSource={source} storage={throwing} />
+    );
+    expect(now()).toBe(384);
+    // A write that throws still moves the edge for this visit.
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(400);
+    first.unmount();
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: 'wide' })}
+      />
+    );
+    expect(now()).toBe(384);
+  });
+});
