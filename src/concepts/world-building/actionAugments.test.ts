@@ -4,16 +4,13 @@ import { parse } from 'yaml';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import { refusalJumps } from '../encounter-studio/refusalJump';
 import {
-  actionAugmentSentences,
   actionRefRefusal,
   moveRef,
   setMonsterActionAugment,
-  weaponNoun,
 } from './actionAugments';
 import { applyCastEdit, castMemberOf } from './cast';
 import { setMonsterTemper, withBinding } from './monsterOrderEdits';
 import type { MonsterTemplate } from './monsterTemplates';
-import { readBackOf } from './readBack';
 import type { RoomDraftDocument } from './roomDraft';
 
 const JAVELIN = 'dnd5e:weapons:javelin';
@@ -116,11 +113,6 @@ describe('add action and drop action (rpg-project#721)', () => {
     });
   });
 
-  it('names a weapon by its ref id with its article', () => {
-    expect(weaponNoun('dnd5e:weapons:light_crossbow')).toBe('a light crossbow');
-    expect(weaponNoun('dnd5e:weapons:axe')).toBe('an axe');
-  });
-
   it("the castle opens and saves its own bytes' lists unchanged", () => {
     // The castle authors no add or drop; its captain's javelin is in
     // `actions`. Saving it writes neither key.
@@ -169,95 +161,6 @@ describe('add action and drop action (rpg-project#721)', () => {
     let cleared = withTemplateAugment(edited, 'addActions', undefined);
     cleared = withCaptainBinding(cleared, 'dropActions', []);
     expect(exportDraftYaml(cleared, 'the-mad-king')).toBe(before);
-  });
-
-  it('the Read back says the captain carries another javelin, and what he fights with', () => {
-    const { document } = castle();
-    const added = withTemplateAugment(document, 'addActions', [JAVELIN]);
-    expect(actionAugmentSentences(added, 'captain').map((s) => s.text)).toEqual(
-      [
-        'It carries another javelin, from its stat block.',
-        'It fights with a longsword, a javelin and a javelin, in that order.',
-      ]
-    );
-    const dropped = withCaptainBinding(added, 'dropActions', [LONGSWORD]);
-    const who = readBackOf(dropped, { kind: 'creature', id: 'captain' })[0];
-    expect(who.sentences.map((s) => s.text).slice(-3)).toEqual([
-      'It carries another javelin, from its stat block.',
-      'It does not carry a longsword, by its own orders.',
-      'It fights with only a javelin and a javelin, in that order.',
-    ]);
-  });
-
-  it('a creature with no add or drop reads as it did', () => {
-    const { document } = castle();
-    const who = readBackOf(document, { kind: 'creature', id: 'captain' })[0];
-    expect(
-      who.sentences.some((s) => /fights with|carr(y|ies) a/.test(s.text))
-    ).toBe(false);
-  });
-
-  it('with no actions at any layer it says the kind’s weapons, never a guess', () => {
-    const { document } = castle();
-    const bare = withTemplateAugment(document, 'dropActions', undefined);
-    const template = structuredClone(
-      castMemberOf(bare, CAPTAIN)!.template!
-    ) as MonsterTemplate;
-    delete template.actions;
-    template.addActions = [JAVELIN];
-    template.dropActions = ['dnd5e:weapons:club'];
-    const kindOnly = applyCastEdit(
-      bare,
-      { ref: CAPTAIN, template },
-      () => 'unused'
-    );
-    expect(
-      actionAugmentSentences(kindOnly, 'captain').map((s) => s.text)
-    ).toEqual([
-      'It carries a javelin on top of the kind’s weapons, from its stat block.',
-      'It does not carry a club, from its stat block.',
-      'It fights with the kind’s weapons less a club, then a javelin.',
-    ]);
-  });
-
-  it('a drop the known list does not hold states the launch law', () => {
-    const { document } = castle();
-    const edited = withCaptainBinding(document, 'dropActions', [
-      'dnd5e:weapons:dagger',
-    ]);
-    const who = readBackOf(edited, { kind: 'creature', id: 'captain' })[0];
-    const texts = who.sentences.map((s) => s.text);
-    expect(texts).toContain(
-      'It drops a dagger by its own orders, but it carries none there.'
-    );
-    expect(who.sentences.find((s) => s.law === 'dropAbsent')?.text).toBe(
-      'A dropped action must be in its list at that layer: the session refuses the run at launch when it is not.'
-    );
-  });
-
-  it('a stat block add of a weapon the base list lacks says the kind does not carry it', () => {
-    const { document } = castle();
-    const added = withTemplateAugment(document, 'addActions', [
-      'dnd5e:weapons:dagger',
-    ]);
-    expect(actionAugmentSentences(added, 'captain')[0].text).toBe(
-      'It carries a dagger the kind does not, from its stat block.'
-    );
-  });
-
-  it('dropping every weapon states the launch law, never "fights with no weapon"', () => {
-    const { document } = castle();
-    const edited = withCaptainBinding(document, 'dropActions', [
-      LONGSWORD,
-      JAVELIN,
-    ]);
-    const who = readBackOf(edited, { kind: 'creature', id: 'captain' })[0];
-    const tail = who.sentences.slice(-2);
-    expect(tail[0].text).toBe('It is left with no weapon.');
-    expect(tail[1]).toMatchObject({
-      law: 'noWeapons',
-      text: 'A creature must keep at least one weapon: the session refuses the run at launch when every one is dropped.',
-    });
   });
 
   it("PutDungeon's refusal of a list entry lands on the stat block or the placement (R17)", () => {

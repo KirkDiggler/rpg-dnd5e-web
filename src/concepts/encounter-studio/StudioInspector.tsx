@@ -16,11 +16,11 @@ import {
   type DoorBindingState,
 } from '../world-building/doorBindingEdits';
 import { exitAt, setExitAt } from '../world-building/exitEdits';
-import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
 import { ReadBack } from './ReadBack';
+import type { RefusalTarget } from './refusalJump';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -29,6 +29,10 @@ import {
 import { CastMemberForm } from './StudioCast';
 import { StudioCheckRows } from './StudioCheckRows';
 import { StudioGroundControls } from './StudioGroundControls';
+import {
+  READ_BACK_NOT_CHECKED_SENTENCE,
+  type StudioReadBack,
+} from './studioPublishing';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
 import type {
@@ -52,8 +56,15 @@ export interface StudioInspectorProps {
   /** The armed Wall, Door or Note tool's options; transient, not document. */
   armedTool: ReactNode | null;
   onConfigure(section: StudioSocialSection): void;
-  /** Open the Facts section on one fact, from a read-back ref. */
+  /** Open the Facts section on one fact or topic, from a read-back
+   * connection. */
   onOpenFact?(fact: string): void;
+  /** The engine's read-back (rpg-project#968, R25), from the publishing
+   * hook. Absent, the panel says the server has not checked the draft. */
+  readBack?: StudioReadBack;
+  /** Land on what a read-back connection or path names: the workspace's
+   * refusal jump, so a sentence and a refusal land through one map. */
+  onJump?(target: RefusalTarget): void;
   onMoveCreature(): void;
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
@@ -420,27 +431,18 @@ function DoorState({
   );
 }
 
-/** What a read-back ref opens: a definition on the Encounter home, or the
- * placement it names. */
-function readBackRefHandler(
-  session: EncounterStudioSession,
-  onConfigure: StudioInspectorProps['onConfigure'],
-  onOpenFact: StudioInspectorProps['onOpenFact']
-): (target: ReadBackTarget) => void {
-  return (target) => {
-    if (target.kind === 'placement') session.creatures.select(target.id);
-    else if (target.kind === 'table') onConfigure('tables');
-    else if (target.kind === 'faction') onConfigure('factions');
-    else if (target.kind === 'intel') onConfigure('intel');
-    else if (onOpenFact) onOpenFact(target.id);
-    else onConfigure('facts');
-  };
-}
+const NO_READ_BACK: StudioReadBack = {
+  readBack: null,
+  readBackIsCurrent: false,
+  unavailable: READ_BACK_NOT_CHECKED_SENTENCE,
+};
 
 function CreatureView({
   session,
   onConfigure,
   onOpenFact,
+  readBack,
+  onJump,
   onMoveCreature,
   onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
@@ -451,7 +453,9 @@ function CreatureView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'creature', id: arrange.monster.id }}
-          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
+          state={readBack ?? NO_READ_BACK}
+          onJump={onJump}
+          onOpenFact={onOpenFact}
         />
       )}
       <Form
@@ -599,6 +603,8 @@ function PropView({
   session,
   onConfigure,
   onOpenFact,
+  readBack,
+  onJump,
   inspection,
 }: StudioInspectorProps): React.JSX.Element {
   const selection = inspection.selection;
@@ -608,7 +614,9 @@ function PropView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'prop', id: selection.id }}
-          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
+          state={readBack ?? NO_READ_BACK}
+          onJump={onJump}
+          onOpenFact={onOpenFact}
         />
       )}
       <Form session={session} onConfigure={onConfigure} />
