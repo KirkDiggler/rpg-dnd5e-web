@@ -2,12 +2,15 @@ import type {
   ReadBackStatement,
   ReadBackUnsaid,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
   connectionJump,
+  foldedOfSelection,
   readBackOfSelection,
   statementPathJump,
   type ReadBackSelection,
+  type ShownFoldedItem,
 } from './engineReadBack';
 import type { RefusalTarget } from './refusalJump';
 import type { StudioReadBack } from './studioPublishing';
@@ -33,10 +36,36 @@ export const NOT_YET_NAMED_SENTENCE =
 export const NOTHING_SAID_SENTENCE =
   'The engine’s read-back says nothing about this thing.';
 
+/** Where the viewer's Folded / Full choice is remembered, per browser. */
+export const READ_BACK_VIEW_STORAGE_KEY = 'encounter-studio.read-back-view';
+
+type ReadBackView = 'folded' | 'full';
+
+function rememberedView(): ReadBackView {
+  try {
+    return localStorage.getItem(READ_BACK_VIEW_STORAGE_KEY) === 'full'
+      ? 'full'
+      : 'folded';
+  } catch {
+    return 'folded';
+  }
+}
+
+function rememberView(view: ReadBackView): void {
+  try {
+    localStorage.setItem(READ_BACK_VIEW_STORAGE_KEY, view);
+  } catch {
+    // No storage: the choice lasts as long as the panel.
+  }
+}
+
 /** The selected creature's or prop's read-back, in the ENGINE's sentences
  * (rpg-project#968, R25). The studio alters no sentence and writes none
- * about what will run: its own words here are the notices. Each group is
- * the engine's, under its title; the first is open. */
+ * about what will run: its own words here are the notices and the view
+ * controls. Folded (rpg-project#978) is the engine's folded entries for the
+ * selection, each opening to the full sentences it stands for; Full is each
+ * engine group under its title, the first open. With no folded read-back on
+ * the wire (an older api) the panel is Full. */
 export function ReadBack({
   document,
   selection,
@@ -45,9 +74,20 @@ export function ReadBack({
   onOpenFact,
 }: ReadBackProps): React.JSX.Element {
   const { readBack, readBackIsCurrent, unavailable } = state;
+  const [chosenView, setChosenView] = useState<ReadBackView>(rememberedView);
+  const choose = (view: ReadBackView): void => {
+    setChosenView(view);
+    rememberView(view);
+  };
+  const canFold = readBack !== null && readBack.folded.length > 0;
+  const view: ReadBackView = canFold ? chosenView : 'full';
   const selected = readBack
     ? readBackOfSelection(readBack, selection, document)
     : null;
+  const foldedView =
+    readBack && view === 'folded'
+      ? foldedOfSelection(readBack, selection)
+      : null;
   // A thing placed since the last check that compiled has no sentences yet;
   // the panel stays and says so rather than vanish.
   const unnamed =
@@ -60,9 +100,34 @@ export function ReadBack({
       ? null
       : STALE_READ_BACK_SENTENCE;
   const key = `${selection.kind}:${selection.id}`;
+  const statementProps = {
+    document,
+    selection,
+    current: readBackIsCurrent,
+    onJump,
+    onOpenFact,
+  };
   return (
     <div className="es-context-panel">
       <StudioSection title="Read back" level="section" className="es-readback">
+        {canFold && (
+          <div
+            role="group"
+            aria-label="Read back view"
+            className="es-readback-views"
+          >
+            {(['folded', 'full'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={view === option}
+                onClick={() => choose(option)}
+              >
+                {option === 'folded' ? 'Folded' : 'Full'}
+              </button>
+            ))}
+          </div>
+        )}
         {notice && (
           <p role="status" className="es-help es-readback-notice">
             {notice}
@@ -73,36 +138,123 @@ export function ReadBack({
             {readBackIsCurrent ? NOTHING_SAID_SENTENCE : NOT_YET_NAMED_SENTENCE}
           </p>
         )}
-        {selected?.groups.map((group, index) => (
-          <details
-            key={`${key}:${group.title}:${index}`}
-            className="es-readback-group"
-            open={index === 0}
-            data-about={
-              group.about ? `${group.about.kind}:${group.about.id}` : undefined
-            }
-          >
-            <summary>{group.title}</summary>
-            <ol className="es-readback-statements">
-              {group.statements.map((statement, at) => (
-                <Statement
-                  key={at}
-                  statement={statement}
-                  document={document}
-                  selection={selection}
-                  current={readBackIsCurrent}
-                  onJump={onJump}
-                  onOpenFact={onOpenFact}
-                />
-              ))}
-            </ol>
-          </details>
-        ))}
+        {foldedView ? (
+          <>
+            {foldedView.sections.map((section, index) => (
+              <details
+                key={`${key}:folded:${section.title}:${index}`}
+                className="es-readback-group"
+                open={index === 0}
+              >
+                <summary>{section.title}</summary>
+                <ul className="es-readback-folded">
+                  {section.items.map((entry, at) => (
+                    <FoldedEntry
+                      key={at}
+                      entry={entry}
+                      statementProps={statementProps}
+                    />
+                  ))}
+                </ul>
+              </details>
+            ))}
+            {foldedView.unreached.length > 0 && (
+              <div className="es-readback-unreached">
+                <p className="es-help">Said in full only:</p>
+                <ol
+                  aria-label="Said in full only"
+                  className="es-readback-statements"
+                >
+                  {foldedView.unreached.map((statement, at) => (
+                    <Statement
+                      key={at}
+                      statement={statement}
+                      {...statementProps}
+                    />
+                  ))}
+                </ol>
+              </div>
+            )}
+          </>
+        ) : (
+          selected?.groups.map((group, index) => (
+            <details
+              key={`${key}:${group.title}:${index}`}
+              className="es-readback-group"
+              open={index === 0}
+              data-about={
+                group.about
+                  ? `${group.about.kind}:${group.about.id}`
+                  : undefined
+              }
+            >
+              <summary>{group.title}</summary>
+              <ol className="es-readback-statements">
+                {group.statements.map((statement, at) => (
+                  <Statement
+                    key={at}
+                    statement={statement}
+                    {...statementProps}
+                  />
+                ))}
+              </ol>
+            </details>
+          ))
+        )}
         {selected && selected.notYetSaid.length > 0 && (
           <NotYetSaid unsaid={selected.notYetSaid} />
         )}
       </StudioSection>
     </div>
+  );
+}
+
+type StatementProps = Omit<Parameters<typeof Statement>[0], 'statement'>;
+
+/** One folded entry: the engine's text; a control that opens the full
+ * sentences it stands for, when it stands for any; its entries beneath. */
+function FoldedEntry({
+  entry,
+  statementProps,
+}: {
+  entry: ShownFoldedItem;
+  statementProps: StatementProps;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const { item, statements, items } = entry;
+  return (
+    <li className="es-readback-entry" data-folded="">
+      <p>{item.text}</p>
+      {statements.length > 0 && (
+        <button
+          type="button"
+          className="es-link es-readback-open"
+          aria-expanded={open}
+          aria-label={`Full sentences: ${item.text}`}
+          onClick={() => setOpen((was) => !was)}
+        >
+          {open ? 'Hide full sentences' : 'Full sentences'}
+        </button>
+      )}
+      {open && (
+        <ol className="es-readback-statements">
+          {statements.map((statement, at) => (
+            <Statement key={at} statement={statement} {...statementProps} />
+          ))}
+        </ol>
+      )}
+      {items.length > 0 && (
+        <ul>
+          {items.map((child, at) => (
+            <FoldedEntry
+              key={at}
+              entry={child}
+              statementProps={statementProps}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 

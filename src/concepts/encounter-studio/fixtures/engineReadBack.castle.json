@@ -214,6 +214,77 @@
               "path": "concealments.kitchen-passage"
             }
           ]
+        },
+        {
+          "title": "Where the places join",
+          "about": {
+            "kind": "site",
+            "id": "the-mad-king"
+          },
+          "statements": [
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-chapel:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-cells:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -411,6 +482,97 @@
                   "role": "asks"
                 }
               ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "The speaker can say the line “We’re the troupe for tonight’s feast.” (`troupe`) to Guard (gate-1). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.gate-1.options[3]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "To win the line “We’re the troupe for tonight’s feast.” (`troupe`), the speaker rolls Performance against DC 13, or Deception against DC 15; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.gate-1.options[3].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.gate-1.options[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the conversation `front-gate` is in one of the states `fresh` or `warned-guest` (one state for the whole run, not per speaker).",
+              "path": "room.room.monsterBindings.gate-1.options[3].requires[1]",
+              "connects": [
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.advance",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "Said to Guard (gate-1), the line “We’re the troupe for tonight’s feast.” (`troupe`): winning it steps the conversation `front-gate` with the beat `admitted`, which moves it from `fresh` to `admitted` or from `warned-guest` to `admitted`; missing it steps the conversation `front-gate` with the beat `troupe-failed`, which moves it from `fresh` to `warned-troupe` or from `warned-guest` to `arrested` (the line is offered only in `fresh` or `warned-guest`).",
+              "path": "room.room.monsterBindings.gate-1.options[3].advance",
+              "connects": [
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "On a win of the line “We’re the troupe for tonight’s feast.” (`troupe`), Guard (gate-1) answers “Through to the hall, then. Don’t dawdle.”, at `speak`: its words reach everyone in Guard (gate-1)'s room (the wall partition Guard (gate-1) stands in), and anyone in the next room within 30 feet of Guard (gate-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (gate-1) answer and caught none of the line is told only that Guard (gate-1) answered and what Guard (gate-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.gate-1.options[3].success[0]"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "gate-1"
+              },
+              "sentence": "On a miss of the line “We’re the troupe for tonight’s feast.” (`troupe`), Guard (gate-1) answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`: its words reach everyone in Guard (gate-1)'s room (the wall partition Guard (gate-1) stands in), and anyone in the next room within 30 feet of Guard (gate-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (gate-1) answer and caught none of the line is told only that Guard (gate-1) answered and what Guard (gate-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.gate-1.options[3].failure[0]"
             }
           ]
         },
@@ -1407,310 +1569,505 @@
           ]
         }
       ]
+    }
+  ],
+  "not_yet_said": [],
+  "folded": [
+    {
+      "title": "The place",
+      "items": [
+        {
+          "text": "The Mad King’s Castle (the-mad-king)",
+          "paths": null,
+          "items": [
+            {
+              "text": "The door `gate-wall-door` starts closed; when it opens, whoever opened it and every creature who can see the door learn the fact `gate-opened`.",
+              "paths": ["room.room.doorBindings.gate-wall-door"]
+            },
+            {
+              "text": "The door `gate-wall-door` is held by the posts of Guard (gate-1), Guard (gate-2) and Guard Captain (captain). Each holds it only while posted: in a state its post names, up, and standing on one of that post's cells. The door stays barred to a walker while any one posted holder not allied with the walker does not let that walker through; one holder letting them through is not enough while another posted holder bars them.",
+              "paths": ["room.room.doorBindings.gate-wall-door"]
+            },
+            {
+              "text": "The prop Altar (altar) cannot be carried.",
+              "paths": ["room.room.propBindings.altar"]
+            },
+            {
+              "text": "“You examine the altar.” (`examine`), done to the prop, seen not heard: a witness shown it is told the doer “looks the altar over”; checked, an action (a round of the world out of a fight); rolls Religion vs DC 12",
+              "paths": [
+                "room.room.propBindings.altar.options[0]",
+                "room.room.propBindings.altar.options[0].check"
+              ],
+              "base": "room.room.propBindings.altar.options[0]",
+              "items": [
+                {
+                  "text": "On a win: the one who did it and every witness shown the prop are told “The sigils are the Pale One’s. The king keeps a shrine to it.” and the one who did it and every witness shown the prop learn the fact `king-is-cultist`",
+                  "paths": [
+                    "room.room.propBindings.altar.options[0].success[0]"
+                  ]
+                },
+                {
+                  "text": "On a miss: the one who did it and every witness shown the prop are told “Old stone, old candles.”",
+                  "paths": [
+                    "room.room.propBindings.altar.options[0].failure[0]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "The prop Grate by the Hearth (grate) cannot be carried.",
+              "paths": ["room.room.propBindings.grate"]
+            },
+            {
+              "text": "“You lift the grate and take the way up.” (`to-chapel`), done to the prop, seen not heard: a witness shown it is told the doer “lifts the grate by the hearth and climbs down into the dark”; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.propBindings.grate.options[0]"],
+              "base": "room.room.propBindings.grate.options[0]",
+              "items": [
+                {
+                  "text": "When done: no words; the speaker is set down in Chapel, told “The tunnel climbs, and you come up through a flagstone behind the chapel's altar.”",
+                  "paths": [
+                    "room.room.propBindings.grate.options[0].success[0]",
+                    "room.room.propBindings.grate.options[0].success[0].relocate"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "“You lift the grate and take the way down.” (`to-cells`), done to the prop, seen not heard: a witness shown it is told the doer “lifts the grate by the hearth and climbs down into the dark”; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.propBindings.grate.options[1]"],
+              "base": "room.room.propBindings.grate.options[1]",
+              "items": [
+                {
+                  "text": "When done: no words; the speaker is set down in Cells, told “The tunnel drops, and you squeeze out through a drain in the cells.”",
+                  "paths": [
+                    "room.room.propBindings.grate.options[1].success[0]",
+                    "room.room.propBindings.grate.options[1].success[0].relocate"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "paths": ["concealments.kitchen-passage"]
+            }
+          ]
+        },
+        {
+          "text": "Where the places join",
+          "paths": null,
+          "items": [
+            {
+              "text": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "paths": [
+                "room.room.propBindings.grate.options[0].success[0].relocate"
+              ]
+            },
+            {
+              "text": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "paths": [
+                "room.room.propBindings.grate.options[1].success[0].relocate"
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
-      "title": "Facts",
-      "groups": [
+      "title": "Creatures",
+      "items": [
         {
-          "title": "Fact `guards-turned`",
-          "about": {
-            "kind": "fact",
-            "id": "guards-turned"
-          },
-          "statements": [
+          "text": "Guard (gate-1): a dnd5e:monsters:guard of `garrison` at q -3, r 7 in Gatehouse, facing s; looks like dnd5e:npcs:kingdom:soldier-male-01",
+          "paths": ["room.room.monsterDeclarations[0]"],
+          "base": "room.room.monsterBindings.gate-1",
+          "items": [
             {
-              "kind": "fact",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "The file does not say what the fact `guards-turned` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 16 places.",
-              "path": "room.room.monsterBindings.captain.options[5].success[0]"
+              "text": "Runs the routine `gate-1-policy` (as `policy`), whose state decides its posts and blocking.",
+              "paths": ["room.room.monsterBindings.gate-1.behaviors[0]"]
             },
             {
-              "kind": "fact.teach",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "On a win of the line “He burned Ashford. Your own village. You know what he is.” (`turn`), Guard Captain (captain) answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `guards-turned` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
-              "path": "room.room.monsterBindings.captain.options[5].success[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "teaches"
-                }
-              ]
+              "text": "While its routine is in `alert`, `challenged` or `posted`, its body blocks its cell; and when the guard stands, up, on q -3, r 7 or q -4, r 7, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard recognises the walker as `admitted`; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "paths": [
+                "room.room.monsterBindings.gate-1.blockingStates",
+                "room.room.monsterBindings.gate-1.posts.alert",
+                "room.room.monsterBindings.gate-1.posts.alert.pass",
+                "room.room.monsterBindings.gate-1.posts.challenged",
+                "room.room.monsterBindings.gate-1.posts.challenged.pass",
+                "room.room.monsterBindings.gate-1.posts.posted",
+                "room.room.monsterBindings.gate-1.posts.posted.pass"
+              ],
+              "base": "room.room.monsterBindings.gate-1"
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "The factions `garrison` and `party` start neutral; they become allied once the pair's mind, Guard Captain (captain), knows the fact `guards-turned`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `party-recognized`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `prisoners-escaped`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `refused-arrest` (the first step that holds wins).",
-              "path": "dispositions[0]",
-              "connects": [
+              "text": "“They’re with us. The captain let us in.” (`vouch`), said to the guard; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.monsterBindings.gate-1.options[0]"],
+              "base": "room.room.monsterBindings.gate-1.options[0]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
+                  "text": "Offered while: `front-gate` is in `admitted` and the guard recognises the speaker as `admitted`.",
+                  "paths": [
+                    "room.room.monsterBindings.gate-1.options[0].requires[0]",
+                    "room.room.monsterBindings.gate-1.options[0].requires[1]"
+                  ]
                 },
                 {
-                  "kind": "fact",
-                  "id": "party-recognized",
-                  "role": "asks"
+                  "text": "When said: the guard answers “Right you are. Go on through, the lot of you.”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; the guard comes to hold `admitted` about the speaker and every member of the speaker's party the guard sees then; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard recognises nobody, nobody else holds anything",
+                  "paths": [
+                    "room.room.monsterBindings.gate-1.options[0].success[0]",
+                    "room.room.monsterBindings.gate-1.options[0].success[0].recognize"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "“We’re the troupe for tonight’s feast.” (`troupe`), said to the guard; checked, an action (a round of the world out of a fight); rolls Performance vs DC 13, or Deception vs DC 15",
+              "paths": [
+                "room.room.monsterBindings.gate-1.options[3]",
+                "room.room.monsterBindings.gate-1.options[3].check"
+              ],
+              "base": "room.room.monsterBindings.gate-1.options[3]",
+              "items": [
+                {
+                  "text": "Offered while: the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`.",
+                  "paths": [
+                    "room.room.monsterBindings.gate-1.options[3].requires[0]",
+                    "room.room.monsterBindings.gate-1.options[3].requires[1]"
+                  ]
                 },
                 {
-                  "kind": "fact",
-                  "id": "prisoners-escaped",
-                  "role": "asks"
+                  "text": "On a win: the guard answers “Through to the hall, then. Don’t dawdle.”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-guest`",
+                  "paths": [
+                    "room.room.monsterBindings.gate-1.options[3].success[0]",
+                    "room.room.monsterBindings.gate-1.options[3].advance"
+                  ]
                 },
                 {
-                  "kind": "fact",
-                  "id": "refused-arrest",
-                  "role": "asks"
+                  "text": "On a miss: the guard answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`",
+                  "paths": [
+                    "room.room.monsterBindings.gate-1.options[3].failure[0]",
+                    "room.room.monsterBindings.gate-1.options[3].advance"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Guard Captain (captain): a dnd5e:monsters:guard-captain of `garrison` at q -4, r 8 in Gatehouse, facing s; looks like dnd5e:npcs:kingdom:soldier-male-01-style-04-a",
+          "paths": ["room.room.monsterDeclarations[2]"],
+          "base": "room.room.monsterBindings.captain",
+          "items": [
+            {
+              "text": "Runs the routine `captain-policy` (as `policy`), whose state decides its posts and blocking.",
+              "paths": ["room.room.monsterBindings.captain.behaviors[0]"]
+            },
+            {
+              "text": "While its routine is in `ready` and the guard captain stands, up, on q -4, r 8, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard captain recognises the walker as `admitted`; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "paths": [
+                "room.room.monsterBindings.captain.posts.ready",
+                "room.room.monsterBindings.captain.posts.ready.pass"
+              ],
+              "base": "room.room.monsterBindings.captain"
+            },
+            {
+              "text": "Guard Captain (captain) has the same 3 lines as Guard (gate-1): `troupe`, `come-quietly` and `never-alive`.",
+              "paths": [
+                "room.room.monsterBindings.captain.options[1]",
+                "room.room.monsterBindings.captain.options[1].check",
+                "room.room.monsterBindings.captain.options[1].requires[0]",
+                "room.room.monsterBindings.captain.options[1].requires[1]",
+                "room.room.monsterBindings.captain.options[1].success[0]",
+                "room.room.monsterBindings.captain.options[1].advance",
+                "room.room.monsterBindings.captain.options[1].failure[0]",
+                "room.room.monsterBindings.captain.options[1].advance",
+                "room.room.monsterBindings.captain.options[2]",
+                "room.room.monsterBindings.captain.options[2].requires[0]",
+                "room.room.monsterBindings.captain.options[2].requires[1]",
+                "room.room.monsterBindings.captain.options[2].success[0]",
+                "room.room.monsterBindings.captain.options[2].advance",
+                "room.room.monsterBindings.captain.options[3]",
+                "room.room.monsterBindings.captain.options[3].requires[0]",
+                "room.room.monsterBindings.captain.options[3].requires[1]",
+                "room.room.monsterBindings.captain.options[3].success[0]"
+              ]
+            },
+            {
+              "text": "“We’re invited guests of His Majesty, here for the feast.” (`guest`), said to the guard captain; checked, an action (a round of the world out of a fight); rolls Persuasion vs DC 11",
+              "paths": [
+                "room.room.monsterBindings.captain.options[0]",
+                "room.room.monsterBindings.captain.options[0].check"
+              ],
+              "base": "room.room.monsterBindings.captain.options[0]",
+              "items": [
+                {
+                  "text": "Offered while: `front-gate` is in `fresh` or `warned-troupe`.",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[0].requires[0]"
+                  ]
+                },
+                {
+                  "text": "On a win: the guard captain answers “Guests, is it? In you go. Mind your manners in the hall.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-troupe`",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[0].success[0]",
+                    "room.room.monsterBindings.captain.options[0].advance"
+                  ]
+                },
+                {
+                  "text": "On a miss: the guard captain answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to `arrested` from `warned-troupe`",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[0].failure[0]",
+                    "room.room.monsterBindings.captain.options[0].advance"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "The factions `garrison` and `loyalists` start neutral; they become hostile once the pair's mind, Guard Captain (captain) or The Mad King (king), knows the fact `guards-turned`.",
-              "path": "dispositions[2]",
-              "connects": [
+              "text": "“Stand aside or bleed.” (`stand-aside`), said to the guard captain; checked, an action (a round of the world out of a fight); rolls Intimidation vs DC 14",
+              "paths": [
+                "room.room.monsterBindings.captain.options[4]",
+                "room.room.monsterBindings.captain.options[4].check"
+              ],
+              "base": "room.room.monsterBindings.captain.options[4]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
+                  "text": "Offered while: the guard captain does NOT recognise the speaker as `wanted` and the guard captain does NOT recognise the speaker as `arrested`.",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[4].requires[0]",
+                    "room.room.monsterBindings.captain.options[4].requires[1]"
+                  ]
+                },
+                {
+                  "text": "On a win: the guard captain answers “…go on, then. I saw nothing.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `gate-cowed` (weight 3 of 4); or the guard captain answers “Big words. GUARDS!”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `party-recognized` (weight 1 of 4)",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[4].success[0]",
+                    "room.room.monsterBindings.captain.options[4].success[1]"
+                  ]
+                },
+                {
+                  "text": "On a miss: the guard captain answers “You’ll bleed first.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `party-recognized`",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[4].failure[0]"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "The line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`) is offered to a speaker only while the speaker knows the fact `guards-turned`.",
-              "path": "room.room.monsterBindings.captain.options[6].requires",
-              "connects": [
+              "text": "“He burned Ashford. Your own village. You know what he is.” (`turn`), said to the guard captain; checked, an action (a round of the world out of a fight); rolls Persuasion vs DC 15",
+              "paths": [
+                "room.room.monsterBindings.captain.options[5]",
+                "room.room.monsterBindings.captain.options[5].check"
+              ],
+              "base": "room.room.monsterBindings.captain.options[5]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
+                  "text": "Offered while: the speaker knows the fact `king-burned-village`.",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[5].requires"
+                  ]
+                },
+                {
+                  "text": "On a win: the guard captain answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `guards-turned`",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[5].success[0]"
+                  ]
+                },
+                {
+                  "text": "On a miss: the guard captain answers “Lies. Get out before I change my mind.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[5].failure[0]"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `ready`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
-              "connects": [
+              "text": "“Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), said to the guard captain; checked, an action (a round of the world out of a fight); rolls Persuasion vs DC 10",
+              "paths": [
+                "room.room.monsterBindings.captain.options[6]",
+                "room.room.monsterBindings.captain.options[6].check"
+              ],
+              "base": "room.room.monsterBindings.captain.options[6]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
+                  "text": "Offered while: the speaker knows the fact `guards-turned`.",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[6].requires"
+                  ]
+                },
+                {
+                  "text": "On a win: the guard captain answers “Done. Go finish it.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `throne-taken`",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[6].success[0]"
+                  ]
+                },
+                {
+                  "text": "On a miss: the guard captain answers “We’ll hold what we can.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[6].failure[0]"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `cowed`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
-              "connects": [
+              "text": "“Good evening, captain.” (`greet`), said to the guard captain; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.monsterBindings.captain.options[7]"],
+              "base": "room.room.monsterBindings.captain.options[7]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
+                  "text": "When said: the guard captain answers “Evening. Keep to the road and mind the guards.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[7].success[0]"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `in-hall`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]",
-              "connects": [
+              "text": "“Where will the feast be, captain?” (`the-way-in`), said to the guard captain; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.monsterBindings.captain.options[8]"],
+              "base": "room.room.monsterBindings.captain.options[8]",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
+                  "text": "Offered while: the guard captain recognises the speaker as `admitted`.",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[8].requires"
+                  ]
+                },
+                {
+                  "text": "When said: the guard captain answers “In the great hall. You’re expected.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "paths": [
+                    "room.room.monsterBindings.captain.options[8].success[0]"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Routines",
+      "items": [
+        {
+          "text": "Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`; recipe `site:behaviors:captain-policy`.",
+          "paths": ["behaviorDefinitions.captain-policy"],
+          "base": "behaviorDefinitions.captain-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.captain-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready",
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on coming to hold a topic about someone (judged or heard), if it holds the topic `admitted` about anyone (it recognises someone as `admitted`) → to `in-hall` (“admitted the party; goes in”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when someone walks into it and its body stops them → acts from its `barred` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed` or `turned`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[5]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[1]",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `in-hall`, on its time (out of a fight) → acts from its `in-hall` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
+                  ]
                 }
               ]
             },
             {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "`time` row 2 of `captain-policy`: if Guard Captain (captain) knows the fact `guards-turned` and Guard Captain (captain) knows of no enemy (none in reach, seen, remembered or lost), Guard Captain (captain) walks toward the nearest ally of Guard Captain (captain).",
-              "path": "behaviorDefinitions.captain-policy.table.time[1]",
-              "connects": [
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.captain-policy.table.",
+              "items": [
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `posted`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",
-              "connects": [
+                  "text": "`approached`: says “You there. Nobody passes this gate without my say. Speak.”",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.approached[0]"
+                  ]
+                },
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `alert`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[0]",
-              "connects": [
+                  "text": "`barred`: says “Not one step further without my say.”",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.barred[0]"
+                  ]
+                },
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `challenged`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[0]",
-              "connects": [
+                  "text": "`in-hall`: if it knows of no enemy → walks to q 3, r -9.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.in-hall[0]"
+                  ]
+                },
                 {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `cowed`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "`time` row 1 of `gate-1-policy`: if Guard (gate-1) knows the fact `guards-turned` and Guard (gate-1) knows of no enemy (none in reach, seen, remembered or lost), Guard (gate-1) walks toward the cell q 10, r -19.",
-              "path": "behaviorDefinitions.gate-1-policy.table.time[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `ready`, when Guard (gate-2) learns a fact, if Guard (gate-2) knows the fact `guards-turned`, Guard (gate-2) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "In the state `cowed`, when Guard (gate-2) learns a fact, if Guard (gate-2) knows the fact `guards-turned`, Guard (gate-2) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
-              "path": "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "wakes-on"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "`time` row 1 of `gate-2-policy`: if Guard (gate-2) knows the fact `guards-turned` and Guard (gate-2) knows of no enemy (none in reach, seen, remembered or lost), Guard (gate-2) walks toward the cell q 10, r -19.",
-              "path": "behaviorDefinitions.gate-2-policy.table.time[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
-                }
-              ]
-            },
-            {
-              "kind": "fact.ask",
-              "about": {
-                "kind": "fact",
-                "id": "guards-turned"
-              },
-              "sentence": "`time` row 1 of `hall-1-policy`: if Guard (hall-1) knows the fact `guards-turned` and Guard (hall-1) knows of no enemy (none in reach, seen, remembered or lost), Guard (hall-1) walks toward the cell q 10, r -19.",
-              "path": "behaviorDefinitions.hall-1-policy.table.time[0]",
-              "connects": [
-                {
-                  "kind": "fact",
-                  "id": "guards-turned",
-                  "role": "asks"
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "One of the bundle `revenger`'s rows by weight: [if it holds that the deed `attacked` was done to it within the last 2 rounds → attacks whoever attacked it; if it holds that the deed `attacked` was done to it within the last 2 rounds → walks to whoever attacked it].",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows `guards-turned` and it knows of no enemy → walks to the nearest ally of it.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If an enemy is in reach → attacks the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → walks to the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[3]"
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -1718,6 +2075,5 @@
         }
       ]
     }
-  ],
-  "not_yet_said": []
+  ]
 }
