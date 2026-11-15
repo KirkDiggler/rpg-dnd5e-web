@@ -125,7 +125,16 @@ export function usePutDungeonPreview(
   const [readBackIdentity, setReadBackIdentity] = useState(identity);
   if (identity !== readBackIdentity) {
     setReadBackIdentity(identity);
-    setState((s) => (s.readBack === null ? s : { ...s, readBack: null }));
+    // So are its refusals (R34): another document never shows the previous
+    // one's errors or transport refusal while its own check is pending.
+    setState((s) => ({
+      ...s,
+      readBack: null,
+      errors: [],
+      message: null,
+      status:
+        s.status === 'errors' || s.status === 'unreachable' ? 'idle' : s.status,
+    }));
   }
   const generation = useRef(0);
 

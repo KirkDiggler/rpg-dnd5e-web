@@ -1,3 +1,10 @@
+/* The warning colours, on the root: `.es-warning` is also rendered outside
+ * the studio (World Builder's creature orders), so the tokens reach both. */
+:root {
+  --es-warning-text: #ffe2a6;
+  --es-warning-bg: #332b20;
+}
+
 .encounter-studio {
   --wb-bg: #101923;
   --wb-panel: #15222c;
@@ -99,8 +106,8 @@
 }
 .es-warning {
   margin: 0;
-  color: #ffe2a6;
-  background: #332b20;
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
 }
 .es-warning > span:first-child {
   flex: 1;
@@ -200,7 +207,7 @@
 .es-dimensions [role='alert'],
 .es-label-controls [role='alert'] {
   width: 100%;
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 .es-map-labels text:focus-visible {
   outline: none;
@@ -396,7 +403,7 @@
   font-variant-numeric: tabular-nums;
 }
 .es-arrange [role='alert'] {
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 
 .es-wall-finish {
@@ -1375,6 +1382,25 @@
 }
 .encounter-studio .es-refusals small {
   opacity: 0.7;
+}
+/* A refusal is seen from anywhere (R34): the header's count is absent at
+ * zero and, when present, carries the warning band's colours so it cannot be
+ * read as a healthy draft. Its list opens under the header like the Site
+ * panel. */
+.encounter-studio .es-refusal-count {
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
+  border-color: var(--es-warning-text);
+  font-weight: var(--es-weight-label);
+}
+.encounter-studio .es-refusals-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-panel);
 }
 .encounter-studio .es-publish-status:empty {
   display: none;

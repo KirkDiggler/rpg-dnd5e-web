@@ -65,4 +65,33 @@ describe('useRoomPublishing: the read-back is the draft’s own', () => {
     rerender({ draft: castle });
     expect(result.current.readBack).toBeNull();
   });
+
+  it('a second draft never counts the first draft’s refusals (R34)', async () => {
+    const putDungeon = vi.fn().mockResolvedValueOnce(
+      create(PutDungeonResponseSchema, {
+        errors: [create(FieldErrorSchema, { path: 'x', message: 'no' })],
+      })
+    );
+    putDungeon.mockImplementation(() => new Promise(() => {}));
+    const client = { putDungeon } as never;
+    const capability = { characterId: null, onPlay: () => {} };
+    const { result, rerender } = renderHook(
+      ({ draft }: { draft: RoomDraft }) =>
+        useRoomPublishing({
+          draft,
+          scope: read.scope as SiteScope,
+          capability,
+          client,
+          onImportDraft: () => true,
+        }),
+      { initialProps: { draft: castle } }
+    );
+    await waitFor(() => expect(result.current.preview.status).toBe('errors'), {
+      timeout: 3000,
+    });
+    rerender({ draft: copy });
+    // The copy's own check has not answered; the castle's refusals are gone.
+    expect(result.current.preview.errors).toEqual([]);
+    expect(result.current.preview.status).not.toBe('errors');
+  });
 });
