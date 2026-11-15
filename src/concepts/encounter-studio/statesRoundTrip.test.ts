@@ -6,7 +6,6 @@ import {
   setMonsterFaction,
   setMonsterTemper,
 } from '../world-building/monsterOrderEdits';
-import { readBackOf } from '../world-building/readBack';
 import {
   parseRoomDocumentJson,
   stringifyRoomDraft,
@@ -102,7 +101,7 @@ describe('S6b: the server castle is a Studio document', () => {
     });
   });
 
-  it('reads custom rows back for the creature and the faction, not only time', () => {
+  it('reads custom rows for the creature and the faction, not only time', () => {
     const result = read();
     expect(layeredOrders(result, 'reserve-1').march?.rows).toEqual(
       result.scope.tables!['answer-the-gate'].march
@@ -111,9 +110,6 @@ describe('S6b: the server castle is a Studio document', () => {
       factionLayers(result.scope, { id: 'garrison', table: 'answer-the-gate' })
         .march?.rows
     ).toEqual(result.scope.tables!['answer-the-gate'].march);
-    expect(
-      JSON.stringify(readBackOf(result, { kind: 'creature', id: 'reserve-1' }))
-    ).toContain('march');
     const row = result.scope.tables!['answer-the-gate'].march[1];
     expect(entryText(row, 'march')).toBe(entryText(row, 'time'));
   });

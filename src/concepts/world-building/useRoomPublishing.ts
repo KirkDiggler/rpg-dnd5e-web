@@ -124,6 +124,12 @@ export interface UseRoomPublishingResult {
   validate: () => void;
   /** Live server validation of the current source (never blocks editing). */
   preview: PreviewState;
+  /** The engine's read-back of the last draft that compiled
+   * (rpg-project#968, R25), or null when none has. */
+  readBack: PreviewState['readBack'];
+  /** False from the first edit after a successful check until the next
+   * successful check: the read-back then describes an earlier draft. */
+  readBackIsCurrent: boolean;
   /** True while a save/launch transaction mutates server state. */
   busy: boolean;
   phase: RoomPublishPhase | null;
@@ -645,6 +651,12 @@ export function useRoomPublishing({
     encodeError,
     validate,
     preview,
+    readBack: preview.readBack,
+    readBackIsCurrent:
+      preview.readBack !== null &&
+      preview.status === 'compiled' &&
+      yaml !== null &&
+      previewEnabled,
     busy,
     phase,
     error,

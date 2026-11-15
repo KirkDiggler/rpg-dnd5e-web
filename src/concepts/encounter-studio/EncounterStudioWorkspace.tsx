@@ -66,6 +66,7 @@ import {
   currentRefusals,
   PUBLISH_RUNNING_TITLE,
   publishStatusText,
+  studioReadBackOf,
 } from './studioPublishing';
 import { StudioScenarios } from './StudioScenarios';
 import {
@@ -1338,6 +1339,8 @@ function StudioSurface({
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
                 onOpenFact={openFact}
+                readBack={studioReadBackOf(publishing, gate.state)}
+                onJump={jumpTo}
                 onMoveCreature={moveSelectedCreature}
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}

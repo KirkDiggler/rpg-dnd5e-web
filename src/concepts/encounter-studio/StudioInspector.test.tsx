@@ -32,6 +32,7 @@ import {
   placeCastMember,
 } from './fixtures/castDocument';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
+import { castleEngineReadBack } from './fixtures/engineReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import { StudioInspector, type StudioInspectorProps } from './StudioInspector';
@@ -1159,16 +1160,23 @@ describe('StudioInspector', () => {
   });
 
   describe('S2 read it back', () => {
-    it('the creature view opens with the read-back above Placement', () => {
+    it('the creature view opens with the engine’s read-back above Placement', () => {
       const session = createFakeStudioSession();
       const castle = createCastleReadBackDocument();
-      const onConfigure = vi.fn();
+      const onOpenFact = vi.fn();
       inspector(
         selected(
           { ...session, document: castle },
           { kind: 'actor', id: 'gate-1' }
         ),
-        { onConfigure }
+        {
+          onOpenFact,
+          readBack: {
+            readBack: castleEngineReadBack(),
+            readBackIsCurrent: true,
+            unavailable: null,
+          },
+        }
       );
       const sections = within(region())
         .getAllByRole('heading', { level: 3 })
@@ -1181,14 +1189,14 @@ describe('StudioInspector', () => {
         name: 'Read back',
       });
       expect(readBack.textContent).toContain(
-        'On its time it follows gate-patrol, shared with gate-2.'
+        'Guard (gate-1) runs the routine `gate-1-policy` (as `policy`)'
       );
       fireEvent.click(
         within(readBack).getAllByRole('button', {
-          name: 'Open table gate-patrol',
+          name: 'Open topic admitted',
         })[0]!
       );
-      expect(onConfigure).toHaveBeenCalledWith('tables');
+      expect(onOpenFact).toHaveBeenCalledWith('admitted');
     });
   });
 });

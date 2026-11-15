@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import survivorsWalkYaml from '../encounter-studio/fixtures/stack-sites/survivors-walk.yaml?raw';
-import { readBackOf } from './readBack';
 import {
   addSiteFactionOption,
   removeSiteFactionOption,
@@ -72,22 +71,5 @@ describe('a faction’s lines (rpg-project#718)', () => {
     expect(added.factions?.[0]?.options).toHaveLength(1);
     const removed = removeSiteFactionOption(added, 'band', 0);
     expect(removed.factions?.[0]).toEqual({ id: 'band' });
-  });
-
-  it('the Read back says a member with no lines speaks the faction’s', () => {
-    const read = opened(survivorsWalkYaml);
-    const paragraphs = readBackOf(
-      { draft: read.draft, scope: read.scope },
-      { kind: 'creature', id: 'follower-2' }
-    );
-    const spoken = paragraphs.find((p) => p.heading === 'spoken-to');
-    expect(spoken?.sentences.map((s) => s.text)).toEqual([
-      'It can be spoken to.',
-      'It has no lines of its own, so it speaks the band faction’s.',
-    ]);
-    expect(spoken?.items?.map((s) => s.text)).toEqual([
-      '“Yield and live.” Persuasion DC 10. Success: “We yield.”, and the speaker learns band-yielded.',
-      '“Throw down your arms.” Intimidation DC 15. Failure: “We fight on.”',
-    ]);
   });
 });

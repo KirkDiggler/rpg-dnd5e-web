@@ -137,3 +137,46 @@ export function publishStatusText(
   const saved = savedCurrent(publishing, roomId);
   return saved ? `Saved as ${saved}` : '';
 }
+
+/** The engine's read-back as the inspector shows it (rpg-project#968, R25):
+ * the sentences of the last draft that compiled, whether they describe the
+ * current bytes, and, while there are none, why. */
+export interface StudioReadBack {
+  readBack: StudioPublishing['readBack'];
+  readBackIsCurrent: boolean;
+  /** Why no read-back is available; null while one is. */
+  unavailable: string | null;
+}
+
+export const READ_BACK_NOT_CHECKED_SENTENCE =
+  'The server has not checked this draft yet.';
+export const READ_BACK_NOT_COMPILED_SENTENCE =
+  'The draft has not compiled yet; its refusals say why.';
+export const READ_BACK_NOT_SENT_SENTENCE =
+  'The server compiled the draft and sent no read-back.';
+export const READ_BACK_NO_FILE_SENTENCE =
+  'The draft cannot be written as a file yet.';
+
+export function studioReadBackOf(
+  publishing: Pick<
+    StudioPublishing,
+    'readBack' | 'readBackIsCurrent' | 'preview' | 'yaml'
+  >,
+  gate: AuthoringGateState
+): StudioReadBack {
+  const { readBack, readBackIsCurrent, preview, yaml } = publishing;
+  if (readBack !== null)
+    return { readBack, readBackIsCurrent, unavailable: null };
+  const unavailable =
+    serverUnavailableReason(gate) ??
+    (yaml === null
+      ? READ_BACK_NO_FILE_SENTENCE
+      : preview.status === 'errors'
+        ? READ_BACK_NOT_COMPILED_SENTENCE
+        : preview.status === 'compiled'
+          ? READ_BACK_NOT_SENT_SENTENCE
+          : preview.status === 'unreachable'
+            ? UNREACHABLE_SENTENCE
+            : READ_BACK_NOT_CHECKED_SENTENCE);
+  return { readBack: null, readBackIsCurrent: false, unavailable };
+}

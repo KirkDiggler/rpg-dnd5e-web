@@ -25,6 +25,7 @@ import {
   type AuthoringService,
   type FieldError,
   type PutDungeonResponse,
+  type ReadBack,
   type ScenarioDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -63,6 +64,11 @@ export interface PreviewState {
   atlas: GetAtlasResponse | null;
   /** The last transport failure's message, for the status line. */
   message: string | null;
+  /** The engine's read-back of the LAST compile that succeeded
+   * (rpg-project#968, R25): set from a clean answer (null when that answer
+   * carried none), kept through a later `errors` answer or a transport
+   * failure so the inspector can show the last sentences, marked. */
+  readBack: ReadBack | null;
 }
 
 export const PREVIEW_DEBOUNCE_MS = 400;
@@ -105,6 +111,7 @@ export function usePutDungeonPreview(
     errors: [],
     atlas: fixtureAtlas ?? null,
     message: null,
+    readBack: null,
   });
   const generation = useRef(0);
 
@@ -116,6 +123,7 @@ export function usePutDungeonPreview(
         errors: [],
         atlas: fixtureAtlas,
         message: null,
+        readBack: null,
       });
       return;
     }
@@ -154,6 +162,7 @@ export function usePutDungeonPreview(
           errors: response.errors,
           atlas: s.atlas,
           message: null,
+          readBack: s.readBack,
         }));
       } else {
         setState({
@@ -161,6 +170,7 @@ export function usePutDungeonPreview(
           errors: [],
           atlas: response.atlas ?? null,
           message: null,
+          readBack: response.readBack ?? null,
         });
       }
     }, debounceMs);
