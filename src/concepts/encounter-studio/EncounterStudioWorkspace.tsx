@@ -37,6 +37,14 @@ import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
+import {
+  clampInspectorWidth,
+  INSPECTOR_DEFAULT_WIDTH,
+  inspectorDocks,
+  inspectorMaxWidth,
+  readInspectorWidth,
+  writeInspectorWidth,
+} from './inspectorWidth';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
@@ -62,6 +70,7 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
@@ -235,6 +244,44 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** The inspector's width (rpg-project#979): the viewer's own, kept in the
+   * browser, clamped to half the workspace as the window changes. */
+  const [inspectorWidth, setInspectorWidth] = useState(
+    () => readInspectorWidth(storage) ?? INSPECTOR_DEFAULT_WIDTH
+  );
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const measure = (): void => setWorkspaceWidth(window.innerWidth);
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const inspectorMax = inspectorMaxWidth(workspaceWidth, view);
+  const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
+  /** The work area's height, for a docked inspector to fill it: set on the
+   * root as `--es-work-height`, outside React, as the area resizes. */
+  const workAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const area = workAreaRef.current;
+    const root = area?.closest<HTMLElement>('.encounter-studio');
+    if (!area || !root) return;
+    const measure = (): void =>
+      root.style.setProperty(
+        '--es-work-height',
+        `${area.getBoundingClientRect().height}px`
+      );
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, []);
+  const commitInspectorWidth = (width: number): void => {
+    setInspectorWidth(width);
+    writeInspectorWidth(storage, width);
+  };
   const [sections, setSections] = useState<
     Record<StudioHome, StudioSidebarSection>
   >({ build: 'inspector', encounter: 'tables' });
@@ -883,6 +930,16 @@ function StudioSurface({
       className="encounter-studio"
       aria-label="Encounter Studio workspace"
       data-home={home}
+      data-inspector={
+        !(spatial && sidebarOpen)
+          ? undefined
+          : inspectorDocks(workspaceWidth, view)
+            ? 'docked'
+            : 'overlay'
+      }
+      style={
+        { '--es-inspector-width': `${inspectorShown}px` } as React.CSSProperties
+      }
     >
       <header className="es-header">
         {onBack && (
@@ -1409,6 +1466,13 @@ function StudioSurface({
             onToggle={() => setSidebarOpen((open) => !open)}
             keyboardEnabled={spatial}
             compact={home === 'build'}
+            resize={
+              <StudioInspectorResize
+                width={inspectorShown}
+                max={inspectorMax}
+                onCommit={commitInspectorWidth}
+              />
+            }
           >
             {home === 'build' && (
               <StudioInspector
@@ -1436,7 +1500,7 @@ function StudioSurface({
           </StudioSidebar>
         </div>
       </div>
-      <div className="es-work-area">
+      <div className="es-work-area" ref={workAreaRef}>
         <div
           className="es-map-workspace"
           aria-hidden={!spatial}
