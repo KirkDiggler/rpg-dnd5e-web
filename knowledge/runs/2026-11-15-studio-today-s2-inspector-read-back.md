@@ -1,0 +1,40 @@
+# Run — 2026-11-15 — studio today S2 inspector read-back
+
+Slice [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`285152a2`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/285152a289f1311f8f97addbfc72803617a9fb10).
+
+## Shipped
+
+- The inspector's read-back for a creature or a prop is the engine's `PutDungeonResponse.read_back`, filtered to the selection; protos pinned at `v0.1.278` — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- `world-building/readBack.ts` and its test are deleted; nothing imports them — [rpg-project#944](https://github.com/KirkDiggler/rpg-project/issues/944).
+- `refusalJump.ts` exports `targetOfPath`, the one path-to-selection map; read-back connections and statement paths land through it — [design R25](https://github.com/KirkDiggler/rpg-project/blob/studio-today-design/ideas/encounter-studio/design.md).
+
+## Decided
+
+- Which statements belong to a selection: every statement whose `about` is the selection, under the title of the group it sits in, plus the whole group about anything those statements connect to with role `uses` (one hop), because the captain's routine sits in its own group `{routine, captain-policy}` reached only by `creature.routine`'s `{routine, captain-policy, uses}`, and a prop has no group of its own (its statements sit in the site's group) — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- `uses` is not followed past one hop: a routine's `{bundle, …, uses}` is the routine's, not the creature's, and the bundle's group is not shown — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- Every connection kind the studio has a home for is a jump, because a dropped jump is a dropped fact: creature, prop, door, region and exit select; conversation, faction, record and bundle open Interactions, Factions, Intel and Bundles on that id; fact and topic open Facts. `routine` stays text until rpg-project#970 gives it a home — [build-slice, Facts across a port](https://github.com/KirkDiggler/rpg-project/blob/studio-today-design/.agents/skills/build-slice/SKILL.md#facts-across-a-port).
+- Each connection kind is turned into the compiler's own path (`room.room.monsterBindings.<id>`, `propBindings`, `doorBindings`, `regions[i]`, `interactions.<id>`, `factions[i]`, `intel[i]`, `bundles.<id>`, `exits[i]`, each index found by id in the document) and resolved by `targetOfPath`, so no second map exists — [design R25](https://github.com/KirkDiggler/rpg-project/blob/studio-today-design/ideas/encounter-studio/design.md).
+- `{readBack, readBackIsCurrent}` live on the publishing hook (`useRoomPublishing`), not the studio session object, because the session does not own the preview; the workspace passes `studioReadBackOf(publishing, gate)` to the inspector — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- The kept read-back belongs to its draft: `usePutDungeonPreview` takes the draft id as `identity` and drops the read-back when it changes, so another file opened into the studio never shows the previous file's sentences — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437#pullrequestreview-5912314807).
+- With authoring off the panel drops the sentences and gives the gate's reason, because nothing will check them — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437#pullrequestreview-5912314807).
+- While stale, a statement's path is text, not a jump, because an index path (`monsterDeclarations[2]`, `factions[i]`) can name another entry after a reorder; connections resolve by id and stay jumps — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437#pullrequestreview-5912314807).
+- A thing the read-back does not name shows the panel with a notice instead of nothing — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437#pullrequestreview-5912314807).
+- A clean check that carries no read-back clears the last one (the panel says the server sent none) rather than keep sentences from an earlier draft unmarked — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- `actionAugmentSentences` (with `resolvedActionsOf`, `weaponNoun`) and `ENGINE_LAWS` are deleted: only `readBack.ts` used them and each wrote the studio's own sentence about what will run; `turnsTo` stays — [design R25](https://github.com/KirkDiggler/rpg-project/blob/studio-today-design/ideas/encounter-studio/design.md).
+- Tests that asserted the old prose keep their document assertions; prose-only tests are dropped and listed in the PR — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+
+## Found
+
+- In the engine's castle read-back a prop has no group: its statements carry `about {prop, id}` inside the site group "The Mad King’s Castle (the-mad-king)" under "The place" — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- The full castle read-back from toolkit `main` 4ff62fe5 is 536 KB of JSON; its `not_yet_said` is empty — [rpg-project#967](https://github.com/KirkDiggler/rpg-project/issues/967).
+- Roles present on the castle: `uses`, `runs`, `holds`, `asks`, `teaches`, `grants`, `wakes-on`, `said-to`, `member-of`, `speaks-lines-of`, `advances`, `carries`, `tells`, `done-to`, `sends-to` — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- `behaviorDefinitions.<id>…` paths have no case in the path map, so a routine statement's path is not a jump — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).
+- `bundles.test.ts` "a bundle that uses itself" overflows the stack on this machine at clean `dev` 285152a2 too, while CI on that head is green — [CI at 285152a2](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/285152a289f1311f8f97addbfc72803617a9fb10).
+
+## Mistaken
+
+- The first PR head kept a read-back across a change of draft, showed old sentences after authoring went off, let stale index paths jump, hid the panel for an unnamed thing, and dropped the fact-index check from the deleted readBack.test.ts unlisted; review found all five and tests now guard each — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437#pullrequestreview-5912314807).
+
+- The first head left faction, record and bundle connections as plain text, dropping the Factions and Intel jumps the old panel had; the lead's stack check caught it and the next commit restored them with tests — [rpg-dnd5e-web#1437](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1437).
+
+- The plan's rule "every group whose `about` is `{creature|prop, <id>}`" would show nothing for a prop and no routine for the captain; the fixture showed it before any code was written, and the rule above replaced it — [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968).

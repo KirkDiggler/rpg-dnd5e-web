@@ -8,6 +8,7 @@ import type { GroundCatalog } from '@/rendering/groundCatalog';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import { PutDungeonResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   act,
   cleanup,
@@ -108,12 +109,14 @@ import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
 } from './fixtures/castleWorkspace';
+import { castleEngineReadBack } from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
   LIGHTING_REGIONS,
 } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import servedCastleYaml from './fixtures/the-mad-king-served.yaml?raw';
 import statesCastleYaml from './fixtures/the-mad-king-states.yaml?raw';
 import referenceCastleYaml from './fixtures/the-mad-king.yaml?raw';
 import {
@@ -5242,8 +5245,8 @@ describe('S2 the fact index through the real owner', () => {
     );
     const inspector = screen.getByRole('region', { name: 'Inspector' });
     expect(
-      within(inspector).getByRole('region', { name: 'Read back' }).textContent
-    ).toContain('cook, a Commoner of the kitchen, and the kitchen’s mind.');
+      within(inspector).getByRole('heading', { level: 2 }).textContent
+    ).toBe('cook');
   });
 });
 
@@ -6586,9 +6589,9 @@ describe('S3 the overview through the real owner', () => {
     fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
       button: 0,
     });
-    expect(
-      inspector().getByRole('region', { name: 'Read back' }).textContent
-    ).toContain('cook, a Commoner of the kitchen');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'cook'
+    );
     fireEvent.pointerDown(glyph('[data-placed-prop="altar"]'), { button: 0 });
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
@@ -7241,5 +7244,36 @@ describe('stroke perf marks', () => {
       now.mockRestore();
       spy.mockRestore();
     }
+  });
+});
+
+describe('the inspector speaks the engine’s sentences (rpg-project#968)', () => {
+  it('selecting the captain shows his routine from the check’s read-back', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleEngineReadBack() })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+    const readBack = within(
+      screen.getByRole('region', { name: 'Inspector' })
+    ).getByRole('region', { name: 'Read back' });
+    await waitFor(() =>
+      expect(readBack.textContent).toContain(
+        'In the state `ready`, Guard Captain (captain) listens for 7 beats.'
+      )
+    );
+    expect(readBack.textContent).toContain(
+      'Guard Captain (captain) runs the routine `captain-policy`'
+    );
   });
 });

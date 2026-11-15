@@ -22,7 +22,6 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import { patchOption, patchOptionRow } from '../world-building/optionEdits';
-import { readBackOf } from '../world-building/readBack';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 
@@ -171,26 +170,13 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
       expect(option).not.toHaveProperty('loudness');
   });
 
-  it('the read-back says a shouted line is shouted, and leaves an unshouted one alone', () => {
-    // gate-1's machine and table live under `behaviorDefinitions`, which the
-    // creature read-back does not read; the row and `heard` phrasing is
-    // pinned in `readBack.test.ts`.
-    const result = read(served);
-    const pedlar = JSON.stringify(
-      readBackOf(result, { kind: 'creature', id: 'pedlar' })
+  it('a loudness word the studio does not know loads and writes back as written', () => {
+    const text = hailSaid('            loudness: bellow\n');
+    const doc = parse(roundTrips(text)) as Parsed;
+    const hail = doc.room.room.monsterBindings.pedlar.options!.find(
+      (option) => option.id === 'hail-the-pedlar'
     );
-    expect(pedlar).toContain(
-      '“Oi! Pedlar! What have you got to sell?” (shouted)'
-    );
-    // The line with no loudness says nothing of one.
-    expect(pedlar).toContain('“What’s all the bustle?” Persuasion');
-  });
-
-  it('the read-back names a loudness word it cannot say, as written', () => {
-    const result = read(hailSaid('            loudness: bellow\n'));
-    expect(
-      JSON.stringify(readBackOf(result, { kind: 'creature', id: 'pedlar' }))
-    ).toContain('“Oi! Pedlar! What have you got to sell?” (at bellow)');
+    expect(hail).toHaveProperty('loudness', 'bellow');
   });
 
   it('editing a shouted line’s words keeps its loudness beside them', () => {
@@ -232,14 +218,6 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
         loudness: 'shout',
       });
     }
-  });
-
-  it('the read-back says the hint is shouted', () => {
-    const result = read(served);
-    for (const guard of ['gate-1', 'gate-2'])
-      expect(
-        JSON.stringify(readBackOf(result, { kind: 'creature', id: guard }))
-      ).toContain(`“${HINT}” (shouted)`);
   });
 
   it('editing the hint’s words keeps its loudness beside them', () => {

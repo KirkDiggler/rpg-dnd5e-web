@@ -669,7 +669,13 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
   const atlas = {} as never;
   it('is null when the shown atlas IS the current compile (or there is nothing to show)', () => {
     expect(
-      staleAtlasNotice({ status: 'compiled', errors: [], atlas, message: null })
+      staleAtlasNotice({
+        status: 'compiled',
+        errors: [],
+        atlas,
+        message: null,
+        readBack: null,
+      })
     ).toBeNull();
     expect(
       staleAtlasNotice({
@@ -677,6 +683,7 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
         errors: [],
         atlas: null,
         message: null,
+        readBack: null,
       })
     ).toBeNull();
   });
@@ -688,10 +695,17 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
         errors: [],
         atlas,
         message: null,
+        readBack: null,
       })
     ).toMatch(/last compiled document/);
     expect(
-      staleAtlasNotice({ status: 'errors', errors: [], atlas, message: null })
+      staleAtlasNotice({
+        status: 'errors',
+        errors: [],
+        atlas,
+        message: null,
+        readBack: null,
+      })
     ).toMatch(/problems/);
     expect(
       staleAtlasNotice({
@@ -699,6 +713,7 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
         errors: [],
         atlas,
         message: 'boom',
+        readBack: null,
       })
     ).toMatch(/unreachable: boom/);
   });

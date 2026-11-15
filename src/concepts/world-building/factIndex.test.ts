@@ -77,4 +77,30 @@ describe('factIndexOf', () => {
     expect(facts).toEqual([...facts].sort());
     expect(JSON.stringify(document)).toBe(before);
   });
+
+  it('a patrol row and a march row name no fact: the index does not move (rpg-toolkit#2063)', () => {
+    // Moved from the deleted readBack.test.ts (rpg-project#968): a cell and a
+    // route are not facts, so rows that walk to them add no index row.
+    const document = createCastleReadBackDocument();
+    const before = factIndexOf(document);
+    const rows = document.scope.tables!['gate-patrol'].time;
+    document.scope.tables!['gate-patrol'].time = [
+      ...rows,
+      {
+        when: { enemy: 'none' },
+        toward: {
+          path: [
+            { q: -2, r: 0 },
+            { q: 0, r: -2 },
+            { q: 2, r: 0 },
+            { q: 0, r: 2 },
+          ],
+        },
+      },
+      { when: { fact: 'alarm-raised' }, toward: { at: { q: 1, r: 1 } } },
+    ];
+    expect(factIndexOf(document).map((row) => row.fact)).toEqual(
+      before.map((row) => row.fact)
+    );
+  });
 });

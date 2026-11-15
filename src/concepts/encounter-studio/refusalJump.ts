@@ -141,7 +141,12 @@ function roomTarget(
   }
 }
 
-function targetOf(
+/** THE ONE MAP FROM A FILE PATH TO A STUDIO SELECTION (R25): a refusal's
+ * path and a read-back statement's path are the compiler's one coordinate
+ * system, so both land through here. Null for a path with no studio noun,
+ * one naming an id the document no longer holds, or one that is not a field
+ * path at all (the read-back's "(engine rule)"). */
+export function targetOfPath(
   path: string,
   document: Readonly<RoomDraftDocument>
 ): RefusalTarget | null {
@@ -227,6 +232,6 @@ export function refusalJumps(
   return errors.map((error) => ({
     path: error.path,
     message: error.message,
-    target: targetOf(error.path, document),
+    target: targetOfPath(error.path, document),
   }));
 }
