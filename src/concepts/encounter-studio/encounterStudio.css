@@ -1140,6 +1140,38 @@
   font: inherit;
   overflow-wrap: anywhere;
 }
+.encounter-studio .es-readback-views {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.encounter-studio .es-readback-views button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent);
+}
+.encounter-studio .es-readback-folded,
+.encounter-studio .es-readback-entry > ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-readback-entry {
+  margin-bottom: 0.4rem;
+}
+.encounter-studio .es-readback-entry > p {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.encounter-studio .es-readback-open {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-readback-unreached {
+  border-top: 1px solid var(--wb-border);
+  padding-top: 0.25rem;
+}
 .encounter-studio .es-readback-unsaid code,
 .encounter-studio .es-readback-path code {
   overflow-wrap: anywhere;

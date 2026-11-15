@@ -13,12 +13,20 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readDraftYaml } from './draftFile';
+import { foldedOfSelection, readBackOfSelection } from './engineReadBack';
 import { castleEngineReadBack } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { ReadBack } from './ReadBack';
 import type { StudioReadBack } from './studioPublishing';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  try {
+    localStorage.clear();
+  } catch {
+    // no storage: nothing to clear
+  }
+});
 
 const castle = (() => {
   const read = readDraftYaml(served);
@@ -26,9 +34,24 @@ const castle = (() => {
   return { draft: read.draft, scope: read.scope };
 })();
 
+/** The read-back with no `folded`, as an older api sends it: the panel is
+ * the Full view, so the tests of the Full view read it unchanged. */
+const fullOnly = () => {
+  const readBack = castleEngineReadBack();
+  readBack.folded = [];
+  return readBack;
+};
+
 const current = (): StudioReadBack => ({
-  readBack: castleEngineReadBack(),
+  readBack: fullOnly(),
   readBackIsCurrent: true,
+  unavailable: null,
+});
+
+/** The read-back as the api sends it now, folded and full. */
+const folded = (readBackIsCurrent = true): StudioReadBack => ({
+  readBack: castleEngineReadBack(),
+  readBackIsCurrent,
   unavailable: null,
 });
 
@@ -268,7 +291,7 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
   });
 
   it('a not-yet-said path on the selection is shown', () => {
-    const readBack = castleEngineReadBack();
+    const readBack = fullOnly();
     readBack.notYetSaid = [
       {
         $typeName: 'dnd5e.api.authoring.v1alpha1.ReadBackUnsaid',
@@ -294,5 +317,261 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
     expect(text).toContain('room.room.monsterBindings.captain.somethingNew');
     expect(text).toContain('the read-back has no sentence for it yet');
     expect(text).not.toContain('not the captain’s');
+  });
+});
+
+describe('ReadBack: the engine’s folded read-back (rpg-project#978)', () => {
+  const captain = { kind: 'creature', id: 'captain' } as const;
+  const disclosure = (text: RegExp) =>
+    within(panel()).getByRole('button', { name: text });
+
+  it('folded is the default and says the captain’s troupe line once', () => {
+    render(<ReadBack document={castle} selection={captain} state={folded()} />);
+    expect(
+      within(panel())
+        .getByRole('button', { name: 'Folded' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    const entries = within(panel())
+      .getAllByRole('listitem')
+      .filter((item) => item.dataset.folded !== undefined)
+      .map((item) => item.querySelector(':scope > p')?.textContent ?? '');
+    // The engine folds the captain's troupe line into the lines he shares
+    // with gate-1: named once, in its words.
+    expect(entries.filter((text) => text.includes('`troupe`'))).toEqual([
+      'Guard Captain (captain) has the same 3 lines as Guard (gate-1): `troupe`, `come-quietly` and `never-alive`.',
+    ]);
+    // Closed, no full sentence of that line is shown.
+    expect(panel().textContent).not.toContain(
+      'The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.'
+    );
+  });
+
+  it('gate-1’s troupe line is said once with its requirements as an entry under it', () => {
+    render(
+      <ReadBack
+        document={castle}
+        selection={{ kind: 'creature', id: 'gate-1' }}
+        state={folded()}
+      />
+    );
+    const troupe = within(panel())
+      .getAllByRole('listitem')
+      .filter(
+        (item) =>
+          item.dataset.folded !== undefined &&
+          item.querySelector(':scope > p')?.textContent?.includes('(`troupe`)')
+      );
+    expect(troupe).toHaveLength(1);
+    const under = [...troupe[0]!.querySelectorAll(':scope > ul > li > p')].map(
+      (p) => p.textContent
+    );
+    expect(under[0]).toBe(
+      'Offered while: the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`.'
+    );
+  });
+
+  it('opening the entry shows its full sentences, and fact feast-tonight still jumps', () => {
+    const onOpenFact = vi.fn();
+    render(
+      <ReadBack
+        document={castle}
+        selection={captain}
+        state={folded()}
+        onOpenFact={onOpenFact}
+        onJump={vi.fn()}
+      />
+    );
+    const open = disclosure(/^Full sentences: .*has the same 3 lines/);
+    expect(open.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(open);
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    const text = panel().textContent ?? '';
+    expect(text).toContain(
+      'The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.'
+    );
+    expect(text).toContain(
+      'The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the conversation `front-gate` is in one of the states `fresh` or `warned-guest`'
+    );
+    fireEvent.click(
+      within(panel()).getAllByRole('button', {
+        name: 'Open fact feast-tonight',
+      })[0]!
+    );
+    expect(onOpenFact).toHaveBeenCalledWith('feast-tonight');
+  });
+
+  it('every statement the selection shows in full is reachable from the folded view', () => {
+    const readBack = castleEngineReadBack();
+    for (const selection of [
+      captain,
+      { kind: 'creature', id: 'gate-1' } as const,
+      { kind: 'prop', id: 'grate' } as const,
+    ]) {
+      const full = readBackOfSelection(
+        readBack,
+        selection,
+        castle
+      ).groups.flatMap((group) => group.statements);
+      const view = foldedOfSelection(readBack, selection);
+      expect(view.unreached).toEqual([]);
+      const reached = new Set(
+        view.sections.flatMap((section) =>
+          section.items.flatMap(function all(item): unknown[] {
+            return [...item.statements, ...item.items.flatMap(all)];
+          })
+        )
+      );
+      for (const statement of full) expect(reached).toContain(statement);
+    }
+    // The captain: 75 statements in full, said in 44 folded entries.
+    const view = foldedOfSelection(readBack, captain);
+    const count = (items: (typeof view.sections)[number]['items']): number =>
+      items.reduce((n, item) => n + 1 + count(item.items), 0);
+    expect(
+      count(view.sections.flatMap((section) => section.items))
+    ).toBeLessThan(
+      readBackOfSelection(readBack, captain, castle).groups.flatMap(
+        (group) => group.statements
+      ).length
+    );
+  });
+
+  it('a statement behind no shown entry is listed under the folded view, never dropped', () => {
+    const readBack = castleEngineReadBack();
+    const creatures = readBack.folded.find(
+      (section) => section.title === 'Creatures'
+    )!;
+    const captainEntry = creatures.items.find((item) =>
+      item.text.startsWith('Guard Captain (captain)')
+    )!;
+    // The engine's entry for the `greet` line, removed: its two statements
+    // are no longer behind any entry.
+    captainEntry.items = captainEntry.items.filter(
+      (item) => !item.text.includes('(`greet`)')
+    );
+    render(
+      <ReadBack
+        document={castle}
+        selection={captain}
+        state={{ ...folded(), readBack }}
+      />
+    );
+    const unreached = within(panel()).getByRole('list', {
+      name: 'Said in full only',
+    });
+    expect(unreached.textContent).toContain('“Good evening, captain.”');
+  });
+
+  it('the grate’s two ways are said once each', () => {
+    render(
+      <ReadBack
+        document={castle}
+        selection={{ kind: 'prop', id: 'grate' }}
+        state={folded()}
+      />
+    );
+    const entries = within(panel())
+      .getAllByRole('listitem')
+      .filter((item) => item.dataset.folded !== undefined)
+      .map((item) => item.querySelector(':scope > p')?.textContent ?? '');
+    expect(
+      entries.filter((text) => text.includes('(`to-chapel`)'))
+    ).toHaveLength(1);
+    expect(
+      entries.filter((text) => text.includes('(`to-cells`)'))
+    ).toHaveLength(1);
+  });
+
+  it('an opened entry shows only the selection’s statements, even at a path it shares', () => {
+    // keep-1, keep-2 and the Mad King each have one "No lines of its own"
+    // entry, all three set at `factions[1].options`.
+    const readBack = castleEngineReadBack();
+    const subjects = ['keep-1', 'keep-2', 'king'];
+    for (const id of subjects) {
+      const view = foldedOfSelection(readBack, { kind: 'creature', id });
+      const opened = view.sections.flatMap((section) =>
+        section.items.flatMap(function all(item): typeof item.statements {
+          return [...item.statements, ...item.items.flatMap(all)];
+        })
+      );
+      expect(opened.length).toBeGreaterThan(0);
+      for (const statement of opened)
+        expect(statement.about).toMatchObject({ kind: 'creature', id });
+    }
+    // And on screen: keep-1's "No lines" entry opens to keep-1's sentence
+    // alone.
+    render(
+      <ReadBack
+        document={castle}
+        selection={{ kind: 'creature', id: 'keep-1' }}
+        state={folded()}
+      />
+    );
+    fireEvent.click(disclosure(/^Full sentences: No lines of its own/));
+    const text = panel().textContent ?? '';
+    expect(text).toContain('Knight (keep-1)');
+    expect(text).not.toContain('Knight (keep-2)');
+    expect(text).not.toContain('The Mad King (king)');
+  });
+
+  it('an entry whose only path is shared with another thing is not the selection’s', () => {
+    // The joins the grate makes are set at the grate's relocate paths, which
+    // the join statements share: they are the joins', not the grate's.
+    const view = foldedOfSelection(castleEngineReadBack(), {
+      kind: 'prop',
+      id: 'grate',
+    });
+    const texts = view.sections.flatMap((section) =>
+      section.items.map((item) => item.item.text)
+    );
+    expect(texts.some((text) => text.includes('is a passage to'))).toBe(false);
+    expect(texts).toHaveLength(3);
+  });
+
+  it('the disclosure’s name follows its state and names its entry', () => {
+    render(<ReadBack document={castle} selection={captain} state={folded()} />);
+    const open = disclosure(/^Full sentences: .*has the same 3 lines/);
+    fireEvent.click(open);
+    expect(open.getAttribute('aria-label')).toMatch(
+      /^Hide full sentences: .*has the same 3 lines/
+    );
+    expect(open.textContent).toBe('Hide full sentences');
+  });
+
+  it('the Full switch shows today’s view, and the choice is remembered', () => {
+    const { unmount } = render(
+      <ReadBack document={castle} selection={captain} state={folded()} />
+    );
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Full' }));
+    expect(
+      within(panel()).getByText('Guard Captain (captain)', {
+        selector: 'summary',
+      })
+    ).toBeTruthy();
+    expect(panel().textContent).toContain(
+      sentenceOf('creature', 'captain', 'creature.routine')
+    );
+    unmount();
+    render(<ReadBack document={castle} selection={captain} state={folded()} />);
+    expect(
+      within(panel())
+        .getByRole('button', { name: 'Full' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+  });
+
+  it('with no folded read-back on the wire it falls back to Full', () => {
+    render(
+      <ReadBack document={castle} selection={captain} state={current()} />
+    );
+    expect(
+      within(panel()).queryByRole('button', { name: 'Folded' })
+    ).toBeNull();
+    expect(
+      within(panel()).getByText('Guard Captain (captain)', {
+        selector: 'summary',
+      })
+    ).toBeTruthy();
   });
 });
