@@ -185,15 +185,86 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
     );
   });
 
-  it('nothing renders for a subject with no group', () => {
-    const { container } = render(
+  it('a thing the read-back does not name yet shows the panel with that notice', () => {
+    // `purse` is not in the recorded read-back: a prop placed since the last
+    // check that compiled.
+    const { rerender } = render(
+      <ReadBack
+        document={castle}
+        selection={{ kind: 'prop', id: 'purse' }}
+        state={{ ...current(), readBackIsCurrent: false }}
+      />
+    );
+    expect(
+      within(panel())
+        .getAllByRole('status')
+        .map((status) => status.textContent)
+    ).toEqual([
+      'These sentences are from the last draft that compiled.',
+      'The engine has not said this thing yet; it appears after the next check that compiles.',
+    ]);
+    expect(within(panel()).queryByRole('group')).toBeNull();
+    rerender(
       <ReadBack
         document={castle}
         selection={{ kind: 'prop', id: 'purse' }}
         state={current()}
       />
     );
-    expect(container.textContent).toBe('');
+    expect(within(panel()).getByRole('status').textContent).toBe(
+      'The engine’s read-back says nothing about this thing.'
+    );
+  });
+
+  it('while stale, an index path is text, never a jump that a reorder would move', () => {
+    // The captain's first statement is set at `room.room.monsterDeclarations[2]`.
+    // Swap the captain and the creature before him: that index now names
+    // another creature, so the stale sentence must not jump there.
+    const declarations = [...castle.draft.room.monsterDeclarations];
+    const at = declarations.findIndex((monster) => monster.id === 'captain');
+    expect(at).toBe(2);
+    [declarations[at - 1], declarations[at]] = [
+      declarations[at]!,
+      declarations[at - 1]!,
+    ];
+    const reordered = {
+      ...castle,
+      draft: {
+        ...castle.draft,
+        room: { ...castle.draft.room, monsterDeclarations: declarations },
+      },
+    };
+    const onJump = vi.fn();
+    const shown = (readBackIsCurrent: boolean) =>
+      render(
+        <ReadBack
+          document={reordered}
+          selection={{ kind: 'creature', id: 'captain' }}
+          state={{ ...current(), readBackIsCurrent }}
+          onJump={onJump}
+        />
+      );
+    const stale = shown(false);
+    expect(
+      within(panel()).queryByRole('button', {
+        name: 'Open room.room.monsterDeclarations[2]',
+      })
+    ).toBeNull();
+    expect(panel().textContent).toContain('room.room.monsterDeclarations[2]');
+    // A connection resolves by its id and still jumps.
+    expect(
+      within(panel()).getAllByRole('button', {
+        name: 'Open door gate-wall-door',
+      }).length
+    ).toBeGreaterThan(0);
+    stale.unmount();
+    // Current, the same path is a jump (here to whoever stands at [2]).
+    shown(true);
+    expect(
+      within(panel()).getByRole('button', {
+        name: 'Open room.room.monsterDeclarations[2]',
+      })
+    ).toBeTruthy();
   });
 
   it('a not-yet-said path on the selection is shown', () => {

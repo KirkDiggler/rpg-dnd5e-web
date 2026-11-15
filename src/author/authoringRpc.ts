@@ -93,6 +93,12 @@ export interface UsePutDungeonPreviewOptions {
    * can ask the server deliberately instead of waiting for the next edit
    * (rpg-dnd5e-web#1160). Default 0 preserves every existing caller. */
   nonce?: number;
+  /** The document the bytes are of (the studio passes the draft id). The
+   * kept read-back is that document's own: a change of identity drops it,
+   * so another file opened into the same editor never shows the previous
+   * file's sentences while its own first check is refused
+   * (rpg-project#968). Undefined keeps every existing caller unchanged. */
+  identity?: string;
 }
 
 export function usePutDungeonPreview(
@@ -104,6 +110,7 @@ export function usePutDungeonPreview(
     debounceMs = PREVIEW_DEBOUNCE_MS,
     enabled = true,
     nonce = 0,
+    identity,
   }: UsePutDungeonPreviewOptions = {}
 ): PreviewState {
   const [state, setState] = useState<PreviewState>({
@@ -113,6 +120,13 @@ export function usePutDungeonPreview(
     message: null,
     readBack: null,
   });
+  // A new document drops the kept read-back in the same render, before any
+  // check of the new bytes answers.
+  const [readBackIdentity, setReadBackIdentity] = useState(identity);
+  if (identity !== readBackIdentity) {
+    setReadBackIdentity(identity);
+    setState((s) => (s.readBack === null ? s : { ...s, readBack: null }));
+  }
   const generation = useRef(0);
 
   useEffect(() => {

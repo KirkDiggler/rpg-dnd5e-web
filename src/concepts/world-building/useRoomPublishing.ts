@@ -352,6 +352,7 @@ export function useRoomPublishing({
     client,
     enabled: previewEnabled && yaml !== null,
     nonce: validateNonce,
+    identity: draft.id,
   });
   const validate = useCallback(() => {
     setValidateNonce((current) => current + 1);

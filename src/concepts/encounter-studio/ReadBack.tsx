@@ -28,6 +28,10 @@ export interface ReadBackProps {
 
 export const STALE_READ_BACK_SENTENCE =
   'These sentences are from the last draft that compiled.';
+export const NOT_YET_NAMED_SENTENCE =
+  'The engine has not said this thing yet; it appears after the next check that compiles.';
+export const NOTHING_SAID_SENTENCE =
+  'The engine’s read-back says nothing about this thing.';
 
 /** The selected creature's or prop's read-back, in the ENGINE's sentences
  * (rpg-project#968, R25). The studio alters no sentence and writes none
@@ -39,17 +43,17 @@ export function ReadBack({
   state,
   onJump,
   onOpenFact,
-}: ReadBackProps): React.JSX.Element | null {
+}: ReadBackProps): React.JSX.Element {
   const { readBack, readBackIsCurrent, unavailable } = state;
   const selected = readBack
     ? readBackOfSelection(readBack, selection, document)
     : null;
-  if (
-    selected &&
+  // A thing placed since the last check that compiled has no sentences yet;
+  // the panel stays and says so rather than vanish.
+  const unnamed =
+    selected !== null &&
     selected.groups.length === 0 &&
-    selected.notYetSaid.length === 0
-  )
-    return null;
+    selected.notYetSaid.length === 0;
   const notice = !readBack
     ? `No read-back is available: ${unavailable ?? ''}`.trim()
     : readBackIsCurrent
@@ -62,6 +66,11 @@ export function ReadBack({
         {notice && (
           <p role="status" className="es-help es-readback-notice">
             {notice}
+          </p>
+        )}
+        {unnamed && (
+          <p role="status" className="es-help es-readback-notice">
+            {readBackIsCurrent ? NOTHING_SAID_SENTENCE : NOT_YET_NAMED_SENTENCE}
           </p>
         )}
         {selected?.groups.map((group, index) => (
@@ -81,6 +90,7 @@ export function ReadBack({
                   statement={statement}
                   document={document}
                   selection={selection}
+                  current={readBackIsCurrent}
                   onJump={onJump}
                   onOpenFact={onOpenFact}
                 />
@@ -100,12 +110,18 @@ function Statement({
   statement,
   document,
   selection,
+  current,
   onJump,
   onOpenFact,
 }: {
   statement: ReadBackStatement;
   document: Readonly<RoomDraftDocument>;
   selection: ReadBackSelection;
+  /** False while the sentences are from an earlier draft: a path's index
+   * (`factions[2]`, `monsterDeclarations[2]`) may then name another entry
+   * of the current document, so the path is shown as text, not a jump.
+   * Connections resolve by id and stay jumps. */
+  current: boolean;
   onJump?(target: RefusalTarget): void;
   onOpenFact?(id: string): void;
 }): React.JSX.Element {
@@ -139,7 +155,13 @@ function Statement({
   const pathTarget = onJump
     ? statementPathJump(statement, selection, document)
     : null;
-  if (pathTarget && onJump)
+  if (pathTarget && !current)
+    links.push(
+      <code key="path" className="es-readback-path">
+        {statement.path}
+      </code>
+    );
+  else if (pathTarget && onJump)
     links.push(
       <button
         key="path"

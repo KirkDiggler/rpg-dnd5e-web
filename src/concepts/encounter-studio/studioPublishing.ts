@@ -165,11 +165,15 @@ export function studioReadBackOf(
   gate: AuthoringGateState
 ): StudioReadBack {
   const { readBack, readBackIsCurrent, preview, yaml } = publishing;
+  // The gate first: with authoring off the server checks nothing, so the
+  // last sentences are not kept beside a reason they cannot answer.
+  const server = serverUnavailableReason(gate);
+  if (server !== null)
+    return { readBack: null, readBackIsCurrent: false, unavailable: server };
   if (readBack !== null)
     return { readBack, readBackIsCurrent, unavailable: null };
   const unavailable =
-    serverUnavailableReason(gate) ??
-    (yaml === null
+    yaml === null
       ? READ_BACK_NO_FILE_SENTENCE
       : preview.status === 'errors'
         ? READ_BACK_NOT_COMPILED_SENTENCE
@@ -177,6 +181,6 @@ export function studioReadBackOf(
           ? READ_BACK_NOT_SENT_SENTENCE
           : preview.status === 'unreachable'
             ? UNREACHABLE_SENTENCE
-            : READ_BACK_NOT_CHECKED_SENTENCE);
+            : READ_BACK_NOT_CHECKED_SENTENCE;
   return { readBack: null, readBackIsCurrent: false, unavailable };
 }
