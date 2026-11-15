@@ -40,6 +40,7 @@ import { AboutPanel } from './FieldHelp';
 import {
   clampInspectorWidth,
   INSPECTOR_DEFAULT_WIDTH,
+  inspectorDocks,
   inspectorMaxWidth,
   readInspectorWidth,
   writeInspectorWidth,
@@ -254,8 +255,29 @@ function StudioSurface({
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, []);
-  const inspectorMax = inspectorMaxWidth(workspaceWidth);
+  const inspectorMax = inspectorMaxWidth(workspaceWidth, view);
   const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
+  /** The work area's height, for a docked inspector to fill it: set on the
+   * root as `--es-work-height`, outside React, as the area resizes. */
+  const workAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const area = workAreaRef.current;
+    const root = area?.closest<HTMLElement>('.encounter-studio');
+    if (!area || !root) return;
+    const measure = (): void =>
+      root.style.setProperty(
+        '--es-work-height',
+        `${area.getBoundingClientRect().height}px`
+      );
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, []);
   const commitInspectorWidth = (width: number): void => {
     setInspectorWidth(width);
     writeInspectorWidth(storage, width);
@@ -908,7 +930,13 @@ function StudioSurface({
       className="encounter-studio"
       aria-label="Encounter Studio workspace"
       data-home={home}
-      data-inspector={spatial && sidebarOpen ? 'open' : undefined}
+      data-inspector={
+        !(spatial && sidebarOpen)
+          ? undefined
+          : inspectorDocks(workspaceWidth, view)
+            ? 'docked'
+            : 'overlay'
+      }
       style={
         { '--es-inspector-width': `${inspectorShown}px` } as React.CSSProperties
       }
@@ -1472,7 +1500,7 @@ function StudioSurface({
           </StudioSidebar>
         </div>
       </div>
-      <div className="es-work-area">
+      <div className="es-work-area" ref={workAreaRef}>
         <div
           className="es-map-workspace"
           aria-hidden={!spatial}

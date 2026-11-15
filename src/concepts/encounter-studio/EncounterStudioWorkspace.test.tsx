@@ -1103,7 +1103,11 @@ describe('the author sets the inspector width (rpg-project#979)', () => {
       <EncounterStudioWorkspace compositionSource={source} storage={storage} />
     );
     fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
-    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1 });
+    fireEvent.pointerMove(handle(), {
+      clientX: 700,
+      pointerId: 1,
+      buttons: 1,
+    });
     // The preview is the CSS variable alone; nothing is kept yet.
     expect(cssWidth()).toBe('484px');
     expect(storage.bytes.has(WIDTH_KEY)).toBe(false);
@@ -1112,29 +1116,103 @@ describe('the author sets the inspector width (rpg-project#979)', () => {
     expect(storage.bytes.get(WIDTH_KEY)).toBe('484');
     // Past the limit it stops at the limit.
     fireEvent.pointerDown(handle(), { clientX: 700, pointerId: 2 });
-    fireEvent.pointerMove(handle(), { clientX: -2000, pointerId: 2 });
+    fireEvent.pointerMove(handle(), {
+      clientX: -2000,
+      pointerId: 2,
+      buttons: 1,
+    });
     fireEvent.pointerUp(handle(), { clientX: -2000, pointerId: 2 });
     expect(now()).toBe(640);
   });
 
-  it('the width is restored from storage on mount, clamped, and clamped again when the window narrows', () => {
-    render(
-      <EncounterStudioWorkspace
-        compositionSource={source}
-        storage={memory({ [WIDTH_KEY]: '560' })}
-      />
-    );
-    expect(now()).toBe(560);
+  const resizeWindow = (width: number): void =>
     act(() => {
       Object.defineProperty(window, 'innerWidth', {
         configurable: true,
-        value: 1000,
+        value: width,
       });
       window.dispatchEvent(new Event('resize'));
     });
-    expect(handle().getAttribute('aria-valuemax')).toBe('500');
-    expect(now()).toBe(500);
-    expect(cssWidth()).toBe('500px');
+  const docking = (): string | null =>
+    (document.querySelector('.encounter-studio') as HTMLElement).getAttribute(
+      'data-inspector'
+    );
+
+  it('a stored 640 is restored, and clamped when the window narrows so the map keeps its floor', () => {
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: '640' })}
+      />
+    );
+    expect(now()).toBe(640);
+    // Layout's floor: the room list (220) and a 320 px canvas, plus the gutter.
+    resizeWindow(1000);
+    expect(handle().getAttribute('aria-valuemax')).toBe('436');
+    expect(now()).toBe(436);
+    expect(cssWidth()).toBe('436px');
+  });
+
+  it('at 1280 in 3D the widest inspector leaves the palette, the scene tree and a 320 px canvas', () => {
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: '640' })}
+      />
+    );
+    expect(docking()).toBe('docked');
+    click('3D');
+    // 1280 − 24 gutter − 250 palette − 270 scene tree − 320 canvas = 416.
+    expect(handle().getAttribute('aria-valuemax')).toBe('416');
+    expect(now()).toBe(416);
+    expect(docking()).toBe('docked');
+    // Back on Layout the author's own width returns; it was only clamped.
+    click('Layout');
+    expect(now()).toBe(640);
+    click('3D');
+    fireEvent.keyDown(handle(), { key: 'End' });
+    expect(now()).toBe(416);
+  });
+
+  it('where the default inspector and the map floor do not fit side by side, the inspector overlays', () => {
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={memory()} />
+    );
+    resizeWindow(820);
+    expect(docking()).toBe('overlay');
+    click('3D');
+    expect(docking()).toBe('overlay');
+    // 3D docks only from 1248 px (840 floor + 384 + 24).
+    resizeWindow(1247);
+    expect(docking()).toBe('overlay');
+    resizeWindow(1248);
+    expect(docking()).toBe('docked');
+    // A hidden inspector neither docks nor overlays.
+    click('Inspector (N)');
+    expect(docking()).toBeNull();
+  });
+
+  it('a drag whose release is lost ends without committing, and a hover with no button does not resize', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1, buttons: 1 });
+    expect(cssWidth()).toBe('484px');
+    fireEvent.lostPointerCapture(handle(), { pointerId: 1 });
+    expect(cssWidth()).toBe('384px');
+    fireEvent.pointerMove(handle(), { clientX: 600, pointerId: 1, buttons: 0 });
+    expect(cssWidth()).toBe('384px');
+    // A move with the button already up ends a live drag the same way.
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1, buttons: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 650, pointerId: 1, buttons: 0 });
+    expect(cssWidth()).toBe('384px');
+    fireEvent.pointerMove(handle(), { clientX: 600, pointerId: 1, buttons: 1 });
+    expect(cssWidth()).toBe('384px');
+    expect(now()).toBe(384);
+    expect(storage.bytes.has(WIDTH_KEY)).toBe(false);
   });
 
   it('a store that throws or holds nonsense leaves the default', () => {

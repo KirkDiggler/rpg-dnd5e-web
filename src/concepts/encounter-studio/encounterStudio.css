@@ -472,17 +472,25 @@
   width: min(var(--es-inspector-width, 24rem), 100%);
 }
 /* THE INSPECTOR'S WIDTH (rpg-project#979). The root carries
- * `--es-inspector-width` (the viewer's, clamped to half the workspace); the
- * open inspector takes it, and above the narrow breakpoint the map stops at
- * the inspector's edge instead of running under it, so the map and the 3D
- * scene tree take the rest (rpg-dnd5e-web#1278). */
-.encounter-studio[data-inspector='open'] .es-context-layer {
+ * `--es-inspector-width` (the viewer's, clamped so the map keeps its floor)
+ * and `data-inspector`: DOCKED where the default inspector and the map's floor
+ * fit side by side (inspectorWidth.ts), and then the map stops at the
+ * inspector's edge, so the map and the 3D scene tree take the rest
+ * (rpg-dnd5e-web#1278), and the inspector fills the work area's height so no
+ * empty band is left under a short panel; OVERLAY narrower, as before. */
+.encounter-studio[data-inspector] .es-context-layer {
   width: min(var(--es-inspector-width), calc(100% - 1.5rem));
 }
-@media (min-width: 801px) {
-  .encounter-studio[data-inspector='open'] .es-map-workspace {
-    right: calc(var(--es-inspector-width) + 1.5rem);
-  }
+.encounter-studio[data-inspector='docked'] .es-map-workspace {
+  right: calc(var(--es-inspector-width) + 1.5rem);
+}
+.encounter-studio[data-inspector='docked'] .es-context-layer {
+  height: calc(var(--es-work-height, calc(100dvh - 9rem)) - 1rem);
+  max-height: none;
+}
+.encounter-studio[data-inspector='docked'] .es-sidebar {
+  height: 100%;
+  max-height: none;
 }
 /* The handle on the inspector's inner edge: quiet at rest, the accent when
  * pointed at or focused. */
