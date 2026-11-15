@@ -64,6 +64,20 @@ export function refusalsAtRow(
   return refusals.filter((r) => rows.some((row) => isUnder(r.path, row)));
 }
 
+/** The refusals at an option LINE (`<owner>.options[i]`, R34) that are the
+ * line's own: under it, but not under one of its verdict rows
+ * (`…options[i].success[j]`), which show their own. */
+export function lineRefusals(
+  refusals: readonly RowRefusal[],
+  line: string
+): RowRefusal[] {
+  return refusals.filter(
+    (r) =>
+      isUnder(r.path, line) &&
+      !/^\.(?:success|failure)\[\d+\]/.test(r.path.slice(line.length))
+  );
+}
+
 /** The row a refusal names, by its path, or undefined for a path deeper or
  * shallower than a table or bundle row. */
 export function rowOfPath(path: string): string | undefined {

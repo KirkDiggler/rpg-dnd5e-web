@@ -790,6 +790,104 @@ describe('S6 Save & Play', () => {
     ).toBe(name);
   });
 
+  /** The live validate-only preview answers these refusals (R34). */
+  async function previewRefuses(
+    errors: Array<{ path: string; message: string }>
+  ): Promise<void> {
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    await act(async () => preview.deferred.resolve({ errors } as never));
+  }
+  const SAYS_AND_DOES =
+    'an option is said or done, not both: write `say` or `do`';
+
+  it('a refused creature line shows its refusal in the inspector, reached from the header (R34)', async () => {
+    const document = createCastleS4Document();
+    const id = 'gate-1';
+    const bindings = document.draft.room.monsterBindings!;
+    bindings[id] = {
+      ...bindings[id],
+      options: [{ id: 'hail', say: 'Halt!', do: 'You wave.' }],
+    };
+    mount(document, { characterId: null });
+    await settled();
+    await previewRefuses([
+      {
+        path: `room.room.monsterBindings.${id}.options[0].do`,
+        message: SAYS_AND_DOES,
+      },
+    ]);
+    // Counted in the header without opening Site.
+    expect(screen.queryByRole('region', { name: 'Save and Play' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: '1 refusal' }));
+    const name = documentPlacementNames(document).get(id)!;
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Current refusals' })).getByRole(
+        'button',
+        { name: `${name}: ${SAYS_AND_DOES}` }
+      )
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    expect(inspector.getByRole('heading', { level: 2 }).textContent).toBe(name);
+    // The line itself says the engine's sentence.
+    expect(
+      within(inspector.getByTestId(`option-${id}-0`)).getByRole('alert')
+        .textContent
+    ).toBe(SAYS_AND_DOES);
+  });
+
+  it('a refused faction row and faction line show their own refusal on Factions (R34)', async () => {
+    const document = createCastleS4Document();
+    document.scope.factions = [
+      ...(document.scope.factions ?? []),
+      {
+        id: 'refused-watch',
+        on: { time: [{ hold: {} }] },
+        options: [{ id: 'hail', say: 'Halt!' }],
+      },
+    ];
+    const index = document.scope.factions.length - 1;
+    mount(document, { characterId: null });
+    await settled();
+    await previewRefuses([
+      {
+        path: `factions[${index}].on.time[0].hold`,
+        message: 'a hold row is refused here',
+      },
+      {
+        path: `factions[${index}].options[0].say`,
+        message: 'a faction line is refused here',
+      },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Factions' })
+    );
+    const faction = screen.getByTestId('faction-refused-watch');
+    // A faction holding a refusal opens on it.
+    expect((faction as HTMLDetailsElement).open).toBe(true);
+    const lines = within(faction)
+      .getAllByTestId('row-refusal')
+      .map((line) => line.textContent);
+    expect(lines).toEqual([
+      'a hold row is refused here',
+      'a faction line is refused here',
+    ]);
+    expect(
+      within(within(faction).getByTestId('option-refused-watch-0')).getByTestId(
+        'row-refusal'
+      ).textContent
+    ).toBe('a faction line is refused here');
+  });
+
   it("the live preview's refusals jump too", async () => {
     const document = createCastleS4Document();
     mount(document, { characterId: null });
