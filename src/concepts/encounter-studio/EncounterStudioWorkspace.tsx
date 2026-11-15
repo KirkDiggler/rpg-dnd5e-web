@@ -49,7 +49,11 @@ import {
   writePublication,
   type PublicationRecord,
 } from './publicationMemory';
-import { refusalJumps, type RefusalTarget } from './refusalJump';
+import {
+  refusalJumps,
+  type RefusalJump,
+  type RefusalTarget,
+} from './refusalJump';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
@@ -61,9 +65,15 @@ import { StudioInspector } from './StudioInspector';
 import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
-import { StudioPlayButton, StudioPublish } from './StudioPublish';
+import {
+  RefusalList,
+  StudioPlayButton,
+  StudioPublish,
+  StudioRefusalCount,
+} from './StudioPublish';
 import {
   currentRefusals,
+  keyRefusalOf,
   PUBLISH_RUNNING_TITLE,
   publishStatusText,
   studioReadBackOf,
@@ -587,6 +597,18 @@ function StudioSurface({
     currentRefusals(publishing, gate.state),
     session.document
   );
+  /** The header's list of the current refusals is open (R34). */
+  const [refusalsOpen, setRefusalsOpen] = useState(false);
+  /** The header counts a refused KEY too (R34), in the server's words; the
+   * Save panel shows that sentence at the key field instead of its list
+   * (R16), so it joins the header's list only. */
+  const keyRefusal = keyRefusalOf(publishing);
+  const headerJumps: RefusalJump[] = keyRefusal
+    ? [{ path: '', message: keyRefusal, target: { kind: 'key' } }, ...jumps]
+    : jumps;
+  /** A key jump asks the Save panel to focus the key field; a new nonce is
+   * a new jump. */
+  const [keyFocus, setKeyFocus] = useState(0);
   /** The row a refusal's jump asked for (rpg-project#720, R17). */
   const [focusRow, setFocusRow] = useState<{
     path: string;
@@ -733,6 +755,8 @@ function StudioSurface({
           : ENCOUNTER_SECTIONS[target.section];
       case 'ending':
         return `Ending ${target.id}`;
+      case 'key':
+        return 'File key';
     }
   };
   /** A refusal lands at the thing (R17): a placed thing, door, hex or cast
@@ -770,6 +794,10 @@ function StudioSurface({
         setFocusEnding({ id: target.id });
         changeHome('encounter');
         setEncounterSection('endings');
+        return;
+      case 'key':
+        changeSiteOperation('save');
+        setKeyFocus((was) => was + 1);
         return;
     }
   };
@@ -834,7 +862,9 @@ function StudioSurface({
       labels.controls
     ) : null;
 
-  return (
+  // The engine's refusals reach every row in the workspace, Factions and the
+  // inspector included, not only Tables and Bundles (R34).
+  const surface = (
     <section
       className="encounter-studio"
       aria-label="Encounter Studio workspace"
@@ -928,6 +958,11 @@ function StudioSurface({
             3D
           </button>
         </nav>
+        <StudioRefusalCount
+          count={headerJumps.length}
+          open={refusalsOpen}
+          onPress={() => setRefusalsOpen((open) => !open)}
+        />
         <div className="es-save">
           <span className="es-local-state">
             <span className="es-local">BROWSER RECOVERY</span>
@@ -965,6 +1000,29 @@ function StudioSurface({
           unreadable local draft” overwrites the unreadable stored data with
           this draft.
         </p>
+      )}
+      {refusalsOpen && headerJumps.length > 0 && (
+        <section
+          id="studio-refusals"
+          className="es-refusals-panel"
+          role="group"
+          aria-label="Current refusals"
+        >
+          <p className="es-help">
+            The engine refuses this draft. Each refusal opens the thing to fix.
+          </p>
+          <RefusalList
+            jumps={headerJumps}
+            nameOf={refusalNounName}
+            onJump={(target) => {
+              setRefusalsOpen(false);
+              jumpTo(target);
+            }}
+          />
+          <button type="button" onClick={() => setRefusalsOpen(false)}>
+            Close refusals
+          </button>
+        </section>
       )}
       {siteOperation !== null && (
         <StudioSitePanel
@@ -1014,6 +1072,7 @@ function StudioSurface({
               gate={gate}
               characterId={playCharacter}
               jumps={jumps}
+              focusKey={keyFocus}
               nameOf={refusalNounName}
               onJump={(target) => {
                 changeSiteOperation(null);
@@ -1622,45 +1681,48 @@ function StudioSurface({
             />
           )}
           <RoutePickContext.Provider value={routePicking}>
-            <RowRefusalsContext.Provider value={rowRefusals}>
-              <div hidden={encounterSection !== 'bundles'}>
-                <h2>Bundles</h2>
-                <AboutPanel>
-                  <p>
-                    A behaviour written once and used as one line. A table row
-                    that says <code>use: pursuer</code> rolls as one share, and
-                    the bundle's own rows roll inside it.
-                  </p>
-                </AboutPanel>
-                <BundlesPanel
-                  key={session.document.draft.id}
-                  scope={session.document.scope}
-                  onChange={(bundles) => session.commitBundles(bundles)}
-                />
-              </div>
-              <div hidden={encounterSection !== 'tables'}>
-                <h2>Tables</h2>
-                <AboutPanel>
-                  <p>
-                    Shared monster behavior. Define a table once; creatures and
-                    factions can reference it by name.
-                  </p>
-                </AboutPanel>
-                <TablesPanel
-                  key={session.document.draft.id}
-                  scope={session.document.scope}
-                  room={session.document.draft.room}
-                  placementNames={placementNames}
-                  collapsedEntries
-                  explicitRename
-                  onChange={(scope) => session.commitTables(scope.tables)}
-                />
-              </div>
-            </RowRefusalsContext.Provider>
+            <div hidden={encounterSection !== 'bundles'}>
+              <h2>Bundles</h2>
+              <AboutPanel>
+                <p>
+                  A behaviour written once and used as one line. A table row
+                  that says <code>use: pursuer</code> rolls as one share, and
+                  the bundle's own rows roll inside it.
+                </p>
+              </AboutPanel>
+              <BundlesPanel
+                key={session.document.draft.id}
+                scope={session.document.scope}
+                onChange={(bundles) => session.commitBundles(bundles)}
+              />
+            </div>
+            <div hidden={encounterSection !== 'tables'}>
+              <h2>Tables</h2>
+              <AboutPanel>
+                <p>
+                  Shared monster behavior. Define a table once; creatures and
+                  factions can reference it by name.
+                </p>
+              </AboutPanel>
+              <TablesPanel
+                key={session.document.draft.id}
+                scope={session.document.scope}
+                room={session.document.draft.room}
+                placementNames={placementNames}
+                collapsedEntries
+                explicitRename
+                onChange={(scope) => session.commitTables(scope.tables)}
+              />
+            </div>
           </RoutePickContext.Provider>
         </section>
       </div>
     </section>
+  );
+  return (
+    <RowRefusalsContext.Provider value={rowRefusals}>
+      {surface}
+    </RowRefusalsContext.Provider>
   );
 }
 

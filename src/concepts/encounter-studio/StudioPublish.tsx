@@ -82,6 +82,9 @@ export interface StudioPublishProps {
   /** The surface routes a jump to the selection or home section. */
   onJump(target: RefusalTarget): void;
   onClose?(): void;
+  /** A new value focuses the key field: the header's jump to a refused key
+   * (R34, R16). */
+  focusKey?: number;
   copy?: boolean;
   copySourceKey?: string | null;
 }
@@ -96,6 +99,7 @@ export function StudioPublish({
   nameOf,
   onJump,
   onClose,
+  focusKey = 0,
   copy = false,
   copySourceKey = null,
 }: StudioPublishProps): React.JSX.Element {
@@ -110,6 +114,10 @@ export function StudioPublish({
     encodeError,
   } = publishing;
   const replaceRef = useRef<HTMLButtonElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusKey) keyRef.current?.focus();
+  }, [focusKey]);
   useEffect(() => {
     if (overwritePending) replaceRef.current?.focus();
   }, [overwritePending]);
@@ -151,6 +159,7 @@ export function StudioPublish({
             </FieldHelp>
           </span>
           <input
+            ref={keyRef}
             aria-label="File key"
             value={key}
             disabled={busy}
@@ -266,33 +275,77 @@ export function StudioPublish({
           <p className="es-help">
             The server refused this draft. Each refusal opens the thing to fix.
           </p>
-          <ul className="es-refusals">
-            {jumps.map((jump, index) => (
-              <li key={`${jump.path}:${index}`}>
-                {jump.target ? (
-                  <button
-                    type="button"
-                    title={jump.path}
-                    onClick={() => onJump(jump.target!)}
-                  >
-                    {nameOf(jump.target)}: {jump.message}
-                  </button>
-                ) : (
-                  <span>
-                    {jump.message}
-                    {jump.path && (
-                      <>
-                        {' '}
-                        <small>{jump.path}</small>
-                      </>
-                    )}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <RefusalList jumps={jumps} nameOf={nameOf} onJump={onJump} />
         </div>
       )}
     </section>
+  );
+}
+
+/** The refusals in the engine's words (R17, R34): a jump to its thing, or a
+ * sentence with its path when it maps to no studio noun. The Save panel and
+ * the header's count list them the same way. */
+export function RefusalList({
+  jumps,
+  nameOf,
+  onJump,
+}: {
+  jumps: readonly RefusalJump[];
+  nameOf(target: RefusalTarget): string;
+  onJump(target: RefusalTarget): void;
+}): React.JSX.Element {
+  return (
+    <ul className="es-refusals">
+      {jumps.map((jump, index) => (
+        <li key={`${jump.path}:${index}`}>
+          {jump.target ? (
+            <button
+              type="button"
+              title={jump.path}
+              onClick={() => onJump(jump.target!)}
+            >
+              {nameOf(jump.target)}: {jump.message}
+            </button>
+          ) : (
+            <span>
+              {jump.message}
+              {jump.path && (
+                <>
+                  {' '}
+                  <small>{jump.path}</small>
+                </>
+              )}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A REFUSAL IS SEEN FROM ANYWHERE (R34): the header counts the current
+ * refusals on every home and view, and is absent at zero. It opens the list
+ * under the header, beside the Site panel's place. */
+export function StudioRefusalCount({
+  count,
+  open,
+  onPress,
+}: {
+  count: number;
+  open: boolean;
+  onPress(): void;
+}): React.JSX.Element | null {
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      className="es-refusal-count"
+      aria-expanded={open}
+      aria-controls="studio-refusals"
+      title="The engine refuses this draft. Show why."
+      onClick={onPress}
+    >
+      {count === 1 ? '1 refusal' : `${count} refusals`}
+    </button>
   );
 }
