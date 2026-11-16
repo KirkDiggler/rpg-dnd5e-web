@@ -4,6 +4,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -109,6 +110,7 @@ import {
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
+import { StudioTabBar } from './StudioTabBar';
 import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
 import type { ThreadHub } from './threadHubs';
@@ -185,6 +187,10 @@ function StudioSurface({
   onPlay,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
+  const navId = useId();
+  const groupTabId = (label: string): string =>
+    `${navId}-group-${label.replace(/\s+/g, '-')}`;
+  const sectionTabId = (key: string): string => `${navId}-section-${key}`;
   const [encounterSection, setEncounterSection] = useState<EncounterSectionKey>(
     DEFAULT_ENCOUNTER_SECTION
   );
@@ -1376,11 +1382,7 @@ function StudioSurface({
                 ))}
               </div>
             ))}
-          {home === 'encounter' && (
-            <strong>
-              Encounter configuration · {sectionLabel(encounterSection)}
-            </strong>
-          )}
+          {home === 'encounter' && <strong>Encounter configuration</strong>}
           {spatial && (
             <button
               type="button"
@@ -1727,157 +1729,178 @@ function StudioSurface({
           aria-label="Encounter configuration"
           hidden={home !== 'encounter'}
         >
-          <nav className="es-buttons" aria-label="Encounter groups">
-            {ENCOUNTER_GROUPS.map((group) => (
-              <button
-                key={group.label}
-                type="button"
-                aria-pressed={
-                  sectionPlaceOf(encounterSection).group === group.label
-                }
-                onClick={() => {
-                  setFocusEnding(null);
-                  setEncounterSection(group.sections[0]!.key);
-                }}
-              >
-                {group.label}
-              </button>
-            ))}
-          </nav>
-          <nav className="es-buttons" aria-label="Encounter tools">
-            {ENCOUNTER_GROUPS.find(
-              (group) => group.label === sectionPlaceOf(encounterSection).group
-            )!.sections.map((section) => (
-              <button
-                key={section.key}
-                type="button"
-                aria-pressed={
-                  sectionPlaceOf(encounterSection).section === section.key
-                }
-                onClick={() => {
-                  setFocusEnding(null);
-                  setEncounterSection(section.key);
-                }}
-              >
-                {section.label}
-              </button>
-            ))}
-          </nav>
-          {home === 'encounter' && encounterSection === 'cast' && (
-            <StudioCast
-              session={session}
-              onShowPlacement={(id) => {
-                // The one arbiter holds the placement; Build opens the
-                // inspector on it, in the view the author last used.
-                if (!session.creatures.select(id)) return;
-                changeHome('build');
-                setSidebarOpen(true);
+          {/* THE ENCOUNTER SIDE'S NAVIGATION (rpg-project#982): the groups
+              as the primary tab bar, the chosen group's sections as the
+              secondary bar attached under it, and the section's panel
+              attached under that. */}
+          <div className="es-encounter-nav">
+            <StudioTabBar
+              level="primary"
+              label="Encounter groups"
+              tabs={ENCOUNTER_GROUPS.map((group) => ({
+                key: group.label,
+                label: group.label,
+              }))}
+              selected={sectionPlaceOf(encounterSection).group}
+              onSelect={(label) => {
+                setFocusEnding(null);
+                setEncounterSection(
+                  ENCOUNTER_GROUPS.find((group) => group.label === label)!
+                    .sections[0]!.key
+                );
               }}
+              idOf={groupTabId}
+              panelId={`${navId}-group`}
             />
-          )}
-          {home === 'encounter' && encounterSection === 'intel' && (
-            <section
-              aria-label="Records definitions"
-              className="es-social-panel"
+          </div>
+          <div
+            role="tabpanel"
+            id={`${navId}-group`}
+            aria-labelledby={groupTabId(sectionPlaceOf(encounterSection).group)}
+            className="es-encounter-group"
+          >
+            <StudioTabBar<EncounterSectionKey>
+              level="secondary"
+              label="Encounter tools"
+              tabs={
+                ENCOUNTER_GROUPS.find(
+                  (group) =>
+                    group.label === sectionPlaceOf(encounterSection).group
+                )!.sections
+              }
+              selected={sectionPlaceOf(encounterSection).section}
+              onSelect={(key) => {
+                setFocusEnding(null);
+                setEncounterSection(key);
+              }}
+              idOf={sectionTabId}
+              panelId={`${navId}-section`}
+            />
+            <div
+              role="tabpanel"
+              id={`${navId}-section`}
+              aria-labelledby={sectionTabId(
+                sectionPlaceOf(encounterSection).section
+              )}
+              className="es-encounter-panel"
             >
-              <h2>Records</h2>
-              <AboutPanel>
-                <p>
-                  Define records and what they reveal here. Select a creature or
-                  declared prop on the map to assign the records it holds in its
-                  inspector. Record ids and revealed fact ids are different
-                  references.
-                </p>
-              </AboutPanel>
-              {session.socialControls.intel}
-            </section>
-          )}
-          {home === 'encounter' &&
-            (encounterSection === 'factions' ||
-              encounterSection === 'dispositions') && (
-              // SIDES (rpg-project#970): who the sides are, then how they
-              // stand — the factions first, their dispositions under them.
-              <section aria-label="Sides" className="es-social-panel">
-                <h2>Sides</h2>
-                <AboutPanel>
-                  <p>
-                    Define factions and shared policy here, then how the sides
-                    stand to each other. Assign individual placed creatures in
-                    their inspector on the map. A mind names a placed
-                    individual, not a reusable creature recipe.
-                  </p>
-                </AboutPanel>
-                <section aria-label="Factions definitions">
-                  {session.socialControls.factions}
+              {home === 'encounter' && encounterSection === 'cast' && (
+                <StudioCast
+                  session={session}
+                  onShowPlacement={(id) => {
+                    // The one arbiter holds the placement; Build opens the
+                    // inspector on it, in the view the author last used.
+                    if (!session.creatures.select(id)) return;
+                    changeHome('build');
+                    setSidebarOpen(true);
+                  }}
+                />
+              )}
+              {home === 'encounter' && encounterSection === 'intel' && (
+                <section
+                  aria-label="Records definitions"
+                  className="es-social-panel"
+                >
+                  <h2>Records</h2>
+                  <AboutPanel>
+                    <p>
+                      Define records and what they reveal here. Select a
+                      creature or declared prop on the map to assign the records
+                      it holds in its inspector. Record ids and revealed fact
+                      ids are different references.
+                    </p>
+                  </AboutPanel>
+                  {session.socialControls.intel}
                 </section>
-                <section aria-label="Dispositions definitions">
-                  {session.socialControls.dispositions}
+              )}
+              {home === 'encounter' &&
+                (encounterSection === 'factions' ||
+                  encounterSection === 'dispositions') && (
+                  // SIDES (rpg-project#970): who the sides are, then how they
+                  // stand — the factions first, their dispositions under them.
+                  <section aria-label="Sides" className="es-social-panel">
+                    <h2>Sides</h2>
+                    <AboutPanel>
+                      <p>
+                        Define factions and shared policy here, then how the
+                        sides stand to each other. Assign individual placed
+                        creatures in their inspector on the map. A mind names a
+                        placed individual, not a reusable creature recipe.
+                      </p>
+                    </AboutPanel>
+                    <section aria-label="Factions definitions">
+                      {session.socialControls.factions}
+                    </section>
+                    <section aria-label="Dispositions definitions">
+                      {session.socialControls.dispositions}
+                    </section>
+                  </section>
+                )}
+              {home === 'encounter' && encounterSection === 'party' && (
+                <StudioParty session={session} />
+              )}
+              {home === 'encounter' && encounterSection === 'endings' && (
+                // WAYS OUT (rpg-project#970): the exits, each set on its hex and
+                // listed here with a jump to it, then the endings.
+                <section aria-label="Ways out" className="es-ways-out">
+                  <h2>Ways out</h2>
+                  <StudioExits
+                    exits={session.document.scope.exits ?? []}
+                    onJump={jumpTo}
+                  />
+                  <StudioEndings session={session} focus={focusEnding?.id} />
                 </section>
-              </section>
-            )}
-          {home === 'encounter' && encounterSection === 'party' && (
-            <StudioParty session={session} />
-          )}
-          {home === 'encounter' && encounterSection === 'endings' && (
-            // WAYS OUT (rpg-project#970): the exits, each set on its hex and
-            // listed here with a jump to it, then the endings.
-            <section aria-label="Ways out" className="es-ways-out">
-              <h2>Ways out</h2>
-              <StudioExits
-                exits={session.document.scope.exits ?? []}
-                onJump={jumpTo}
-              />
-              <StudioEndings session={session} focus={focusEnding?.id} />
-            </section>
-          )}
-          {home === 'encounter' && encounterSection === 'concealments' && (
-            <StudioConcealments
-              session={session}
-              onArmMembers={armConcealment}
-              onOpenIntel={() => setEncounterSection('intel')}
-            />
-          )}
-          {home === 'encounter' && encounterSection === 'interactions' && (
-            <StudioInteractions session={session} />
-          )}
-          {home === 'encounter' && encounterSection === 'behaviours' && (
-            <StudioBehaviours
-              document={session.document}
-              readBack={readBack}
-              focus={focusRoutine}
-              onSelect={setFocusRoutine}
-              onJump={jumpTo}
-              onOpenFact={openFact}
-            />
-          )}
-          {home === 'encounter' && encounterSection === 'facts' && (
-            <StudioThreads
-              document={session.document}
-              readBack={readBack}
-              focus={focusHub}
-              onSelect={setFocusHub}
-              onJump={jumpTo}
-              onOpenFact={openFact}
-              wayOpener={wayOpener}
-            />
-          )}
-          <RoutePickContext.Provider value={routePicking}>
-            <div hidden={encounterSection !== 'bundles'}>
-              <h2>Bundles</h2>
-              <AboutPanel>
-                <p>
-                  A behaviour written once and used as one line. A table row
-                  that says <code>use: pursuer</code> rolls as one share, and
-                  the bundle's own rows roll inside it.
-                </p>
-              </AboutPanel>
-              <BundlesPanel
-                key={session.document.draft.id}
-                scope={session.document.scope}
-                onChange={(bundles) => session.commitBundles(bundles)}
-              />
+              )}
+              {home === 'encounter' && encounterSection === 'concealments' && (
+                <StudioConcealments
+                  session={session}
+                  onArmMembers={armConcealment}
+                  onOpenIntel={() => setEncounterSection('intel')}
+                />
+              )}
+              {home === 'encounter' && encounterSection === 'interactions' && (
+                <StudioInteractions session={session} />
+              )}
+              {home === 'encounter' && encounterSection === 'behaviours' && (
+                <StudioBehaviours
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusRoutine}
+                  onSelect={setFocusRoutine}
+                  onJump={jumpTo}
+                  onOpenFact={openFact}
+                />
+              )}
+              {home === 'encounter' && encounterSection === 'facts' && (
+                <StudioThreads
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusHub}
+                  onSelect={setFocusHub}
+                  onJump={jumpTo}
+                  onOpenFact={openFact}
+                  wayOpener={wayOpener}
+                />
+              )}
+              <RoutePickContext.Provider value={routePicking}>
+                <div hidden={encounterSection !== 'bundles'}>
+                  <h2>Bundles</h2>
+                  <AboutPanel>
+                    <p>
+                      A behaviour written once and used as one line. A table row
+                      that says <code>use: pursuer</code> rolls as one share,
+                      and the bundle's own rows roll inside it.
+                    </p>
+                  </AboutPanel>
+                  <BundlesPanel
+                    key={session.document.draft.id}
+                    scope={session.document.scope}
+                    onChange={(bundles) => session.commitBundles(bundles)}
+                  />
+                </div>
+              </RoutePickContext.Provider>
             </div>
-          </RoutePickContext.Provider>
+          </div>
         </section>
       </div>
     </section>

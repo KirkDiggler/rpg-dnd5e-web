@@ -1110,14 +1110,14 @@ describe('S6 Save & Play', () => {
         ).findByRole('button', { name })
       );
       expect(
-        within(screen.getByRole('navigation', { name: 'Encounter groups' }))
-          .getByRole('button', { name: group })
-          .getAttribute('aria-pressed')
+        within(screen.getByRole('tablist', { name: 'Encounter groups' }))
+          .getByRole('tab', { name: group })
+          .getAttribute('aria-selected')
       ).toBe('true');
       expect(
-        within(screen.getByRole('navigation', { name: 'Encounter tools' }))
-          .getByRole('button', { name: section })
-          .getAttribute('aria-pressed')
+        within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+          .getByRole('tab', { name: section })
+          .getAttribute('aria-selected')
       ).toBe('true');
     };
     await landsIn(`Sides · ${faction}: faction refused`, 'People', 'Sides');

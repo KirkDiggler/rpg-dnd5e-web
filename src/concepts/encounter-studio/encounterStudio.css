@@ -1664,3 +1664,80 @@
 .es-threads-id {
   font-family: var(--es-font-mono, monospace);
 }
+
+/* THE ENCOUNTER SIDE'S NAVIGATION (rpg-project#982). The header's Build /
+ * Encounter switch is the top level; under it, two tab bars on one surface:
+ * the groups (primary) on the panel colour, the chosen group's sections
+ * (secondary) on the raised colour, and the section's panel meeting the
+ * secondary bar with no gap. The chosen tab is marked by an underline and
+ * weight, never colour alone; the chosen group's tab takes the secondary
+ * bar's surface so its indicator leads into the bar below. */
+.es-encounter-home > .es-encounter-nav {
+  margin-top: -1.25rem;
+}
+.es-encounter-nav {
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+}
+.es-encounter-group {
+  border: 1px solid var(--wb-border);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  background: var(--wb-bg);
+}
+.es-tabbar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.encounter-studio .es-tabbar > [role='tab'] {
+  flex: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--wb-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.encounter-studio .es-tabbar > [role='tab']:hover:not(:disabled) {
+  color: var(--wb-text);
+}
+.encounter-studio .es-tabbar > [role='tab']:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -2px;
+}
+.encounter-studio .es-tabbar-primary > [role='tab'] {
+  padding: 0.65rem 1.1rem 0.55rem;
+  font-size: var(--es-text-section, 1rem);
+  font-weight: var(--es-weight-label);
+  border-bottom: 3px solid transparent;
+}
+.encounter-studio .es-tabbar-primary > [role='tab'][aria-selected='true'] {
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  font-weight: 700;
+  border-bottom-color: var(--wb-accent);
+}
+.es-tabbar-secondary {
+  background: var(--wb-raised);
+  border-bottom: 1px solid var(--wb-border);
+  padding: 0 0.5rem;
+}
+.encounter-studio .es-tabbar-secondary > [role='tab'] {
+  padding: 0.45rem 0.85rem 0.4rem;
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  border-bottom: 2px solid transparent;
+}
+.encounter-studio .es-tabbar-secondary > [role='tab'][aria-selected='true'] {
+  color: var(--wb-text);
+  font-weight: 600;
+  border-bottom-color: var(--wb-accent);
+}
+.es-encounter-panel {
+  padding: 1rem;
+}

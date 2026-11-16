@@ -5140,38 +5140,96 @@ describe('S0 one selection across the homes', () => {
     await settled();
     fireEvent.click(button('Encounter'));
     const groups = within(
-      screen.getByRole('navigation', { name: 'Encounter groups' })
+      screen.getByRole('tablist', { name: 'Encounter groups' })
     );
     const sections = () =>
-      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
-        .getAllByRole('button')
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getAllByRole('tab')
         .map((node) => node.textContent);
+    expect(groups.getAllByRole('tab').map((node) => node.textContent)).toEqual([
+      'People',
+      'Places',
+      'What is known',
+      'Pieces',
+    ]);
     expect(
-      groups.getAllByRole('button').map((node) => node.textContent)
-    ).toEqual(['People', 'Places', 'What is known', 'Pieces']);
-    expect(
-      groups
-        .getByRole('button', { name: 'People' })
-        .getAttribute('aria-pressed')
+      groups.getByRole('tab', { name: 'People' }).getAttribute('aria-selected')
     ).toBe('true');
     expect(sections()).toEqual(['Cast', 'Sides', 'Party', 'Conversations']);
     expect(
-      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
-        .getByRole('button', { name: 'Cast' })
-        .getAttribute('aria-pressed')
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getByRole('tab', { name: 'Cast' })
+        .getAttribute('aria-selected')
     ).toBe('true');
-    fireEvent.click(groups.getByRole('button', { name: 'Places' }));
+    fireEvent.click(groups.getByRole('tab', { name: 'Places' }));
     expect(sections()).toEqual(['Secrets', 'Ways out']);
-    fireEvent.click(groups.getByRole('button', { name: 'What is known' }));
+    fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
     expect(sections()).toEqual(['Records', 'Threads']);
-    fireEvent.click(groups.getByRole('button', { name: 'Pieces' }));
+    fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
     expect(sections()).toEqual(['Behaviours', 'Bundles']);
     expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
-    fireEvent.click(groups.getByRole('button', { name: 'People' }));
+    fireEvent.click(groups.getByRole('tab', { name: 'People' }));
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+
+  it('the two bars are tab bars: arrows, Home and End move and select; the panel is labelled by its tab (rpg-project#982)', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    const groups = within(
+      screen.getByRole('tablist', { name: 'Encounter groups' })
+    );
+    const tools = () =>
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }));
+    const selected = (bar: ReturnType<typeof within>): string[] =>
+      bar
+        .getAllByRole('tab')
+        .filter(
+          (tab: HTMLElement) => tab.getAttribute('aria-selected') === 'true'
+        )
+        .map((tab: HTMLElement) => tab.textContent ?? '');
+    // Roving tabindex: only the selected tab is in the Tab order.
+    expect(
+      groups.getAllByRole('tab').map((tab) => tab.getAttribute('tabindex'))
+    ).toEqual(['0', '-1', '-1', '-1']);
+    const people = groups.getByRole('tab', { name: 'People' });
+    people.focus();
+    fireEvent.keyDown(people, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['Places']);
+    expect(document.activeElement).toBe(
+      groups.getByRole('tab', { name: 'Places' })
+    );
+    expect(selected(tools())).toEqual(['Secrets']);
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(selected(groups)).toEqual(['People']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['People']);
+    const cast = tools().getByRole('tab', { name: 'Cast' });
+    cast.focus();
+    fireEvent.keyDown(cast, { key: 'ArrowRight' });
+    expect(selected(tools())).toEqual(['Sides']);
+    // Each bar names the panel it controls, and the panel is labelled by
+    // the selected tab.
+    const sides = tools().getByRole('tab', { name: 'Sides' });
+    const panel = document.getElementById(
+      sides.getAttribute('aria-controls')!
+    )!;
+    expect(panel.getAttribute('role')).toBe('tabpanel');
+    expect(panel.getAttribute('aria-labelledby')).toBe(sides.id);
+    expect(within(panel).getByRole('region', { name: 'Sides' })).toBeTruthy();
+    const peopleTab = groups.getByRole('tab', { name: 'People' });
+    expect(
+      document
+        .getElementById(peopleTab.getAttribute('aria-controls')!)!
+        .getAttribute('aria-labelledby')
+    ).toBe(peopleTab.id);
   });
 
   it('the Party dial moves the real owner’s sharing (rpg-project#935)', async () => {
@@ -7579,10 +7637,10 @@ describe('read-back jumps land in the ruled sections (rpg-project#970)', () => {
       { button: 0 }
     );
   };
-  const pressed = (nav: string, name: string): string | null =>
-    within(screen.getByRole('navigation', { name: nav }))
-      .getByRole('button', { name })
-      .getAttribute('aria-pressed');
+  const pressed = (bar: string, name: string): string | null =>
+    within(screen.getByRole('tablist', { name: bar }))
+      .getByRole('tab', { name })
+      .getAttribute('aria-selected');
 
   it('a routine opens Behaviours on it; a conversation opens Conversations', async () => {
     await openCaptain();

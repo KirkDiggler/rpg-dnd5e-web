@@ -47,11 +47,12 @@ export function encounterSection(label: string): HTMLElement {
   );
   if (!group) throw new Error(`no Encounter section is called ${label}`);
   fireEvent.click(
-    within(
-      screen.getByRole('navigation', { name: 'Encounter groups' })
-    ).getByRole('button', { name: group.label })
+    within(screen.getByRole('tablist', { name: 'Encounter groups' })).getByRole(
+      'tab',
+      { name: group.label }
+    )
   );
   return within(
-    screen.getByRole('navigation', { name: 'Encounter tools' })
-  ).getByRole('button', { name: label });
+    screen.getByRole('tablist', { name: 'Encounter tools' })
+  ).getByRole('tab', { name: label });
 }

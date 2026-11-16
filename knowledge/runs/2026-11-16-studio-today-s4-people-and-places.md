@@ -8,6 +8,8 @@ Slice [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970) o
 - Behaviours lists every behaviour the engine's read-back says, with its fold and who runs it; a creature's inspector picks one the file defines — [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
 - No control writes a faction's or a creature's `table`, `on` or `states`; a form that still carries one says so in one line — [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
 
+- The Encounter side's two rows are tab bars (rpg-project#982): the groups a primary bar, the chosen group's sections a secondary bar attached under it, the section's panel attached under that — [rpg-project#982](https://github.com/KirkDiggler/rpg-project/issues/982).
+
 ## Decided
 
 - Section keys stay as they were (`factions`, `intel`, `concealments`, `endings`, `interactions`, `facts`) and only the screen's words change, so every jump keeps landing; `dispositions` is shown inside Sides, and a new key `behaviours` is added — [plan on rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
@@ -16,6 +18,9 @@ Slice [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970) o
 - The picker writes `behaviors: [{ id, use }]` (the id the creature already used, else `policy`) and `behaviorState` set to that id; never `with` or `items`, which the engine refuses on a concrete definition. A concrete (`recipe`) definition is assignable; a sequence needs cells and is listed with "needs cells to walk: edit in the file"; a creature running several behaviours is edited in the file — [rpg-toolkit `dungeonspec/behaviors.go` bindBehaviorSource](https://github.com/KirkDiggler/rpg-toolkit/blob/bb5806f7/rulebooks/dnd5e/encounter/dungeonspec/behaviors.go).
 - A refusal at a root `tables` path is a sentence with no jump, since Tables has no section; a refusal at `behaviorDefinitions.<id>` opens Behaviours on it — [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
 - The Scenarios component and its test are deleted, since nothing mounts them; `scenarios` still round-trips through `siteScope` — [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
+
+- The toolbar strip reads "Encounter configuration" with no suffix: the bars show the group and section, and a breadcrumb would say it twice — [rpg-project#982](https://github.com/KirkDiggler/rpg-project/issues/982).
+- Each bar is a `tablist` of `tab`s with roving tabindex (Left/Right move and select, Home/End to the ends, Tab leaves); the group bar controls a `tabpanel` holding the section bar and the section's own `tabpanel`, each labelled by its selected tab — [WAI-ARIA tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/).
 
 ## Found
 
