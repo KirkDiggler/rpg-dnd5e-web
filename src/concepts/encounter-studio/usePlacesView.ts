@@ -85,14 +85,17 @@ export function usePlacesView(
     null;
   const methodJoinIds = useMemo(() => new Set(method?.joinIds ?? []), [method]);
   // Escape clears the selection, the join as the map's.
+  // …and the pressed method with its marks (rpg-project#974).
   useEffect(() => {
-    if (joinId === null) return;
+    if (joinId === null && methodKey === null) return;
     const escape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setJoinId(null);
+      if (event.key !== 'Escape') return;
+      setJoinId(null);
+      setMethodKey(null);
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
-  }, [joinId]);
+  }, [joinId, methodKey]);
   const regions = session.document.draft.room.regions;
   const regionName = (id: string): string => {
     const region = regions.find((entry) => entry.id === id);

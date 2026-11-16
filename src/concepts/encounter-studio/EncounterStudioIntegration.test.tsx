@@ -7403,11 +7403,23 @@ describe('the places view through the real owner (rpg-project#972)', () => {
     const rows = within(table)
       .getAllByRole('row')
       .slice(1)
+      // A method's row has its header; the no-check row's sub-counts do not.
+      .filter((row) => row.querySelector('th') !== null)
       .map((row) =>
         [...row.querySelectorAll('th, td')].map((cell) => cell.textContent)
       );
     // Computed from the fixture's connections, not from the module.
     const expected = expectedCastleWayTable();
+    expect(within(count).getByText('23 ways')).toBeTruthy();
+    expect(
+      within(table).getByText('6 open · 4 need something first')
+    ).toBeTruthy();
+    // One row hook per join.
+    expect(
+      document.querySelectorAll(
+        '[data-join-row="door:region-barracks:region-cells:cells-wall-door"]'
+      )
+    ).toHaveLength(1);
     expect(rows).toHaveLength(expected.size);
     for (const [method, cells] of [
       ['ability:dex', ['Dexterity', '2 ways', 'DC 13']],
@@ -7452,7 +7464,7 @@ describe('the places view through the real owner (rpg-project#972)', () => {
     expect(
       into
         .getAllByRole('button')
-        .map((join) => join.getAttribute('data-join-row'))
+        .map((join) => join.getAttribute('data-way-into'))
         .sort()
     ).toEqual(
       [

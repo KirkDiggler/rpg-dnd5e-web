@@ -8,11 +8,14 @@
  * `place.way.partial` and `place.way.none` are never counted.
  *
  * THE UNIT IS A WAY AS A PLAYER WOULD NAME IT. The engine says a line once per
- * carrier (the gate's `troupe` on three creatures). Ways are one unit when
- * they share the join, the bars, the line's option id, the same approaches
- * (methods, difficulties and parts) and the same `needs` and `on-miss`
- * connections; their carriers are listed as who it is said to. Ways that
- * differ in any of those stay apart. Sentences are never compared.
+ * carrier (the gate's `troupe` on three creatures). Ways through one join are
+ * one unit when EVERY connection they carry is the same once the carrier's
+ * own identity is taken out (the line `<carrier>/<option>` read by its
+ * option alone, any connection naming the carrier as a star): bars, approaches,
+ * needs, what a miss does, what it grants, teaches, draws off, advances or
+ * arrests. Their carriers are listed as who it is said to. Anything else that
+ * differs keeps them apart, including a connection the engine adds later.
+ * Sentences are never compared.
  */
 import type { ReadBackConnection } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
@@ -48,15 +51,38 @@ export interface MethodCount {
   max: number | null;
   /** The joins whose ways use it. */
   joinIds: string[];
+  /** Of its ways, those on a join with no bar that need nothing, and those
+   * that carry a `needs` connection (said under the no-check row). */
+  open: number;
+  needing: number;
 }
 
 const lineOf = (way: PlaceWay): ReadBackConnection | undefined =>
   way.carriers.find((c) => c.kind === 'line');
 
-const connectionSet = (connections: readonly ReadBackConnection[]): string =>
-  JSON.stringify(
-    connections.map((c) => `${c.kind}\u0000${c.id}\u0000${c.role}`).sort()
-  );
+/** A line way's connections with the carrier's identity taken out: methods
+ * in the engine's order (a `with` belongs to the `by` before it), every
+ * other connection as a sorted set. */
+function keyWithoutCarrier(
+  way: PlaceWay,
+  line: ReadBackConnection,
+  carrier: string
+): string {
+  const own = (c: ReadBackConnection): string => {
+    // Only the way's own line is read by its option; a line it names in
+    // another role (`arrests gate-1/troupe`) is another thing, kept whole.
+    const id =
+      c === line
+        ? `*/${c.id.slice(carrier.length + 1)}`
+        : c.id === carrier
+          ? '*'
+          : c.id;
+    return JSON.stringify([c.kind, id, c.role, c.value]);
+  };
+  const methods = way.statement.connects.filter((c) => c.kind === 'method');
+  const rest = way.statement.connects.filter((c) => c.kind !== 'method');
+  return JSON.stringify([methods.map(own), rest.map(own).sort()]);
+}
 
 /** A join's counted ways as units, in the engine's order. */
 export function wayUnitsOf(join: PlaceJoin): WayUnit[] {
@@ -67,15 +93,10 @@ export function wayUnitsOf(join: PlaceJoin): WayUnit[] {
     const slash = line ? line.id.lastIndexOf('/') : -1;
     const option = line ? line.id.slice(slash + 1) : null;
     const carrier = line && slash > 0 ? line.id.slice(0, slash) : null;
-    const key = line
-      ? JSON.stringify([
-          [...way.bars].sort(),
-          option,
-          way.methods,
-          connectionSet(way.needs),
-          connectionSet(way.onMiss),
-        ])
-      : `way\u0000${way.statement.about?.id ?? units.size}`;
+    const key =
+      line && carrier
+        ? keyWithoutCarrier(way, line, carrier)
+        : `way\u0000${way.statement.about?.id ?? units.size}`;
     const unit = units.get(key);
     if (unit) {
       unit.ways.push(way);
@@ -97,7 +118,8 @@ const COUNT_LABELS: Record<string, string> = {
   knowledge: 'knowledge',
   item: 'an item',
   fight: 'the fight',
-  free: 'free',
+  /** The engine's `free`: a way taken with no check. */
+  free: 'no check',
 };
 
 /** A method row's label: the method's plain name. */
@@ -120,8 +142,13 @@ export function methodCountsOf(places: Places): MethodCount[] {
           min: null,
           max: null,
           joinIds: [],
+          open: 0,
+          needing: 0,
         };
         row.ways += 1;
+        const needs = unit.ways[0]!.needs.length > 0;
+        if (needs) row.needing += 1;
+        else if (join.bars.length === 0) row.open += 1;
         for (const method of unit.methods)
           if (method.id === key && method.value > 0) {
             row.min = Math.min(row.min ?? method.value, method.value);
@@ -135,6 +162,12 @@ export function methodCountsOf(places: Places): MethodCount[] {
       b.ways - a.ways ||
       a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
   );
+}
+
+/** How many ways the encounter has, each counted once (the rows add up to
+ * more: a way with alternatives is under each of its methods). */
+export function waysTotal(places: Places): number {
+  return places.joins.reduce((n, join) => n + wayUnitsOf(join).length, 0);
 }
 
 /** A row's difficulty: "DC 11–15", "DC 13", or empty where none is. */

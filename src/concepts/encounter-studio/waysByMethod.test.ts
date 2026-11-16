@@ -10,7 +10,12 @@ import { expectedCastleWayTable as expectedCastleTable } from './fixtures/castle
 import { castlePlacesReadBack } from './fixtures/engineReadBack';
 import { syntheticJoin } from './fixtures/placesSynthetic';
 import { placesOf } from './placesView';
-import { methodCountsOf, wayUnitsOf, waysInto } from './waysByMethod';
+import {
+  methodCountsOf,
+  wayUnitsOf,
+  waysInto,
+  waysTotal,
+} from './waysByMethod';
 
 const KITCHEN = 'door:region-great-hall:region-kitchen:kitchen-wall-door';
 const CELLS_DOOR = 'door:region-barracks:region-cells:cells-wall-door';
@@ -72,7 +77,7 @@ describe('methodCountsOf on the castle', () => {
     expect(labels.get('ability:str')).toBe('Strength');
     expect(labels.get('knowledge')).toBe('knowledge');
     expect(labels.get('fight')).toBe('the fight');
-    expect(labels.get('free')).toBe('free');
+    expect(labels.get('free')).toBe('no check');
   });
 });
 
@@ -146,6 +151,123 @@ describe('methodCountsOf on the engine’s other shapes', () => {
       ['a-3'],
     ]);
     expect(methodCountsOf(places)[0]!.ways).toBe(2);
+  });
+});
+
+describe('a way is one unit only when everything but its carrier is the same', () => {
+  type Conn = [string, string, string];
+  const line = (carrier: string, extra: Conn[], dc = 13) => ({
+    kind: 'place.way.line',
+    connects: [
+      ['bar', 'hold', 'lifts'],
+      ['line', `${carrier}/hail`, 'by'],
+      ['creature', carrier, 'by'],
+      ...extra,
+      ['method', 'skill:persuasion', 'by'],
+    ] as Conn[],
+    dc,
+  });
+  /** The synthetic shapes carry no DC; set the method's after building. */
+  const placesWith = (ways: ReturnType<typeof line>[]) => {
+    const readBack = syntheticJoin(ways);
+    const statements = readBack.sections[0]!.groups[0]!.statements;
+    ways.forEach((way, index) => {
+      const method = statements[index + 1]!.connects.find(
+        (c) => c.kind === 'method'
+      )!;
+      method.value = way.dc;
+    });
+    return placesOf(readBack);
+  };
+  const carriersOf = (ways: ReturnType<typeof line>[]) =>
+    wayUnitsOf(placesWith(ways).joins[0]!).map((unit) => unit.carriers);
+
+  it('the review’s probe: same-named stand-aside lines that draw off and grant different things are two ways', () => {
+    const places = placesOf(
+      syntheticJoin([
+        {
+          kind: 'place.way.line',
+          connects: [
+            ['bar', 'hold', 'lifts'],
+            ['line', 'captain/stand-aside', 'by'],
+            ['creature', 'captain', 'by'],
+            ['creature', 'gate-1', 'draws-off'],
+            ['creature', 'gate-2', 'draws-off'],
+            ['fact', 'gate-cowed', 'teaches'],
+            ['method', 'skill:intimidation', 'by'],
+          ],
+        },
+        {
+          kind: 'place.way.line',
+          connects: [
+            ['bar', 'hold', 'lifts'],
+            ['line', 'sergeant/stand-aside', 'by'],
+            ['creature', 'sergeant', 'by'],
+            ['creature', 'sergeant', 'draws-off'],
+            ['topic', 'bribed', 'grants'],
+            ['method', 'skill:intimidation', 'by'],
+          ],
+        },
+      ])
+    );
+    expect(wayUnitsOf(places.joins[0]!)).toHaveLength(2);
+    expect(methodCountsOf(places).map((row) => [row.key, row.ways])).toEqual([
+      ['skill:intimidation', 2],
+    ]);
+  });
+
+  it('a carrier that draws off itself is the same as another that draws off itself', () => {
+    expect(
+      carriersOf([
+        line('a-1', [['creature', 'a-1', 'draws-off']]),
+        line('a-2', [['creature', 'a-2', 'draws-off']]),
+      ])
+    ).toEqual([['a-1', 'a-2']]);
+  });
+
+  it('lines that differ only in what a miss does are two ways', () => {
+    expect(
+      carriersOf([
+        line('a-1', [['topic', 'turned-away', 'on-miss']]),
+        line('a-2', [['topic', 'arrested', 'on-miss']]),
+      ])
+    ).toEqual([['a-1'], ['a-2']]);
+  });
+
+  it('lines that differ only in difficulty are two ways', () => {
+    expect(
+      carriersOf([
+        line('a-1', [], 11),
+        line('a-2', [], 15),
+        line('a-3', [], 11),
+      ])
+    ).toEqual([['a-1', 'a-3'], ['a-2']]);
+  });
+});
+
+describe('the no-check row’s two sub-counts', () => {
+  it('on the castle: 6 open, 4 that need something first', () => {
+    const free = methodCountsOf(placesOf(castlePlacesReadBack())).find(
+      (row) => row.key === 'free'
+    )!;
+    expect(free.label).toBe('no check');
+    expect(free.open).toBe(6);
+    expect(free.needing).toBe(4);
+    expect(free.ways).toBe(10);
+  });
+});
+
+describe('the total', () => {
+  it('is the number of ways, which the rows add up to more than', () => {
+    const places = placesOf(castlePlacesReadBack());
+    const total = places.joins.reduce(
+      (sum, join) => sum + wayUnitsOf(join).length,
+      0
+    );
+    expect(waysTotal(places)).toBe(total);
+    expect(expectedCastleTable().size).toBeGreaterThan(0);
+    const summed = methodCountsOf(places).reduce((n, row) => n + row.ways, 0);
+    expect(summed).toBeGreaterThan(total);
   });
 });
 

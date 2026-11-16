@@ -4,10 +4,15 @@
  * Numbers and names only: the studio counts, it does not judge. See
  * `waysByMethod.ts` for what one way is.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { methodLabel } from './placesView';
 import type { PlacesView } from './usePlacesView';
-import { difficultyRange, waysInto, type WayUnit } from './waysByMethod';
+import {
+  difficultyRange,
+  waysInto,
+  waysTotal,
+  type WayUnit,
+} from './waysByMethod';
 
 export const WAY_COUNT_STORAGE_KEY = 'encounter-studio.ways-by-method';
 
@@ -58,6 +63,7 @@ export function PlacesWayCount({
       }}
     >
       <summary>Ways by method</summary>
+      {view.counts.length > 0 && <p>{plural(waysTotal(view.places))}</p>}
       {view.counts.length === 0 ? (
         <p className="es-help">The engine says no way that can be counted.</p>
       ) : (
@@ -71,27 +77,38 @@ export function PlacesWayCount({
           </thead>
           <tbody>
             {view.counts.map((row) => (
-              <tr key={row.key}>
-                <th scope="row">
-                  <button
-                    type="button"
-                    aria-pressed={view.method?.key === row.key}
-                    title="Mark the joins whose ways use it"
-                    onClick={() => view.toggleMethod(row.key)}
-                  >
-                    {row.label}
-                  </button>
-                </th>
-                <td>{plural(row.ways)}</td>
-                <td>{difficultyRange(row)}</td>
-              </tr>
+              <Fragment key={row.key}>
+                <tr>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      aria-pressed={view.method?.key === row.key}
+                      title="Mark the joins whose ways use it"
+                      onClick={() => view.toggleMethod(row.key)}
+                    >
+                      {row.label}
+                    </button>
+                  </th>
+                  <td>{plural(row.ways)}</td>
+                  <td>{difficultyRange(row)}</td>
+                </tr>
+                {row.key === 'free' && (
+                  <tr className="es-way-count-sub">
+                    <td colSpan={3}>
+                      {row.open} open · {row.needing} need something first
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
       )}
       <p className="es-help">
-        A way with alternatives counts under each of its methods; a tool is part
-        of its approach. A line said by several creatures counts once.
+        A way with alternatives counts under each of its methods, so the rows
+        add up to more than the total; a tool is part of its approach. A line
+        said by several creatures counts once. A secret that bars several
+        passages is one way per passage.
       </p>
       {view.method && (
         <p id="es-method-marked" className="es-help" role="status">
@@ -113,7 +130,7 @@ export function PlacesWayCount({
                 <li key={join.id}>
                   <button
                     type="button"
-                    data-join-row={join.id}
+                    data-way-into={join.id}
                     aria-label={view.nameOf(join)}
                     onClick={() => view.selectJoin(join.id)}
                   >

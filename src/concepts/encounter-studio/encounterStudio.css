@@ -1581,6 +1581,11 @@
   width: auto;
   padding: 0.1rem 0.35rem;
 }
+.es-way-count-sub td {
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: var(--wb-muted);
+}
 .es-ways-into h3 {
   margin: 0.5rem 0 0.25rem;
   font-size: 0.9rem;
