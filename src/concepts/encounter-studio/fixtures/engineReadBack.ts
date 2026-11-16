@@ -31,10 +31,11 @@ export function castleEngineReadBack(): ReadBack {
 }
 
 /**
- * THE CASTLE'S JOINS AND WAYS (rpg-project#972), recorded the same way from
- * rpg-toolkit `main` cdefe89a (`rulebooks/dnd5e/encounter` v0.218.0, the
- * bar model) on the same castle bytes: the site group "Where the places
- * join" whole — 12 joins and their 29 ways — and nothing else. Every
+ * THE CASTLE'S JOINS AND WAYS (rpg-project#972, #974), recorded the same way
+ * from rpg-toolkit `main` f3deb20f (`rulebooks/dnd5e/encounter` v0.218.1:
+ * the bar model, and a check's tool said as a `with` part of its approach,
+ * rpg-toolkit#2444) on the same castle bytes: the site group "Where the
+ * places join" whole — 12 joins and their 29 ways — and nothing else. Every
  * sentence and connection is the engine's, unedited.
  */
 export function castlePlacesReadBack(): ReadBack {

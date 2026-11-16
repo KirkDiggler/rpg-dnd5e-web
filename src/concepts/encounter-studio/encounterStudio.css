@@ -1550,6 +1550,62 @@
 .es-places-list button[aria-pressed='true'] {
   border-color: var(--wb-accent);
 }
+/* WAYS BY METHOD (rpg-project#974): a method row marks the joins whose ways
+ * use it, by shape (a dashed outline, a heavier dashed mark), not colour
+ * alone. */
+.es-places-list button[data-uses-method] {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: -4px;
+}
+.es-places-join[data-uses-method] .es-places-mark,
+.es-places-join[data-uses-method] .es-places-passage {
+  stroke: var(--wb-text);
+  stroke-width: 4;
+  stroke-dasharray: 2 2;
+}
+.es-way-count summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.es-way-count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+/* Two lines in the narrow left column: the method's name, never broken
+ * mid-word, then its count and difficulty. */
+.es-way-count-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  font-size: var(--es-text-help);
+}
+.es-places-list .es-way-count-list button {
+  width: auto;
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.es-way-count-figures {
+  padding-left: 0.35rem;
+}
+.es-way-count-sub {
+  padding-left: 0.85rem;
+  color: var(--wb-muted);
+}
+.es-ways-into h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+.es-ways-into ul ul {
+  padding-left: 0.9rem;
+  font-size: 0.78rem;
+  color: var(--wb-muted);
+}
 .encounter-studio .es-join-ways {
   margin: 0.25rem 0 0;
   padding-left: 1.1rem;

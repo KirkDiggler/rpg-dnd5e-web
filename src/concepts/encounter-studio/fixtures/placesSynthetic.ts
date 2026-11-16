@@ -7,7 +7,12 @@ import {
 /** A small read-back in the engine's shapes (rpg-toolkit `readback/ways.go`):
  * one door join whose ways are given. */
 export function syntheticJoin(
-  ways: { kind: string; connects: [string, string, string][] }[]
+  ways: {
+    kind: string;
+    connects: [string, string, string][];
+    /** Defaults to the way's own subject. */
+    about?: { kind: string; id: string };
+  }[]
 ): ReadBack {
   const conn = ([kind, id, role]: [string, string, string]) => ({
     kind,
@@ -40,9 +45,10 @@ export function syntheticJoin(
               ...ways.map((way, index) => ({
                 kind: way.kind,
                 about:
-                  way.kind === 'place.way.none'
+                  way.about ??
+                  (way.kind === 'place.way.none'
                     ? { kind: 'bar', id: `bar:j1:${index}` }
-                    : { kind: 'way', id: `way:j1:${index}` },
+                    : { kind: 'way', id: `way:j1:${index}` }),
                 sentence: `Way ${index} (${way.kind}).`,
                 path: 'room.room.doorBindings.d1',
                 connects: [['join', 'j1', 'through'], ...way.connects].map(

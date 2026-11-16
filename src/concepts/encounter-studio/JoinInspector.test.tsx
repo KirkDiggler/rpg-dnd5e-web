@@ -95,7 +95,7 @@ describe('JoinInspector', () => {
 
   it('the grate: search and told under the hidden bar, the passage way apart', () => {
     show('passage:region-kitchen:region-chapel:prop-grate');
-    const hidden = section('To pass the hiding, any of:');
+    const hidden = section('To find the hidden way, any of:');
     const kinds = within(hidden)
       .getAllByRole('listitem')
       .filter((item) => item.dataset.way !== undefined)

@@ -54,3 +54,26 @@ describe('usePlacesView: the join selection', () => {
     expect(result.current.selectedJoin).toBeNull();
   });
 });
+
+describe('usePlacesView: the pressed method (rpg-project#974)', () => {
+  it('Escape clears it and its marks', () => {
+    const { result } = setup();
+    act(() => result.current.toggleMethod('ability:dex'));
+    expect(result.current.method?.key).toBe('ability:dex');
+    expect(result.current.methodJoinIds.size).toBe(2);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(result.current.method).toBeNull();
+    expect(result.current.methodJoinIds.size).toBe(0);
+  });
+
+  it('another draft clears it', () => {
+    const { result, rerender } = setup();
+    act(() => result.current.toggleMethod('ability:dex'));
+    rerender({ draftId: 'a-copy-of-the-castle' });
+    expect(result.current.method).toBeNull();
+    rerender({ draftId: 'castle' });
+    expect(result.current.method).toBeNull();
+  });
+});
