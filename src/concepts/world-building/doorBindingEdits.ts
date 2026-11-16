@@ -234,3 +234,19 @@ export function doorCandidateIds(
     )
     .map((item) => item.id);
 }
+
+/** A door's `opened: { fact }` (rpg-project#569 R12, #975 D): the fact
+ * everyone who opens the door, or sees it open, learns. A fact is declared
+ * by mention, so it is typed. Empty takes `opened` away — an `opened` that
+ * names no fact is refused — and every other key of the door is kept. */
+export function withDoorOpened(
+  binding: RoomDoorBinding | undefined,
+  fact: string
+): RoomDoorBinding {
+  const next = { ...(binding ?? {}) } as RoomDoorBinding & {
+    opened?: Record<string, unknown>;
+  };
+  if (fact === '') delete next.opened;
+  else next.opened = { ...(next.opened ?? {}), fact };
+  return next;
+}

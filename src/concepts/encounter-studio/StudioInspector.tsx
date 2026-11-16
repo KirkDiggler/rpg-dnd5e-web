@@ -15,6 +15,7 @@ import {
   setDoorBindingState,
   type DoorBindingState,
 } from '../world-building/doorBindingEdits';
+import { DoorOpenedField } from '../world-building/DoorOpenedField';
 import { exitAt, setExitAt } from '../world-building/exitEdits';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
@@ -415,6 +416,11 @@ function DoorState({
   const hiddenBy = concealmentHiding(session.document.scope, doorId);
   return (
     <StudioSection title="Door" level="section">
+      <DoorOpenedField
+        doorId={doorId}
+        binding={binding}
+        onChange={(next) => session.doors.setBinding(doorId, next)}
+      />
       <label className="es-field">
         <span>State</span>
         <select

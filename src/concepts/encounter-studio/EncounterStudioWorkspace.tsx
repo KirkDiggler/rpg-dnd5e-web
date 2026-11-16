@@ -755,11 +755,15 @@ function StudioSurface({
     request: RoutePickRequest;
     waypoints: AnswerWaypointShape[];
     section: EncounterSectionKey;
+    /** Where the pick was asked from: an Encounter section returns there; a
+     * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
+    from: 'encounter' | 'build';
     document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
     arm: (request) => {
       const section = encounterSection;
+      const from = home === 'build' ? 'build' : 'encounter';
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
@@ -767,6 +771,7 @@ function StudioSurface({
         request,
         waypoints: [...request.route],
         section,
+        from,
         document: session.document,
       });
     },
@@ -779,6 +784,10 @@ function StudioSurface({
     setRoutePick(null);
     if (!pick) return;
     if (commit) pick.request.onDone(waypoints);
+    if (pick.from === 'build') {
+      setSidebarOpen(true);
+      return;
+    }
     changeHome('encounter');
     setEncounterSection(pick.section);
   };
@@ -1592,29 +1601,35 @@ function StudioSurface({
               />
             )}
             {home === 'build' && !placesView.selectedJoin && (
-              <StudioInspector
-                session={session}
-                inspection={inspection}
-                view={view}
-                layoutTool={layoutTool}
-                armedTool={armedTool}
-                onConfigure={openDefinitions}
-                onOpenFact={openFact}
-                wayOpener={wayOpener}
-                readBack={readBack}
-                onOpenJoin={placesView.selectJoin}
-                onJump={jumpTo}
-                onMoveCreature={moveSelectedCreature}
-                onFrameChange={onFrameChange}
-                onArmTool={armTool}
-                onPlacePartyStart={placePartyStart}
-                onOpenCastMember={(ref) => jumpTo({ kind: 'castMember', ref })}
-                onOpenRegion={(regionId) => {
-                  session.selectRegion(regionId);
-                }}
-                activeRegionId={activeRegionId}
-                onMakeActive={setActiveChoice}
-              />
+              // A post's cells are picked on the map from here
+              // (rpg-project#975 D).
+              <RoutePickContext.Provider value={routePicking}>
+                <StudioInspector
+                  session={session}
+                  inspection={inspection}
+                  view={view}
+                  layoutTool={layoutTool}
+                  armedTool={armedTool}
+                  onConfigure={openDefinitions}
+                  onOpenFact={openFact}
+                  wayOpener={wayOpener}
+                  readBack={readBack}
+                  onOpenJoin={placesView.selectJoin}
+                  onJump={jumpTo}
+                  onMoveCreature={moveSelectedCreature}
+                  onFrameChange={onFrameChange}
+                  onArmTool={armTool}
+                  onPlacePartyStart={placePartyStart}
+                  onOpenCastMember={(ref) =>
+                    jumpTo({ kind: 'castMember', ref })
+                  }
+                  onOpenRegion={(regionId) => {
+                    session.selectRegion(regionId);
+                  }}
+                  activeRegionId={activeRegionId}
+                  onMakeActive={setActiveChoice}
+                />
+              </RoutePickContext.Provider>
             )}
           </StudioSidebar>
         </div>

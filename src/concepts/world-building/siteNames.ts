@@ -39,6 +39,9 @@ export interface SiteNames {
   readonly topics: readonly string[];
   /** The site's conversations (root `interactions`). */
   readonly conversations: readonly SiteConversation[];
+  /** The site's doors — every wall opening's door — by id, in wall order:
+   * what a post may hold (rpg-project#975 D). */
+  readonly doors: readonly string[];
 }
 
 export const NO_SITE_NAMES: SiteNames = Object.freeze({
@@ -46,6 +49,7 @@ export const NO_SITE_NAMES: SiteNames = Object.freeze({
   regions: [],
   topics: [],
   conversations: [],
+  doors: [],
 });
 
 export const SiteNamesContext = createContext<SiteNames>(NO_SITE_NAMES);
@@ -85,6 +89,9 @@ export function siteNamesOf(
   room: {
     readonly regions?: readonly { id: string; name?: string }[];
     readonly monsterBindings?: Readonly<Record<string, unknown>>;
+    readonly walls?: readonly {
+      readonly openings: readonly { readonly door?: { readonly id: string } }[];
+    }[];
   }
 ): SiteNames {
   const topics = new Set<string>(grantedTopics(scope));
@@ -99,6 +106,11 @@ export function siteNamesOf(
       name: region.name || region.id,
     })),
     topics: [...topics].sort(),
+    doors: (room.walls ?? []).flatMap((wall) =>
+      wall.openings.flatMap((opening) =>
+        opening.door ? [opening.door.id] : []
+      )
+    ),
     conversations: interactionIds(scope).map((id) => ({
       id,
       states: recipeStates(scope, id),

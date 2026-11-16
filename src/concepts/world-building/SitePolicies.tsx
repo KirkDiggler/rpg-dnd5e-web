@@ -97,7 +97,7 @@ import {
   bindingBehaviours,
   namedBodyStates,
 } from './behaviourChoice';
-import { BindingPostPasses } from './BindingPostPasses';
+import { BindingPosts } from './BindingPostPasses';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
 import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
@@ -2573,9 +2573,10 @@ export function CreatureOrders({
         onChange={onOrdersChange}
       />
       <RetiredKeys owner="creature" carried={binding} />
-      <BindingPostPasses
+      <BindingPosts
         owner={monster.id}
         binding={binding}
+        scope={scope}
         topics={grantedTopics(scope)}
         onChange={onOrdersChange}
       />

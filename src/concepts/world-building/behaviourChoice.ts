@@ -138,3 +138,63 @@ export function assignBehaviour(
     behaviorState: id,
   } as RoomMonsterBinding;
 }
+
+/** The states a creature's behaviour stands in — what a post may be keyed
+ * by (rpg-project#975 D): the behaviour that supplies its state (its own
+ * `behaviorState` binding, else its first; else its faction's), as that
+ * definition's `recipe.states` writes them, a terminal state left out (it
+ * ends the machine and holds no post). `none` when it runs no behaviour,
+ * `unread` when the behaviour's states are not written in the file. */
+export function behaviourStates(
+  scope: SiteScope,
+  binding: RoomMonsterBinding | undefined
+):
+  | { kind: 'states'; behaviour: string; states: string[] }
+  | { kind: 'none' }
+  | { kind: 'unread'; behaviour: string } {
+  const own = bindingBehaviours(binding);
+  const faction = (binding as { faction?: unknown } | undefined)?.faction;
+  const supplier =
+    own && own.length > 0
+      ? {
+          behaviors: own,
+          state: (binding as Record<string, unknown>)?.behaviorState,
+        }
+      : (() => {
+          const f = (scope.factions ?? []).find(
+            (entry) => entry.id === faction
+          ) as Record<string, unknown> | undefined;
+          const list = Array.isArray(f?.behaviors)
+            ? (f!.behaviors as BehaviourBinding[])
+            : undefined;
+          return list && list.length > 0
+            ? { behaviors: list, state: f?.behaviorState }
+            : undefined;
+        })();
+  if (!supplier) return { kind: 'none' };
+  const chosen =
+    supplier.behaviors.find((b) => b.id === supplier.state) ??
+    supplier.behaviors[0]!;
+  const use = typeof chosen.use === 'string' ? chosen.use : '';
+  const definition = definitionsOf(scope)[use];
+  const states =
+    definition !== null && typeof definition === 'object'
+      ? (definition as { recipe?: { states?: unknown } }).recipe?.states
+      : undefined;
+  if (states === null || typeof states !== 'object' || Array.isArray(states))
+    return { kind: 'unread', behaviour: use };
+  return {
+    kind: 'states',
+    behaviour: use,
+    states: Object.entries(states as Record<string, unknown>)
+      .filter(
+        ([, state]) =>
+          !(
+            state !== null &&
+            typeof state === 'object' &&
+            (state as { terminal?: unknown }).terminal === true
+          )
+      )
+      .map(([name]) => name),
+  };
+}
