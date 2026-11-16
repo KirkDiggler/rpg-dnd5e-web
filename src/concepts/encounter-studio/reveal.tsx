@@ -5,6 +5,7 @@ import {
   RevealContext,
   useRevealController,
   type RevealController,
+  type RevealKey,
 } from './useReveal';
 
 export function RevealContextProvider({
@@ -24,10 +25,14 @@ export function RevealContextProvider({
 /** A host with its own controller (tests, a panel used alone). */
 export function RevealProvider({
   children,
+  namer,
 }: {
   children: ReactNode;
+  /** The words a revealed item is announced by. */
+  namer?: (key: RevealKey) => string | null;
 }): React.JSX.Element {
   const controller = useRevealController();
+  controller.setNamer(namer ?? null);
   return (
     <RevealContextProvider controller={controller}>
       {children}

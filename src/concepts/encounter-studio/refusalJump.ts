@@ -15,6 +15,7 @@ import type {
 } from '../world-building/roomDraft';
 import { rowOfPath } from '../world-building/rowRefusals';
 import type { StudioDoorTarget } from '../world-building/studioDoorEditing';
+import { locate } from './locatePath';
 
 /** The Encounter home sections a refusal opens when the noun has no focus of
  * its own there yet (S6-Q4). */
@@ -62,21 +63,7 @@ export interface RefusalJump {
 
 const MONSTER_PREFIX = 'dnd5e:monsters:';
 
-/** `a.b[2].c` → `['a', 'b', 2, 'c']`. Null for a path that is not a field
- * path at all (`line 12`, prose, empty). */
-export function segmentsOf(path: string): (string | number)[] | null {
-  const trimmed = path.trim();
-  if (!trimmed || /\s/.test(trimmed)) return null;
-  const out: (string | number)[] = [];
-  for (const part of trimmed.split('.')) {
-    const match = /^([^[\]]*)((?:\[\d+\])*)$/.exec(part);
-    if (!match) return null;
-    if (match[1]) out.push(match[1]);
-    for (const index of match[2].matchAll(/\[(\d+)\]/g))
-      out.push(Number(index[1]));
-  }
-  return out;
-}
+export { segmentsOf } from './locatePath';
 
 function doorTarget(
   document: Readonly<RoomDraftDocument>,
@@ -89,59 +76,6 @@ function doorTarget(
   return null;
 }
 
-function hasSceneItem(
-  document: Readonly<RoomDraftDocument>,
-  id: string
-): boolean {
-  return document.draft.scene.items.some((item) => item.id === id);
-}
-
-function roomTarget(
-  rest: readonly (string | number)[],
-  document: Readonly<RoomDraftDocument>
-): RefusalTarget | null {
-  const [field, key, , subIndex] = rest;
-  const room = document.draft.room;
-  switch (field) {
-    case 'monsterBindings':
-      return typeof key === 'string' &&
-        room.monsterDeclarations.some((monster) => monster.id === key)
-        ? { kind: 'creature', id: key }
-        : null;
-    case 'monsterDeclarations': {
-      const id =
-        typeof key === 'number' ? room.monsterDeclarations[key]?.id : undefined;
-      return id ? { kind: 'creature', id } : null;
-    }
-    case 'propBindings':
-    case 'propDeclarations':
-      return typeof key === 'string' && hasSceneItem(document, key)
-        ? { kind: 'prop', id: key }
-        : null;
-    case 'doorBindings': {
-      const target = typeof key === 'string' ? doorTarget(document, key) : null;
-      return target ? { kind: 'door', target } : null;
-    }
-    case 'regions': {
-      // `regions[i]`, `regions[i].cells[j].q[k]`, `regions[i].lighting…`:
-      // every refusal about a region or its cells is that region.
-      const id = typeof key === 'number' ? room.regions[key]?.id : undefined;
-      return id ? { kind: 'region', id } : null;
-    }
-    case 'walls': {
-      // `walls[i].openings[j].door…` is that door; any other wall path has
-      // no studio noun of its own here and stays a sentence.
-      if (typeof key !== 'number' || rest[2] !== 'openings') return null;
-      if (typeof subIndex !== 'number' || rest[4] !== 'door') return null;
-      const doorId = room.walls?.[key]?.openings[subIndex]?.door?.id;
-      const target = doorId ? doorTarget(document, doorId) : null;
-      return target ? { kind: 'door', target } : null;
-    }
-    default:
-      return null;
-  }
-}
-
 /** THE ONE MAP FROM A FILE PATH TO A STUDIO SELECTION (R25): a refusal's
  * path and a read-back statement's path are the compiler's one coordinate
  * system, so both land through here. Null for a path with no studio noun,
@@ -151,80 +85,49 @@ export function targetOfPath(
   path: string,
   document: Readonly<RoomDraftDocument>
 ): RefusalTarget | null {
-  const segments = segmentsOf(path);
-  if (!segments || segments.length === 0) return null;
-  const [head, key] = segments;
-  const scope = document.scope;
-  if (head === 'room' && segments[1] === 'room')
-    return roomTarget(segments.slice(2), document);
-  switch (head) {
-    case 'exits': {
-      const exit = typeof key === 'number' ? scope.exits?.[key] : undefined;
-      return exit ? { kind: 'hex', cell: { ...exit.cell } } : null;
+  const located = locate(path, document);
+  if (!located) return null;
+  const { kind, id } = located;
+  switch (kind) {
+    case 'creature':
+    case 'prop':
+    case 'region':
+    case 'ending':
+      return { kind, id };
+    case 'door': {
+      const target = doorTarget(document, id);
+      return target ? { kind: 'door', target } : null;
     }
-    case 'templates':
-      return typeof key === 'string' &&
-        scope.templates &&
-        Object.hasOwn(scope.templates, key)
-        ? { kind: 'castMember', ref: `${MONSTER_PREFIX}${key}` }
-        : null;
-    // Root `tables` have no section (rpg-project#970): a refusal there is a
-    // sentence, with no jump.
-    case 'behaviorDefinitions': {
-      const definitions = scope.unread?.behaviorDefinitions;
-      return typeof key === 'string' &&
-        definitions !== null &&
-        typeof definitions === 'object' &&
-        Object.hasOwn(definitions, key)
-        ? { kind: 'home', section: 'behaviours', id: key }
-        : null;
+    case 'exit': {
+      const exit = located.entry as { cell: RoomHexCell };
+      return { kind: 'hex', cell: { ...exit.cell } };
     }
-    case 'bundles':
-    case 'concealments': {
-      const map = head === 'bundles' ? scope.bundles : scope.concealments;
-      if (!(typeof key === 'string' && map && Object.hasOwn(map, key)))
-        return null;
-      const row = head === 'concealments' ? undefined : rowOfPath(path);
+    case 'template':
+      return { kind: 'castMember', ref: `${MONSTER_PREFIX}${id}` };
+    case 'routine':
+      return { kind: 'home', section: 'behaviours', id };
+    case 'concealment':
+      return { kind: 'home', section: 'concealments', id };
+    case 'bundle': {
+      const row = rowOfPath(path);
       return row
-        ? { kind: 'home', section: head, id: key, row }
-        : { kind: 'home', section: head, id: key };
+        ? { kind: 'home', section: 'bundles', id, row }
+        : { kind: 'home', section: 'bundles', id };
     }
-    case 'factions': {
-      // The file writes factions as a list (`factions[0]`); a keyed path
-      // (`factions.<id>`) is read the same way, by id.
-      const faction =
-        typeof key === 'number'
-          ? scope.factions?.[key]
-          : scope.factions?.find((entry) => entry.id === key);
-      return faction
-        ? { kind: 'home', section: 'factions', id: faction.id }
-        : null;
-    }
-    case 'dispositions':
+    case 'faction':
+      return { kind: 'home', section: 'factions', id };
+    case 'disposition':
       // A disposition has no id; the section opens and the sentence names it.
-      return typeof key === 'number' && scope.dispositions?.[key]
-        ? { kind: 'home', section: 'dispositions' }
-        : null;
-    case 'intel': {
-      const record = typeof key === 'number' ? scope.intel?.[key] : undefined;
-      return record ? { kind: 'home', section: 'intel', id: record.id } : null;
-    }
-    case 'endings': {
-      const ending = typeof key === 'number' ? scope.endings?.[key] : undefined;
-      return ending ? { kind: 'ending', id: ending.id } : null;
-    }
-    case 'interactions': {
+      return { kind: 'home', section: 'dispositions' };
+    case 'record':
+      return { kind: 'home', section: 'intel', id };
+    case 'conversation':
       // A root interaction rides the scope's unread map (rpg-project#922); a
       // refusal of its recipe, approach or outcomes opens the Interactions
       // section, which shows each (rpg-project#928).
-      const interactions = scope.unread?.interactions;
-      return typeof key === 'string' &&
-        interactions !== null &&
-        typeof interactions === 'object' &&
-        Object.hasOwn(interactions, key)
-        ? { kind: 'home', section: 'interactions', id: key }
-        : null;
-    }
+      return { kind: 'home', section: 'interactions', id };
+    // Root `tables` have no section (rpg-project#970), a wall no studio noun
+    // of its own, the key its own refusal (`keyRefusalOf`): a sentence.
     default:
       return null;
   }

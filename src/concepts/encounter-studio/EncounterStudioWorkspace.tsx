@@ -72,7 +72,7 @@ import {
   type RefusalTarget,
 } from './refusalJump';
 import { RevealContextProvider } from './reveal';
-import { keyOfPath, keyOfTarget } from './revealKey';
+import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
 import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -119,7 +119,7 @@ import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
-import { useRevealController } from './useReveal';
+import { useRevealController, type RevealKey } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
@@ -200,6 +200,16 @@ function StudioSurface({
    * register by the same path map the jumps resolve through. */
   const revealController = useRevealController();
   revealController.setResolver((path) => keyOfPath(path, session.document));
+  revealController.setNamer((key) => nameOfKey(key, session.document));
+  /** A jump's reveal waits for the jump's own navigation (home, section,
+   * selection) to commit, then lands (rpg-project#983): it is queued here
+   * and fired by the effect below, never on a clock. */
+  const [queuedReveal, setQueuedReveal] = useState<{
+    key: RevealKey;
+    nonce: number;
+  } | null>(null);
+  const queueReveal = (key: RevealKey): void =>
+    setQueuedReveal((was) => ({ key, nonce: (was?.nonce ?? 0) + 1 }));
   const [encounterSection, setEncounterSection] = useState<EncounterSectionKey>(
     DEFAULT_ENCOUNTER_SECTION
   );
@@ -313,6 +323,15 @@ function StudioSurface({
       setSidebarOpen(true);
     shownKey.current = selectionKey;
   }, [selectionKey]);
+  // A new selection takes the mark away (rpg-project#983); a jump's own
+  // selection is made in the same commit as its queued reveal, which the
+  // next effect lands after this one has cleared.
+  useEffect(() => {
+    revealController.clear();
+  }, [selectionKey, revealController]);
+  useEffect(() => {
+    if (queuedReveal) revealController.reveal(queuedReveal.key);
+  }, [queuedReveal, revealController]);
   const changeTool = (next: LayoutTool): void => {
     setGroundBrush(null);
     if (next !== layoutTool) session.cancelTransients();
@@ -476,9 +495,9 @@ function StudioSurface({
     ] as { faction?: string; behaviors?: { use?: unknown }[] } | undefined;
     const use = binding?.behaviors?.[0]?.use;
     if (section === 'factions' && binding?.faction)
-      revealController.reveal({ kind: 'faction', id: binding.faction });
+      queueReveal({ kind: 'faction', id: binding.faction });
     if (section === 'behaviours' && typeof use === 'string')
-      revealController.reveal({ kind: 'routine', id: use });
+      queueReveal({ kind: 'routine', id: use });
   };
   /** The hub a read-back connection named: Threads opens on its thread
    * (rpg-project#973). */
@@ -488,7 +507,7 @@ function StudioSurface({
   const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
     // The hub's row in Threads, or the routine's in Behaviours, is revealed.
-    revealController.reveal({ kind: hub, id });
+    queueReveal({ kind: hub, id });
     if (hub === 'routine') {
       setFocusRoutine(id);
       openDefinitions('behaviours');
@@ -497,7 +516,6 @@ function StudioSurface({
     setFocusHub({ kind: hub, id });
     openDefinitions('facts');
   };
-  const [focusEnding, setFocusEnding] = useState<{ id: string } | null>(null);
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
   const [siteOperation, setSiteOperation] = useState<SiteOperation | null>(
@@ -565,7 +583,7 @@ function StudioSurface({
       changeHome('build');
       setSidebarOpen(true);
       setPendingJoin(join.id);
-      revealController.reveal({ kind: 'join', id: join.id });
+      queueReveal({ kind: 'join', id: join.id });
     };
   };
   // The join is selected once Build is the home, where the map's selection
@@ -720,19 +738,13 @@ function StudioSurface({
   /** A key jump asks the Save panel to focus the key field; a new nonce is
    * a new jump, consumed once. */
   const [keyFocus, setKeyFocus] = useState(0);
-  /** The row a refusal's jump asked for (rpg-project#720, R17). */
-  const [focusRow, setFocusRow] = useState<{
-    path: string;
-    nonce: number;
-  } | null>(null);
   const rowRefusals = useMemo(
     () => ({
       refusals: shownRefusals.map(({ path, message }) => ({ path, message })),
-      focus: focusRow,
     }),
     // The list is rebuilt every render; its words are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(shownRefusals.map((j) => [j.path, j.message])), focusRow]
+    [JSON.stringify(shownRefusals.map((j) => [j.path, j.message]))]
   );
   /** PICK ON MAP (rpg-project#720). A row under Encounter asks for a cell or
    * a route; Build opens on the Layout armed for it, each click is a
@@ -880,7 +892,7 @@ function StudioSurface({
   const jumpTo = (target: RefusalTarget, path?: string): void => {
     const key =
       (path ? keyOfPath(path, session.document) : null) ?? keyOfTarget(target);
-    if (key) revealController.reveal(key);
+    if (key) queueReveal(key);
     const inspect = (selected: boolean): void => {
       if (!selected) return;
       changeHome('build');
@@ -923,14 +935,11 @@ function StudioSurface({
         setEncounterSection(target.section);
         if (target.section === 'behaviours' && target.id)
           setFocusRoutine(target.id);
-        if (target.row)
-          setFocusRow((was) => ({
-            path: target.row!,
-            nonce: (was?.nonce ?? 0) + 1,
-          }));
+        // A row (`target.row`) is landed on by the reveal above, which opens
+        // it on the way (rpg-project#983).
         return;
       case 'ending':
-        setFocusEnding({ id: target.id });
+        // The reveal above lands on the ending, which opens its form.
         changeHome('encounter');
         setEncounterSection('endings');
         return;
@@ -1794,7 +1803,6 @@ function StudioSurface({
               }))}
               selected={sectionPlaceOf(encounterSection).group}
               onSelect={(label) => {
-                setFocusEnding(null);
                 setEncounterSection(
                   ENCOUNTER_GROUPS.find((group) => group.label === label)!
                     .sections[0]!.key
@@ -1821,7 +1829,6 @@ function StudioSurface({
               }
               selected={sectionPlaceOf(encounterSection).section}
               onSelect={(key) => {
-                setFocusEnding(null);
                 setEncounterSection(key);
               }}
               idOf={sectionTabId}
@@ -1904,7 +1911,7 @@ function StudioSurface({
                     exits={session.document.scope.exits ?? []}
                     onJump={jumpTo}
                   />
-                  <StudioEndings session={session} focus={focusEnding?.id} />
+                  <StudioEndings session={session} />
                 </section>
               )}
               {home === 'encounter' && encounterSection === 'concealments' && (

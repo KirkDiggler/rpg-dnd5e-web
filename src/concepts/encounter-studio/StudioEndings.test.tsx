@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,8 +9,10 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
+import { RevealProvider } from './reveal';
 import { StudioEndings } from './StudioEndings';
 import type { EncounterStudioSession } from './studioSession';
+import { useReveal, type RevealKey } from './useReveal';
 
 afterEach(cleanup);
 
@@ -128,8 +131,19 @@ describe('StudioEndings (rpg-project#578)', () => {
     ]);
   });
 
-  it('a focus from the fact index opens that ending', () => {
-    render(<StudioEndings session={castleSession()} focus="king-deposed" />);
+  it('a jump to an ending opens its form (rpg-project#983)', () => {
+    let reveal: (key: RevealKey) => void = () => {};
+    function Trigger() {
+      reveal = useReveal();
+      return null;
+    }
+    render(
+      <RevealProvider>
+        <Trigger />
+        <StudioEndings session={castleSession()} />
+      </RevealProvider>
+    );
+    act(() => reveal({ kind: 'ending', id: 'king-deposed' }));
     expect(
       (endings().getByLabelText('Ending id') as HTMLInputElement).value
     ).toBe('king-deposed');

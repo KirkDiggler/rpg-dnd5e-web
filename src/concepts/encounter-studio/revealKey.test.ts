@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
-import { keyOfPath, keyOfTarget } from './revealKey';
+import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
 
 const castle = (() => {
   const read = readDraftYaml(served);
@@ -75,5 +75,17 @@ describe('keyOfTarget', () => {
       kind: 'ending',
       id: 'freed',
     });
+  });
+  it('a key names its place in words, the way placeName says its path', () => {
+    expect(
+      nameOfKey(
+        { kind: 'creature', id: 'gate-1', part: 'options[1].failure[0]' },
+        castle
+      )
+    ).toBe('gate-1 · line `straggler` · on a miss');
+    expect(nameOfKey({ kind: 'record', id: 'kitchen-way' }, castle)).toBe(
+      'record `kitchen-way`'
+    );
+    expect(nameOfKey({ kind: 'join', id: 'j1' }, castle)).toBe('join j1');
   });
 });

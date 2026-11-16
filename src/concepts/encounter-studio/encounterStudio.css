@@ -1756,6 +1756,13 @@
   box-shadow: 0 0 0 3px var(--es-revealed-tint);
   animation: es-revealed-in 0.9s ease-out;
 }
+/* A revealed item takes focus itself (rpg-project#983): its focus
+ * treatment is the mark, not a second ring. */
+.encounter-studio [data-revealed='true']:focus,
+.encounter-studio [data-revealed='true']:focus-visible {
+  outline: 2px solid var(--es-revealed-ring);
+  outline-offset: -2px;
+}
 @keyframes es-revealed-in {
   0% {
     box-shadow: 0 0 0 0 var(--es-revealed-pulse);
@@ -1864,4 +1871,48 @@
   max-height: 50vh;
   border-right: 0;
   border-bottom: 1px solid var(--wb-border);
+}
+/* A PLACE'S RAW PATH (rpg-project#983): a small icon button beside the
+ * place's words; "Copied" after it, or the path in a small popover to copy
+ * by hand where the clipboard cannot be written. */
+.es-copy-path {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.2rem;
+  vertical-align: baseline;
+}
+.encounter-studio .es-copy-path-button {
+  padding: 0 0.3rem;
+  min-height: 0;
+  line-height: 1.4;
+  font-size: var(--es-text-help);
+  color: var(--wb-muted);
+  background: transparent;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+.encounter-studio .es-copy-path-button:hover,
+.encounter-studio .es-copy-path-button:focus-visible {
+  color: var(--wb-text);
+  border-color: var(--wb-accent);
+}
+.es-copy-path-said {
+  font-size: var(--es-text-help);
+  color: var(--wb-accent);
+}
+.es-copy-path-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  padding: 0.25rem;
+  background: var(--wb-raised);
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+.es-copy-path-popover input {
+  font-family: var(--es-font-mono, monospace);
+  font-size: var(--es-text-help);
 }

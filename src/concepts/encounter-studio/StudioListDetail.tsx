@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from 'react';
 import { RevealLi } from './RevealDiv';
-import { revealKeyString, type RevealKey } from './useReveal';
+import { bringIntoView, revealKeyString, type RevealKey } from './useReveal';
 
 type DataAttributes = { [name: `data-${string}`]: string | undefined };
 
@@ -110,8 +110,8 @@ export function StudioListDetail({
   // detail has rendered, so the scroll lands on the new detail.
   const [scrollToDetail, setScrollToDetail] = useState(0);
   useLayoutEffect(() => {
-    if (scrollToDetail > 0)
-      detailRef.current?.scrollIntoView({ block: 'start' });
+    if (scrollToDetail > 0 && detailRef.current)
+      bringIntoView(detailRef.current);
   }, [scrollToDetail]);
   const choose = (key: RevealKey): void => {
     onSelect(key);

@@ -778,7 +778,12 @@ describe('S6 Save & Play', () => {
     expect(
       refusals.getByText('mapping values are not allowed here')
     ).toBeTruthy();
-    expect(refusals.getAllByRole('button')).toHaveLength(1);
+    // Each refusal is one jump; its raw path has its own Copy path control.
+    expect(
+      refusals
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') !== 'Copy path')
+    ).toHaveLength(1);
     expect(lobby.createLobby).toHaveLength(0);
     expect(status()).toBe('');
     // The jump selects the creature and opens its inspector.
