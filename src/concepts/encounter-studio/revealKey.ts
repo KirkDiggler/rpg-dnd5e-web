@@ -7,10 +7,10 @@
  * jump's key and an item's key always agree.
  */
 import type { RoomDraftDocument } from '../world-building/roomDraft';
-import { segmentsOf, type RefusalTarget } from './refusalJump';
+import { locate, type Segment } from './locatePath';
+import { placeName } from './placeName';
+import type { RefusalTarget } from './refusalJump';
 import type { RevealKey } from './useReveal';
-
-type Segment = string | number;
 
 /** `options[1].failure[0].recognize` back from segments. */
 export function partOf(rest: readonly Segment[]): string | undefined {
@@ -36,71 +36,15 @@ export function keyOfPath(
   path: string,
   document: Readonly<RoomDraftDocument>
 ): RevealKey | null {
-  const segments = segmentsOf(path);
-  if (!segments || segments.length === 0) return null;
-  const [head, key, ...rest] = segments;
-  const scope = document.scope;
-  if (head === 'room' && key === 'room') {
-    const [field, id, ...inside] = rest;
-    const room = document.draft.room;
-    switch (field) {
-      case 'monsterBindings':
-        return typeof id === 'string' ? keyed('creature', id, inside) : null;
-      case 'monsterDeclarations': {
-        const monster =
-          typeof id === 'number' ? room.monsterDeclarations[id] : undefined;
-        return monster ? keyed('creature', monster.id, inside) : null;
-      }
-      case 'propBindings':
-      case 'propDeclarations':
-        return typeof id === 'string' ? keyed('prop', id, inside) : null;
-      case 'doorBindings':
-        return typeof id === 'string' ? keyed('door', id, inside) : null;
-      case 'regions': {
-        const region = typeof id === 'number' ? room.regions[id] : undefined;
-        return region ? keyed('region', region.id, inside) : null;
-      }
-      default:
-        return null;
-    }
-  }
-  const byIndex = <T extends { id: string }>(
-    kind: string,
-    list: readonly T[] | undefined
-  ): RevealKey | null => {
-    const entry =
-      typeof key === 'number'
-        ? list?.[key]
-        : list?.find((candidate) => candidate.id === key);
-    return entry ? keyed(kind, entry.id, rest) : null;
-  };
-  const byName = (kind: string): RevealKey | null =>
-    typeof key === 'string' ? keyed(kind, key, rest) : null;
-  switch (head) {
-    case 'factions':
-      return byIndex('faction', scope.factions);
-    case 'intel':
-      return byIndex('record', scope.intel);
-    case 'endings':
-      return byIndex('ending', scope.endings);
-    case 'exits':
-      return byIndex('exit', scope.exits);
-    case 'dispositions':
-      return typeof key === 'number' && scope.dispositions?.[key]
-        ? keyed('disposition', String(key), rest)
-        : null;
-    case 'concealments':
-      return byName('concealment');
-    case 'interactions':
-      return byName('conversation');
-    case 'bundles':
-      return byName('bundle');
-    case 'behaviorDefinitions':
-      return byName('routine');
-    case 'templates':
-      return byName('template');
-    default:
+  const located = locate(path, document);
+  if (!located) return null;
+  switch (located.kind) {
+    case 'wall':
+    case 'partyStart':
+    case 'key':
       return null;
+    default:
+      return keyed(located.kind, located.id, located.rest);
   }
 }
 
@@ -136,4 +80,74 @@ export function keyOfTarget(target: RefusalTarget): RevealKey | null {
     default:
       return null;
   }
+}
+
+/** A key's place in the file, the inverse of `keyOfPath` for the kinds a
+ * file path names; null for a kind the file has no path for (a hub, a join,
+ * a cast member). */
+export function pathOfKey(
+  key: RevealKey,
+  document: Readonly<RoomDraftDocument>
+): string | null {
+  const scope = document.scope;
+  const indexIn = (list: readonly { id: string }[] | undefined): number =>
+    list?.findIndex((entry) => entry.id === key.id) ?? -1;
+  const listed = (
+    head: string,
+    list: readonly { id: string }[] | undefined
+  ) => {
+    const index = indexIn(list);
+    return index >= 0 ? `${head}[${index}]` : null;
+  };
+  const base = ((): string | null => {
+    switch (key.kind) {
+      case 'creature':
+        return `room.room.monsterBindings.${key.id}`;
+      case 'prop':
+        return `room.room.propBindings.${key.id}`;
+      case 'door':
+        return `room.room.doorBindings.${key.id}`;
+      case 'region':
+        return listed('room.room.regions', document.draft.room.regions);
+      case 'faction':
+        return listed('factions', scope.factions);
+      case 'record':
+        return listed('intel', scope.intel);
+      case 'ending':
+        return listed('endings', scope.endings);
+      case 'exit':
+        return listed('exits', scope.exits);
+      case 'disposition':
+        return `dispositions[${key.id}]`;
+      case 'concealment':
+        return `concealments.${key.id}`;
+      case 'conversation':
+        return `interactions.${key.id}`;
+      case 'bundle':
+        return `bundles.${key.id}`;
+      case 'routine':
+        return `behaviorDefinitions.${key.id}`;
+      case 'template':
+        return `templates.${key.id}`;
+      case 'table':
+        return `tables.${key.id}`;
+      default:
+        return null;
+    }
+  })();
+  if (!base) return null;
+  if (!key.part) return base;
+  return key.part.startsWith('[')
+    ? `${base}${key.part}`
+    : `${base}.${key.part}`;
+}
+
+/** The words a revealed item is announced by: its place, or its kind and
+ * id where the file has no path for it. */
+export function nameOfKey(
+  key: RevealKey,
+  document: Readonly<RoomDraftDocument>
+): string {
+  const path = pathOfKey(key, document);
+  return path ? placeName(path, document) : `${key.kind} ${key.id}`;
 }

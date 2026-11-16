@@ -4,6 +4,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
+import { CopyPath } from './CopyPath';
 import {
   connectionJump,
   foldedOfSelection,
@@ -348,7 +349,8 @@ function Statement({
     links.push(
       <span key="path" className="es-readback-path" title={statement.path}>
         {place}
-      </span>
+      </span>,
+      <CopyPath key="copy" path={statement.path} />
     );
   else if (placeLink && onJump)
     links.push(
@@ -361,7 +363,8 @@ function Statement({
         onClick={() => onJump(placeLink, statement.path)}
       >
         {place}
-      </button>
+      </button>,
+      <CopyPath key="copy" path={statement.path} />
     );
   return (
     <li className="es-readback-statement" data-kind={statement.kind}>
@@ -386,8 +389,8 @@ function NotYetSaid({
       <ul>
         {unsaid.map((entry, index) => (
           <li key={index}>
-            <span title={entry.path}>{placeName(entry.path, document)}</span> (
-            {entry.kind}): {entry.why}
+            <span title={entry.path}>{placeName(entry.path, document)}</span>
+            <CopyPath path={entry.path} /> ({entry.kind}): {entry.why}
           </li>
         ))}
       </ul>

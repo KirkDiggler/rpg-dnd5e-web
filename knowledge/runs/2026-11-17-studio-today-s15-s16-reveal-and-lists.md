@@ -4,7 +4,7 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 
 ## Shipped
 
-- One reveal contract (`useReveal.ts`, `reveal.tsx`): an item registers under a key `{kind, id, part?}`; a reveal opens what hides it, scrolls it within its own scroll container, focuses it when it can, and marks it briefly — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- One reveal contract (`useReveal.ts`, `reveal.tsx`): an item registers under a key `{kind, id, part?}`; a reveal opens what hides it (its own `onReveal`), scrolls it within its own scroll container, focuses the item itself and names it, and marks it until the author's next act — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - Every studio jump resolves through the one path map to a reveal key (`revealKey.ts`), so it lands on the line, row, post, faction, record, secret, ending, conversation, bundle, behaviour or join it names — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - `placeName(path, document)` names a place in the file in words; every visible path is now words with the raw path as its title — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 
@@ -17,6 +17,11 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - A jump to a creature or prop centres the Layout on it at the current zoom; it does not test whether the thing was already in view, because the Layout surface exposes no visible-bounds query to the workspace — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The work is split: reveal, jumps and place names here; the list-and-detail piece in the next PR on top, so each is reviewable — [lead's brief](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The mark lasts: `data-revealed="true"` stays until the next jump or a click or key press outside the item, never a timer; it is an outline inside the whole row block plus an accent tint, with a short entrance pulse that reduced motion drops — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- One mechanism for every jump: the rows' old refusal-only scroll (`focusRow`, `scrollIntoView` centre) and the `focused`/`focusEnding` openers are retired; a collapsed row, a bundle's route editor and an ending open through their `onReveal`, so a refusal's jump and a read-back's land the same way — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
+- The revealed item itself takes focus (`tabindex="-1"` when it has none), never a field inside it, and is named from its key by `placeName`; the mark is its focus treatment — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
+- A reveal lands at once on the closest registered link (a field-level part like `.check` on its row or line) and a closer key registering within 700 ms takes over; the workspace queues a jump's reveal and fires it after the navigation commits, never on a clock — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
+- One parser for the dialect's paths (`locatePath.ts`): `targetOfPath`, `keyOfPath` and `placeName` all read a path through `locate`; extension steps are in the reveal module's header and `CONTRACT.md` — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
+- Every place shown in words carries `CopyPath`, a keyboard-reachable "Copy path" control (clipboard, or the path selected in a popover) besides its `title` — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
 
 ## Found
 
@@ -24,5 +29,6 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 
 ## Mistaken
 
+- The first cut ran two mechanisms (the reveal and the rows' own refusal scroll and openers), focused only items that were already focusable, kept the raw path in a `title` alone, and registered no prop, door, region, cast member or stat block, so jumps to those marked nothing — [rpg-dnd5e-web#1444 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1444#pullrequestreview-5924775316).
 - The first mark lasted 2.5 s and washed with `--wb-raised`, the very colour of the cards it sat on; on the stack the only sign left was the row's own "→", so the lead sent it back before the operator's look — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The first cut exported hooks and components from one file, which the fast-refresh lint refuses; the providers moved to `reveal.tsx` and the hooks to `useReveal.ts` before the PR — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).

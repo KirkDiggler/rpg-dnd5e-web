@@ -14,6 +14,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { RevealContextProvider } from '../encounter-studio/reveal';
+import type { RevealController } from '../encounter-studio/useReveal';
 import type { AnswerTableShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { placementDisplayNames } from './placementNames';
@@ -994,5 +996,37 @@ describe('predicates read as sentences (rpg-project#576)', () => {
     expect(list.textContent).toContain(
       'are hostile until round 3 begins; then neutral.'
     );
+  });
+});
+
+describe('a faction registers for reveal once (rpg-project#983)', () => {
+  it('a re-render does not register it again', () => {
+    const kinds: string[] = [];
+    const register = vi.fn((key: { kind: string }) => {
+      kinds.push(key.kind);
+      return () => {};
+    });
+    const controller: RevealController = {
+      register,
+      reveal: () => {},
+      clear: () => {},
+      resolve: () => null,
+      setResolver: () => {},
+      setNamer: () => {},
+    };
+    const panel = (notice: () => void) => (
+      <RevealContextProvider controller={controller}>
+        <FactionsPanel
+          scope={{ factions: [{ id: 'watch' }] }}
+          onChange={() => {}}
+          onNotice={notice}
+        />
+      </RevealContextProvider>
+    );
+    const { rerender } = render(panel(() => {}));
+    expect(kinds.filter((kind) => kind === 'faction')).toHaveLength(1);
+    rerender(panel(() => {}));
+    rerender(panel(() => {}));
+    expect(kinds.filter((kind) => kind === 'faction')).toHaveLength(1);
   });
 });

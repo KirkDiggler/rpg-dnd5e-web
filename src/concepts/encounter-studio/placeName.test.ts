@@ -49,6 +49,42 @@ describe('placeName', () => {
     expect(placeName('mystery[3].thing', castle)).toBe('mystery 4 · thing');
   });
 
+  it('a line, row or thing the draft no longer holds is said plainly, never as an invented id', () => {
+    // gate-1 has fewer than 40 lines: the stale index is "line 40".
+    expect(
+      placeName('room.room.monsterBindings.gate-1.options[39].check', castle)
+    ).toBe('gate-1 · line 40 · check');
+    expect(placeName('intel[99]', castle)).toBe('intel 100');
+  });
+
+  it('ids are shown verbatim in code style, never as field words', () => {
+    expect(
+      placeName(
+        'room.room.monsterBindings.gate-1.someField.Kings_Guard',
+        castle
+      )
+    ).toBe('gate-1 · some field · `Kings_Guard`');
+  });
+
+  it("a door in a wall's opening keeps its tail; a wall says its opening", () => {
+    const wall = castle.draft.room.walls!.findIndex((w) =>
+      w.openings.some((o) => o.door)
+    );
+    const opening = castle.draft.room.walls![wall]!.openings.findIndex(
+      (o) => o.door
+    );
+    const door = castle.draft.room.walls![wall]!.openings[opening]!.door!.id;
+    expect(
+      placeName(
+        `room.room.walls[${wall}].openings[${opening}].door.locked`,
+        castle
+      )
+    ).toBe(`door \`${door}\` · locked`);
+    expect(
+      placeName(`room.room.walls[${wall}].openings[${opening}].width`, castle)
+    ).toBe(`wall ${wall + 1} · opening ${opening + 1} · width`);
+  });
+
   it('never returns nothing', () => {
     expect(placeName('', castle)).toBe('the whole file');
   });

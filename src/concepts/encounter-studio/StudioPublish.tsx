@@ -9,6 +9,7 @@
  * and one sentence per failure. It holds no transaction state of its own.
  */
 import { useEffect, useRef, type Ref } from 'react';
+import { CopyPath } from './CopyPath';
 import { FieldHelp } from './FieldHelp';
 import type { RefusalJump, RefusalTarget } from './refusalJump';
 import {
@@ -326,7 +327,9 @@ export function RefusalList({
             >
               {nameOf(jump.target)}: {jump.message}
             </button>
-          ) : (
+          ) : null}
+          {jump.target && jump.path && <CopyPath path={jump.path} />}
+          {jump.target ? null : (
             <span>
               {jump.message}
               {jump.path && (
@@ -335,6 +338,7 @@ export function RefusalList({
                   <small title={jump.path}>
                     {placeOf ? placeOf(jump.path) : jump.path}
                   </small>
+                  <CopyPath path={jump.path} />
                 </>
               )}
             </span>

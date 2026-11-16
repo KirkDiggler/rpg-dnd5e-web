@@ -5,21 +5,38 @@
  * `options[1].failure[0]`, a post `posts.alert`) in the file's own path
  * form — and a caller reveals a key. On reveal the item is:
  *
- * - shown: every closed `<details>` around it is opened first;
+ * - opened: its own `onReveal` runs first (a list chooses its row, a
+ *   collapsed row opens), and every closed `<details>` around it opens;
  * - scrolled into view within ITS OWN scroll container (the nearest
- *   scrolling ancestor), never by scrolling the page;
- * - focused, when it can take focus;
+ *   scrolling ancestor, or one marked `data-scroll-pane`), never the page;
+ * - focused itself — never a control inside it — given `tabindex="-1"`
+ *   when it takes no focus, and named for a screen reader from its key;
  * - marked with `data-revealed="true"` (an outline round the whole item and
- *   a tint, with a short entrance that `prefers-reduced-motion` drops; the
- *   outline is static). The mark LASTS: it moves with the next jump and
- *   clears on a click or key press outside the item, never on a timer.
+ *   a tint, with a short entrance that `prefers-reduced-motion` drops). The
+ *   mark LASTS: it moves with the next jump and clears on a new selection,
+ *   a pointer down, or a key that edits or activates, outside the item.
  *
- * A key nothing owns yet is held until an item registers under it (a jump
- * usually switches home, group or section first), then fires once. If none
- * does within a short time, the nearest registered ancestor is revealed
- * instead — the same thing with a shorter `part`, then the thing itself —
- * and if none of those is registered nothing is marked. One implementation:
- * no screen scrolls or highlights a jump target on its own.
+ * It lands at once on the closest registered link of the key's chain (the
+ * item, then the same thing with a shorter part, then the thing): a
+ * field-level place no item registers lands on its nearest ancestor with no
+ * wait. A closer key that registers within a short time (a screen still
+ * mounting) takes the landing over. Callers reveal after their navigation
+ * has committed. One implementation: no screen scrolls or highlights a jump
+ * target on its own.
+ *
+ * EXTENDING IT (also in CONTRACT.md, "Reveal"):
+ * - A new id-keyed screen: put `useRevealable({kind, id}, onReveal)` (or
+ *   `RevealLi`/`RevealDiv`/`RevealButton` with `revealKey`) on each item's
+ *   whole block; `onReveal` opens whatever hides it. A list-and-detail
+ *   screen gets this from `StudioListDetail`.
+ * - A new path-keyed place inside a thing: register the element by its file
+ *   path with `useRevealablePath(path)` (or `RevealDiv path=…`); the path
+ *   map turns it into the same key a jump makes.
+ * - A new kind of thing: one `case` in `locatePath.ts`, then its words in
+ *   `placeName.ts` and its selection in `targetOfPath`; register its items
+ *   under that kind.
+ * - A new section: map it to its items' kind in `revealKey.ts`
+ *   (`SECTION_KINDS`) so a section jump with an id lands on the item.
  */
 import {
   createContext,
@@ -37,8 +54,9 @@ export interface RevealKey {
   part?: string;
 }
 
-/** How long a reveal waits for its exact key before it settles for an
- * ancestor, and how long the mark stays. */
+/** How long a reveal waits for an item to register under its key (a screen
+ * the jump opened mounting), before it settles for the nearest ancestor
+ * registered by then. The mark itself has no clock: it lasts. */
 export const REVEAL_WAIT_MS = 700;
 
 const SEP = '\u0000';
@@ -64,6 +82,11 @@ export interface RevealController {
     onReveal?: () => void
   ): () => void;
   reveal(key: RevealKey): void;
+  /** Take the mark away: the author chose something new. */
+  clear(): void;
+  /** The words a revealed item is announced by, from its key (the
+   * workspace names it with `placeName`); none without one. */
+  setNamer(namer: ((key: RevealKey) => string | null) | null): void;
   /** A file path's key, through the host's one path map (the workspace
    * sets it with the document); null without one. */
   resolve(path: string): RevealKey | null;
@@ -79,6 +102,9 @@ function scrollContainerOf(element: HTMLElement): HTMLElement | null {
     node && node !== document.body;
     node = node.parentElement
   ) {
+    // A pane can say it scrolls (`data-scroll-pane`) where its overflow
+    // comes from a stylesheet the page may not have loaded yet.
+    if (node.hasAttribute('data-scroll-pane')) return node;
     const overflow = getComputedStyle(node).overflowY;
     if (overflow === 'auto' || overflow === 'scroll') return node;
   }
@@ -117,9 +143,31 @@ function land(element: HTMLElement): void {
   } else {
     element.scrollIntoView?.({ block: 'nearest', behavior });
   }
-  if (element.matches(FOCUSABLE) && !(element as HTMLButtonElement).disabled)
-    element.focus({ preventScroll: true });
+  // FOCUS THE ITEM ITSELF, never a control inside it: a jump must not put
+  // the cursor in a field where the next key edits content. An item that
+  // takes no focus is given `tabindex="-1"` while it is marked; the mark is
+  // its focus treatment.
+  if (!element.matches(FOCUSABLE) || (element as HTMLButtonElement).disabled)
+    element.setAttribute('tabindex', '-1');
+  element.focus({ preventScroll: true });
 }
+
+/** Keys that edit or activate: a printable character, Enter, Space,
+ * Backspace, Delete. A bare modifier, Tab, an arrow or Escape only looks
+ * around, and leaves the mark. */
+function editsOrActivates(event: KeyboardEvent): boolean {
+  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+  return (
+    event.key.length === 1 ||
+    event.key === 'Enter' ||
+    event.key === 'Backspace' ||
+    event.key === 'Delete'
+  );
+}
+
+/** An element on screen rather than in a hidden pane. */
+const shown = (element: HTMLElement): boolean =>
+  element.isConnected && !element.closest('[hidden]');
 
 /** The studio's one reveal controller. The workspace holds it; tests and
  * any other host use `RevealProvider`. */
@@ -129,6 +177,9 @@ export function useRevealController(): RevealController {
    * detail, a closed form opens. */
   const openers = useRef(new WeakMap<HTMLElement, () => void>());
   const pending = useRef<{ chain: RevealKey[]; timer: number } | null>(null);
+  const namer = useRef<((key: RevealKey) => string | null) | null>(null);
+  /** The key each element registered under, to name it when it lands. */
+  const keys = useRef(new WeakMap<HTMLElement, RevealKey>());
   const marked = useRef<{ element: HTMLElement; release: () => void } | null>(
     null
   );
@@ -143,41 +194,61 @@ export function useRevealController(): RevealController {
   return useMemo(() => {
     const first = (key: RevealKey): HTMLElement | undefined => {
       const set = registry.current.get(revealKeyString(key));
-      return set ? [...set].find((element) => element.isConnected) : undefined;
+      if (!set) return undefined;
+      const elements = [...set].filter((element) => element.isConnected);
+      return elements.find(shown) ?? elements[0];
     };
     const unmark = (): void => {
       marked.current?.release();
       marked.current = null;
     };
-    const mark = (element: HTMLElement): void => {
-      unmark();
+    const mark = (element: HTMLElement, added: string[]): void => {
       element.setAttribute('data-revealed', 'true');
-      // The author's next act elsewhere clears it: a click or key outside
-      // the item. Listening starts after this turn, so the act that made
-      // the jump does not clear its own mark.
-      const outside = (event: Event): void => {
+      // A screen reader hears where the jump landed.
+      const key = keys.current.get(element);
+      const name = key ? namer.current?.(key) : null;
+      if (
+        name &&
+        !element.hasAttribute('aria-label') &&
+        !element.hasAttribute('aria-labelledby')
+      ) {
+        element.setAttribute('aria-label', name);
+        added.push('aria-label');
+      }
+      // The author's next act elsewhere clears it: a pointer down, or a key
+      // that edits or activates, outside the item. Listening starts after
+      // this turn, so the act that made the jump does not clear its mark.
+      const outsidePointer = (event: Event): void => {
         if (event.target instanceof Node && element.contains(event.target))
           return;
         unmark();
       };
+      const outsideKey = (event: KeyboardEvent): void => {
+        if (!editsOrActivates(event)) return;
+        outsidePointer(event);
+      };
       const listen = window.setTimeout(() => {
-        document.addEventListener('pointerdown', outside, true);
-        document.addEventListener('keydown', outside, true);
+        document.addEventListener('pointerdown', outsidePointer, true);
+        document.addEventListener('keydown', outsideKey, true);
       }, 0);
       marked.current = {
         element,
         release: () => {
           window.clearTimeout(listen);
-          document.removeEventListener('pointerdown', outside, true);
-          document.removeEventListener('keydown', outside, true);
+          document.removeEventListener('pointerdown', outsidePointer, true);
+          document.removeEventListener('keydown', outsideKey, true);
           element.removeAttribute('data-revealed');
+          for (const attribute of added) element.removeAttribute(attribute);
         },
       };
     };
     const show = (element: HTMLElement): void => {
+      unmark();
       openers.current.get(element)?.();
+      const added = element.hasAttribute('tabindex') ? [] : ['tabindex'];
       land(element);
-      mark(element);
+      if (added.length && !element.hasAttribute('tabindex')) added.length = 0;
+      mark(element, added);
     };
     const settle = (): void => {
       const waiting = pending.current;
@@ -189,12 +260,20 @@ export function useRevealController(): RevealController {
       }
     };
     return {
-      resolve: (path) => resolver.current?.(path) ?? null,
+      // A host with no path map (a panel used alone) keys a place by its
+      // raw path.
+      resolve: (path) =>
+        resolver.current ? resolver.current(path) : { kind: 'path', id: path },
       setResolver(next) {
         resolver.current = next;
       },
+      setNamer(next) {
+        namer.current = next;
+      },
+      clear: unmark,
       register(key, element, onReveal) {
         if (onReveal) openers.current.set(element, onReveal);
+        keys.current.set(element, key);
         // Said on the element, for whoever reads the page (and its tests).
         element.setAttribute('data-reveal-key', `${key.kind}:${key.id}`);
         if (key.part) element.setAttribute('data-reveal-part', key.part);
@@ -202,12 +281,20 @@ export function useRevealController(): RevealController {
         const set = registry.current.get(id) ?? new Set<HTMLElement>();
         set.add(element);
         registry.current.set(id, set);
+        // A key a reveal is still waiting for, closer than where it landed:
+        // the item has just been attached (a ref runs in the commit), so it
+        // lands now.
         const waiting = pending.current;
-        if (waiting && revealKeyString(waiting.chain[0]!) === id) {
-          window.clearTimeout(waiting.timer);
-          pending.current = null;
-          // The item has just been attached (a ref runs in the commit,
-          // after layout), so it lands now.
+        const at = waiting
+          ? waiting.chain.findIndex((link) => revealKeyString(link) === id)
+          : -1;
+        if (waiting && at >= 0) {
+          if (at === 0) {
+            window.clearTimeout(waiting.timer);
+            pending.current = null;
+          } else {
+            waiting.chain = waiting.chain.slice(0, at);
+          }
           show(element);
         }
         return () => {
@@ -218,12 +305,25 @@ export function useRevealController(): RevealController {
       reveal(key) {
         if (pending.current) window.clearTimeout(pending.current.timer);
         pending.current = null;
-        const exact = first(key);
-        if (exact) return show(exact);
         const chain = revealChain(key);
+        // Land at once on the closest registered link: the item itself, or
+        // — for a place no item registers (a field-level part like
+        // `.check`) — its nearest registered ancestor. Only the links
+        // closer than that wait, briefly, for a screen still mounting.
+        const at = chain.findIndex((link) => first(link) !== undefined);
+        if (at >= 0) show(first(chain[at]!)!);
+        if (at === 0) return;
+        const waiting = at > 0 ? chain.slice(0, at) : chain;
         pending.current = {
-          chain,
-          timer: window.setTimeout(settle, REVEAL_WAIT_MS),
+          chain: waiting,
+          timer: window.setTimeout(
+            at > 0
+              ? () => {
+                  pending.current = null;
+                }
+              : settle,
+            REVEAL_WAIT_MS
+          ),
         };
       },
     };
@@ -271,8 +371,13 @@ export function useRevealable(
  * one path map: `room.room.monsterBindings.gate-1.options[1]` registers as
  * `{creature, gate-1, options[1]}`. */
 export function useRevealablePath(
-  path: string | undefined
+  path: string | undefined,
+  /** Called on reveal before the item lands: open what hides it. */
+  onReveal?: () => void
 ): (element: HTMLElement | null) => void {
   const controller = useContext(RevealContext);
-  return useRevealable(path ? (controller?.resolve(path) ?? null) : null);
+  return useRevealable(
+    path ? (controller?.resolve(path) ?? null) : null,
+    onReveal
+  );
 }

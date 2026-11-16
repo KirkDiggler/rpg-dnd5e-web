@@ -22,6 +22,7 @@ import { FieldHelp } from './FieldHelp';
 import { joinName, placesOf } from './placesView';
 import { ReadBack } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
+import { RevealDiv } from './RevealDiv';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -47,6 +48,7 @@ import type {
   StudioSelection,
   StudioSocialSection,
 } from './studioSession';
+import type { RevealKey } from './useReveal';
 
 export interface StudioInspectorProps {
   session: EncounterStudioSession;
@@ -116,8 +118,54 @@ export function StudioInspector(
           <CopyId id={session.arrange.door.assetRef} label="model" />
         )}
       </div>
-      <InspectorBody {...props} />
+      <InspectorReveal {...props}>
+        <InspectorBody {...props} />
+      </InspectorReveal>
     </section>
+  );
+}
+
+const TEMPLATE_PREFIX = 'dnd5e:monsters:';
+
+/** THE SELECTED THING IS A REVEAL TARGET (rpg-project#983): a jump to a
+ * prop, a door, a region or a cast member lands on its inspector, and one to
+ * a stat block (`templates.<id>`) on its cast member's form. A creature's
+ * form registers itself (`CreatureOrders`), its lines and rows by path. */
+function InspectorReveal({
+  session,
+  inspection,
+  children,
+}: StudioInspectorProps & { children: ReactNode }): React.JSX.Element {
+  const selection = inspection.pick === null ? inspection.selection : null;
+  const arrange = session.arrange;
+  const key: RevealKey | null =
+    selection?.kind === 'prop' || selection?.kind === 'region'
+      ? { kind: selection.kind, id: selection.id }
+      : selection?.kind === 'door' && arrange?.kind === 'door'
+        ? { kind: 'door', id: arrange.door.id }
+        : selection?.kind === 'castMember'
+          ? { kind: 'cast', id: selection.ref }
+          : null;
+  const template =
+    selection?.kind === 'castMember' &&
+    selection.ref.startsWith(TEMPLATE_PREFIX) &&
+    session.document.scope.templates &&
+    Object.hasOwn(
+      session.document.scope.templates,
+      selection.ref.slice(TEMPLATE_PREFIX.length)
+    )
+      ? selection.ref.slice(TEMPLATE_PREFIX.length)
+      : null;
+  return (
+    <RevealDiv revealKey={key ?? undefined} className="es-inspector-reveal">
+      {template ? (
+        <RevealDiv revealKey={{ kind: 'template', id: template }}>
+          {children}
+        </RevealDiv>
+      ) : (
+        children
+      )}
+    </RevealDiv>
   );
 }
 

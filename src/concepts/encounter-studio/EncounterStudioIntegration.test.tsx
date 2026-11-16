@@ -7157,6 +7157,24 @@ describe('S3 the overview through the real owner', () => {
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
     );
+    // The jump lands in the prop's inspector (rpg-project#983): the place
+    // its path names, or the prop itself, is marked.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('region', { name: 'Inspector' })
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-key')
+      ).toBe('prop:altar')
+    );
+    // The prop's inspector itself is registered, so a jump with no place
+    // inside the prop lands on it too.
+    expect(
+      screen
+        .getByRole('region', { name: 'Inspector' })
+        .querySelector('.es-inspector-reveal')
+        ?.getAttribute('data-reveal-key')
+    ).toBe('prop:altar');
     localStorage.clear();
   });
 
@@ -7725,6 +7743,12 @@ describe('jumps land on the item and mark it (rpg-project#983)', () => {
     expect(place.getAttribute('title')).toBe(
       'room.room.monsterBindings.captain.options[4].failure[0]'
     );
+    // …and one key away: a Copy path control beside the place.
+    expect(
+      place
+        .parentElement!.querySelector('[aria-label="Copy path"]')!
+        .getAttribute('title')
+    ).toBe('room.room.monsterBindings.captain.options[4].failure[0]');
     fireEvent.click(place);
     const row = screen
       .getByTestId('option-captain-4-failure')

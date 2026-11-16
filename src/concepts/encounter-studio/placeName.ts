@@ -8,9 +8,7 @@
  * shape it does not know falls back to its last two segments in words.
  */
 import type { RoomDraftDocument } from '../world-building/roomDraft';
-import { segmentsOf } from './refusalJump';
-
-type Segment = string | number;
+import { locate, segmentsOf, type Segment } from './locatePath';
 
 const SEP = ' · ';
 const code = (id: string): string => `\`${id}\``;
@@ -34,11 +32,13 @@ function insideWords(rest: readonly Segment[], owner: unknown): string[] {
     const next = rest[index + 1];
     if (head === 'options' && typeof next === 'number') {
       const option = Array.isArray(options) ? options[next] : undefined;
-      const id =
+      // A line is named by its id; one the draft does not hold (or one with
+      // no id) is said by its place, plainly — never an invented id.
+      words.push(
         isRecord(option) && typeof option.id === 'string'
-          ? option.id
-          : String(next + 1);
-      words.push(`line ${code(id)}`);
+          ? `line ${code(option.id)}`
+          : `line ${next + 1}`
+      );
       index += 2;
       const verdict = rest[index];
       if (typeof verdict === 'string' && VERDICTS[verdict]) {
@@ -62,18 +62,28 @@ function insideWords(rest: readonly Segment[], owner: unknown): string[] {
       index += 2;
       continue;
     }
+    if (head === 'openings' && typeof next === 'number') {
+      words.push(`opening ${next + 1}`);
+      index += 2;
+      continue;
+    }
     words.push(wordOf(head, next));
     index += typeof next === 'number' ? 2 : 1;
   }
   return words;
 }
 
+/** A field name (`blockingStates`) reads as words; anything else is an id
+ * and is shown verbatim, in code style. */
+const FIELD = /^[a-z][a-zA-Z]*$/;
+
 /** A segment in words: `blockingStates` "blocking states", `requires[1]`
  * "requires 2". */
 function wordOf(head: Segment | undefined, next?: Segment): string {
-  const word = String(head ?? '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .toLowerCase();
+  const raw = String(head ?? '');
+  const word = FIELD.test(raw)
+    ? raw.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+    : code(raw);
   return typeof next === 'number' ? `${word} ${next + 1}` : word;
 }
 
@@ -127,118 +137,55 @@ export function placeName(
   if (trimmed === '(engine rule)') return 'an engine rule';
   const segments = segmentsOf(trimmed);
   if (!segments || segments.length === 0) return trimmed;
-  const [head, key] = segments;
-  const scope = document.scope;
-  const room = document.draft.room;
-  const join = (words: readonly string[]): string => words.join(SEP);
-  if (head === 'room' && segments[1] === 'room') {
-    const [field, id, ...rest] = segments.slice(2);
-    switch (field) {
-      case 'monsterBindings':
-        return typeof id === 'string'
-          ? join([id, ...insideWords(rest, room.monsterBindings?.[id])])
-          : fallback(segments);
-      case 'monsterDeclarations':
-        return typeof id === 'number' && room.monsterDeclarations[id]
-          ? join([
-              room.monsterDeclarations[id]!.id,
-              ...insideWords(rest, undefined),
-            ])
-          : fallback(segments);
-      case 'propBindings':
-      case 'propDeclarations':
-        return typeof id === 'string'
-          ? join([
-              id,
-              ...insideWords(
-                rest,
-                (room.propBindings as Record<string, unknown> | undefined)?.[id]
-              ),
-            ])
-          : fallback(segments);
-      case 'doorBindings':
-        return typeof id === 'string'
-          ? join([`door ${code(id)}`, ...insideWords(rest, undefined)])
-          : fallback(segments);
-      case 'regions': {
-        const region = typeof id === 'number' ? room.regions[id] : undefined;
-        return region
-          ? join([
-              `region ${code(region.name || region.id)}`,
-              ...insideWords(rest, undefined),
-            ])
-          : 'regions';
-      }
-      case 'walls':
-        return typeof id === 'number' ? `wall ${id + 1}` : 'walls';
-      case 'partyStart':
-        return 'party start';
-      default:
-        return fallback(segments);
+  const located = locate(trimmed, document);
+  if (!located) return fallback(segments);
+  const { kind, id, rest, entry } = located;
+  const join = (first: string, inside = insideWords(rest, entry)): string =>
+    [first, ...inside].join(SEP);
+  switch (kind) {
+    case 'creature':
+    case 'prop':
+    case 'faction':
+      return join(id);
+    case 'door':
+      return join(`door ${code(id)}`, insideWords(rest, undefined));
+    case 'region': {
+      const region = entry as { id: string; name?: string };
+      return join(`region ${code(region.name || region.id)}`);
     }
-  }
-  const rest = segments.slice(2);
-  switch (head) {
+    case 'wall':
+      return join(
+        `wall ${(located.index ?? 0) + 1}`,
+        insideWords(rest, undefined)
+      );
+    case 'partyStart':
+      return join('party start', insideWords(rest, undefined));
     case 'key':
       return 'the site key';
-    case 'intel': {
-      const record = typeof key === 'number' ? scope.intel?.[key] : undefined;
-      return record
-        ? join([`record ${code(record.id)}`, ...insideWords(rest, undefined)])
-        : fallback(segments);
+    case 'record':
+      return join(`record ${code(id)}`, insideWords(rest, undefined));
+    case 'disposition': {
+      const disposition = entry as { between: string[] };
+      return join(
+        `how ${disposition.between.map(code).join(' and ')} stand`,
+        insideWords(rest, undefined)
+      );
     }
-    case 'factions': {
-      const faction =
-        typeof key === 'number'
-          ? scope.factions?.[key]
-          : scope.factions?.find((entry) => entry.id === key);
-      return faction
-        ? join([faction.id, ...insideWords(rest, faction)])
-        : fallback(segments);
-    }
-    case 'dispositions': {
-      const disposition =
-        typeof key === 'number' ? scope.dispositions?.[key] : undefined;
-      return disposition
-        ? join([
-            `how ${disposition.between.map(code).join(' and ')} stand`,
-            ...insideWords(rest, undefined),
-          ])
-        : fallback(segments);
-    }
-    case 'endings': {
-      const ending = typeof key === 'number' ? scope.endings?.[key] : undefined;
-      return ending
-        ? join([`ending ${code(ending.id)}`, ...insideWords(rest, undefined)])
-        : fallback(segments);
-    }
-    case 'exits': {
-      const exit = typeof key === 'number' ? scope.exits?.[key] : undefined;
-      return exit
-        ? join([`exit ${code(exit.id)}`, ...insideWords(rest, undefined)])
-        : fallback(segments);
-    }
-    case 'concealments':
-      return typeof key === 'string'
-        ? join([`secret ${code(key)}`, ...insideWords(rest, undefined)])
-        : 'secrets';
-    case 'interactions':
-      return typeof key === 'string'
-        ? join([`conversation ${code(key)}`, ...insideWords(rest, undefined)])
-        : 'conversations';
-    case 'bundles':
-      return typeof key === 'string'
-        ? join([`bundle ${code(key)}`, ...insideWords(rest, undefined)])
-        : 'bundles';
-    case 'templates':
-      return typeof key === 'string'
-        ? join([`stat block ${code(key)}`, ...insideWords(rest, undefined)])
-        : 'stat blocks';
-    case 'behaviorDefinitions':
-      return typeof key === 'string'
-        ? join([key, ...behaviourWords(segments.slice(2))])
-        : 'behaviours';
-    default:
-      return fallback(segments);
+    case 'ending':
+      return join(`ending ${code(id)}`, insideWords(rest, undefined));
+    case 'exit':
+      return join(`exit ${code(id)}`, insideWords(rest, undefined));
+    case 'concealment':
+      return join(`secret ${code(id)}`, insideWords(rest, undefined));
+    case 'conversation':
+      return join(`conversation ${code(id)}`, insideWords(rest, undefined));
+    case 'bundle':
+      return join(`bundle ${code(id)}`, insideWords(rest, undefined));
+    case 'template':
+      return join(`stat block ${code(id)}`, insideWords(rest, undefined));
+    case 'table':
+      return join(`table ${code(id)}`, insideWords(rest, undefined));
+    case 'routine':
+      return [id, ...behaviourWords(rest)].join(SEP);
   }
 }

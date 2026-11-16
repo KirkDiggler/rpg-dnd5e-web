@@ -33,11 +33,12 @@
  * come back through the validate-only `PutDungeon` and are said at the row.
  */
 import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useRevealablePath } from '../encounter-studio/useReveal';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
 import { documentStatePicks } from './creatureStates';
 import type { RoomGameplayData } from './roomDraft';
-import { tableRowPaths, useRowRefusals } from './rowRefusals';
+import { tableRowPaths } from './rowRefusals';
 import { AnswerEntryRow, EntryList } from './SitePolicies';
 import {
   addSiteTable,
@@ -110,14 +111,10 @@ function TableRow({
    * half-typed name never becomes a table's id mid-keystroke — `FactionRow`
    * already keeps this rule for the same reason. */
   const [typedId, setTypedId] = useState(id);
-  /** A refusal's jump to one of this table's rows opens the table. */
-  const { focus } = useRowRefusals();
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const focusHere =
-    focus !== null && focus.path.startsWith(`tables.${id}.`) ? focus.nonce : 0;
-  useEffect(() => {
-    if (focusHere && detailsRef.current) detailsRef.current.open = true;
-  }, [focusHere]);
+  /** The table is a reveal target under its path (rpg-project#983); a jump
+   * to one of its rows opens it on the way (the reveal opens every closed
+   * `<details>` round the row). */
+  const revealTable = useRevealablePath(`tables.${id}`);
   const entries = authored.reduce(
     (count, key) => count + (table[key]?.length ?? 0),
     0
@@ -147,7 +144,7 @@ function TableRow({
   return (
     <li className="wb-policy-faction" data-table-id={id}>
       <details
-        ref={detailsRef}
+        ref={revealTable}
         className="wb-policy-row"
         data-testid={`site-table-${id}`}
       >

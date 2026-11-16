@@ -94,10 +94,15 @@ describe('reveal', () => {
     act(() => vi.advanceTimersByTime(0));
     fireEvent.pointerDown(screen.getByTestId('elsewhere'));
     expect(garrison.hasAttribute('data-revealed')).toBe(false);
-    // So does a key pressed elsewhere.
+    // A key that only looks around (a modifier, Tab, an arrow) keeps it.
     act(() => revealNow({ kind: 'faction', id: 'loyalists' }));
     act(() => vi.advanceTimersByTime(0));
-    fireEvent.keyDown(screen.getByTestId('elsewhere'), { key: 'Tab' });
+    const elsewhere = screen.getByTestId('elsewhere');
+    for (const key of ['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'ArrowDown'])
+      fireEvent.keyDown(elsewhere, { key });
+    expect(loyalists.getAttribute('data-revealed')).toBe('true');
+    // A key that edits or activates elsewhere clears it.
+    fireEvent.keyDown(elsewhere, { key: 'a' });
     expect(loyalists.hasAttribute('data-revealed')).toBe(false);
   });
 
@@ -169,9 +174,9 @@ describe('reveal', () => {
         part: 'options[1].failure[0].recognize',
       })
     );
+    // A field-level place no item registers lands on its nearest ancestor
+    // at once: no wait.
     const line = screen.getByRole('button', { name: 'line 2' });
-    expect(line.hasAttribute('data-revealed')).toBe(false);
-    act(() => vi.advanceTimersByTime(1000));
     expect(line.hasAttribute('data-revealed')).toBe(true);
     expect(
       screen
@@ -181,6 +186,82 @@ describe('reveal', () => {
     // The mark lasts: no timer takes it away.
     act(() => vi.advanceTimersByTime(5000));
     expect(line.getAttribute('data-revealed')).toBe('true');
+  });
+
+  it('a closer key that registers while the screen mounts takes the landing over', () => {
+    vi.useFakeTimers();
+    function Late() {
+      const [shown, setShown] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setShown(true)}>
+            mount
+          </button>
+          {shown && (
+            <Item
+              revealKey={{ kind: 'creature', id: 'gate-1', part: 'options[1]' }}
+              label="line 2"
+            />
+          )}
+        </>
+      );
+    }
+    render(
+      <RevealProvider>
+        <Trigger />
+        <Item revealKey={{ kind: 'creature', id: 'gate-1' }} label="gate-1" />
+        <Late />
+      </RevealProvider>
+    );
+    act(() =>
+      revealNow({ kind: 'creature', id: 'gate-1', part: 'options[1]' })
+    );
+    const creature = screen.getByRole('button', { name: 'gate-1' });
+    expect(creature.getAttribute('data-revealed')).toBe('true');
+    act(() => screen.getByRole('button', { name: 'mount' }).click());
+    expect(
+      screen
+        .getByRole('button', { name: 'line 2' })
+        .getAttribute('data-revealed')
+    ).toBe('true');
+    expect(creature.hasAttribute('data-revealed')).toBe(false);
+  });
+
+  it('a row that takes no focus is focused itself, never a field inside it, and is named', () => {
+    function Row() {
+      const ref = useRevealable({
+        kind: 'creature',
+        id: 'gate-1',
+        part: 'options[1]',
+      });
+      return (
+        <div ref={ref} data-testid="row">
+          <label>
+            Do{' '}
+            <select aria-label="Do">
+              <option>wave</option>
+            </select>
+          </label>
+        </div>
+      );
+    }
+    render(
+      <RevealProvider namer={(key) => `${key.id} · line ${key.part ?? ''}`}>
+        <Trigger />
+        <Row />
+        <p data-testid="elsewhere">elsewhere</p>
+      </RevealProvider>
+    );
+    act(() =>
+      revealNow({ kind: 'creature', id: 'gate-1', part: 'options[1]' })
+    );
+    const row = screen.getByTestId('row');
+    expect(document.activeElement).toBe(row);
+    expect(row.getAttribute('tabindex')).toBe('-1');
+    expect(row.getAttribute('aria-label')).toBe('gate-1 · line options[1]');
+    expect(document.activeElement).not.toBe(
+      screen.getByRole('combobox', { name: 'Do' })
+    );
   });
 
   it('a key whose thing nothing owns lands nowhere and marks nothing', () => {
