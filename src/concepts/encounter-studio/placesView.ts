@@ -255,7 +255,7 @@ export function methodName(id: string): string {
 export const BAR_HEADINGS: Record<string, string> = {
   lock: 'To pass the lock, any of:',
   hold: 'To pass the holders, any of:',
-  hidden: 'To pass the hiding, any of:',
+  hidden: 'To find the hidden way, any of:',
 };
 export const BAR_STATES: Record<string, string> = {
   lock: 'locked',

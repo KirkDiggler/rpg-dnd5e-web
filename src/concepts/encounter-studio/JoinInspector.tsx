@@ -56,7 +56,9 @@ export function JoinInspector({
       <div className="es-inspector-title">
         <h2>Join</h2>
       </div>
-      <div className="es-readback">
+      {/* The inspector body's padding, as the creature and room views have
+          it: the sentence, headings and ways share one inset edge. */}
+      <div className="es-context-panel es-readback">
         {!current && (
           <p role="status" className="es-help es-readback-notice">
             {STALE_READ_BACK_SENTENCE}
