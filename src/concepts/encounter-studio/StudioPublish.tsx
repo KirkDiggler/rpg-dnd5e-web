@@ -79,8 +79,11 @@ export interface StudioPublishProps {
   jumps: readonly RefusalJump[];
   /** The noun a jump lands on, in words, for its button. */
   nameOf(target: RefusalTarget): string;
-  /** The surface routes a jump to the selection or home section. */
-  onJump(target: RefusalTarget): void;
+  /** A path in words, for a refusal that maps to no studio noun. */
+  placeOf?(path: string): string;
+  /** The surface routes a jump to the selection or home section, and the
+   * path to the place it names. */
+  onJump(target: RefusalTarget, path: string): void;
   onClose?(): void;
   /** A new value focuses the key field: the header's jump to a refused key
    * (R34, R16). Consumed once: `onKeyFocused` resets it. */
@@ -98,6 +101,7 @@ export function StudioPublish({
   characterId,
   jumps,
   nameOf,
+  placeOf,
   onJump,
   onClose,
   focusKey = 0,
@@ -281,7 +285,12 @@ export function StudioPublish({
           <p className="es-help">
             The server refused this draft. Each refusal opens the thing to fix.
           </p>
-          <RefusalList jumps={jumps} nameOf={nameOf} onJump={onJump} />
+          <RefusalList
+            jumps={jumps}
+            nameOf={nameOf}
+            placeOf={placeOf}
+            onJump={onJump}
+          />
         </div>
       )}
     </section>
@@ -294,11 +303,16 @@ export function StudioPublish({
 export function RefusalList({
   jumps,
   nameOf,
+  placeOf,
   onJump,
 }: {
   jumps: readonly RefusalJump[];
   nameOf(target: RefusalTarget): string;
-  onJump(target: RefusalTarget): void;
+  /** A path in words (`placeName`); the raw path is its title. */
+  placeOf?(path: string): string;
+  /** The jump, with the refusal's path, so it lands on the place it names
+   * (rpg-project#983). */
+  onJump(target: RefusalTarget, path: string): void;
 }): React.JSX.Element {
   return (
     <ul className="es-refusals">
@@ -308,7 +322,7 @@ export function RefusalList({
             <button
               type="button"
               title={jump.path}
-              onClick={() => onJump(jump.target!)}
+              onClick={() => onJump(jump.target!, jump.path)}
             >
               {nameOf(jump.target)}: {jump.message}
             </button>
@@ -318,7 +332,9 @@ export function RefusalList({
               {jump.path && (
                 <>
                   {' '}
-                  <small>{jump.path}</small>
+                  <small title={jump.path}>
+                    {placeOf ? placeOf(jump.path) : jump.path}
+                  </small>
                 </>
               )}
             </span>

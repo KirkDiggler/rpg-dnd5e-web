@@ -267,13 +267,12 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
           onJump={onJump}
         />
       );
+    // The place reads as words (rpg-project#983); the raw path is its title.
+    const placeAt = (): Element =>
+      panel().querySelector('[title="room.room.monsterDeclarations[2]"]')!;
     const stale = shown(false);
-    expect(
-      within(panel()).queryByRole('button', {
-        name: 'Open room.room.monsterDeclarations[2]',
-      })
-    ).toBeNull();
-    expect(panel().textContent).toContain('room.room.monsterDeclarations[2]');
+    expect(placeAt().tagName).toBe('SPAN');
+    expect(placeAt().textContent).toBe('gate-2');
     // A connection resolves by its id and still jumps.
     expect(
       within(panel()).getAllByRole('button', {
@@ -283,11 +282,8 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
     stale.unmount();
     // Current, the same path is a jump (here to whoever stands at [2]).
     shown(true);
-    expect(
-      within(panel()).getByRole('button', {
-        name: 'Open room.room.monsterDeclarations[2]',
-      })
-    ).toBeTruthy();
+    expect(placeAt().tagName).toBe('BUTTON');
+    expect(placeAt().getAttribute('aria-label')).toBe('Open gate-2');
   });
 
   it('a not-yet-said path on the selection is shown', () => {
@@ -314,7 +310,13 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
       />
     );
     const text = panel().textContent ?? '';
-    expect(text).toContain('room.room.monsterBindings.captain.somethingNew');
+    // In words (rpg-project#983), the raw path its title.
+    expect(text).toContain('captain · something new');
+    expect(
+      panel().querySelector(
+        '[title="room.room.monsterBindings.captain.somethingNew"]'
+      )
+    ).not.toBeNull();
     expect(text).toContain('the read-back has no sentence for it yet');
     expect(text).not.toContain('not the captain’s');
   });

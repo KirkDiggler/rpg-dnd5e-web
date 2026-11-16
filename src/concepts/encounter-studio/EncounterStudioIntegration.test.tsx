@@ -5283,7 +5283,7 @@ describe('threads through the real owner (rpg-project#973)', () => {
     fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
     fireEvent.click(
       within(thread).getAllByRole('button', {
-        name: /^Open room\.room\.monsterBindings\.cook\./,
+        name: /^Open cook · /,
       })[0]!
     );
     expect(
@@ -5434,7 +5434,9 @@ describe('threads through the real owner (rpg-project#973)', () => {
     ).getByRole('region', { name: 'Read back' });
     fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
     fireEvent.click(
-      within(thread).getByRole('button', { name: 'Open endings[1]' })
+      within(thread).getByRole('button', {
+        name: /^Open ending `king-deposed`/,
+      })
     );
     const endings = within(screen.getByRole('region', { name: 'Endings' }));
     expect(
@@ -7148,7 +7150,7 @@ describe('S3 the overview through the real owner', () => {
     fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
     fireEvent.click(
       within(thread).getAllByRole('button', {
-        name: /^Open room\.room\.propBindings\.altar\./,
+        name: /^Open altar · /,
       })[0]!
     );
     expect(pressed('Build')).toBe('true');
@@ -7685,5 +7687,64 @@ describe('read-back jumps land in the ruled sections (rpg-project#970)', () => {
     );
     expect(pressed('Encounter groups', 'What is known')).toBe('true');
     expect(pressed('Encounter tools', 'Records')).toBe('true');
+  });
+});
+
+describe('jumps land on the item and mark it (rpg-project#983)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openCaptain = async (): Promise<void> => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+  };
+
+  it('a read-back statement’s place, in words, reveals the row it names in the creature’s form', async () => {
+    await openCaptain();
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    const place = (
+      await inspector.findAllByRole('button', {
+        name: 'Open captain · line `stand-aside` · on a miss',
+      })
+    )[0]!;
+    // The raw path is one hover away.
+    expect(place.getAttribute('title')).toBe(
+      'room.room.monsterBindings.captain.options[4].failure[0]'
+    );
+    fireEvent.click(place);
+    const row = screen
+      .getByTestId('option-captain-4-failure')
+      .querySelector('[data-reveal-part="options[4].failure[0]"]')!;
+    await waitFor(() => expect(row.hasAttribute('data-revealed')).toBe(true));
+  });
+
+  it('a faction named in a sentence opens Sides with that faction revealed', async () => {
+    await openCaptain();
+    fireEvent.click(
+      (
+        await within(
+          screen.getByRole('region', { name: 'Inspector' })
+        ).findAllByRole('button', { name: 'Open faction garrison' })
+      )[0]!
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('faction-garrison').hasAttribute('data-revealed')
+      ).toBe(true)
+    );
   });
 });

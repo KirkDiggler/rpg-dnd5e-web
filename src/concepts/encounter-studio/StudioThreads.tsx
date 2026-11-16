@@ -11,6 +11,7 @@
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { ReadBack } from './ReadBack';
 import { targetOfPath, type RefusalTarget } from './refusalJump';
+import { RevealLi } from './RevealDiv';
 import type { StudioReadBack } from './studioPublishing';
 import {
   hubSectionsOf,
@@ -37,7 +38,7 @@ export function StudioThreads({
   readBack: StudioReadBack;
   focus: ThreadHub | null;
   onSelect(hub: ThreadHub): void;
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
   wayOpener?(wayId: string): (() => void) | null;
 }): React.JSX.Element {
@@ -72,7 +73,10 @@ export function StudioThreads({
                   const selected =
                     focus?.kind === row.hub.kind && focus.id === row.hub.id;
                   return (
-                    <li key={`${row.hub.kind}:${row.hub.id}`}>
+                    <RevealLi
+                      key={`${row.hub.kind}:${row.hub.id}`}
+                      revealKey={{ kind: row.hub.kind, id: row.hub.id }}
+                    >
                       <button
                         type="button"
                         data-hub={row.hub.id}
@@ -92,7 +96,7 @@ export function StudioThreads({
                           </span>
                         )}
                       </button>
-                    </li>
+                    </RevealLi>
                   );
                 })}
               </ul>
@@ -108,7 +112,7 @@ export function StudioThreads({
               <button
                 type="button"
                 className="es-link"
-                onClick={() => onJump(editTarget)}
+                onClick={() => onJump(editTarget, hubPath)}
               >
                 {home.label}
               </button>

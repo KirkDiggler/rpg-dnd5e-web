@@ -1,4 +1,5 @@
 import { PlacesWayCount } from './PlacesWayCount';
+import { RevealLi } from './RevealDiv';
 import type { PlacesView } from './usePlacesView';
 
 /** The joins as a list under the rooms: each focuses and selects its mark's
@@ -24,7 +25,7 @@ export function PlacesJoinList({
       {joins.length > 0 && (
         <ul aria-label="Join list">
           {joins.map((join) => (
-            <li key={join.id}>
+            <RevealLi key={join.id} revealKey={{ kind: 'join', id: join.id }}>
               <button
                 type="button"
                 data-join-row={join.id}
@@ -40,7 +41,7 @@ export function PlacesJoinList({
               >
                 {view.nameOf(join).replace(/^Join: /, '')}
               </button>
-            </li>
+            </RevealLi>
           ))}
         </ul>
       )}

@@ -242,11 +242,10 @@ describe('StudioThreads', () => {
     fireEvent.click(
       within(threads()).getByRole('button', { name: 'Edit in Concealments' })
     );
-    expect(onJump).toHaveBeenCalledWith({
-      kind: 'home',
-      section: 'concealments',
-      id: 'kitchen-passage',
-    });
+    expect(onJump).toHaveBeenCalledWith(
+      { kind: 'home', section: 'concealments', id: 'kitchen-passage' },
+      'concealments.kitchen-passage'
+    );
   });
 
   it('a way pointer the studio cannot open is text, not a button', () => {

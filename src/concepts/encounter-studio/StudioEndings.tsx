@@ -14,6 +14,7 @@ import {
   type SiteEnding,
 } from '../world-building/siteScope';
 import { AboutPanel } from './FieldHelp';
+import { RevealLi } from './RevealDiv';
 import type { EncounterStudioSession } from './studioSession';
 
 /** An ending's forms: one key each, never `holds` (rpg-project#578, H4). */
@@ -143,7 +144,11 @@ export function StudioEndings({
       ) : (
         <ol className="es-inspector-list" aria-label="Authored endings">
           {endings.map((ending, index) => (
-            <li key={`${index}:${ending.id}`} data-ending={ending.id}>
+            <RevealLi
+              key={`${index}:${ending.id}`}
+              revealKey={{ kind: 'ending', id: ending.id }}
+              data-ending={ending.id}
+            >
               <span>
                 <strong>{ending.id}</strong>: when{' '}
                 {endingClause(ending, { names })}
@@ -186,7 +191,7 @@ export function StudioEndings({
                   Remove
                 </button>
               </span>
-            </li>
+            </RevealLi>
           ))}
         </ol>
       )}

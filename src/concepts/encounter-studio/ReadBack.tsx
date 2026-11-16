@@ -7,12 +7,14 @@ import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
   connectionJump,
   foldedOfSelection,
+  landsOn,
   readBackOfSelection,
-  statementPathJump,
   type ReadBackSelection,
   type ShownFoldedItem,
 } from './engineReadBack';
-import type { RefusalTarget } from './refusalJump';
+import { placeName } from './placeName';
+import { targetOfPath, type RefusalTarget } from './refusalJump';
+import { keyOfPath } from './revealKey';
 import type { StudioReadBack } from './studioPublishing';
 import { StudioSection } from './StudioSection';
 
@@ -24,7 +26,7 @@ export interface ReadBackProps {
   state: StudioReadBack;
   /** Select or open what a connection or a path lands on (the workspace's
    * refusal jump). */
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   /** Open the Facts section on a fact or topic. */
   onOpenFact?(id: string, hub?: string): void;
   /** What opens the join a way pointer's way goes through
@@ -208,7 +210,7 @@ export function ReadBack({
           ))
         )}
         {selected && selected.notYetSaid.length > 0 && (
-          <NotYetSaid unsaid={selected.notYetSaid} />
+          <NotYetSaid unsaid={selected.notYetSaid} document={document} />
         )}
       </StudioSection>
     </div>
@@ -281,7 +283,7 @@ function Statement({
    * of the current document, so the path is shown as text, not a jump.
    * Connections resolve by id and stay jumps. */
   current: boolean;
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
   /** What opens the join a way pointer's way goes through
    * (rpg-project#973), or null when the studio cannot: the pointer is then
@@ -330,25 +332,35 @@ function Statement({
       </button>
     );
   }
-  const pathTarget = onJump
-    ? statementPathJump(statement, selection, document)
-    : null;
-  if (pathTarget && !current)
+  // THE STATEMENT'S PLACE, IN WORDS (rpg-project#983): a link that lands on
+  // the place its path names — elsewhere, or inside the selection itself
+  // (its line, its row). The raw path is its title, for pasting.
+  const pathTarget = onJump ? targetOfPath(statement.path, document) : null;
+  const pathPart = pathTarget
+    ? keyOfPath(statement.path, document)?.part
+    : undefined;
+  const placeLink =
+    pathTarget && (!landsOn(pathTarget, selection) || pathPart)
+      ? pathTarget
+      : null;
+  const place = placeName(statement.path, document);
+  if (placeLink && !current)
     links.push(
-      <code key="path" className="es-readback-path">
-        {statement.path}
-      </code>
+      <span key="path" className="es-readback-path" title={statement.path}>
+        {place}
+      </span>
     );
-  else if (pathTarget && onJump)
+  else if (placeLink && onJump)
     links.push(
       <button
         key="path"
         type="button"
         className="es-link es-readback-ref es-readback-path"
-        aria-label={`Open ${statement.path}`}
-        onClick={() => onJump(pathTarget)}
+        aria-label={`Open ${place}`}
+        title={statement.path}
+        onClick={() => onJump(placeLink, statement.path)}
       >
-        <code>{statement.path}</code>
+        {place}
       </button>
     );
   return (
@@ -363,8 +375,10 @@ function Statement({
  * sentences are not taken for the whole file. */
 function NotYetSaid({
   unsaid,
+  document,
 }: {
   unsaid: readonly ReadBackUnsaid[];
+  document: Readonly<RoomDraftDocument>;
 }): React.JSX.Element {
   return (
     <div className="es-readback-unsaid">
@@ -372,7 +386,8 @@ function NotYetSaid({
       <ul>
         {unsaid.map((entry, index) => (
           <li key={index}>
-            <code>{entry.path}</code> ({entry.kind}): {entry.why}
+            <span title={entry.path}>{placeName(entry.path, document)}</span> (
+            {entry.kind}): {entry.why}
           </li>
         ))}
       </ul>

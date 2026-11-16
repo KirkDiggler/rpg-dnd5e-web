@@ -51,11 +51,13 @@ import {
   writeInspectorWidth,
 } from './inspectorWidth';
 import { JoinInspector } from './JoinInspector';
+import { layoutCellCenter } from './layoutGeometry';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
+import { placeName } from './placeName';
 import { PlacesJoinList } from './PlacesJoinList';
 import {
   browserPublicationStorage,
@@ -69,6 +71,8 @@ import {
   type RefusalJump,
   type RefusalTarget,
 } from './refusalJump';
+import { RevealContextProvider } from './reveal';
+import { keyOfPath, keyOfTarget } from './revealKey';
 import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -115,6 +119,7 @@ import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
+import { useRevealController } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
@@ -191,6 +196,10 @@ function StudioSurface({
   const groupTabId = (label: string): string =>
     `${navId}-group-${label.replace(/\s+/g, '-')}`;
   const sectionTabId = (key: string): string => `${navId}-section-${key}`;
+  /** The one reveal contract for every jump (rpg-project#983); items
+   * register by the same path map the jumps resolve through. */
+  const revealController = useRevealController();
+  revealController.setResolver((path) => keyOfPath(path, session.document));
   const [encounterSection, setEncounterSection] = useState<EncounterSectionKey>(
     DEFAULT_ENCOUNTER_SECTION
   );
@@ -467,6 +476,8 @@ function StudioSurface({
    * (rpg-project#970). */
   const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
+    // The hub's row in Threads, or the routine's in Behaviours, is revealed.
+    revealController.reveal({ kind: hub, id });
     if (hub === 'routine') {
       setFocusRoutine(id);
       openDefinitions('behaviours');
@@ -543,6 +554,7 @@ function StudioSurface({
       changeHome('build');
       setSidebarOpen(true);
       setPendingJoin(join.id);
+      revealController.reveal({ kind: 'join', id: join.id });
     };
   };
   // The join is selected once Build is the home, where the map's selection
@@ -850,15 +862,32 @@ function StudioSurface({
   /** A refusal lands at the thing (R17): a placed thing, door, hex or cast
    * member is selected and its inspector opened on Build; a root policy
    * opens its Encounter section, an ending its own form. */
-  const jumpTo = (target: RefusalTarget): void => {
+  /** A jump lands on the item (rpg-project#983): after the selection or
+   * section below, the item its path names — the line, the row, the post,
+   * the faction — is revealed. A path names a place inside the thing; a
+   * target with no path is revealed as the thing itself. */
+  const jumpTo = (target: RefusalTarget, path?: string): void => {
+    const key =
+      (path ? keyOfPath(path, session.document) : null) ?? keyOfTarget(target);
+    if (key) revealController.reveal(key);
     const inspect = (selected: boolean): void => {
       if (!selected) return;
       changeHome('build');
       showSection('inspector');
     };
     switch (target.kind) {
-      case 'creature':
+      case 'creature': {
+        // The map shows what the jump selected: the Layout centres on it.
+        const monster = session.document.draft.room.monsterDeclarations.find(
+          (entry) => entry.id === target.id
+        );
+        if (monster && view === 'layout')
+          onFrameChange({
+            ...frame,
+            center: layoutCellCenter(monster.startingCell.location),
+          });
         return inspect(session.creatures.select(target.id));
+      }
       case 'prop':
         return inspect(session.selectScene([target.id]));
       case 'door':
@@ -1120,9 +1149,10 @@ function StudioSurface({
           <RefusalList
             jumps={shownRefusals}
             nameOf={refusalNounName}
-            onJump={(target) => {
+            placeOf={(path) => placeName(path, session.document)}
+            onJump={(target, path) => {
               setRefusalsOpen(false);
-              jumpTo(target);
+              jumpTo(target, path);
             }}
           />
           <button type="button" onClick={closeRefusals}>
@@ -1181,9 +1211,10 @@ function StudioSurface({
               focusKey={keyFocus}
               onKeyFocused={() => setKeyFocus(0)}
               nameOf={refusalNounName}
-              onJump={(target) => {
+              placeOf={(path) => placeName(path, session.document)}
+              onJump={(target, path) => {
                 changeSiteOperation(null);
-                jumpTo(target);
+                jumpTo(target, path);
               }}
             />
           )}
@@ -1906,9 +1937,11 @@ function StudioSurface({
     </section>
   );
   return (
-    <RowRefusalsContext.Provider value={rowRefusals}>
-      {surface}
-    </RowRefusalsContext.Provider>
+    <RevealContextProvider controller={revealController}>
+      <RowRefusalsContext.Provider value={rowRefusals}>
+        {surface}
+      </RowRefusalsContext.Provider>
+    </RevealContextProvider>
   );
 }
 

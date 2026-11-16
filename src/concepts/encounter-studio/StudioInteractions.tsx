@@ -20,6 +20,7 @@ import {
   type Outcomes,
 } from '../world-building/interactionOutcomes';
 import { AboutPanel } from './FieldHelp';
+import { RevealLi } from './RevealDiv';
 import type { EncounterStudioSession } from './studioSession';
 
 /**
@@ -62,7 +63,11 @@ export function StudioInteractions({
       ) : (
         <ul className="es-inspector-list" aria-label="Authored interactions">
           {ids.map((id) => (
-            <li key={id} data-interaction={id}>
+            <RevealLi
+              key={id}
+              revealKey={{ kind: 'conversation', id }}
+              data-interaction={id}
+            >
               <strong>{id}</strong>
               <ApproachField
                 id={id}
@@ -80,7 +85,7 @@ export function StudioInteractions({
                   session.commitInteractionOutcomes(id, outcomes)
                 }
               />
-            </li>
+            </RevealLi>
           ))}
         </ul>
       )}

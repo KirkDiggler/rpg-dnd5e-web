@@ -67,7 +67,7 @@ export interface StudioInspectorProps {
   readBack?: StudioReadBack;
   /** Land on what a read-back connection or path names: the workspace's
    * refusal jump, so a sentence and a refusal land through one map. */
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   /** Select the join a door makes (rpg-project#972). */
   onOpenJoin?(joinId: string): void;
   onMoveCreature(): void;

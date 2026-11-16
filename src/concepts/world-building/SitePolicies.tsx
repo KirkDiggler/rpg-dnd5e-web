@@ -59,7 +59,9 @@ import {
 import { ActionRefList } from '../encounter-studio/ActionRefList';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
+import { RevealDiv, RevealLi } from '../encounter-studio/RevealDiv';
 import { StudioSection } from '../encounter-studio/StudioSection';
+import { useRevealable } from '../encounter-studio/useReveal';
 import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
@@ -1521,6 +1523,8 @@ function FactionRow({
   useEffect(() => setTypedId(faction.id), [faction.id, scope]);
   /** Where the engine addresses this faction (`factions[i]`): its rows and
    * lines show their own refusal, and the faction opens on one (R34). */
+  // A jump to this faction lands here (rpg-project#983).
+  const revealFaction = useRevealable({ kind: 'faction', id: faction.id });
   const at = `factions[${(scope.factions ?? []).indexOf(faction)}]`;
   const { refusals } = useRowRefusals();
   const refused = refusals.some((r) => isUnder(r.path, at));
@@ -1557,7 +1561,10 @@ function FactionRow({
   return (
     <li className="wb-policy-faction" data-faction-id={faction.id}>
       <details
-        ref={detailsRef}
+        ref={(element) => {
+          detailsRef.current = element;
+          revealFaction(element);
+        }}
         className="wb-policy-row"
         data-testid={`faction-${faction.id}`}
       >
@@ -1889,7 +1896,8 @@ function DispositionRow({
   const [a, b] = disposition.between;
   const options = factionNameOptions(scope, a, b);
   return (
-    <li
+    <RevealLi
+      path={`dispositions[${index}]`}
       className="wb-policy-disposition"
       data-disposition={disposition.between.join('|')}
     >
@@ -1966,7 +1974,7 @@ function DispositionRow({
           </button>
         </div>
       </details>
-    </li>
+    </RevealLi>
   );
 }
 
@@ -2746,8 +2754,9 @@ export function OptionsEditor({
         const commit = (next: OptionShape) => onChange(index, next);
         const line = at ? `${at}.options[${index}]` : undefined;
         return (
-          <div
+          <RevealDiv
             key={index}
+            path={line}
             className="wb-option wb-policy-block"
             data-testid={`option-${owner}-${index}`}
           >
@@ -3001,7 +3010,7 @@ export function OptionsEditor({
             >
               Remove line
             </button>
-          </div>
+          </RevealDiv>
         );
       })}
       <div className="wb-actions">

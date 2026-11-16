@@ -21,6 +21,7 @@ import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
+import { RevealLi } from './RevealDiv';
 import type { StudioReadBack } from './studioPublishing';
 
 const ROUTINE = 'routine';
@@ -40,7 +41,7 @@ export function StudioBehaviours({
   /** The selected behaviour's id. */
   focus: string | null;
   onSelect(id: string): void;
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
 }): React.JSX.Element {
   const said = readBack.readBack;
@@ -82,7 +83,11 @@ export function StudioBehaviours({
               (c) => c.role === RUNS
             );
             return (
-              <li key={id} data-routine={id}>
+              <RevealLi
+                key={id}
+                revealKey={{ kind: ROUTINE, id }}
+                data-routine={id}
+              >
                 <button
                   type="button"
                   aria-pressed={focus === id}
@@ -115,11 +120,16 @@ export function StudioBehaviours({
                     })}
                   </div>
                 )}
-              </li>
+              </RevealLi>
             );
           })}
           {unrun.map(({ id, why }) => (
-            <li key={id} data-routine={id} data-unrun="">
+            <RevealLi
+              key={id}
+              revealKey={{ kind: ROUTINE, id }}
+              data-routine={id}
+              data-unrun=""
+            >
               <button
                 type="button"
                 aria-pressed={focus === id}
@@ -128,7 +138,7 @@ export function StudioBehaviours({
                 <span className="es-threads-id">{id}</span>
               </button>
               <p className="es-help">{why}</p>
-            </li>
+            </RevealLi>
           ))}
         </ul>
         {focus && said && (

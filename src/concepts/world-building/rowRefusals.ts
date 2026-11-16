@@ -9,7 +9,14 @@
  * jump lands on it. The form judges nothing here: it only places the
  * server's words.
  */
-import { createContext, useContext, useEffect, useRef } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+} from 'react';
+import { useRevealablePath } from '../encounter-studio/useReveal';
 
 export interface RowRefusal {
   path: string;
@@ -88,17 +95,27 @@ export function rowOfPath(path: string): string | undefined {
 }
 
 /** The refusals under a row's paths, whether a jump has landed on it, and a
- * ref for the row's element, which is scrolled into view when one does. */
+ * ref for the row's element, which is scrolled into view when one does. The
+ * row is also a reveal target under its path (rpg-project#983), so any jump
+ * that names it lands on it. */
 export function useRowRefusalsAt(at: readonly string[] | undefined) {
   const { refusals, focus } = useRowRefusals();
-  const rowRef = useRef<HTMLLIElement>(null);
+  const node = useRef<HTMLLIElement | null>(null);
+  const reveal = useRevealablePath(at?.[0]);
+  const rowRef = useCallback(
+    (element: HTMLLIElement | null) => {
+      node.current = element;
+      reveal(element);
+    },
+    [reveal]
+  );
   const mine = at ? refusalsAtRow(refusals, at) : [];
   const focused =
     focus !== null && at !== undefined && at.includes(focus.path)
       ? focus.nonce
       : 0;
   useEffect(() => {
-    if (focused) rowRef.current?.scrollIntoView?.({ block: 'center' });
+    if (focused) node.current?.scrollIntoView?.({ block: 'center' });
   }, [focused]);
   return { refusals: mine, focused, rowRef };
 }

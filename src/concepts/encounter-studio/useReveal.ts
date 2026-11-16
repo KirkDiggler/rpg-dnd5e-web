@@ -58,8 +58,16 @@ export function revealChain(key: RevealKey): RevealKey[] {
 }
 
 export interface RevealController {
-  register(key: RevealKey, element: HTMLElement): () => void;
+  register(
+    key: RevealKey,
+    element: HTMLElement,
+    onReveal?: () => void
+  ): () => void;
   reveal(key: RevealKey): void;
+  /** A file path's key, through the host's one path map (the workspace
+   * sets it with the document); null without one. */
+  resolve(path: string): RevealKey | null;
+  setResolver(resolver: ((path: string) => RevealKey | null) | null): void;
 }
 
 const FOCUSABLE =
@@ -117,8 +125,12 @@ function land(element: HTMLElement): void {
  * any other host use `RevealProvider`. */
 export function useRevealController(): RevealController {
   const registry = useRef(new Map<string, Set<HTMLElement>>());
+  /** What an item does to show itself before it lands: a list opens its
+   * detail, a closed form opens. */
+  const openers = useRef(new WeakMap<HTMLElement, () => void>());
   const pending = useRef<{ chain: RevealKey[]; timer: number } | null>(null);
   const marked = useRef<{ element: HTMLElement; timer: number } | null>(null);
+  const resolver = useRef<((path: string) => RevealKey | null) | null>(null);
   useEffect(
     () => () => {
       if (pending.current) window.clearTimeout(pending.current.timer);
@@ -144,6 +156,7 @@ export function useRevealController(): RevealController {
       marked.current = { element, timer };
     };
     const show = (element: HTMLElement): void => {
+      openers.current.get(element)?.();
       land(element);
       mark(element);
     };
@@ -157,7 +170,15 @@ export function useRevealController(): RevealController {
       }
     };
     return {
-      register(key, element) {
+      resolve: (path) => resolver.current?.(path) ?? null,
+      setResolver(next) {
+        resolver.current = next;
+      },
+      register(key, element, onReveal) {
+        if (onReveal) openers.current.set(element, onReveal);
+        // Said on the element, for whoever reads the page (and its tests).
+        element.setAttribute('data-reveal-key', `${key.kind}:${key.id}`);
+        if (key.part) element.setAttribute('data-reveal-part', key.part);
         const id = revealKeyString(key);
         const set = registry.current.get(id) ?? new Set<HTMLElement>();
         set.add(element);
@@ -201,22 +222,38 @@ export function useReveal(): (key: RevealKey) => void {
 /** Register an element under a key: put the returned ref on the item. A
  * null key registers nothing. */
 export function useRevealable(
-  key: RevealKey | null | undefined
+  key: RevealKey | null | undefined,
+  /** Called on reveal before the item lands: open what hides it. */
+  onReveal?: () => void
 ): (element: HTMLElement | null) => void {
   const controller = useContext(RevealContext);
   const id = key ? revealKeyString(key) : null;
   const release = useRef<(() => void) | null>(null);
   const keyRef = useRef(key);
   keyRef.current = key;
+  const onRevealRef = useRef(onReveal);
+  onRevealRef.current = onReveal;
   return useCallback(
     (element: HTMLElement | null) => {
       release.current?.();
       release.current = null;
       if (element && controller && keyRef.current)
-        release.current = controller.register(keyRef.current, element);
+        release.current = controller.register(keyRef.current, element, () =>
+          onRevealRef.current?.()
+        );
     },
     // The ref is rebuilt when the key changes, so React re-registers it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [controller, id]
   );
+}
+
+/** Register an element under the key a file path names, through the host's
+ * one path map: `room.room.monsterBindings.gate-1.options[1]` registers as
+ * `{creature, gate-1, options[1]}`. */
+export function useRevealablePath(
+  path: string | undefined
+): (element: HTMLElement | null) => void {
+  const controller = useContext(RevealContext);
+  return useRevealable(path ? (controller?.resolve(path) ?? null) : null);
 }

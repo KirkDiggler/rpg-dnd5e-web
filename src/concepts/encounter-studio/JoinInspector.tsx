@@ -17,7 +17,7 @@ export interface JoinInspectorProps {
   document: Readonly<RoomDraftDocument>;
   /** False while the read-back is from an earlier draft. */
   current: boolean;
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
   /** What opens the join a way pointer's way goes through
    * (rpg-project#973), or null when the studio cannot: the pointer is then
@@ -111,7 +111,7 @@ function Way({
 }: {
   way: PlaceWay;
   document: Readonly<RoomDraftDocument>;
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
   /** What opens the join a way pointer's way goes through
    * (rpg-project#973), or null when the studio cannot: the pointer is then
