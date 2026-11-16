@@ -9,12 +9,13 @@ Slice [rpg-project#974](https://github.com/KirkDiggler/rpg-project/issues/974) o
 
 ## Decided
 
-- The unit is a way as a player names it: ways with the same join, bars, line option id, approaches (methods, difficulties, parts) and the same `needs` and `on-miss` connections are one, and their carriers are listed as who it is said to; ways with no line are each their own. Sentences are never compared. Including `needs`/`on-miss` keeps two same-named lines apart when they ask or cost different things — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
+- The unit is a way as a player names it: ways through one join are one when every connection is the same with only the carrier's identity taken out (its own line read by option, a connection naming the carrier as a star); carriers are listed as who it is said to; ways with no line are each their own; sentences are never compared. The first key (bars, option, approaches, needs, on-miss) folded lines that grant or draw off different things; review caught it with a probe, now a test — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - Each approach is counted once by its `by` method; a `with` method is never a row, as the engine says (rpg-toolkit#2444) — [rpg-toolkit#2445](https://github.com/KirkDiggler/rpg-toolkit/pull/2445).
 - `free` is a row like any method, since the engine says it as one; the castle's doors and floors make it the largest — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - A door or open floor is "into" both its places; a passage only into its `to`; the panel says so in one line — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - The marks are a dashed outline on a list row and a heavier dashed stroke on a map mark, with a status sentence the rows point to, so the mark is not colour alone — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - A way is a statement whose kind begins `place.way.` and that goes through a join; a join one whose kind begins `place.join.`; a hub repeat of a way under any other kind is never a way, whatever it connects (the engine's contract, not its current shape) — [`7eec955b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/7eec955b).
+- The engine's `free` is labelled "no check", with two sub-counts from connections (on a join with no bar needing nothing; carrying `needs`), and a total line sits above the table so rows that sum to 26 square with 23 ways — [`56b9f6ef`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/56b9f6ef).
 
 ## Found
 
@@ -25,4 +26,4 @@ Slice [rpg-project#974](https://github.com/KirkDiggler/rpg-project/issues/974) o
 
 ## Mistaken
 
-- none observed
+- The first grouping key named some connections instead of all but the carrier, so lines that grant or draw off different things would fold; review's probe caught it before merge — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1442#pullrequestreview-5915694790).
