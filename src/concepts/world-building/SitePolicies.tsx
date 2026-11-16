@@ -159,6 +159,12 @@ import type {
 import { WEAPON_REF_RE } from './roomDraft';
 import { RouteEditor, WaypointChips } from './RouteEditor';
 import { isRouteValue, waypointOf } from './routeEdits';
+import { LoudnessSelect, RowGrantFields } from './RowGrantFields';
+import {
+  lineNamesConversation,
+  withLoudness,
+  type GrantingRow,
+} from './rowGrants';
 import { RowRefusalLines } from './RowRefusalLines';
 import {
   isUnder,
@@ -422,6 +428,21 @@ function baseForPicker(
 /** One condition of the list. Row one's controls keep the names a single
  * `when` always had (`When for time entry`, `Within for time entry`), so a
  * table with one condition reads exactly as it did; later rows are numbered. */
+/** A heard condition with a new sound: a loudness belongs to a voice only,
+ * so another sound drops it (rpg-project#975 A). */
+function withSound(
+  base: Extract<WhenBaseForm, { kind: 'heard' }>,
+  sound: string
+): Extract<WhenBaseForm, { kind: 'heard' }> {
+  if (sound === 'voice' || base.carried?.loudness === undefined)
+    return { ...base, sound };
+  const carried = { ...base.carried };
+  delete carried.loudness;
+  return Object.keys(carried).length > 0
+    ? { ...base, sound, carried }
+    : { kind: 'heard', sound, within: base.within };
+}
+
 function WhenConditionRow({
   trigger,
   index,
@@ -588,7 +609,7 @@ function WhenConditionRow({
               placeholder="clang, or /clang|bell/"
               value={base.sound}
               onChange={(event) =>
-                commitBase({ ...base, sound: event.target.value })
+                commitBase(withSound(base, event.target.value))
               }
             />
             <datalist
@@ -631,6 +652,29 @@ function WhenConditionRow({
             />
           </ParamSlot>
           <span>rounds</span>
+          {base.sound === 'voice' && (
+            // A HEARD VOICE'S LOUDNESS (rpg-project#975 A): the quietest it
+            // may have been and still count. Only a voice has one: another
+            // sound drops it (`withSound`).
+            <>
+              <span>at least</span>
+              <LoudnessSelect
+                label={`Heard loudness${n} for ${trigger} entry`}
+                anyLabel="Any"
+                value={
+                  typeof base.carried?.loudness === 'string'
+                    ? base.carried.loudness
+                    : undefined
+                }
+                onChange={(word) => {
+                  const carried = { ...base.carried };
+                  if (word === '') delete carried.loudness;
+                  else carried.loudness = word;
+                  commitBase({ ...base, carried });
+                }}
+              />
+            </>
+          )}
         </>
       )}
       {base?.kind === 'fact' && (
@@ -996,6 +1040,7 @@ function UseLine({ entry }: { entry: AnswerEntryShape & { use: string } }) {
 function WordEntryRow({
   trigger,
   entry,
+  grants,
   onCommit,
   onRemove,
   label = trigger,
@@ -1030,6 +1075,9 @@ function WordEntryRow({
    * accepts on any key (`wordRequiredUnlessSaid`). An option's verdict rows
    * are mostly this: what the creature SAYS back. */
   allowNoWord?: boolean;
+  /** A LINE'S verdict row (rpg-project#975 A): it may grant one thing. A
+   * table row has none, so a table row is never offered a grant. */
+  grants?: { isProp: boolean; namesConversation: boolean };
 }) {
   const [open, setOpen] = useState(!collapsed);
   // A jump to a collapsed row opens it first (rpg-project#983).
@@ -1330,6 +1378,19 @@ function WordEntryRow({
             }}
           />
         </label>
+        <RevealDiv
+          path={at?.[0] ? `${at[0]}.loudness` : undefined}
+          className="wb-entry-loudness"
+        >
+          <label>
+            <span>Loudness</span>
+            <LoudnessSelect
+              label={`Loudness for ${label} entry`}
+              value={entry.loudness}
+              onChange={(word) => onCommit(withLoudness(entry, word))}
+            />
+          </label>
+        </RevealDiv>
         <label
           className="wb-entry-weight"
           title="Relative chance among eligible entries, not execution order."
@@ -1374,6 +1435,16 @@ function WordEntryRow({
         </button>
       </div>
       <SayActivityFields entry={entry} label={label} onCommit={onCommit} />
+      {grants && (
+        <RowGrantFields
+          label={label}
+          row={entry as GrantingRow}
+          at={at?.[0]}
+          isProp={grants.isProp}
+          namesConversation={grants.namesConversation}
+          onCommit={onCommit}
+        />
+      )}
       <p className="wb-help wb-entry-weight-help">
         Weight changes relative chance among eligible entries, not execution
         order.
@@ -2855,6 +2926,20 @@ export function OptionsEditor({
                 />
               </label>
             )}
+            {!isDoneOption(option) && (
+              // A line said is heard at a loudness; a line done has none
+              // (rpg-project#975 A): the select is not offered there.
+              <RevealDiv path={line ? `${line}.loudness` : undefined}>
+                <label>
+                  <span>Loudness</span>
+                  <LoudnessSelect
+                    label={`Line ${n} loudness for ${owner}`}
+                    value={option.loudness}
+                    onChange={(word) => commit(withLoudness(option, word))}
+                  />
+                </label>
+              </RevealDiv>
+            )}
             <div className="wb-option-check">
               <span>Check — any one of these</span>
               <CheckApproachRows
@@ -2993,6 +3078,10 @@ export function OptionsEditor({
                       }
                       entry={row}
                       allowNoWord
+                      grants={{
+                        isProp,
+                        namesConversation: lineNamesConversation(option),
+                      }}
                       excludeWords={isProp ? ['flee'] : []}
                       onCommit={(next) =>
                         commit(patchOptionRow(option, verdict, rowIndex, next))

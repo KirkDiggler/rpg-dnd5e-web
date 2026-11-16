@@ -684,6 +684,71 @@ button.wb-tree-row[aria-pressed='true'] {
   margin-top: 0.25rem;
 }
 
+/* A row's loudness and its grant (rpg-project#975 A): the loudness sits
+ * with the row's words; the grant is its own band under them, its fields in
+ * the same wrapping row as the row's other controls. */
+.wb-entry-loudness {
+  flex: 0 0 7rem;
+}
+
+.wb-entry-grant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--wb-border);
+}
+
+.wb-entry-grant > label {
+  flex: 0 0 9rem;
+}
+
+.wb-entry-grant-fields {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wb-entry-grant-fields > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-entry-grant-fields > .wb-check {
+  flex: 1 1 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* THE RELOCATION (R33): one piece wherever a relocation is written. */
+.wb-relocation {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wb-relocation > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-relocation-words {
+  flex: 2 1 16rem;
+}
+
+.wb-relocation > .wb-relocation-rounds {
+  flex: 0 0 5rem;
+}
+
 .wb-policy-trigger-block {
   margin-top: 0.4rem;
 }
