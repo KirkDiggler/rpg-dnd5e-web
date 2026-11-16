@@ -1,0 +1,1643 @@
+{
+  "key": "the-mad-king",
+  "name": "The Mad King’s Castle",
+  "sections": [
+    {
+      "title": "The place",
+      "groups": [
+        {
+          "title": "Where the places join",
+          "about": {
+            "kind": "site",
+            "id": "the-mad-king"
+          },
+          "statements": [
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-gatehouse:room-1-region:26369b41-e58f-475d-963a-95086d4cd868"
+              },
+              "sentence": "Gatehouse (region-gatehouse) and The Mad King’s Castle (room-1-region) join at the door `26369b41-e58f-475d-963a-95086d4cd868`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `26369b41-e58f-475d-963a-95086d4cd868`.",
+              "path": "room.room.doorBindings.26369b41-e58f-475d-963a-95086d4cd868",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-gatehouse",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "room-1-region",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "26369b41-e58f-475d-963a-95086d4cd868",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-gatehouse:room-1-region:26369b41-e58f-475d-963a-95086d4cd868:free"
+              },
+              "sentence": "Nothing bars the join of Gatehouse and The Mad King’s Castle at the door `26369b41-e58f-475d-963a-95086d4cd868`: the door `26369b41-e58f-475d-963a-95086d4cd868` is neither locked, held nor hidden, so a member opens it and walks through.",
+              "path": "room.room.doorBindings.26369b41-e58f-475d-963a-95086d4cd868",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-gatehouse:room-1-region:26369b41-e58f-475d-963a-95086d4cd868",
+                  "role": "through"
+                },
+                {
+                  "kind": "door",
+                  "id": "26369b41-e58f-475d-963a-95086d4cd868",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-barracks:region-cells:cells-wall-door"
+              },
+              "sentence": "Barracks (region-barracks) and Cells (region-cells) join at the door `cells-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `cells-wall-door`.",
+              "path": "room.room.doorBindings.cells-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-barracks",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "cells-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.lock",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-barracks:region-cells:cells-wall-door:lock:dex+dnd5e:item:thieves-tools"
+              },
+              "sentence": "The door `cells-wall-door` starts locked; beating its lock with Dexterity with `dnd5e:item:thieves-tools` against DC 13 opens it, lifting the lock bar of the join of Barracks and Cells at the door `cells-wall-door`. A miss leaves the door locked.",
+              "path": "room.room.doorBindings.cells-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-barracks:region-cells:cells-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "lock",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "door",
+                  "id": "cells-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "ability:dex",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "tool:dnd5e:item:thieves-tools",
+                  "role": "by",
+                  "value": 13
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-chapel:region-great-hall:chapel-wall-door"
+              },
+              "sentence": "Chapel (region-chapel) and Great hall (region-great-hall) join at the door `chapel-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `chapel-wall-door`.",
+              "path": "room.room.doorBindings.chapel-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-great-hall",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "chapel-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-chapel:region-great-hall:chapel-wall-door:free"
+              },
+              "sentence": "Nothing bars the join of Chapel and Great hall at the door `chapel-wall-door`: the door `chapel-wall-door` is neither locked, held nor hidden, so a member opens it and walks through.",
+              "path": "room.room.doorBindings.chapel-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-chapel:region-great-hall:chapel-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "door",
+                  "id": "chapel-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-courtyard:region-gatehouse:gate-wall-door"
+              },
+              "sentence": "Courtyard (region-courtyard) and Gatehouse (region-gatehouse) join at the door `gate-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `gate-wall-door`.",
+              "path": "room.room.doorBindings.gate-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-courtyard",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-gatehouse",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "gate-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-1:vouch"
+              },
+              "sentence": "The line `vouch` of Guard (gate-1) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls nothing; it is offered while `front-gate` is in `admitted` and the guard recognises the speaker as `admitted`; its saying makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding.",
+              "path": "room.room.monsterBindings.gate-1.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/vouch",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-1:straggler"
+              },
+              "sentence": "The line `straggler` of Guard (gate-1) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 13, or Deception against DC 15; it is offered while `front-gate` is in `admitted` and the guard does NOT recognise the speaker as `admitted` and the guard does NOT recognise the speaker as `turned-away`; its win makes the creature it is said to hold `admitted` about the speaker alone, if the guard sees the speaker, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the guard answers “Never seen you before. Unless one of that lot will speak for you.”, at `speak`; the guard comes to hold `turned-away` about the speaker alone, if the guard sees the speaker; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard recognises nobody, nobody else holds anything.",
+              "path": "room.room.monsterBindings.gate-1.options[1]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/straggler",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:deception",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "topic",
+                  "id": "turned-away",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-1:troupe"
+              },
+              "sentence": "The line `troupe` of Guard (gate-1) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Performance against DC 13, or Deception against DC 15; it is offered while the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`; the guard answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`.",
+              "path": "room.room.monsterBindings.gate-1.options[3]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/troupe",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:performance",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:deception",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "needs"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-2:vouch"
+              },
+              "sentence": "The line `vouch` of Guard (gate-2) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls nothing; it is offered while `front-gate` is in `admitted` and the guard recognises the speaker as `admitted`; its saying makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding.",
+              "path": "room.room.monsterBindings.gate-2.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/vouch",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-2:straggler"
+              },
+              "sentence": "The line `straggler` of Guard (gate-2) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 13, or Deception against DC 15; it is offered while `front-gate` is in `admitted` and the guard does NOT recognise the speaker as `admitted` and the guard does NOT recognise the speaker as `turned-away`; its win makes the creature it is said to hold `admitted` about the speaker alone, if the guard sees the speaker, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the guard answers “Never seen you before. Unless one of that lot will speak for you.”, at `speak`; the guard comes to hold `turned-away` about the speaker alone, if the guard sees the speaker; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard recognises nobody, nobody else holds anything.",
+              "path": "room.room.monsterBindings.gate-2.options[1]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/straggler",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:deception",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "topic",
+                  "id": "turned-away",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:gate-2:troupe"
+              },
+              "sentence": "The line `troupe` of Guard (gate-2) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Performance against DC 13, or Deception against DC 15; it is offered while the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`; the guard answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`.",
+              "path": "room.room.monsterBindings.gate-2.options[3]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/troupe",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:performance",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:deception",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "needs"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:guest"
+              },
+              "sentence": "The line `guest` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 11; it is offered while `front-gate` is in `fresh` or `warned-troupe`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard captain sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to `arrested` from `warned-troupe`; the guard captain answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`.",
+              "path": "room.room.monsterBindings.captain.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/guest",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 11
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:troupe"
+              },
+              "sentence": "The line `troupe` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Performance against DC 13, or Deception against DC 15; it is offered while the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to hold `admitted` about the speaker and every member of the speaker's party the guard captain sees then, and the conversation `front-gate`'s other carriers who witness it hold the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`; the guard captain answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`.",
+              "path": "room.room.monsterBindings.captain.options[1]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/troupe",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:performance",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:deception",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "needs"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:stand-aside"
+              },
+              "sentence": "The line `stand-aside` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Intimidation against DC 14; it is offered while the guard captain does NOT recognise the speaker as `wanted` and the guard captain does NOT recognise the speaker as `arrested`; its win on the row of weight 3 of 4, teaches `gate-cowed` to whoever its words reach, and a holder that knows it leaves its post; a holder the words do not reach keeps holding. On a miss: the guard captain answers “You’ll bleed first.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `party-recognized`.",
+              "path": "room.room.monsterBindings.captain.options[4]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/stand-aside",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:intimidation",
+                  "role": "by",
+                  "value": 14
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "teaches"
+                },
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:turn"
+              },
+              "sentence": "The line `turn` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 15; it is offered while the speaker knows the fact `king-burned-village`; its win teaches `guards-turned` to whoever its words reach, and a holder that knows it leaves its post; a holder the words do not reach keeps holding. On a miss: the guard captain answers “Lies. Get out before I change my mind.”, at `speak`.",
+              "path": "room.room.monsterBindings.captain.options[5]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/turn",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "needs"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.fight",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:fight"
+              },
+              "sentence": "The fight lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`: Guard (gate-1), Guard (gate-2) and Guard Captain (captain) each hold the door only while posted, up and standing on a cell of the post; one who is down, or drawn off the post, holds nothing. Failing it is losing the fight.",
+              "path": "room.room.monsterBindings.gate-1.posts",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "fight",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-courtyard:region-great-hall:hall-wall-door"
+              },
+              "sentence": "Courtyard (region-courtyard) and Great hall (region-great-hall) join at the door `hall-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `hall-wall-door`.",
+              "path": "room.room.doorBindings.hall-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-courtyard",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-great-hall",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "hall-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-great-hall:hall-wall-door:free"
+              },
+              "sentence": "Nothing bars the join of Courtyard and Great hall at the door `hall-wall-door`: the door `hall-wall-door` is neither locked, held nor hidden, so a member opens it and walks through.",
+              "path": "room.room.doorBindings.hall-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-great-hall:hall-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "door",
+                  "id": "hall-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-great-hall:region-kitchen:kitchen-wall-door"
+              },
+              "sentence": "Great hall (region-great-hall) and Kitchen (region-kitchen) join at the door `kitchen-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `kitchen-wall-door`.",
+              "path": "room.room.doorBindings.kitchen-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-great-hall",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "kitchen-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.lock",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-great-hall:region-kitchen:kitchen-wall-door:lock:str"
+              },
+              "sentence": "The door `kitchen-wall-door` starts locked; beating its lock with Strength against DC 15 opens it, lifting the lock bar of the join of Great hall and Kitchen at the door `kitchen-wall-door`. A miss leaves the door locked.",
+              "path": "room.room.doorBindings.kitchen-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-great-hall:region-kitchen:kitchen-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "lock",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "door",
+                  "id": "kitchen-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "ability:str",
+                  "role": "by",
+                  "value": 15
+                }
+              ]
+            },
+            {
+              "kind": "place.way.lock",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-great-hall:region-kitchen:kitchen-wall-door:lock:dex+dnd5e:item:thieves-tools"
+              },
+              "sentence": "The door `kitchen-wall-door` starts locked; beating its lock with Dexterity with `dnd5e:item:thieves-tools` against DC 13 opens it, lifting the lock bar of the join of Great hall and Kitchen at the door `kitchen-wall-door`. A miss leaves the door locked.",
+              "path": "room.room.doorBindings.kitchen-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-great-hall:region-kitchen:kitchen-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "lock",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "door",
+                  "id": "kitchen-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "ability:dex",
+                  "role": "by",
+                  "value": 13
+                },
+                {
+                  "kind": "method",
+                  "id": "tool:dnd5e:item:thieves-tools",
+                  "role": "by",
+                  "value": 13
+                }
+              ]
+            },
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-great-hall:region-throne-room:throne-wall-door"
+              },
+              "sentence": "Great hall (region-great-hall) and Throne room (region-throne-room) join at the door `throne-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `throne-wall-door`.",
+              "path": "room.room.doorBindings.throne-wall-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-great-hall",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-throne-room",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "throne-wall-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-great-hall:region-throne-room:throne-wall-door:free"
+              },
+              "sentence": "Nothing bars the join of Great hall and Throne room at the door `throne-wall-door`: the door `throne-wall-door` is neither locked, held nor hidden, so a member opens it and walks through.",
+              "path": "room.room.doorBindings.throne-wall-door",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-great-hall:region-throne-room:throne-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "door",
+                  "id": "throne-wall-door",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.open",
+              "about": {
+                "kind": "join",
+                "id": "open:region-armoury:region-courtyard"
+              },
+              "sentence": "Armoury (region-armoury) and Courtyard (region-courtyard) join on open floor: where their cells touch, no wall, door or opaque prop stands between them, so the two are one room as the walls make it, for sight, hearing and feet alike.",
+              "path": "room.room.regions",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-armoury",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-courtyard",
+                  "role": "joins"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:open:region-armoury:region-courtyard:free"
+              },
+              "sentence": "Nothing bars the open floor between Armoury and Courtyard: a member walks from one to the other.",
+              "path": "room.room.regions",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "open:region-armoury:region-courtyard",
+                  "role": "through"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.open",
+              "about": {
+                "kind": "join",
+                "id": "open:region-barracks:region-courtyard"
+              },
+              "sentence": "Barracks (region-barracks) and Courtyard (region-courtyard) join on open floor: where their cells touch, no wall, door or opaque prop stands between them, so the two are one room as the walls make it, for sight, hearing and feet alike.",
+              "path": "room.room.regions",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-barracks",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-courtyard",
+                  "role": "joins"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.free",
+              "about": {
+                "kind": "way",
+                "id": "way:open:region-barracks:region-courtyard:free"
+              },
+              "sentence": "Nothing bars the open floor between Barracks and Courtyard: a member walks from one to the other.",
+              "path": "room.room.regions",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "open:region-barracks:region-courtyard",
+                  "role": "through"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-chapel:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.search",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-chapel:prop-grate:search:kitchen-passage"
+              },
+              "sentence": "A search with Investigation against DC 18 finds the secret `kitchen-passage`, which hides the prop `grate`, lifting the hidden bar of the passage to Chapel by the prop `grate`: until a member knows the secret, the prop `grate` is not shown to them. A miss finds nothing.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-chapel:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hidden",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:investigation",
+                  "role": "by",
+                  "value": 18
+                }
+              ]
+            },
+            {
+              "kind": "place.way.told",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-chapel:prop-grate:told:kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Chapel by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-chapel:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hidden",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "knowledge",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel"
+              },
+              "sentence": "The line `to-chapel` of the prop `grate` carries the passage to Chapel by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-chapel:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "grate/to-chapel",
+                  "role": "by"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "needs"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-cells:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.search",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-cells:prop-grate:search:kitchen-passage"
+              },
+              "sentence": "A search with Investigation against DC 18 finds the secret `kitchen-passage`, which hides the prop `grate`, lifting the hidden bar of the passage to Cells by the prop `grate`: until a member knows the secret, the prop `grate` is not shown to them. A miss finds nothing.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-cells:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hidden",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:investigation",
+                  "role": "by",
+                  "value": 18
+                }
+              ]
+            },
+            {
+              "kind": "place.way.told",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-cells:prop-grate:told:kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Cells by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-cells:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hidden",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "knowledge",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-cells:prop-grate:line:prop-grate:to-cells"
+              },
+              "sentence": "The line `to-cells` of the prop `grate` carries the passage to Cells by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-cells:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "grate/to-cells",
+                  "role": "by"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "needs"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate"
+              },
+              "sentence": "The conversation `front-gate` is a passage from Gatehouse (region-gatehouse) and The Mad King’s Castle (room-1-region), the arrest's area, to Cells (region-cells): entering `arrested` takes the speaker's party, and entering `jailed` sets the taken down in Cells (region-cells), without walking the way between.",
+              "path": "interactions.front-gate.outcomes.arrested[0].arrest",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-gatehouse",
+                  "role": "from"
+                },
+                {
+                  "kind": "region",
+                  "id": "room-1-region",
+                  "role": "from"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate:line:gate-1:come-quietly"
+              },
+              "sentence": "The line `come-quietly` of Guard (gate-1) carries the passage to Cells by the conversation `front-gate`: it rolls nothing; it is offered while `front-gate` is in `arrested` or `jailed` and the guard recognises the speaker as `arrested` (the guard holds `arrested` about the speaker), and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed; its saying steps `front-gate` to `jailed`, whose jail sets the taken down there, without walking the way between. The party is taken on entering `arrested`, which the conversation enters from `warned-guest` on `troupe-failed` or from `warned-troupe` on `guest-failed`; the lines that step it so are a miss of `troupe` (gate-1), a miss of `troupe` (gate-2), a miss of `guest` (captain) and a miss of `troupe` (captain). Until a taken member says it, the taken stay held where they were taken.",
+              "path": "room.room.monsterBindings.gate-1.options[4]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/come-quietly",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "arrested",
+                  "role": "needs"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/guest",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/troupe",
+                  "role": "arrests"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate:line:gate-2:come-quietly"
+              },
+              "sentence": "The line `come-quietly` of Guard (gate-2) carries the passage to Cells by the conversation `front-gate`: it rolls nothing; it is offered while `front-gate` is in `arrested` or `jailed` and the guard recognises the speaker as `arrested` (the guard holds `arrested` about the speaker), and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed; its saying steps `front-gate` to `jailed`, whose jail sets the taken down there, without walking the way between. The party is taken on entering `arrested`, which the conversation enters from `warned-guest` on `troupe-failed` or from `warned-troupe` on `guest-failed`; the lines that step it so are a miss of `troupe` (gate-1), a miss of `troupe` (gate-2), a miss of `guest` (captain) and a miss of `troupe` (captain). Until a taken member says it, the taken stay held where they were taken.",
+              "path": "room.room.monsterBindings.gate-2.options[4]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/come-quietly",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "arrested",
+                  "role": "needs"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/guest",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/troupe",
+                  "role": "arrests"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate:line:captain:come-quietly"
+              },
+              "sentence": "The line `come-quietly` of Guard Captain (captain) carries the passage to Cells by the conversation `front-gate`: it rolls nothing; it is offered while `front-gate` is in `arrested` or `jailed` and the guard captain recognises the speaker as `arrested` (the guard captain holds `arrested` about the speaker), and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed; its saying steps `front-gate` to `jailed`, whose jail sets the taken down there, without walking the way between. The party is taken on entering `arrested`, which the conversation enters from `warned-guest` on `troupe-failed` or from `warned-troupe` on `guest-failed`; the lines that step it so are a miss of `troupe` (gate-1), a miss of `troupe` (gate-2), a miss of `guest` (captain) and a miss of `troupe` (captain). Until a taken member says it, the taken stay held where they were taken.",
+              "path": "room.room.monsterBindings.captain.options[2]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/come-quietly",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "arrested",
+                  "role": "needs"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-1/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "gate-2/troupe",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/guest",
+                  "role": "arrests"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/troupe",
+                  "role": "arrests"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "not_yet_said": [],
+  "folded": []
+}

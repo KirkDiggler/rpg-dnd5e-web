@@ -1470,3 +1470,110 @@
 .encounter-studio .es-open-list p {
   margin: 0.15rem 0 0;
 }
+
+/* The places mode (rpg-project#972): a floor-plan blockout. Regions stay as
+ * they are, placed nouns dim, and each join the engine says is a mark —
+ * a shape per bar, never colour alone — or a one-way dashed arrow for a
+ * passage. */
+.encounter-studio-layout[data-places]
+  :is(.es-layout-placed, .es-layout-placed-names) {
+  opacity: 0.35;
+}
+.es-places-join {
+  cursor: pointer;
+  pointer-events: visiblePainted;
+}
+/* Keyboard focus is its own ring, apart from the selected state's heavier
+ * stroke, so a focused mark is seen whether or not it is selected. */
+.es-places-join:focus {
+  outline: none;
+}
+.es-places-join:focus-visible {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: 4px;
+}
+.es-places-mark {
+  fill: var(--wb-panel);
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+}
+.es-places-mark-hidden {
+  stroke-dasharray: 3 2;
+}
+.es-places-join:is(:hover, [data-selected]) .es-places-mark,
+.es-places-join:is(:hover, [data-selected]) .es-places-passage {
+  stroke: var(--wb-text);
+  stroke-width: 3;
+}
+.es-places-passage {
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: none;
+}
+.es-places-passage-hit {
+  stroke: transparent;
+  stroke-width: 14;
+}
+.es-places-arrowhead {
+  fill: var(--wb-accent);
+}
+.es-places-unjoined {
+  fill: var(--wb-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.es-places-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid var(--wb-border);
+  padding-top: 0.5rem;
+}
+.es-places-list h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.es-places-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.es-places-list button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.es-places-list button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+}
+.encounter-studio .es-join-ways {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-join-way {
+  margin-bottom: 0.5rem;
+}
+.encounter-studio .es-join-way > p,
+.encounter-studio .es-join-sentence {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.encounter-studio .es-way-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.2rem 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-way-methods > li {
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  font-size: var(--es-text-help);
+}

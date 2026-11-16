@@ -260,6 +260,8 @@ export function connectionJump(
       return indexed('intel', scope.intel);
     case 'bundle':
       return through(`bundles.${id}`);
+    case 'concealment':
+      return through(`concealments.${id}`);
     case 'exit':
       return indexed('exits', scope.exits);
     // `routine` has no studio home yet (rpg-project#970): it stays text.

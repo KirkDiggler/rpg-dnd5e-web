@@ -109,7 +109,10 @@ import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
 } from './fixtures/castleWorkspace';
-import { castleEngineReadBack } from './fixtures/engineReadBack';
+import {
+  castleEngineReadBack,
+  castlePlacesReadBack,
+} from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
@@ -132,6 +135,7 @@ import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
+import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
 
 const groundPreview = vi.hoisted(() => ({
   catalog: null as GroundCatalog | null,
@@ -7288,5 +7292,101 @@ describe('the inspector speaks the engine’s sentences (rpg-project#968)', () =
     );
     // The choice is remembered per viewer; later tests start Folded.
     localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
+  });
+});
+
+describe('the places view through the real owner (rpg-project#972)', () => {
+  afterEach(() => localStorage.removeItem(PLACES_VIEW_STORAGE_KEY));
+
+  const mountCastle = async (): Promise<void> => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+  };
+
+  it('Places draws and lists the twelve joins; the gate opens its ways; a carrier selects its creature', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const list = await screen.findByRole('list', { name: 'Join list' });
+    await waitFor(() =>
+      expect(within(list).getAllByRole('button')).toHaveLength(12)
+    );
+    const surface = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    expect(surface.querySelectorAll('[data-join-id]')).toHaveLength(12);
+    const gateName =
+      'Join: Courtyard and Gatehouse, by the door gate-wall-door, held';
+    expect(
+      within(surface).getByRole('button', { name: gateName })
+    ).toBeTruthy();
+    fireEvent.click(within(list).getByRole('button', { name: gateName }));
+    const inspector = screen.getByRole('region', { name: 'Inspector' });
+    const holders = within(inspector).getByRole('region', {
+      name: 'To pass the holders, any of:',
+    });
+    const turn = within(holders)
+      .getAllByRole('listitem')
+      .find((way) =>
+        way.querySelector('p')?.textContent?.startsWith('The line `turn`')
+      )!;
+    fireEvent.click(
+      within(turn).getByRole('button', { name: 'Open creature captain' })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { level: 2 }
+      ).textContent
+    ).toBe('Guard Captain');
+  });
+
+  it('a lock way jumps to its door, and the door names its join', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const kitchen =
+      'Join: Great hall and Kitchen, by the door kitchen-wall-door, locked';
+    fireEvent.click(
+      within(await screen.findByRole('list', { name: 'Join list' })).getByRole(
+        'button',
+        { name: kitchen }
+      )
+    );
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByRole(
+        'button',
+        { name: 'Open door kitchen-wall-door' }
+      )[0]!
+    );
+    const doorInspector = screen.getByRole('region', { name: 'Inspector' });
+    fireEvent.click(
+      within(doorInspector).getByRole('button', { name: kitchen })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'region',
+        { name: 'To pass the lock, any of:' }
+      )
+    ).toBeTruthy();
+  });
+
+  it('with no read-back the places mode says the engine has not said the places', async () => {
+    await mountCastle();
+    fireEvent.click(button('Places'));
+    expect(
+      within(screen.getByRole('region', { name: 'Joins' })).getByRole('status')
+        .textContent
+    ).toMatch(/^The engine has not said the places yet\./);
   });
 });

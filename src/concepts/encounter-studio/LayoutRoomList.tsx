@@ -1,5 +1,5 @@
 import { markIfArmed } from '@/dev/perfMarks';
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, type ReactNode } from 'react';
 import { regionSizeText } from '../world-building/regionSize';
 import type { RoomDraft } from '../world-building/roomDraft';
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
@@ -23,7 +23,10 @@ export function LayoutRoomList({
   onCreate,
   onShowEntire,
   unappliedFinishes,
+  children,
 }: {
+  /** Shown under the rooms: the places mode's join list (rpg-project#972). */
+  children?: ReactNode;
   draft: Readonly<RoomDraft>;
   /** Regions whose wall finish is authored but not applied: a stale pattern
    * start, missing material or unresolved wall boundary. A boundary can
@@ -125,6 +128,7 @@ export function LayoutRoomList({
           New region
         </button>
       </form>
+      {children}
     </aside>
   );
 }
