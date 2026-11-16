@@ -19,6 +19,7 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - The work is split: reveal, jumps and place names here; the list-and-detail piece in the next PR on top, so each is reviewable — [lead's brief](https://github.com/KirkDiggler/rpg-project/issues/983).
 - Bundles, Records, Sides (factions and dispositions) and Conversations stay long forms of inline-edited cards: each card already is its own detail, so they get reveal registration only and no list piece — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 - A jump to a list row chooses the row (the piece's `onReveal`), so a jump into Threads, Behaviours, Secrets or Cast lands with the detail shown, not only the row marked — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
+- The mark lasts: `data-revealed="true"` stays until the next jump or a click or key press outside the item, never a timer; it is an outline inside the whole row block plus an accent tint, with a short entrance pulse that reduced motion drops — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 
 ## Found
 
@@ -27,4 +28,5 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 
 ## Mistaken
 
+- The first mark lasted 2.5 s and washed with `--wb-raised`, the very colour of the cards it sat on; on the stack the only sign left was the row's own "→", so the lead sent it back before the operator's look — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The first cut exported hooks and components from one file, which the fast-refresh lint refuses; the providers moved to `reveal.tsx` and the hooks to `useReveal.ts` before the PR — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
