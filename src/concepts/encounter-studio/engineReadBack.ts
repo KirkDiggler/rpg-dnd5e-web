@@ -31,8 +31,9 @@ import { targetOfPath, type RefusalTarget } from './refusalJump';
 
 /** The selections the inspector reads back. */
 export interface ReadBackSelection {
-  /** A placed thing, or a hub (rpg-project#973): a fact or a topic. */
-  kind: 'creature' | 'prop' | 'fact' | 'topic';
+  /** A placed thing, or a hub (rpg-project#973): a fact, a topic, a
+   * record or a concealment — any subject kind the engine groups a hub by. */
+  kind: string;
   id: string;
 }
 
@@ -222,7 +223,10 @@ export function landsOn(
 export type ReadBackJump =
   | { kind: 'target'; target: RefusalTarget }
   /** A hub: opens its thread (rpg-project#973). */
-  | { kind: 'fact'; id: string; hub: 'fact' | 'topic' };
+  | { kind: 'hub'; id: string; hub: string }
+  /** A way pointer (`{way, id, is}`, on a record's or a secret's entry):
+   * opens the way's join. It is never itself a way. */
+  | { kind: 'way'; id: string };
 
 export function connectionJump(
   connection: Pick<ReadBackConnection, 'kind' | 'id'>,
@@ -245,7 +249,11 @@ export function connectionJump(
   switch (kind) {
     case 'fact':
     case 'topic':
-      return { kind: 'fact', id, hub: kind };
+    case 'record':
+    case 'concealment':
+      return { kind: 'hub', id, hub: kind };
+    case 'way':
+      return { kind: 'way', id };
     case 'creature':
       return through(`room.room.monsterBindings.${id}`);
     case 'prop':
@@ -258,12 +266,8 @@ export function connectionJump(
       return through(`interactions.${id}`);
     case 'faction':
       return indexed('factions', scope.factions);
-    case 'record':
-      return indexed('intel', scope.intel);
     case 'bundle':
       return through(`bundles.${id}`);
-    case 'concealment':
-      return through(`concealments.${id}`);
     case 'exit':
       return indexed('exits', scope.exits);
     // `routine` has no studio home yet (rpg-project#970): it stays text.

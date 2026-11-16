@@ -26,7 +26,9 @@ export interface ReadBackProps {
    * refusal jump). */
   onJump?(target: RefusalTarget): void;
   /** Open the Facts section on a fact or topic. */
-  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** Open the join a way pointer's way goes through (rpg-project#973). */
+  onOpenWay?(wayId: string): void;
 }
 
 export const STALE_READ_BACK_SENTENCE =
@@ -72,6 +74,7 @@ export function ReadBack({
   state,
   onJump,
   onOpenFact,
+  onOpenWay,
 }: ReadBackProps): React.JSX.Element {
   const { readBack, readBackIsCurrent, unavailable } = state;
   const [chosenView, setChosenView] = useState<ReadBackView>(rememberedView);
@@ -106,6 +109,7 @@ export function ReadBack({
     current: readBackIsCurrent,
     onJump,
     onOpenFact,
+    onOpenWay,
   };
   return (
     <div className="es-context-panel">
@@ -265,6 +269,7 @@ function Statement({
   current,
   onJump,
   onOpenFact,
+  onOpenWay,
 }: {
   statement: ReadBackStatement;
   document: Readonly<RoomDraftDocument>;
@@ -275,7 +280,9 @@ function Statement({
    * Connections resolve by id and stay jumps. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** Open the join a way pointer's way goes through (rpg-project#973). */
+  onOpenWay?(wayId: string): void;
 }): React.JSX.Element {
   const seen = new Set<string>();
   const links: React.JSX.Element[] = [];
@@ -286,9 +293,11 @@ function Statement({
     const jump = connectionJump(connection, document);
     if (!jump) continue;
     const go =
-      jump.kind === 'fact'
+      jump.kind === 'hub'
         ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
-        : onJump && (() => onJump(jump.target));
+        : jump.kind === 'way'
+          ? onOpenWay && (() => onOpenWay(jump.id))
+          : onJump && (() => onJump(jump.target));
     if (!go) continue;
     links.push(
       <button

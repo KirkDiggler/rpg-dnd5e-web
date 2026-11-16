@@ -519,6 +519,27 @@ function StudioSurface({
    * (rpg-project#968, #972). */
   const readBack = studioReadBackOf(publishing, gate.state);
   const placesView = usePlacesView(session, readBack);
+  /** A way pointer on a record's or a secret's entry opens the join its way
+   * goes through, as Places selects it (rpg-project#973). The pointer names
+   * the way; the way's own statement names its join. */
+  const [pendingJoin, setPendingJoin] = useState<string | null>(null);
+  const openWay = (wayId: string): void => {
+    const join = placesView.places?.joins.find((candidate) =>
+      candidate.ways.some((way) => way.statement.about?.id === wayId)
+    );
+    if (!join) return;
+    changeHome('build');
+    setSidebarOpen(true);
+    setPendingJoin(join.id);
+  };
+  // The join is selected once Build is the home, where the map's selection
+  // can be cleared for it.
+  const { selectJoin } = placesView;
+  useEffect(() => {
+    if (pendingJoin === null || home !== 'build') return;
+    setPendingJoin(null);
+    selectJoin(pendingJoin);
+  }, [pendingJoin, home, selectJoin]);
   useEffect(() => {
     if (seededFor.current === draftId) return;
     seededFor.current = draftId;
@@ -1481,6 +1502,7 @@ function StudioSurface({
                 current={placesView.current}
                 onJump={jumpTo}
                 onOpenFact={openFact}
+                onOpenWay={openWay}
               />
             )}
             {home === 'build' && !placesView.selectedJoin && (
@@ -1492,6 +1514,7 @@ function StudioSurface({
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
                 onOpenFact={openFact}
+                onOpenWay={openWay}
                 readBack={readBack}
                 onOpenJoin={placesView.selectJoin}
                 onJump={jumpTo}
@@ -1782,6 +1805,11 @@ function StudioSurface({
               onSelect={setFocusHub}
               onJump={jumpTo}
               onOpenFact={openFact}
+              onOpenWay={openWay}
+              onConfigure={(section) => {
+                changeHome('encounter');
+                setEncounterSection(section);
+              }}
             />
           )}
           <RoutePickContext.Provider value={routePicking}>

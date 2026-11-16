@@ -5317,6 +5317,77 @@ describe('threads through the real owner (rpg-project#973)', () => {
     ).toContain('Fact `guards-turned`');
   });
 
+  it('the secret passage reads as one chain, by clicks (rpg-project#960)', async () => {
+    gate.state = 'live';
+    const readBack = castleThreadsReadBack();
+    readBack.sections.unshift(...castlePlacesReadBack().sections);
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    const inspector = () =>
+      within(screen.getByRole('region', { name: 'Inspector' }));
+    const threads = () =>
+      within(screen.getByRole('region', { name: 'Threads' }));
+    const thread = () =>
+      within(threads().getByRole('region', { name: 'Read back' }));
+    // 1. The scullion's line tells the record.
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="scullion"] circle')!,
+      { button: 0 }
+    );
+    fireEvent.click(
+      (
+        await inspector().findAllByRole('button', {
+          name: 'Open record kitchen-way',
+        })
+      )[0]!
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-way\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 2. The record reveals the secret.
+    fireEvent.click(
+      thread().getAllByRole('button', {
+        name: 'Open concealment kitchen-passage',
+      })[0]!
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-passage\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 3. The secret's way pointers open the passage joins it bars.
+    fireEvent.click(
+      thread().getByRole('button', {
+        name: 'Open way way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel',
+      })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Join'
+    );
+    expect(
+      screen.getByRole('region', { name: 'Inspector' }).textContent
+    ).toContain('is a passage to Chapel (region-chapel)');
+    // 4. Back to the secret: it hides the grate.
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      thread().getAllByRole('button', { name: 'Open prop grate' })[0]!
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Grate by the Hearth'
+    );
+  });
+
   it('a thread’s entry opens the ending that asks it', async () => {
     await openThreads();
     fireEvent.click(await waitFor(() => hub('throne-taken')));

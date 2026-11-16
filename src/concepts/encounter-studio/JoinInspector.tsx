@@ -18,7 +18,9 @@ export interface JoinInspectorProps {
   /** False while the read-back is from an earlier draft. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** Open the join a way pointer's way goes through (rpg-project#973). */
+  onOpenWay?(wayId: string): void;
 }
 
 /** The studio's own words on this screen: the headings. Every sentence is
@@ -36,6 +38,7 @@ export function JoinInspector({
   current,
   onJump,
   onOpenFact,
+  onOpenWay,
 }: JoinInspectorProps): React.JSX.Element {
   const sections = waySectionsOf(join);
   const wayList = (ways: readonly PlaceWay[]) => (
@@ -47,6 +50,7 @@ export function JoinInspector({
           document={document}
           onJump={onJump}
           onOpenFact={onOpenFact}
+          onOpenWay={onOpenWay}
         />
       ))}
     </ul>
@@ -99,11 +103,14 @@ function Way({
   document,
   onJump,
   onOpenFact,
+  onOpenWay,
 }: {
   way: PlaceWay;
   document: Readonly<RoomDraftDocument>;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** Open the join a way pointer's way goes through (rpg-project#973). */
+  onOpenWay?(wayId: string): void;
 }): React.JSX.Element {
   const jumps = (label: string, connections: readonly ReadBackConnection[]) => {
     const seen = new Set<string>();
@@ -115,9 +122,11 @@ function Way({
       const jump = connectionJump(connection, document);
       const go = !jump
         ? undefined
-        : jump.kind === 'fact'
+        : jump.kind === 'hub'
           ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
-          : onJump && (() => onJump(jump.target));
+          : jump.kind === 'way'
+            ? onOpenWay && (() => onOpenWay(jump.id))
+            : onJump && (() => onJump(jump.target));
       if (!go) continue;
       buttons.push(
         <button

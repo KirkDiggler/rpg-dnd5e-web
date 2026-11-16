@@ -145,4 +145,62 @@ describe('StudioThreads', () => {
       'The engine has not said the threads yet. The server is not accepting authored encounters.'
     );
   });
+
+  it('lists the records and secrets the engine says, each with its counts', () => {
+    show(null);
+    const rows = (list: string) =>
+      within(within(threads()).getByRole('list', { name: list }))
+        .getAllByRole('button')
+        .map((button) => `${button.dataset.hub}: ${button.textContent}`);
+    expect(rows('Records')).toEqual([
+      'captains-orders: captains-orders hold 1',
+      'cooks-ledger: cooks-ledger hold 1',
+      'key-bearer: key-bearer hold 4',
+      'king-whereabouts: king-whereabouts hold 4',
+      'kitchen-way: kitchen-way tell 1 · lift 2',
+    ]);
+    expect(rows('Secrets')).toEqual([
+      'kitchen-passage: kitchen-passage reveal 1 · find 1 · bar 2 · need 2',
+    ]);
+  });
+
+  it('a record nothing holds or tells, and a secret no record reveals, are marked', () => {
+    const readBack = castleThreadsReadBack();
+    const groups = readBack.sections.flatMap((section) => section.groups);
+    const way = groups.find((g) => g.about?.id === 'kitchen-way')!;
+    way.statements = way.statements.filter((st) => st.kind !== 'record.tell');
+    const secret = groups.find((g) => g.about?.id === 'kitchen-passage')!;
+    secret.statements = secret.statements.filter(
+      (st) => st.kind !== 'secret.reveal'
+    );
+    show(null, { ...state(), readBack });
+    expect(row('Records', 'kitchen-way').textContent).toContain(
+      'nothing holds or tells it'
+    );
+    expect(row('Secrets', 'kitchen-passage').textContent).toContain(
+      'no record reveals it'
+    );
+    expect(row('Records', 'cooks-ledger').textContent).not.toContain('nothing');
+  });
+
+  it('a record’s thread is its Read back, and links to its editing home', () => {
+    const onConfigure = vi.fn();
+    render(
+      <StudioThreads
+        document={castle}
+        readBack={state()}
+        focus={{ kind: 'record', id: 'kitchen-way' }}
+        onSelect={vi.fn()}
+        onConfigure={onConfigure}
+      />
+    );
+    const thread = within(threads()).getByRole('region', { name: 'Read back' });
+    expect(thread.textContent).toContain(
+      'Told by: saying `favour` (scullion).'
+    );
+    fireEvent.click(
+      within(threads()).getByRole('button', { name: 'Edit in Intel' })
+    );
+    expect(onConfigure).toHaveBeenCalledWith('intel');
+  });
 });

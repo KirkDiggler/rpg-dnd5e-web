@@ -3,6 +3,93 @@
   "name": "The Mad King’s Castle",
   "sections": [
     {
+      "title": "Creatures",
+      "groups": [
+        {
+          "title": "Commoner (scullion)",
+          "about": {
+            "kind": "creature",
+            "id": "scullion"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "Commoner (scullion) is a dnd5e:monsters:commoner of the faction `kitchen`, standing at q -19, r -9 in Kitchen (region-kitchen), facing ne; it looks like dnd5e:npcs:kingdom:peasant-female-01.",
+              "path": "room.room.monsterDeclarations[10]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "kitchen",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The speaker can say the line “There's a coin in it if you know a way out of here.” (`favour`) to Commoner (scullion). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.scullion.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "scullion",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The line “There's a coin in it if you know a way out of here.” (`favour`) is offered to a speaker only while the speaker carries the prop `purse`.",
+              "path": "room.room.monsterBindings.scullion.options[0].requires",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "purse",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, Commoner (scullion) answers “The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.”, at `speak`: its words reach everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (scullion) answer and caught none of the line is told only that Commoner (scullion) answered and what Commoner (scullion) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "Topics",
       "groups": [
         {
@@ -1068,10 +1155,583 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Records",
+      "groups": [
+        {
+          "title": "Record `captains-orders`",
+          "about": {
+            "kind": "record",
+            "id": "captains-orders"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "captains-orders"
+              },
+              "sentence": "The record `captains-orders`: whoever comes to hold it learns the fact `party-recognized`.",
+              "path": "intel[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "captains-orders"
+              },
+              "sentence": "The prop The Captain’s Orders (orders) can be picked up and carried; it holds the records `captains-orders`, so whoever takes it comes to hold them.",
+              "path": "room.room.propBindings.orders",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "captains-orders",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `cooks-ledger`",
+          "about": {
+            "kind": "record",
+            "id": "cooks-ledger"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "cooks-ledger"
+              },
+              "sentence": "The record `cooks-ledger`: whoever comes to hold it learns the fact `king-burned-village`.",
+              "path": "intel[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "cooks-ledger"
+              },
+              "sentence": "The prop Ledger (ledger) can be picked up and carried; it holds the records `cooks-ledger`, so whoever takes it comes to hold them.",
+              "path": "room.room.propBindings.ledger",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cooks-ledger",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `key-bearer`",
+          "about": {
+            "kind": "record",
+            "id": "key-bearer"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "The record `key-bearer`: whoever comes to hold it learns the fact `sergeant-holds-keys`.",
+              "path": "intel[3]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "sergeant-holds-keys",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-1) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-1.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-2) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-2.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-3) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-3.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-4) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-4.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `king-whereabouts`",
+          "about": {
+            "kind": "record",
+            "id": "king-whereabouts"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "The record `king-whereabouts`: whoever comes to hold it learns the fact `king-in-throne-room`.",
+              "path": "intel[2]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-in-throne-room",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-1) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-1.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-2) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-2.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-3) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-3.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-4) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-4.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `kitchen-way`",
+          "about": {
+            "kind": "record",
+            "id": "kitchen-way"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            },
+            {
+              "kind": "record.tell",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            },
+            {
+              "kind": "record.lift",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Chapel by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-chapel:prop-grate:told:kitchen-way",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "record.lift",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Cells by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-cells:prop-grate:told:kitchen-way",
+                  "role": "is"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Secrets",
+      "groups": [
+        {
+          "title": "Secret `kitchen-passage`",
+          "about": {
+            "kind": "concealment",
+            "id": "kitchen-passage"
+          },
+          "statements": [
+            {
+              "kind": "secret.hide",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "hides"
+                }
+              ]
+            },
+            {
+              "kind": "secret.reveal",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            },
+            {
+              "kind": "secret.find",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "A search with Investigation against DC 18 finds the secret `kitchen-passage`.",
+              "path": "concealments.kitchen-passage.checks",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "finds"
+                }
+              ]
+            },
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-chapel` of the prop `grate` carries the passage to Chapel by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-cells` of the prop `grate` carries the passage to Cells by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-cells:prop-grate:line:prop-grate:to-cells",
+                  "role": "is"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "not_yet_said": [],
   "folded": [
+    {
+      "title": "Creatures",
+      "items": [
+        {
+          "text": "Commoner (scullion): a dnd5e:monsters:commoner of `kitchen` at q -19, r -9 in Kitchen, facing ne; looks like dnd5e:npcs:kingdom:peasant-female-01",
+          "paths": ["room.room.monsterDeclarations[10]"],
+          "base": "room.room.monsterBindings.scullion",
+          "items": [
+            {
+              "text": "At `speak`, the commoner's words reach everyone in the commoner's room (the wall partition the commoner stands in), and anyone in the next room within 30 feet of the commoner by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand.",
+              "paths": [
+                "room.room.monsterBindings.scullion.options[0].success[0]",
+                "room.room.monsterBindings.scullion.options[0].success[0].tells"
+              ]
+            },
+            {
+              "text": "“There's a coin in it if you know a way out of here.” (`favour`), said to the commoner; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.monsterBindings.scullion.options[0]"],
+              "base": "room.room.monsterBindings.scullion.options[0]",
+              "items": [
+                {
+                  "text": "Offered while: the speaker carries the prop `purse`.",
+                  "paths": [
+                    "room.room.monsterBindings.scullion.options[0].requires"
+                  ]
+                },
+                {
+                  "text": "When said: the commoner answers “The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.”, at `speak`; every member the commoner's words reach comes to hold the record `kitchen-way`",
+                  "paths": [
+                    "room.room.monsterBindings.scullion.options[0].success[0]",
+                    "room.room.monsterBindings.scullion.options[0].success[0].tells"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
     {
       "title": "Topics",
       "items": [
@@ -1234,6 +1894,110 @@
             {
               "text": "Asked by: the ending `king-deposed`.",
               "paths": ["endings[1]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Records",
+      "items": [
+        {
+          "text": "Record `captains-orders` — The record `captains-orders`: whoever comes to hold it learns the fact `party-recognized`.",
+          "paths": ["intel[1]"],
+          "items": [
+            {
+              "text": "Held by: the prop `orders`.",
+              "paths": ["room.room.propBindings.orders"]
+            }
+          ]
+        },
+        {
+          "text": "Record `cooks-ledger` — The record `cooks-ledger`: whoever comes to hold it learns the fact `king-burned-village`.",
+          "paths": ["intel[0]"],
+          "items": [
+            {
+              "text": "Held by: the prop `ledger`.",
+              "paths": ["room.room.propBindings.ledger"]
+            }
+          ]
+        },
+        {
+          "text": "Record `key-bearer` — The record `key-bearer`: whoever comes to hold it learns the fact `sergeant-holds-keys`.",
+          "paths": ["intel[3]"],
+          "items": [
+            {
+              "text": "Held by: the creature `prisoner-1`; the creature `prisoner-2`; the creature `prisoner-3`; the creature `prisoner-4`.",
+              "paths": [
+                "room.room.monsterBindings.prisoner-1.holds",
+                "room.room.monsterBindings.prisoner-2.holds",
+                "room.room.monsterBindings.prisoner-3.holds",
+                "room.room.monsterBindings.prisoner-4.holds"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Record `king-whereabouts` — The record `king-whereabouts`: whoever comes to hold it learns the fact `king-in-throne-room`.",
+          "paths": ["intel[2]"],
+          "items": [
+            {
+              "text": "Held by: the creature `prisoner-1`; the creature `prisoner-2`; the creature `prisoner-3`; the creature `prisoner-4`.",
+              "paths": [
+                "room.room.monsterBindings.prisoner-1.holds",
+                "room.room.monsterBindings.prisoner-2.holds",
+                "room.room.monsterBindings.prisoner-3.holds",
+                "room.room.monsterBindings.prisoner-4.holds"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Record `kitchen-way` — The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+          "paths": ["intel[4]"],
+          "items": [
+            {
+              "text": "Told by: saying `favour` (scullion).",
+              "paths": [
+                "room.room.monsterBindings.scullion.options[0].success[0].tells"
+              ]
+            },
+            {
+              "text": "Lifts the hidden bar of: the told way through `passage:region-kitchen:region-chapel:prop-grate`; the told way through `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": ["intel[4]", "intel[4]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Secrets",
+      "items": [
+        {
+          "text": "Secret `kitchen-passage` — The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+          "paths": ["concealments.kitchen-passage"],
+          "items": [
+            {
+              "text": "Revealed by: the record `kitchen-way`.",
+              "paths": ["intel[4]"]
+            },
+            {
+              "text": "Found by: a search with Investigation against DC 18 finds the secret `kitchen-passage`.",
+              "paths": ["concealments.kitchen-passage.checks"]
+            },
+            {
+              "text": "Bars: the join `passage:region-kitchen:region-chapel:prop-grate`; the join `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": [
+                "room.room.propBindings.grate.options[0].success[0].relocate",
+                "room.room.propBindings.grate.options[1].success[0].relocate"
+              ]
+            },
+            {
+              "text": "Needed by: the passage way through `passage:region-kitchen:region-chapel:prop-grate`; the passage way through `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": [
+                "room.room.propBindings.grate.options[0]",
+                "room.room.propBindings.grate.options[1]"
+              ]
             }
           ]
         }

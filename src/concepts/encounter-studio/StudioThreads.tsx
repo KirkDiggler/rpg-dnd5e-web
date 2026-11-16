@@ -1,26 +1,29 @@
 /**
- * THREADS FROM A HUB (rpg-project#973, R32). A hub is a fact or a topic the
- * engine says: its "Facts" and "Topics" sections hold one group per hub
- * (about `{fact|topic, id}`), and the folded read-back says each hub's
- * thread in its own words ("Taught by:", "Asked by:", "Wakes:"). The thread
- * is the Read back of that hub, folded by default with the full sentences
- * behind each entry, every jump through the one path map. Nothing is
- * stored: the list is the engine's, read from the last read-back.
- *
- * The row's counts and its mark are a presence check over the engine's own
- * entries in the hub's group, keyed on the engine's kinds: `fact.teach` /
- * `topic.grant` teach it, `fact.ask` / `topic.ask` ask it.
+ * THREADS FROM A HUB (rpg-project#973, R32). A hub is a fact, a topic, a
+ * record or a secret the engine says: its hub sections hold one group per
+ * hub, and the folded read-back says each hub's thread in its own words
+ * ("Taught by:", "Asked by:", "Held by:", "Told by:", "Revealed by:",
+ * "Bars:" …). The thread is the Read back of that hub, folded by default
+ * with the full sentences behind each entry, every jump through the one
+ * path map. Nothing is stored: the list is the engine's, read from the last
+ * read-back (`threadHubs.ts` says which sections and which checks).
  */
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { ReadBack } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import type { StudioReadBack } from './studioPublishing';
 import {
-  hubsOf,
+  hubSectionsOf,
   NO_THREADS_SENTENCE,
-  TAUGHT,
   type ThreadHub,
 } from './threadHubs';
+
+/** Where a hub is edited: the thread reads it, its home writes it. */
+export type HubHome = 'intel' | 'concealments';
+const EDITING_HOMES: Record<string, { section: HubHome; label: string }> = {
+  record: { section: 'intel', label: 'Edit in Intel' },
+  concealment: { section: 'concealments', label: 'Edit in Concealments' },
+};
 
 export function StudioThreads({
   document,
@@ -29,19 +32,21 @@ export function StudioThreads({
   onSelect,
   onJump,
   onOpenFact,
+  onOpenWay,
+  onConfigure,
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
   focus: ThreadHub | null;
   onSelect(hub: ThreadHub): void;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(id: string, hub?: string): void;
+  onOpenWay?(wayId: string): void;
+  /** Open a hub's editing home. */
+  onConfigure?(section: HubHome): void;
 }): React.JSX.Element {
-  const hubs = hubsOf(readBack.readBack);
-  const groups: [ThreadHub['kind'], string][] = [
-    ['fact', 'Facts'],
-    ['topic', 'Topics'],
-  ];
+  const sections = hubSectionsOf(readBack.readBack);
+  const home = focus ? EDITING_HOMES[focus.kind] : undefined;
   return (
     <section className="es-threads wb-panel" aria-label="Threads">
       <h2>Threads</h2>
@@ -52,58 +57,59 @@ export function StudioThreads({
       )}
       <div className="es-threads-body">
         <div className="es-threads-hubs">
-          {groups.map(([kind, title]) =>
-            hubs[kind].length === 0 ? null : (
-              <div key={kind}>
-                <h3>{title}</h3>
-                <ul aria-label={title} className="es-threads-list">
-                  {hubs[kind].map((row) => {
-                    const mark =
-                      row.asked === 0 && row.taught > 0
-                        ? `${TAUGHT[kind]}, never asked`
-                        : row.taught === 0 && row.asked > 0
-                          ? `asked, never ${TAUGHT[kind]}`
-                          : null;
-                    const selected =
-                      focus?.kind === kind && focus.id === row.hub.id;
-                    return (
-                      <li key={row.hub.id}>
-                        <button
-                          type="button"
-                          data-hub={row.hub.id}
-                          aria-pressed={selected}
-                          onClick={() => onSelect(row.hub)}
-                        >
-                          <span className="es-threads-id">{row.hub.id}</span>{' '}
-                          <small>
-                            {`${TAUGHT[kind]} by ${row.taught}, asked by ${row.asked}`}
-                          </small>
-                          {mark && (
-                            <span className="es-fact-mark" data-mark={mark}>
-                              {' '}
-                              {mark}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )
-          )}
+          {sections.map((section) => (
+            <div key={section.title}>
+              <h3>{section.title}</h3>
+              <ul aria-label={section.title} className="es-threads-list">
+                {section.rows.map((row) => {
+                  const selected =
+                    focus?.kind === row.hub.kind && focus.id === row.hub.id;
+                  return (
+                    <li key={`${row.hub.kind}:${row.hub.id}`}>
+                      <button
+                        type="button"
+                        data-hub={row.hub.id}
+                        data-hub-kind={row.hub.kind}
+                        aria-pressed={selected}
+                        onClick={() => onSelect(row.hub)}
+                      >
+                        <span className="es-threads-id">{row.hub.id}</span>{' '}
+                        <small>{row.summary}</small>
+                        {row.mark && (
+                          <span className="es-fact-mark" data-mark={row.mark}>
+                            {' '}
+                            {row.mark}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </div>
         {focus && readBack.readBack && (
           <div
             className="es-threads-thread"
             data-thread={`${focus.kind}:${focus.id}`}
           >
+            {home && onConfigure && (
+              <button
+                type="button"
+                className="es-link"
+                onClick={() => onConfigure(home.section)}
+              >
+                {home.label}
+              </button>
+            )}
             <ReadBack
               document={document}
               selection={focus}
               state={readBack}
               onJump={onJump}
               onOpenFact={onOpenFact}
+              onOpenWay={onOpenWay}
             />
           </div>
         )}

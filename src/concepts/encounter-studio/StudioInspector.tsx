@@ -59,7 +59,9 @@ export interface StudioInspectorProps {
   onConfigure(section: StudioSocialSection): void;
   /** Open the Facts section on one fact or topic, from a read-back
    * connection. */
-  onOpenFact?(fact: string, hub?: 'fact' | 'topic'): void;
+  onOpenFact?(fact: string, hub?: string): void;
+  /** Open the join a way pointer names (rpg-project#973). */
+  onOpenWay?(wayId: string): void;
   /** The engine's read-back (rpg-project#968, R25), from the publishing
    * hook. Absent, the panel says the server has not checked the draft. */
   readBack?: StudioReadBack;
@@ -468,6 +470,7 @@ function CreatureView({
   session,
   onConfigure,
   onOpenFact,
+  onOpenWay,
   readBack,
   onJump,
   onMoveCreature,
@@ -483,6 +486,7 @@ function CreatureView({
           state={readBack ?? NO_READ_BACK}
           onJump={onJump}
           onOpenFact={onOpenFact}
+          onOpenWay={onOpenWay}
         />
       )}
       <Form
@@ -630,6 +634,7 @@ function PropView({
   session,
   onConfigure,
   onOpenFact,
+  onOpenWay,
   readBack,
   onJump,
   inspection,
@@ -644,6 +649,7 @@ function PropView({
           state={readBack ?? NO_READ_BACK}
           onJump={onJump}
           onOpenFact={onOpenFact}
+          onOpenWay={onOpenWay}
         />
       )}
       <Form session={session} onConfigure={onConfigure} />
