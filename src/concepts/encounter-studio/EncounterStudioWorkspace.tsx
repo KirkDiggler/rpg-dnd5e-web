@@ -468,6 +468,17 @@ function StudioSurface({
   const openDefinitions = (section: StudioSocialSection): void => {
     changeHome('encounter');
     setEncounterSection(section);
+    // From a creature's inspector, "Edit sides" lands on its faction and
+    // "Open behaviours" on the behaviour it runs (rpg-project#983).
+    if (session.arrange?.kind !== 'actor') return;
+    const binding = session.document.draft.room.monsterBindings?.[
+      session.arrange.monster.id
+    ] as { faction?: string; behaviors?: { use?: unknown }[] } | undefined;
+    const use = binding?.behaviors?.[0]?.use;
+    if (section === 'factions' && binding?.faction)
+      revealController.reveal({ kind: 'faction', id: binding.faction });
+    if (section === 'behaviours' && typeof use === 'string')
+      revealController.reveal({ kind: 'routine', id: use });
   };
   /** The hub a read-back connection named: Threads opens on its thread
    * (rpg-project#973). */
@@ -888,8 +899,17 @@ function StudioSurface({
           });
         return inspect(session.creatures.select(target.id));
       }
-      case 'prop':
+      case 'prop': {
+        const item = session.document.draft.scene.items.find(
+          (entry) => entry.id === target.id
+        );
+        if (item && view === 'layout')
+          onFrameChange({
+            ...frame,
+            center: { x: item.transform.x, z: item.transform.z },
+          });
         return inspect(session.selectScene([target.id]));
+      }
       case 'door':
         return inspect(session.doorEditing.select(target.target));
       case 'hex':

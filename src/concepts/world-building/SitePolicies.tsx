@@ -2412,11 +2412,18 @@ export function CreatureOrders({
   placementNames,
   titled = true,
 }: CreatureOrdersProps) {
+  // A jump to this creature lands on its form; a jump to a place in it that
+  // nothing smaller claims lands here too (rpg-project#983).
+  const revealCreature = useRevealable({ kind: 'creature', id: monster.id });
   const faction = binding?.faction
     ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
     : undefined;
   return (
-    <div className="wb-creature-orders" aria-label="Selected creature">
+    <div
+      ref={revealCreature}
+      className="wb-creature-orders"
+      aria-label="Selected creature"
+    >
       <AboutPanel>
         <p data-testid="temper-asymmetry">
           A faction’s `temper` is a word or a mix; a placement’s is one word,
