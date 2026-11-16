@@ -6198,6 +6198,16 @@ describe('S1 the cast through the real owner', () => {
       inspector().getByRole('button', { name: 'Open cast member Guard' })
     );
     expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+    // It is a jump like any other (rpg-project#983): the member's form in
+    // the inspector is landed on and marked.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('region', { name: 'Inspector' })
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-key')
+      ).toMatch(/^(cast|template):/)
+    );
   });
 
   it("deleting the selected member's template falls back to nothing", async () => {
@@ -7770,5 +7780,33 @@ describe('jumps land on the item and mark it (rpg-project#983)', () => {
         screen.getByTestId('faction-garrison').hasAttribute('data-revealed')
       ).toBe(true)
     );
+  });
+});
+
+describe('the list-and-detail piece takes its height from its container (rpg-project#984)', () => {
+  // jsdom cannot measure, so this pins the chain the CSS hangs its
+  // `flex: 1; min-height: 0` on: home → group → panel → section → piece.
+  // On the stack, the Encounter home's scrollHeight equals its clientHeight
+  // on these four screens; only the two panes scroll.
+  it('a list-and-detail screen fills the panel; a long form scrolls in it as one pane', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    const panel = (): HTMLElement =>
+      document.querySelector<HTMLElement>('.es-encounter-panel')!;
+    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours']) {
+      fireEvent.click(encounterSection(name));
+      expect(panel().getAttribute('data-layout')).toBe('list-detail');
+      expect(
+        panel().querySelector(':scope > * > .es-list-detail')
+      ).not.toBeNull();
+    }
+    for (const name of ['Records', 'Sides', 'Bundles', 'Conversations']) {
+      fireEvent.click(encounterSection(name));
+      expect(panel().hasAttribute('data-layout')).toBe(false);
+    }
+    expect(
+      document.querySelector('.es-encounter-home > .es-encounter-group')
+    ).not.toBeNull();
   });
 });

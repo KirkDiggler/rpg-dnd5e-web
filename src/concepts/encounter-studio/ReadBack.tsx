@@ -4,7 +4,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
-import { CopyPath } from './CopyPath';
+import { CopyPath, CopyPathGroup } from './CopyPath';
 import {
   connectionJump,
   foldedOfSelection,
@@ -354,17 +354,17 @@ function Statement({
     );
   else if (placeLink && onJump)
     links.push(
-      <button
-        key="path"
-        type="button"
-        className="es-link es-readback-ref es-readback-path"
-        aria-label={`Open ${place}`}
-        title={statement.path}
-        onClick={() => onJump(placeLink, statement.path)}
-      >
-        {place}
-      </button>,
-      <CopyPath key="copy" path={statement.path} />
+      <CopyPathGroup key="path" path={statement.path}>
+        <button
+          type="button"
+          className="es-link es-readback-ref es-readback-path"
+          aria-label={`Open ${place}`}
+          title={statement.path}
+          onClick={() => onJump(placeLink, statement.path)}
+        >
+          {place}
+        </button>
+      </CopyPathGroup>
     );
   return (
     <li className="es-readback-statement" data-kind={statement.kind}>

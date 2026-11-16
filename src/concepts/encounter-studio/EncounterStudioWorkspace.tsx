@@ -1593,7 +1593,7 @@ function StudioSurface({
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
-                onOpenCastMember={(ref) => session.cast.select(ref)}
+                onOpenCastMember={(ref) => jumpTo({ kind: 'castMember', ref })}
                 onOpenRegion={(regionId) => {
                   session.selectRegion(regionId);
                 }}
@@ -1841,6 +1841,11 @@ function StudioSurface({
                 sectionPlaceOf(encounterSection).section
               )}
               className="es-encounter-panel"
+              data-layout={
+                LIST_DETAIL_SECTIONS.has(encounterSection)
+                  ? 'list-detail'
+                  : undefined
+              }
             >
               {home === 'encounter' && encounterSection === 'cast' && (
                 <StudioCast
@@ -1971,6 +1976,16 @@ function StudioSurface({
     </RevealContextProvider>
   );
 }
+
+/** The Encounter sections that are one list beside its detail
+ * (rpg-project#984): their panel is a fixed height the piece fills, and only
+ * its two panes scroll. Every other section scrolls as one pane in it. */
+const LIST_DETAIL_SECTIONS: ReadonlySet<string> = new Set([
+  'cast',
+  'concealments',
+  'facts',
+  'behaviours',
+]);
 
 export function EncounterStudioWorkspace({
   compositionSource,

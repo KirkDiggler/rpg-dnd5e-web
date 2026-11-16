@@ -153,14 +153,14 @@ describe('StudioThreads', () => {
         .getAllByRole('button')
         .map((button) => `${button.dataset.hub}: ${button.textContent}`);
     expect(rows('Records')).toEqual([
-      'captains-orders: captains-orders held by 1',
-      'cooks-ledger: cooks-ledger held by 1',
-      'key-bearer: key-bearer held by 4',
-      'king-whereabouts: king-whereabouts held by 4',
-      'kitchen-way: kitchen-way told by 1, lifts 2',
+      'captains-orders: captains-orders · held by 1',
+      'cooks-ledger: cooks-ledger · held by 1',
+      'key-bearer: key-bearer · held by 4',
+      'king-whereabouts: king-whereabouts · held by 4',
+      'kitchen-way: kitchen-way · told by 1, lifts 2',
     ]);
     expect(rows('Secrets')).toEqual([
-      'kitchen-passage: kitchen-passage revealed by 1, found by 1, bars 2, needed by 2',
+      'kitchen-passage: kitchen-passage · revealed by 1, found by 1, bars 2, needed by 2',
     ]);
   });
 

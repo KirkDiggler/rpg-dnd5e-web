@@ -24,9 +24,13 @@ No screen scrolls, focuses or highlights a jump target on its own.
   3. The item is scrolled within its own scroll container (the nearest
      `overflow: auto|scroll` ancestor, or one marked `data-scroll-pane`),
      never the page.
-  4. The item itself is focused, never a control inside it. If it takes no
-     focus it gets `tabindex="-1"`, and it is named for a screen reader from
-     its key (`nameOfKey` → `placeName`).
+  4. The item itself is focused, never a field inside it. If it takes no
+     focus it gets `tabindex="-1"`. An item may name its own navigation
+     control as where focus goes (`data-reveal-focus` on a direct child): a
+     list row's button, so Up and Down work at once. A plain container is
+     named for a screen reader from its key (`nameOfKey` → `placeName`); a
+     `div` or `span` also gets `role="group"` so the name is announced. A
+     control keeps the name it already says.
   5. The item is marked with `data-revealed="true"`. The mark lasts until the
      next jump, a new selection, or a pointer down or editing/activating key
      outside the item.
@@ -39,7 +43,7 @@ No screen scrolls, focuses or highlights a jump target on its own.
 ### To make a new id-keyed screen revealable
 
 Put `useRevealable({kind, id}, onReveal)` on each item's whole block, or use
-`RevealLi`, `RevealDiv` or `RevealButton` with `revealKey`. Use `onReveal` to
+`RevealLi` or `RevealDiv` with `revealKey`. Use `onReveal` to
 open whatever hides the item. Keep the ref stable: pass the hook's callback,
 or a `useCallback` that calls it, never an inline arrow. A list-and-detail
 screen gets all of this from `StudioListDetail`.
@@ -78,4 +82,10 @@ the path through `locate`.
 
 Wherever a place is shown, its raw path is the element's `title` and sits one
 key away in `CopyPath`, a "Copy path" control. `CopyPath` writes the
-clipboard, or shows the path selected to copy by hand.
+clipboard, or shows the path selected once in a popover to copy by hand.
+
+Beside a focusable place (a read-back place link, a refusal's jump),
+`CopyPathGroup` keeps the control quiet. It shows on hover or while the group
+has focus, and it is the next Tab stop only while the place has focus: Tab
+from the place link reaches it. Beside a place that takes no focus (an
+unmapped refusal, a not-yet-said entry), the control is a plain button.

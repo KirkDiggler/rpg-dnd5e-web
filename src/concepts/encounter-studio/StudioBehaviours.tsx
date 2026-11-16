@@ -21,7 +21,7 @@ import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
-import { RevealLi } from './RevealDiv';
+import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 
 const ROUTINE = 'routine';
@@ -75,84 +75,75 @@ export function StudioBehaviours({
           {notice}
         </p>
       )}
-      <div className="es-threads-body">
-        <ul aria-label="Behaviours" className="es-threads-list">
-          {groups.map((group) => {
-            const id = group.about!.id;
-            const runners = (group.statements[0]?.connects ?? []).filter(
-              (c) => c.role === RUNS
-            );
-            return (
-              <RevealLi
-                key={id}
-                revealKey={{ kind: ROUTINE, id }}
-                data-routine={id}
-              >
-                <button
-                  type="button"
-                  aria-pressed={focus === id}
-                  onClick={() => onSelect(id)}
-                >
-                  <span className="es-threads-id">{id}</span>
-                </button>
-                <p className="es-help">{foldOf(group)}</p>
-                {runners.length > 0 && (
-                  <div className="es-readback-links" data-role="runs">
-                    <span className="es-help">Run by</span>
-                    {runners.map((runner) => {
-                      const jump = connectionJump(runner, document);
-                      const name = `${runner.kind} ${runner.id}`;
-                      return jump?.kind === 'target' && onJump ? (
-                        <button
-                          key={name}
-                          type="button"
-                          className="es-link es-readback-ref"
-                          aria-label={`Open ${name}`}
-                          onClick={() => onJump(jump.target)}
-                        >
-                          {name}
-                        </button>
-                      ) : (
-                        <span key={name} className="es-readback-ref">
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </RevealLi>
-            );
-          })}
-          {unrun.map(({ id, why }) => (
-            <RevealLi
-              key={id}
-              revealKey={{ kind: ROUTINE, id }}
-              data-routine={id}
-              data-unrun=""
-            >
-              <button
-                type="button"
-                aria-pressed={focus === id}
-                onClick={() => onSelect(id)}
-              >
-                <span className="es-threads-id">{id}</span>
-              </button>
-              <p className="es-help">{why}</p>
-            </RevealLi>
-          ))}
-        </ul>
-        {focus && said && (
-          <div className="es-threads-thread" data-behaviour={focus}>
-            <ReadBack
-              document={document}
-              selection={{ kind: ROUTINE, id: focus }}
-              state={readBack}
-              onJump={onJump}
-              onOpenFact={onOpenFact}
-            />
-          </div>
-        )}
-      </div>
+      <StudioListDetail
+        id="behaviours"
+        label="Behaviours"
+        groups={[
+          {
+            rows: [
+              ...groups.map((group) => {
+                const id = group.about!.id;
+                const runners = (group.statements[0]?.connects ?? []).filter(
+                  (c) => c.role === RUNS
+                );
+                return {
+                  key: { kind: ROUTINE, id },
+                  name: <span className="es-threads-id">{id}</span>,
+                  summary: foldOf(group),
+                  rowData: { 'data-routine': id },
+                  links:
+                    runners.length > 0 ? (
+                      <div className="es-readback-links" data-role="runs">
+                        <span className="es-help">Run by</span>
+                        {runners.map((runner) => {
+                          const jump = connectionJump(runner, document);
+                          const name = `${runner.kind} ${runner.id}`;
+                          return jump?.kind === 'target' && onJump ? (
+                            <button
+                              key={name}
+                              type="button"
+                              className="es-link es-readback-ref"
+                              aria-label={`Open ${name}`}
+                              onClick={() => onJump(jump.target)}
+                            >
+                              {name}
+                            </button>
+                          ) : (
+                            <span key={name} className="es-readback-ref">
+                              {name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : undefined,
+                };
+              }),
+              ...unrun.map(({ id, why }) => ({
+                key: { kind: ROUTINE, id },
+                name: <span className="es-threads-id">{id}</span>,
+                summary: why,
+                rowData: { 'data-routine': id, 'data-unrun': '' },
+              })),
+            ],
+          },
+        ]}
+        selected={focus ? { kind: ROUTINE, id: focus } : null}
+        onSelect={(key) => onSelect(key.id)}
+        detailLabel="Behaviour"
+        detail={
+          focus && said ? (
+            <div className="es-threads-thread" data-behaviour={focus}>
+              <ReadBack
+                document={document}
+                selection={{ kind: ROUTINE, id: focus }}
+                state={readBack}
+                onJump={onJump}
+                onOpenFact={onOpenFact}
+              />
+            </div>
+          ) : null
+        }
+      />
     </section>
   );
 }
