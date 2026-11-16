@@ -11,7 +11,7 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 ## Decided
 
 - A key's `part` is the rest of the file path after the thing (`options[1].failure[0].recognize`), so items register by the same path the engine and the server write and a jump's key always agrees with an item's — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
-- An unclaimed key waits 700 ms, then settles on the nearest registered ancestor — the same thing with a shorter part, then the thing — and marks nothing when none is registered — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- A key nothing has registered yet (a screen the jump opened, still mounting) waits up to 700 ms for its item; meanwhile the reveal has already landed on the closest registered link, and marks nothing when no link is registered — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The scroll is the container's own (`scrollTo` on the nearest `overflow: auto|scroll` ancestor); only an item with no such ancestor uses `scrollIntoView({block: 'nearest'})` — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - A statement's place inside the selection itself (its line, its row) is now a link too, because it reveals that place in the form below; while stale the place is text, as before — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - A jump to a creature or prop centres the Layout on it at the current zoom; it does not test whether the thing was already in view, because the Layout surface exposes no visible-bounds query to the workspace — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
