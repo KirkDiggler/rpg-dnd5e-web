@@ -9,8 +9,8 @@
  * WHICH SECTIONS ARE HUB SECTIONS: every section from "Topics" on. The
  * engine puts its hub sections last, after the things they connect; a hub
  * section it adds later lists the same way, with counts only. (The wire has
- * no marker of its own for a hub section; the engine follow-up that marks
- * them is filed from rpg-dnd5e-web#1441's review.)
+ * no marker of its own for a hub section; rpg-toolkit#2448 asks the engine
+ * to mark them, and to give `secret.bar` entries a join connection.)
  *
  * The row's counts and its mark are a presence check over the group's own
  * entries by the engine's kinds; a section with no presence rule below
