@@ -2,11 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
-import { CreatureOrders, FactionsPanel } from './SitePolicies';
 import { StatesEditor } from './StatesEditor';
 import { TablesPanel } from './TablesPanel';
 import type { CreatureStates } from './creatureStates';
-import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 
 const asleep: CreatureStates = {
   initial: 'asleep',
@@ -17,41 +15,8 @@ const asleep: CreatureStates = {
   },
   awake: { transitions: [{ on: 'time', do: [{ pick: 'march' }] }] },
 };
-const fixture = decodeWorldBuilderV4Site();
-const goblin = fixture.draft.room.monsterDeclarations.find(
-  (m) => m.id === 'goblin-1'
-)!;
 
 describe('S6b recipe authoring', () => {
-  it.each(['march', '__proto__'])(
-    'offers placement-picked %s on the faction table, even without a faction recipe',
-    (key) => {
-      const commit = vi.fn();
-      const states = {
-        initial: 'awake',
-        awake: { transitions: [{ on: 'time', do: [{ pick: key }] }] },
-      };
-      render(
-        <FactionsPanel
-          scope={{ factions: [{ id: 'garrison' }] }}
-          room={{
-            ...fixture.draft.room,
-            monsterBindings: { 'goblin-1': { faction: 'garrison', states } },
-          }}
-          onChange={commit}
-        />
-      );
-      fireEvent.change(screen.getByLabelText('Add trigger to garrison'), {
-        target: { value: key },
-      });
-      fireEvent.click(
-        screen.getByRole('button', { name: `Add entry on ${key} to garrison` })
-      );
-      expect(commit.mock.lastCall?.[0].factions[0].on[key]).toEqual([
-        { hold: {} },
-      ]);
-    }
-  );
   it('applies atomically, cancels uncommitted text, and clears an override to inherit', () => {
     const commit = vi.fn();
     function Harness() {
@@ -113,47 +78,6 @@ describe('S6b recipe authoring', () => {
     );
     expect(screen.getByRole('alert').textContent).toMatch(/unique|duplicate/i);
     expect(commit).not.toHaveBeenCalled();
-  });
-  it('is wired into creature orders and preserves unrelated bindings', () => {
-    const commit = vi.fn();
-    render(
-      <CreatureOrders
-        scope={{}}
-        room={fixture.draft.room}
-        monster={goblin}
-        binding={{ table: 'drill', temper: 'soldier' }}
-        onOrdersChange={commit}
-      />
-    );
-    fireEvent.change(screen.getByLabelText('States YAML for goblin-1'), {
-      target: { value: stringify(asleep) },
-    });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Apply states for goblin-1' })
-    );
-    expect(commit).toHaveBeenCalledWith({
-      table: 'drill',
-      temper: 'soldier',
-      states: asleep,
-    });
-  });
-  it('is wired into faction authoring', () => {
-    const commit = vi.fn();
-    render(
-      <FactionsPanel
-        scope={{ factions: [{ id: 'garrison', table: 'drill' }] }}
-        onChange={commit}
-      />
-    );
-    fireEvent.change(screen.getByLabelText('States YAML for garrison'), {
-      target: { value: stringify(asleep) },
-    });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Apply states for garrison' })
-    );
-    expect(commit).toHaveBeenCalledWith({
-      factions: [{ id: 'garrison', table: 'drill', states: asleep }],
-    });
   });
   it('shows custom table rows with the time vocabulary, and offers recipe-picked keys', () => {
     const commit = vi.fn();

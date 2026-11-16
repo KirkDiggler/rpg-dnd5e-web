@@ -19,7 +19,8 @@ import type { StudioDoorTarget } from '../world-building/studioDoorEditing';
 /** The Encounter home sections a refusal opens when the noun has no focus of
  * its own there yet (S6-Q4). */
 export type RefusalHomeSection =
-  | 'tables'
+  /** A behaviour the file defines (rpg-project#970). */
+  | 'behaviours'
   | 'bundles'
   | 'factions'
   | 'dispositions'
@@ -167,15 +168,20 @@ export function targetOfPath(
         Object.hasOwn(scope.templates, key)
         ? { kind: 'castMember', ref: `${MONSTER_PREFIX}${key}` }
         : null;
-    case 'tables':
+    // Root `tables` have no section (rpg-project#970): a refusal there is a
+    // sentence, with no jump.
+    case 'behaviorDefinitions': {
+      const definitions = scope.unread?.behaviorDefinitions;
+      return typeof key === 'string' &&
+        definitions !== null &&
+        typeof definitions === 'object' &&
+        Object.hasOwn(definitions, key)
+        ? { kind: 'home', section: 'behaviours', id: key }
+        : null;
+    }
     case 'bundles':
     case 'concealments': {
-      const map =
-        head === 'tables'
-          ? scope.tables
-          : head === 'bundles'
-            ? scope.bundles
-            : scope.concealments;
+      const map = head === 'bundles' ? scope.bundles : scope.concealments;
       if (!(typeof key === 'string' && map && Object.hasOwn(map, key)))
         return null;
       const row = head === 'concealments' ? undefined : rowOfPath(path);

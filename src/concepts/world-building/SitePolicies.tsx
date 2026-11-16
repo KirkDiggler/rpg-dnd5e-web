@@ -29,10 +29,8 @@ import {
   ANSWER_SELECTOR_WORDS,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
-  ANSWER_TRIGGERS,
   ANSWER_WHEN,
   answerRowKind,
-  answerTrigger,
   answerWhenLegalOn,
   answerWord,
   answerWordsForTrigger,
@@ -91,11 +89,15 @@ import {
   threatLabel,
   whenShorthand,
 } from './answerVocabulary';
+import {
+  assignBehaviour,
+  behaviourChoicesOf,
+  bindingBehaviours,
+} from './behaviourChoice';
 import { BindingPostPasses } from './BindingPostPasses';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
 import { BundleParamsContext, SiteBundlesContext } from './bundlesContext';
 import { CheckApproachRows } from './CheckApproachRows';
-import { documentStatePicks } from './creatureStates';
 import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
@@ -106,13 +108,11 @@ import {
   addMonsterHold,
   addMonsterOption,
   moveMonsterAction,
-  normalizeBinding,
   removeMonsterAction,
   removeMonsterHold,
   removeMonsterOption,
   setMonsterArrives,
   setMonsterOption,
-  setMonsterTable,
   setMonsterTemper,
 } from './monsterOrderEdits';
 import {
@@ -168,14 +168,11 @@ import {
 import { SayActivityFields } from './SayActivityFields';
 import { SelectorTarget } from './SelectorTarget';
 import {
-  addSiteAnswerEntry,
   addSiteDisposition,
   addSiteFaction,
   addSiteFactionOption,
   entryWord,
-  patchSiteAnswerEntry,
   patchSiteFaction,
-  removeSiteAnswerEntry,
   removeSiteDisposition,
   removeSiteFaction,
   removeSiteFactionOption,
@@ -196,8 +193,6 @@ import {
   type SiteUntil,
   type SiteUntilStep,
 } from './siteScope';
-import { roomDoorIds } from './statePostEdits';
-import { StatesEditor } from './StatesEditor';
 import { useRowKeys } from './useRowKeys';
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
@@ -1563,113 +1558,6 @@ export function TableNameSelect({
   );
 }
 
-/** One faction's shared table: its authored triggers, each with its entries,
- * and a trigger picker for the ones it does not carry yet. Triggers come from
- * `ANSWER_TRIGGERS`; the builder never invents one. */
-function FactionTableEditor({
-  scope,
-  faction,
-  room,
-  onChange,
-  at,
-}: {
-  scope: SiteScope;
-  faction: SiteFaction;
-  room?: RoomGameplayData;
-  onChange: (next: SiteScope) => void;
-  /** The faction's path in the file (`factions[i]`), so each row shows the
-   * engine's refusal under it (R34). */
-  at?: string;
-}) {
-  const table = faction.on ?? {};
-  const authored = Object.keys(table);
-  const available = [
-    ...new Set([
-      ...ANSWER_TRIGGERS.map((t) => t.key),
-      ...documentStatePicks(scope.factions, room?.monsterBindings),
-    ]),
-  ].filter((key) => !Object.hasOwn(table, key));
-  /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
-   * trigger a behavior table is mostly about, and the only one the `when`
-   * editor is legal on. (The social keys that once came first retired to
-   * options, rpg-project#569, so `time` is now the only key; the default
-   * stays for the next trigger the engine adds.)
-   * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
-   * the faction's was not. */
-  const [triggerChoice, setNewTrigger] = useState('time');
-  const newTrigger = available.includes(triggerChoice)
-    ? triggerChoice
-    : (available[0] ?? '');
-  return (
-    <div className="wb-policy-table-editor">
-      <p className="wb-help">Shared table its members inherit.</p>
-      {authored.map((trigger) => (
-        <div key={trigger} className="wb-policy-trigger-block">
-          <p className="wb-policy-trigger">
-            <code>{trigger}</code>{' '}
-            {answerTrigger(trigger)?.label ?? 'Picked by states'}
-          </p>
-          <EntryList rows={table[trigger] ?? []}>
-            {(entry, index, key) => (
-              <AnswerEntryRow
-                key={key}
-                trigger={trigger}
-                entry={entry}
-                at={at ? [`${at}.on.${trigger}[${index}]`] : undefined}
-                onCommit={(next) =>
-                  onChange(
-                    patchSiteAnswerEntry(
-                      scope,
-                      faction.id,
-                      trigger,
-                      index,
-                      next
-                    )
-                  )
-                }
-                onRemove={() =>
-                  onChange(
-                    removeSiteAnswerEntry(scope, faction.id, trigger, index)
-                  )
-                }
-              />
-            )}
-          </EntryList>
-        </div>
-      ))}
-      <FactionInherits scope={scope} faction={faction} ownRows={false} />
-      {available.length > 0 && (
-        <div className="wb-actions">
-          <select
-            aria-label={`Add trigger to ${faction.id}`}
-            value={newTrigger}
-            onChange={(event) => setNewTrigger(event.target.value)}
-          >
-            {available.map((key) => (
-              <option key={key} value={key}>
-                {answerTrigger(key)?.label ?? key} ({key})
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label={`Add entry on ${newTrigger} to ${faction.id}`}
-            onClick={() =>
-              onChange(addSiteAnswerEntry(scope, faction.id, newTrigger))
-            }
-          >
-            Add entry on {newTrigger}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Factions
-// ---------------------------------------------------------------------------
-
 /** A faction's `temper:` editor — absent, one sealed word, or a word→share
  * mix. The words are the declaration's; the share is written as typed and the
  * server decides whether it can be dealt. */
@@ -1883,51 +1771,12 @@ function FactionRow({
             placement in the faction is the server’s to check.
           </p>
 
-          <StatesEditor
-            owner={faction.id}
-            value={faction.states}
-            doors={roomDoorIds(room)}
-            topics={grantedTopics(scope)}
-            onChange={(states) =>
-              onChange(patchSiteFaction(scope, faction.id, { states }))
-            }
-          />
+          <RetiredKeys owner="faction" carried={faction} />
           <FactionTemperEditor
             temper={faction.temper}
             onCommit={(temper) =>
               onChange(patchSiteFaction(scope, faction.id, { temper }))
             }
-          />
-
-          {/* A FACTION NAMES A ROOT TABLE (rpg-project#501 §6.2, "i think we
-              add table to faction"), and it may ALSO write its own `on:` — the
-              engine layers the named table UNDER the inline one, key by key,
-              through the same `encounter.Layer` every other layer uses. The
-              builder carries both rather than deciding a layering rule it does
-              not own. */}
-          <label>
-            <span>Shared table</span>
-            <TableNameSelect
-              scope={scope}
-              value={faction.table}
-              label={`Table for ${faction.id}`}
-              placeholder="none — write its own below"
-              onChange={(table) =>
-                onChange(patchSiteFaction(scope, faction.id, { table }))
-              }
-            />
-          </label>
-          <p className="wb-help">
-            A table declared at the site root, written once and named here. The
-            server refuses a name this site does not declare.
-          </p>
-
-          <FactionTableEditor
-            scope={scope}
-            faction={faction}
-            room={room}
-            onChange={onChange}
-            at={at}
           />
 
           {/* THE SIDE'S LINES (rpg-project#718): what a character can say to
@@ -2706,22 +2555,9 @@ export function CreatureOrders({
   const faction = binding?.faction
     ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
     : undefined;
-  /** The root table this creature NAMES, resolved against what the site
-   * declares. `undefined` covers both "names nothing" and "names something this
-   * site does not declare" — the second is reported where the control is, the
-   * same distinction `IntelPanel` draws for a `holds` that outlived its
-   * record. RESOLVING IT IS NOT DECIDING IT: the engine owns whether the name
-   * is acceptable, and this only decides what to SHOW. */
-  const namedTable =
-    binding?.table !== undefined ? scope.tables?.[binding.table] : undefined;
   return (
     <div className="wb-creature-orders" aria-label="Selected creature">
       <AboutPanel>
-        <p data-testid="faction-layer-rule">
-          A faction’s `on:` is layered nearest key wins WHOLESALE: a placement
-          that writes its own `time` replaces the faction’s `time` entirely —
-          the entry lists are never merged.
-        </p>
         <p data-testid="temper-asymmetry">
           A faction’s `temper` is a word or a mix; a placement’s is one word,
           and the placement’s word wins — the mix is not dealt for it.
@@ -2778,7 +2614,7 @@ export function CreatureOrders({
       >
         {binding?.faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-none">
-            Nothing authored here — its kind’s default supplies the table.
+            Nothing authored here — its kind’s default stands.
           </p>
         ) : faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-unknown">
@@ -2791,24 +2627,17 @@ export function CreatureOrders({
                 temper {factionTemperText(faction.temper)}
               </p>
             )}
-            <FactionInherits scope={scope} faction={faction} ownRows />
           </>
         )}
       </StudioSection>
 
-      <StatesEditor
+      <BehaviourPicker
         owner={monster.id}
-        value={binding?.states}
-        inherited={faction?.states}
-        doors={roomDoorIds(room)}
-        topics={grantedTopics(scope)}
-        onChange={
-          onOrdersChange
-            ? (states) =>
-                onOrdersChange(normalizeBinding({ ...binding, states }))
-            : undefined
-        }
+        scope={scope}
+        binding={binding}
+        onChange={onOrdersChange}
       />
+      <RetiredKeys owner="creature" carried={binding} />
       <BindingPostPasses
         owner={monster.id}
         binding={binding}
@@ -2851,32 +2680,6 @@ export function CreatureOrders({
                 onOrdersChange(setMonsterTemper(binding, temper))
               }
             />
-            {/* WHAT IT ANSWERS WITH, BY NAME (rpg-toolkit#1897, web#1201).
-                THE INLINE TABLE EDITOR IS GONE from this panel, because a
-                creature's orders are DECLARED ONCE AND NAMED — that is the
-                whole reason tables moved to the root, and leaving a second
-                place to paste them re-opens the hazard the move removes:
-                `time:` replaces the kind's whole default table, so an inline
-                entry silently discards what the kind carried. Kirk's ruling
-                (rpg-project#501 §6.6, web#1201): "there should be no inline
-                table defined on a monster anymore."
-
-                `on:` IS STILL READ AND STILL ROUND-TRIPS. A hand-written file
-                with one opens, and the engine still reads it — it is a legal
-                BASE for `table` to lay over. Refusing it here would make an
-                editable file unopenable while the server accepts it, which is
-                `holds`' and `arrives'` law (web#1176): CARRIED, NOT OFFERED.
-                If one is present the author sees it read-only below. */}
-            {binding?.on !== undefined && (
-              <div data-testid="creature-inline-table-readonly">
-                <p className="wb-help">
-                  This creature also carries an inline table, which this build
-                  no longer authors. The server reads it: it is layered over
-                  anything it names.
-                </p>
-                <AnswerTableReadout table={binding.on} />
-              </div>
-            )}
           </>
         ) : binding === undefined ? (
           <p className="wb-help" data-testid="creature-overrides-none">
@@ -2887,9 +2690,6 @@ export function CreatureOrders({
           <>
             {binding.temper !== undefined && (
               <p className="wb-help">temper {binding.temper}</p>
-            )}
-            {binding.on !== undefined && (
-              <AnswerTableReadout table={binding.on} />
             )}
             {binding.actions !== undefined && (
               <p className="wb-help">actions {binding.actions.join(', ')}</p>
@@ -3008,61 +2808,6 @@ export function CreatureOrders({
           <p className="wb-help" data-testid="creature-interaction-readonly">
             Checks, intel and the reserve predicate are authored through the
             creature’s own panel.
-          </p>
-        )}
-      </StudioSection>
-
-      <StudioSection
-        title="Answers with"
-        level="subsection"
-        className="wb-policy-block"
-      >
-        {onOrdersChange !== undefined ? (
-          <>
-            <label>
-              <span>Table</span>
-              <TableNameSelect
-                scope={scope}
-                value={binding?.table}
-                label={`Table for ${monster.id}`}
-                placeholder="none — what its kind or faction supplies stands"
-                onChange={(table) =>
-                  onOrdersChange(setMonsterTable(binding, table))
-                }
-              />
-            </label>
-            {/* A REFERENCE IS SHOWN WHOLE, and that is the hazard it removes:
-                `time:` replaces the kind's entire default table, so an author
-                who cannot see the table cannot tell what they are replacing. */}
-            {namedTable !== undefined && (
-              <div data-testid="creature-named-table">
-                <AnswerTableReadout table={namedTable} />
-              </div>
-            )}
-            {binding?.table !== undefined && namedTable === undefined && (
-              <p className="wb-help" data-testid="creature-table-dangling">
-                This creature names the table “{binding.table}”, and this site
-                declares no table with that id. The server refuses it by name;
-                it is kept here rather than silently rewritten.
-              </p>
-            )}
-            {/* THE EMPTY STATE IS STATED, like every other section's: a
-                creature naming no table is not an error and not a gap — what
-                its kind and faction supply stands, which is the state most
-                creatures are in. */}
-            {binding?.table === undefined && (
-              <p className="wb-help" data-testid="creature-table-none">
-                No named table — this creature answers from what its kind and
-                faction supply.
-              </p>
-            )}
-          </>
-        ) : binding?.table !== undefined ? (
-          <p className="wb-help">Answers with the table “{binding.table}”.</p>
-        ) : (
-          <p className="wb-help" data-testid="creature-table-none">
-            No named table — this creature answers from what its kind and
-            faction supply.
           </p>
         )}
       </StudioSection>
@@ -3431,4 +3176,98 @@ function optionText(option: OptionShape): string {
     ? `does “${option.do ?? ''}”`
     : `“${option.say ?? ''}”`;
   return `${option.id}: ${words} · ${check}${gate}`;
+}
+
+/** THE RETIRED KEYS, SAID (rpg-project#970). A faction's or a creature's
+ * `table`, `on` and `states` ride through the file untouched, but the engine
+ * no longer reads them and refuses the file while they are there (its
+ * refusal shows in the header's count). The form says so in one line and
+ * offers nothing to edit them with. */
+export function RetiredKeys({
+  owner,
+  carried,
+}: {
+  owner: 'faction' | 'creature';
+  carried: { table?: unknown; on?: unknown; states?: unknown } | undefined;
+}): React.JSX.Element | null {
+  const keys = (['table', 'on', 'states'] as const).filter(
+    (key) => carried?.[key] !== undefined
+  );
+  if (keys.length === 0) return null;
+  return (
+    <p className="wb-help" data-testid={`${owner}-retired-keys`}>
+      {`This ${owner} still carries ${keys.map((key) => `\`${key}\``).join(', ')}, which the engine no longer reads; it refuses the file until it is removed.`}
+    </p>
+  );
+}
+
+/** THE BEHAVIOUR A CREATURE RUNS (rpg-project#970): a pick among the
+ * behaviours the file defines. It writes the creature's `behaviors` and
+ * `behaviorState` and nothing else (`behaviourChoice.ts` says what and
+ * why). A definition that needs cells is listed with the reason and not
+ * picked; a creature running several behaviours is edited in the file. */
+function BehaviourPicker({
+  owner,
+  scope,
+  binding,
+  onChange,
+}: {
+  owner: string;
+  scope: SiteScope;
+  binding: RoomMonsterBinding | undefined;
+  onChange?: (next: RoomMonsterBinding | undefined) => void;
+}): React.JSX.Element | null {
+  const choices = behaviourChoicesOf(scope);
+  const own = bindingBehaviours(binding);
+  if (choices.length === 0 && own === undefined) return null;
+  const current =
+    own?.length === 1 && typeof own[0]?.use === 'string' ? own[0].use : '';
+  const several = (own?.length ?? 0) > 1;
+  return (
+    <StudioSection
+      title="Behaviour"
+      level="subsection"
+      className="wb-policy-block"
+    >
+      {several ? (
+        <p className="wb-help">
+          {`Runs ${own!.length} behaviours: edit in the file.`}
+        </p>
+      ) : (
+        <label>
+          <span>Behaviour</span>
+          <select
+            aria-label={`Behaviour for ${owner}`}
+            value={current}
+            disabled={onChange === undefined}
+            onChange={(event) => {
+              if (event.target.value === '' || !onChange) return;
+              onChange(assignBehaviour(binding, event.target.value));
+            }}
+          >
+            <option value="">
+              {own === undefined
+                ? 'None of its own'
+                : 'Not one this file defines'}
+            </option>
+            {choices.map((choice) => (
+              <option
+                key={choice.id}
+                value={choice.id}
+                disabled={!choice.assignable}
+              >
+                {choice.assignable
+                  ? choice.id
+                  : `${choice.id} — ${choice.reason}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="wb-help">
+        Picking one writes this creature’s behaviors and behaviorState only.
+        Building a behaviour is done in the file.
+      </p>
+    </StudioSection>
+  );
 }

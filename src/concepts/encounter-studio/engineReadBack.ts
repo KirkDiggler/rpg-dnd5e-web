@@ -259,10 +259,13 @@ export function connectionJump(
   };
   const scope = document.scope;
   switch (kind) {
+    // A hub opens its thread; a routine opens Behaviours on it
+    // (rpg-project#970).
     case 'fact':
     case 'topic':
     case 'record':
     case 'concealment':
+    case 'routine':
       return { kind: 'hub', id, hub: kind };
     case 'way':
       return { kind: 'way', id };
@@ -282,7 +285,6 @@ export function connectionJump(
       return through(`bundles.${id}`);
     case 'exit':
       return indexed('exits', scope.exits);
-    // `routine` has no studio home yet (rpg-project#970): it stays text.
     default:
       return null;
   }

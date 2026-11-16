@@ -691,56 +691,6 @@ describe('shared Arrange context lifecycle', () => {
         .map((node) => node.textContent)
     ).toEqual(['Build', 'Encounter']);
   });
-  it('keeps exactly one sidebar section, name drafts and the canvas across section switches and N', () => {
-    observed.session!.document.scope.tables = { patrol: {} };
-    const mounted = render(
-      <EncounterStudioWorkspace compositionSource={source} />
-    );
-    const canvas = screen.getByLabelText('Layout floor surface');
-    click('Tables');
-    fireEvent.click(screen.getByLabelText('Table patrol'));
-    const name = screen.getByLabelText('Table id for patrol');
-    fireEvent.change(name, { target: { value: 'Night watch' } });
-    fireEvent.blur(name);
-    expect(screen.queryByRole('button', { name: 'Options (N)' })).toBeNull();
-    click('Wall');
-    expect(screen.queryByRole('button', { name: 'Add table' })).toBeNull();
-    expect(
-      screen.getByRole('region', { name: 'New wall palette' })
-    ).toBeTruthy();
-    click('Tables');
-    expect(
-      screen.queryByRole('region', { name: 'New wall palette' })
-    ).toBeNull();
-    expect(
-      (screen.getByLabelText('Table id for patrol') as HTMLInputElement).value
-    ).toBe('Night watch');
-    fireEvent.keyDown(window, { key: 'n' });
-    expect(
-      screen.queryByRole('complementary', { name: 'Studio options' })
-    ).toBeNull();
-    fireEvent.keyDown(window, { key: 'n' });
-    expect(
-      screen
-        .getByRole('button', { name: 'Encounter' })
-        .getAttribute('aria-pressed')
-    ).toBe('true');
-    observed.session = { ...observed.session!, arrange: null };
-    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
-    expect(
-      screen
-        .getByRole('button', { name: 'Encounter' })
-        .getAttribute('aria-pressed')
-    ).toBe('true');
-    expect(screen.getByLabelText('Layout floor surface')).toBe(canvas);
-    expect(observed.layoutUnmounts).toBe(0);
-    expect(observed.session!.commitTables).not.toHaveBeenCalled();
-    click('Apply table name');
-    expect(observed.session!.commitTables).toHaveBeenCalledWith({
-      'Night watch': {},
-    });
-  });
-
   it('N ignores text fields, selects, contenteditable, modifiers, repeats and composition', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Wall');

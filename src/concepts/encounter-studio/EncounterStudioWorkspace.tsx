@@ -23,7 +23,6 @@ import {
 } from '../world-building/routePicking';
 import { RowRefusalsContext } from '../world-building/rowRefusals';
 import type { SiteScope } from '../world-building/siteScope';
-import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
   useRoomPublishing,
@@ -34,6 +33,12 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
+import {
+  DEFAULT_ENCOUNTER_SECTION,
+  ENCOUNTER_GROUPS,
+  sectionPlaceOf,
+  type EncounterSectionKey,
+} from './encounterNav';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
 import {
@@ -63,12 +68,14 @@ import {
   type RefusalJump,
   type RefusalTarget,
 } from './refusalJump';
+import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
 import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
+import { StudioExits } from './StudioExits';
 import { StudioInspector } from './StudioInspector';
 import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
@@ -87,7 +94,6 @@ import {
   publishStatusText,
   studioReadBackOf,
 } from './studioPublishing';
-import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
   type EncounterStudioSession,
@@ -110,21 +116,9 @@ import { usePlacesView } from './usePlacesView';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
-const ENCOUNTER_SECTIONS = {
-  cast: 'Cast',
-  party: 'Party',
-  tables: 'Tables',
-  bundles: 'Bundles',
-  factions: 'Factions',
-  dispositions: 'Dispositions',
-  intel: 'Intel',
-  endings: 'Endings',
-  concealments: 'Concealments',
-  interactions: 'Interactions',
-  scenarios: 'Scenarios',
-  // The fact index became Threads (rpg-project#973); the section key stays.
-  facts: 'Threads',
-} as const;
+/** A section key's on-screen word (rpg-project#970, ruled 2026-11-16). */
+const sectionLabel = (key: EncounterSectionKey): string =>
+  sectionPlaceOf(key).label;
 
 /** A mount with no route into the game cannot play; the capability then
  * carries no character, so Play says so rather than launching nowhere. */
@@ -191,8 +185,9 @@ function StudioSurface({
   onPlay,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
-  const [encounterSection, setEncounterSection] =
-    useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
+  const [encounterSection, setEncounterSection] = useState<EncounterSectionKey>(
+    DEFAULT_ENCOUNTER_SECTION
+  );
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
   const [groundRef, setGroundRef] = useState<string | null>(null);
   const [groundBrush, setGroundBrush] = useState<'paint' | 'erase' | null>(
@@ -462,7 +457,15 @@ function StudioSurface({
   /** The hub a read-back connection named: Threads opens on its thread
    * (rpg-project#973). */
   const [focusHub, setFocusHub] = useState<ThreadHub | null>(null);
+  /** The behaviour a read-back routine named: Behaviours opens on it
+   * (rpg-project#970). */
+  const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
+    if (hub === 'routine') {
+      setFocusRoutine(id);
+      openDefinitions('behaviours');
+      return;
+    }
     setFocusHub({ kind: hub, id });
     openDefinitions('facts');
   };
@@ -709,7 +712,7 @@ function StudioSurface({
   const [routePick, setRoutePick] = useState<{
     request: RoutePickRequest;
     waypoints: AnswerWaypointShape[];
-    section: keyof typeof ENCOUNTER_SECTIONS;
+    section: EncounterSectionKey;
     document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
@@ -830,8 +833,8 @@ function StudioSurface({
         return castMemberOf(session.document, target.ref)?.name ?? target.ref;
       case 'home':
         return target.id
-          ? `${ENCOUNTER_SECTIONS[target.section]} · ${target.id}`
-          : ENCOUNTER_SECTIONS[target.section];
+          ? `${sectionLabel(target.section)} · ${target.id}`
+          : sectionLabel(target.section);
       case 'ending':
         return `Ending ${target.id}`;
       case 'key':
@@ -863,6 +866,8 @@ function StudioSurface({
       case 'home':
         changeHome('encounter');
         setEncounterSection(target.section);
+        if (target.section === 'behaviours' && target.id)
+          setFocusRoutine(target.id);
         if (target.row)
           setFocusRow((was) => ({
             path: target.row!,
@@ -1373,7 +1378,7 @@ function StudioSurface({
             ))}
           {home === 'encounter' && (
             <strong>
-              Encounter configuration · {ENCOUNTER_SECTIONS[encounterSection]}
+              Encounter configuration · {sectionLabel(encounterSection)}
             </strong>
           )}
           {spatial && (
@@ -1722,33 +1727,39 @@ function StudioSurface({
           aria-label="Encounter configuration"
           hidden={home !== 'encounter'}
         >
-          <nav className="es-buttons" aria-label="Encounter tools">
-            {(
-              [
-                'cast',
-                'party',
-                'tables',
-                'bundles',
-                'factions',
-                'dispositions',
-                'intel',
-                'endings',
-                'concealments',
-                'interactions',
-                'scenarios',
-                'facts',
-              ] as const
-            ).map((section) => (
+          <nav className="es-buttons" aria-label="Encounter groups">
+            {ENCOUNTER_GROUPS.map((group) => (
               <button
-                key={section}
+                key={group.label}
                 type="button"
-                aria-pressed={encounterSection === section}
+                aria-pressed={
+                  sectionPlaceOf(encounterSection).group === group.label
+                }
                 onClick={() => {
                   setFocusEnding(null);
-                  setEncounterSection(section);
+                  setEncounterSection(group.sections[0]!.key);
                 }}
               >
-                {ENCOUNTER_SECTIONS[section]}
+                {group.label}
+              </button>
+            ))}
+          </nav>
+          <nav className="es-buttons" aria-label="Encounter tools">
+            {ENCOUNTER_GROUPS.find(
+              (group) => group.label === sectionPlaceOf(encounterSection).group
+            )!.sections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                aria-pressed={
+                  sectionPlaceOf(encounterSection).section === section.key
+                }
+                onClick={() => {
+                  setFocusEnding(null);
+                  setEncounterSection(section.key);
+                }}
+              >
+                {section.label}
               </button>
             ))}
           </nav>
@@ -1764,32 +1775,60 @@ function StudioSurface({
               }}
             />
           )}
+          {home === 'encounter' && encounterSection === 'intel' && (
+            <section
+              aria-label="Records definitions"
+              className="es-social-panel"
+            >
+              <h2>Records</h2>
+              <AboutPanel>
+                <p>
+                  Define records and what they reveal here. Select a creature or
+                  declared prop on the map to assign the records it holds in its
+                  inspector. Record ids and revealed fact ids are different
+                  references.
+                </p>
+              </AboutPanel>
+              {session.socialControls.intel}
+            </section>
+          )}
           {home === 'encounter' &&
-            (encounterSection === 'intel' ||
-              encounterSection === 'factions' ||
+            (encounterSection === 'factions' ||
               encounterSection === 'dispositions') && (
-              <section
-                aria-label={`${ENCOUNTER_SECTIONS[encounterSection]} definitions`}
-                className="es-social-panel"
-              >
-                <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
+              // SIDES (rpg-project#970): who the sides are, then how they
+              // stand — the factions first, their dispositions under them.
+              <section aria-label="Sides" className="es-social-panel">
+                <h2>Sides</h2>
                 <AboutPanel>
                   <p>
-                    {encounterSection === 'intel'
-                      ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
-                      : encounterSection === 'factions'
-                        ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
-                        : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
+                    Define factions and shared policy here, then how the sides
+                    stand to each other. Assign individual placed creatures in
+                    their inspector on the map. A mind names a placed
+                    individual, not a reusable creature recipe.
                   </p>
                 </AboutPanel>
-                {session.socialControls[encounterSection]}
+                <section aria-label="Factions definitions">
+                  {session.socialControls.factions}
+                </section>
+                <section aria-label="Dispositions definitions">
+                  {session.socialControls.dispositions}
+                </section>
               </section>
             )}
           {home === 'encounter' && encounterSection === 'party' && (
             <StudioParty session={session} />
           )}
           {home === 'encounter' && encounterSection === 'endings' && (
-            <StudioEndings session={session} focus={focusEnding?.id} />
+            // WAYS OUT (rpg-project#970): the exits, each set on its hex and
+            // listed here with a jump to it, then the endings.
+            <section aria-label="Ways out" className="es-ways-out">
+              <h2>Ways out</h2>
+              <StudioExits
+                exits={session.document.scope.exits ?? []}
+                onJump={jumpTo}
+              />
+              <StudioEndings session={session} focus={focusEnding?.id} />
+            </section>
           )}
           {home === 'encounter' && encounterSection === 'concealments' && (
             <StudioConcealments
@@ -1801,8 +1840,15 @@ function StudioSurface({
           {home === 'encounter' && encounterSection === 'interactions' && (
             <StudioInteractions session={session} />
           )}
-          {home === 'encounter' && encounterSection === 'scenarios' && (
-            <StudioScenarios document={session.document} />
+          {home === 'encounter' && encounterSection === 'behaviours' && (
+            <StudioBehaviours
+              document={session.document}
+              readBack={readBack}
+              focus={focusRoutine}
+              onSelect={setFocusRoutine}
+              onJump={jumpTo}
+              onOpenFact={openFact}
+            />
           )}
           {home === 'encounter' && encounterSection === 'facts' && (
             <StudioThreads
@@ -1829,24 +1875,6 @@ function StudioSurface({
                 key={session.document.draft.id}
                 scope={session.document.scope}
                 onChange={(bundles) => session.commitBundles(bundles)}
-              />
-            </div>
-            <div hidden={encounterSection !== 'tables'}>
-              <h2>Tables</h2>
-              <AboutPanel>
-                <p>
-                  Shared monster behavior. Define a table once; creatures and
-                  factions can reference it by name.
-                </p>
-              </AboutPanel>
-              <TablesPanel
-                key={session.document.draft.id}
-                scope={session.document.scope}
-                room={session.document.draft.room}
-                placementNames={placementNames}
-                collapsedEntries
-                explicitRename
-                onChange={(scope) => session.commitTables(scope.tables)}
               />
             </div>
           </RoutePickContext.Provider>

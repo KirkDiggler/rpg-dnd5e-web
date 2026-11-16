@@ -36,6 +36,7 @@ import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import { PUBLICATION_STORAGE_KEY } from './publicationMemory';
+import { encounterSection } from './studioTestNavigation';
 
 const sink = vi.hoisted(
   (): FakeAuthoringSink => ({
@@ -977,24 +978,27 @@ describe('S6 Save & Play', () => {
       },
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Factions' })
-    );
+    // Factions are in Sides, under People (rpg-project#970).
+    fireEvent.click(encounterSection('Sides'));
     const faction = screen.getByTestId('faction-refused-watch');
     // A faction holding a refusal opens on it.
     expect((faction as HTMLDetailsElement).open).toBe(true);
     const lines = within(faction)
       .getAllByTestId('row-refusal')
       .map((line) => line.textContent);
-    // What the faction opened for is said at its own head, then each row's
-    // and line's own.
+    // What the faction opened for is said at its own head, then each line's
+    // own. Its `on` table is retired (rpg-project#970): no editor shows its
+    // rows, so the hold row's refusal is counted in the header, and the form
+    // says the faction still carries `on`.
     expect(lines).toEqual([
       'the faction itself is refused here',
-      'a hold row is refused here',
       'a faction line is refused here',
     ]);
+    expect(
+      within(faction).getByTestId('faction-retired-keys').textContent
+    ).toBe(
+      'This faction still carries `on`, which the engine no longer reads; it refuses the file until it is removed.'
+    );
     expect(
       within(within(faction).getByTestId('option-refused-watch-0')).getByTestId(
         'row-refusal'
@@ -1056,6 +1060,74 @@ describe('S6 Save & Play', () => {
         { level: 2 }
       ).textContent
     ).toBe(`Hex ${cell.q}, ${cell.r}`);
+  });
+
+  it('a refusal on a faction, a record, a secret or an ending lands in its ruled section (rpg-project#970)', async () => {
+    const document = createCastleS4Document();
+    document.scope.endings = [
+      ...(document.scope.endings ?? []),
+      {
+        id: 'walked-out',
+        when: { left: document.scope.exits![0]!.id },
+        outcome: 'success',
+      },
+    ];
+    mount(document, { characterId: null });
+    await settled();
+    siteOperation('save');
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    const faction = document.scope.factions![0]!.id;
+    const record = document.scope.intel![0]!.id;
+    const secret = Object.keys(document.scope.concealments ?? {})[0]!;
+    const ending = document.scope.endings.length - 1;
+    await act(async () =>
+      preview.deferred.resolve({
+        errors: [
+          { path: 'factions[0].mind', message: 'faction refused' },
+          { path: 'intel[0].reveals', message: 'record refused' },
+          { path: `concealments.${secret}.checks`, message: 'secret refused' },
+          { path: `endings[${ending}].when`, message: 'ending refused' },
+        ],
+      } as never)
+    );
+    const landsIn = async (
+      name: string,
+      group: string,
+      section: string
+    ): Promise<void> => {
+      // Each jump closes Site; the refusal list is opened again for the next.
+      siteOperation('save');
+      fireEvent.click(
+        await within(
+          await screen.findByRole('group', { name: 'Server refusals' })
+        ).findByRole('button', { name })
+      );
+      expect(
+        within(screen.getByRole('navigation', { name: 'Encounter groups' }))
+          .getByRole('button', { name: group })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+      expect(
+        within(screen.getByRole('navigation', { name: 'Encounter tools' }))
+          .getByRole('button', { name: section })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+    };
+    await landsIn(`Sides · ${faction}: faction refused`, 'People', 'Sides');
+    await landsIn(
+      `Records · ${record}: record refused`,
+      'What is known',
+      'Records'
+    );
+    await landsIn(`Secrets · ${secret}: secret refused`, 'Places', 'Secrets');
+    await landsIn('Ending walked-out: ending refused', 'Places', 'Ways out');
   });
 
   it('transport failure shows "Save failed" and the draft is unchanged', async () => {

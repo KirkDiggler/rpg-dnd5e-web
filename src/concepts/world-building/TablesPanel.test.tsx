@@ -12,7 +12,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
-import { FactionsPanel, TableNameSelect } from './SitePolicies';
+import { TableNameSelect } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import { TablesPanel } from './TablesPanel';
 import { tableUsers } from './tableUsers';
@@ -278,48 +278,6 @@ describe('TableNameSelect — the reference, chosen from what the site declares'
     expect(onChange).toHaveBeenLastCalledWith('watch-drill');
     fireEvent.change(select, { target: { value: '' } });
     expect(onChange).toHaveBeenLastCalledWith(undefined);
-  });
-});
-
-describe('the faction’s table reference', () => {
-  it('offers the site’s tables and writes the chosen one', () => {
-    const onChange = vi.fn();
-    render(
-      <FactionsPanel
-        scope={{ tables: site.tables, factions: [{ id: 'goblins' }] }}
-        onChange={onChange}
-      />
-    );
-    fireEvent.click(screen.getByLabelText('Faction goblins'));
-    const select = screen.getByLabelText('Table for goblins');
-    expect(
-      Array.from(select.querySelectorAll('option')).map((o) => o.value)
-    ).toEqual(['', 'goblin-drill', 'watch-drill']);
-
-    fireEvent.change(select, { target: { value: 'watch-drill' } });
-    expect(
-      (onChange.mock.calls.at(-1)![0] as SiteScope).factions?.[0]?.table
-    ).toBe('watch-drill');
-  });
-
-  it('clears the name to absence, never to an empty string', () => {
-    const onChange = vi.fn();
-    render(
-      <FactionsPanel
-        scope={{
-          tables: site.tables,
-          factions: [{ id: 'goblins', table: 'goblin-drill' }],
-        }}
-        onChange={onChange}
-      />
-    );
-    fireEvent.click(screen.getByLabelText('Faction goblins'));
-    fireEvent.change(screen.getByLabelText('Table for goblins'), {
-      target: { value: '' },
-    });
-    const faction = (onChange.mock.calls.at(-1)![0] as SiteScope).factions?.[0];
-    expect(faction?.table).toBeUndefined();
-    expect('table' in (faction ?? {})).toBe(false);
   });
 });
 

@@ -107,7 +107,7 @@ describe('refusalJumps', () => {
     });
   });
 
-  it('tables, factions, dispositions, intel and concealments open their home section', () => {
+  it('factions, dispositions, intel and concealments open their home section; root tables have none (rpg-project#970)', () => {
     const document = castle();
     const faction = document.scope.factions!.findIndex(
       (f) => f.id === 'garrison'
@@ -115,28 +115,10 @@ describe('refusalJumps', () => {
     const intel = document.scope.intel!.findIndex(
       (record) => record.id === 'cooks-ledger'
     );
-    // A row's refusal names the row, so the section opens on it
-    // (rpg-project#720); the engine writes a root table's row with or
-    // without `on`.
-    expect(targetOf('tables.gate-patrol.time[0].when', document)).toEqual({
-      kind: 'home',
-      section: 'tables',
-      id: 'gate-patrol',
-      row: 'tables.gate-patrol.time[0]',
-    });
-    expect(
-      targetOf('tables.gate-patrol.on.time[10].toward.path', document)
-    ).toEqual({
-      kind: 'home',
-      section: 'tables',
-      id: 'gate-patrol',
-      row: 'tables.gate-patrol.on.time[10]',
-    });
-    expect(targetOf('tables.gate-patrol', document)).toEqual({
-      kind: 'home',
-      section: 'tables',
-      id: 'gate-patrol',
-    });
+    // Root tables have no section (rpg-project#970): a refusal there is a
+    // sentence with no jump.
+    expect(targetOf('tables.gate-patrol.time[0].when', document)).toBeNull();
+    expect(targetOf('tables.gate-patrol', document)).toBeNull();
     const bundled = {
       ...document,
       scope: { ...document.scope, bundles: { patrol: { rows: [] } } },

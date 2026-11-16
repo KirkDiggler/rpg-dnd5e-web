@@ -2703,9 +2703,8 @@ describe('WorldBuildingConcept room publishing', () => {
     expect(
       within(policies).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
     ).toBeTruthy();
-    // The shared table is `time` alone: what the goblin SAYS when spoken to
-    // lives on its line since the social keys retired (rpg-project#569 R2).
-    expect(within(policies).getByText('time')).toBeTruthy();
+    // The faction's `on` table is retired (rpg-project#970): said in one line.
+    expect(within(policies).getByTestId('faction-retired-keys')).toBeTruthy();
     expect(within(policies).queryByText('intimidated')).toBeNull();
     // The pair and its stance are the DISPOSITIONS node's, which is a peer of
     // Factions now rather than a section inside one wrapper.
@@ -2758,7 +2757,8 @@ describe('WorldBuildingConcept room publishing', () => {
       (within(creature).getByLabelText('Creature temper') as HTMLSelectElement)
         .value
     ).toBe('coward');
-    expect(within(creature).getAllByText(/^time$/).length).toBeGreaterThan(0);
+    // Its own `on` is retired (rpg-project#970): said in one line.
+    expect(within(creature).getByTestId('creature-retired-keys')).toBeTruthy();
     expect(
       [
         ...within(creature)
@@ -2766,9 +2766,6 @@ describe('WorldBuildingConcept room publishing', () => {
           .querySelectorAll('ol li code'),
       ].map((weapon) => weapon.textContent)
     ).toEqual(['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']);
-    expect(
-      within(creature).getByTestId('faction-layer-rule').textContent
-    ).toMatch(/nearest key wins WHOLESALE/);
     expect(
       within(creature).getByTestId('temper-asymmetry').textContent
     ).toMatch(/placement’s is one word/);
@@ -3688,26 +3685,15 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     // read-only single line survives only where no editor is wired
     // (`SitePolicies.test.tsx` covers that path).
     expect(screen.getByTestId('creature-weapons-none')).toBeTruthy();
-    // THE CREATURE'S ORDERS ARE NAMED, NOT PASTED (rpg-dnd5e-web#1201). The
-    // inline table editor was REMOVED from this panel by Kirk's ruling — "there
-    // should be no inline table defined on a monster anymore" — so what stands
-    // here is the answer to "what does it answer WITH": a picker over the site's
-    // root tables, and the statement that names none.
-    expect(screen.getByTestId('creature-table-none')).toBeTruthy();
-    expect(
-      (screen.getByLabelText('Table for id-4') as HTMLSelectElement).value
-    ).toBe('');
-    // And the inline table it no longer authors has no editor here: the row
-    // appears only READ-ONLY when a hand-written file carries one, which this
-    // document does not.
-    expect(screen.queryByTestId('creature-inline-table-readonly')).toBeNull();
+    // No table, `on` or states control is offered (rpg-project#970): the
+    // engine reads behaviours only.
+    expect(screen.queryByLabelText('Table for id-4')).toBeNull();
+    expect(screen.queryByLabelText('States YAML for id-4')).toBeNull();
     expect(
       (screen.getByLabelText('Creature temper') as HTMLSelectElement).value
     ).toBe('');
-    // Both asymmetries are stated where an author reads the split.
-    expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
-      /nearest key wins WHOLESALE/
-    );
+    // The temper asymmetry is stated where an author reads the split; the
+    // `on` layering rule left with the retired tables (rpg-project#970).
     expect(screen.getByTestId('temper-asymmetry').textContent).toMatch(
       /placement’s is one word/
     );

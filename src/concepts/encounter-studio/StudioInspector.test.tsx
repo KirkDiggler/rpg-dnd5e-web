@@ -668,7 +668,8 @@ describe('StudioInspector', () => {
     expect(view.getByLabelText('NPC appearance')).toBeTruthy();
     expect(view.getByLabelText('Starting facing')).toBeTruthy();
     expect(view.getByRole('form', { name: 'Creature orders' })).toBeTruthy();
-    fireEvent.click(view.getByRole('button', { name: 'Edit factions' }));
+    // Factions and dispositions are Sides (rpg-project#970).
+    fireEvent.click(view.getByRole('button', { name: 'Edit sides' }));
     expect(props.onConfigure).toHaveBeenCalledWith('factions');
   });
 

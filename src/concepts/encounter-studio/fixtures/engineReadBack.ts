@@ -24,6 +24,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
+import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
@@ -55,4 +56,16 @@ export function castlePlacesReadBack(): ReadBack {
  */
 export function castleThreadsReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(threadsJson) as JsonValue);
+}
+
+/**
+ * THE CASTLE'S BEHAVIOURS (rpg-project#970), recorded the same way from
+ * rpg-toolkit `main` bb5806f7 on the same castle bytes: the "Routines"
+ * section, each of the ten groups cut to its first three statements (the
+ * routine's own, with who runs it, and its first states), and the folded
+ * Routines entries without their sub-entries. Every sentence is the
+ * engine's, unedited.
+ */
+export function castleRoutinesReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(routinesJson) as JsonValue);
 }
