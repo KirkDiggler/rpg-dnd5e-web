@@ -64,7 +64,7 @@ const MONSTER_PREFIX = 'dnd5e:monsters:';
 
 /** `a.b[2].c` → `['a', 'b', 2, 'c']`. Null for a path that is not a field
  * path at all (`line 12`, prose, empty). */
-function segmentsOf(path: string): (string | number)[] | null {
+export function segmentsOf(path: string): (string | number)[] | null {
   const trimmed = path.trim();
   if (!trimmed || /\s/.test(trimmed)) return null;
   const out: (string | number)[] = [];
