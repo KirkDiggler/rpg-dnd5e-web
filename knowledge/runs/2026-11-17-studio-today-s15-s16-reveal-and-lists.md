@@ -7,6 +7,7 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - One reveal contract (`useReveal.ts`, `reveal.tsx`): an item registers under a key `{kind, id, part?}`; a reveal opens what hides it, scrolls it within its own scroll container, focuses it when it can, and marks it briefly — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - Every studio jump resolves through the one path map to a reveal key (`revealKey.ts`), so it lands on the line, row, post, faction, record, secret, ending, conversation, bundle, behaviour or join it names — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - `placeName(path, document)` names a place in the file in words; every visible path is now words with the raw path as its title — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- One list-and-detail piece (`StudioListDetail`): two panes in the workspace height, each scrolling on its own; compact rows (name · one line of summary, small links); rows revealable and a jump to a row chooses it; Up/Down move, Enter/Right go to the detail; below 52rem the panes stack and choosing a row reveals the detail. Threads, Behaviours, Secrets and Cast use it — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 
 ## Decided
 
@@ -16,10 +17,13 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - A statement's place inside the selection itself (its line, its row) is now a link too, because it reveals that place in the form below; while stale the place is text, as before — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - A jump to a creature or prop centres the Layout on it at the current zoom; it does not test whether the thing was already in view, because the Layout surface exposes no visible-bounds query to the workspace — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The work is split: reveal, jumps and place names here; the list-and-detail piece in the next PR on top, so each is reviewable — [lead's brief](https://github.com/KirkDiggler/rpg-project/issues/983).
+- Bundles, Records, Sides (factions and dispositions) and Conversations stay long forms of inline-edited cards: each card already is its own detail, so they get reveal registration only and no list piece — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
+- A jump to a list row chooses the row (the piece's `onReveal`), so a jump into Threads, Behaviours, Secrets or Cast lands with the detail shown, not only the row marked — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 
 ## Found
 
 - Rows already carried their file path (`at`) for refusals (`useRowRefusalsAt`); registering that path made every table, bundle and option row a reveal target with no new identity — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- A separator in its own `<span>` lost its spaces in the button's accessible name ("Guard·stat block"); a bare text node keeps them — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 
 ## Mistaken
 

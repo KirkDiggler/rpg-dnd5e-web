@@ -11,7 +11,7 @@
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { ReadBack } from './ReadBack';
 import { targetOfPath, type RefusalTarget } from './refusalJump';
-import { RevealLi } from './RevealDiv';
+import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 import {
   hubSectionsOf,
@@ -63,71 +63,63 @@ export function StudioThreads({
           {`${NO_THREADS_SENTENCE}${readBack.unavailable ? ` ${readBack.unavailable}` : ''}`}
         </p>
       )}
-      <div className="es-threads-body">
-        <div className="es-threads-hubs">
-          {sections.map((section) => (
-            <div key={section.title}>
-              <h3>{section.title}</h3>
-              <ul aria-label={section.title} className="es-threads-list">
-                {section.rows.map((row) => {
-                  const selected =
-                    focus?.kind === row.hub.kind && focus.id === row.hub.id;
-                  return (
-                    <RevealLi
-                      key={`${row.hub.kind}:${row.hub.id}`}
-                      revealKey={{ kind: row.hub.kind, id: row.hub.id }}
-                    >
-                      <button
-                        type="button"
-                        data-hub={row.hub.id}
-                        data-hub-kind={row.hub.kind}
-                        aria-pressed={selected}
-                        onClick={() => onSelect(row.hub)}
-                      >
-                        <span className="es-threads-id">{row.hub.id}</span>{' '}
-                        <small>{row.summary}</small>
-                        {row.note && (
-                          <small data-note={row.note}> {row.note}</small>
-                        )}
-                        {row.mark && (
-                          <span className="es-fact-mark" data-mark={row.mark}>
-                            {' '}
-                            {row.mark}
-                          </span>
-                        )}
-                      </button>
-                    </RevealLi>
-                  );
-                })}
-              </ul>
+      <StudioListDetail
+        label="Hubs"
+        groups={sections.map((section) => ({
+          title: section.title,
+          rows: section.rows.map((row) => ({
+            key: { kind: row.hub.kind, id: row.hub.id },
+            name: <span className="es-threads-id">{row.hub.id}</span>,
+            summary: (
+              <>
+                {row.summary}
+                {row.note && <small data-note={row.note}> {row.note}</small>}
+                {row.mark && (
+                  <span className="es-fact-mark" data-mark={row.mark}>
+                    {' '}
+                    {row.mark}
+                  </span>
+                )}
+              </>
+            ),
+            buttonData: {
+              'data-hub': row.hub.id,
+              'data-hub-kind': row.hub.kind,
+            },
+          })),
+        }))}
+        selected={focus}
+        onSelect={(key) =>
+          onSelect({ kind: key.kind, id: key.id } as ThreadHub)
+        }
+        detailLabel="Thread"
+        detail={
+          focus && readBack.readBack ? (
+            <div
+              className="es-threads-thread"
+              data-thread={`${focus.kind}:${focus.id}`}
+            >
+              {home && editTarget && onJump && (
+                <button
+                  type="button"
+                  className="es-link"
+                  onClick={() => onJump(editTarget, hubPath)}
+                >
+                  {home.label}
+                </button>
+              )}
+              <ReadBack
+                document={document}
+                selection={focus}
+                state={readBack}
+                onJump={onJump}
+                onOpenFact={onOpenFact}
+                wayOpener={wayOpener}
+              />
             </div>
-          ))}
-        </div>
-        {focus && readBack.readBack && (
-          <div
-            className="es-threads-thread"
-            data-thread={`${focus.kind}:${focus.id}`}
-          >
-            {home && editTarget && onJump && (
-              <button
-                type="button"
-                className="es-link"
-                onClick={() => onJump(editTarget, hubPath)}
-              >
-                {home.label}
-              </button>
-            )}
-            <ReadBack
-              document={document}
-              selection={focus}
-              state={readBack}
-              onJump={onJump}
-              onOpenFact={onOpenFact}
-              wayOpener={wayOpener}
-            />
-          </div>
-        )}
-      </div>
+          ) : null
+        }
+      />
     </section>
   );
 }

@@ -1769,3 +1769,98 @@
   font-size: var(--es-text-help);
   color: var(--wb-muted);
 }
+
+/* ONE LIST-AND-DETAIL PIECE (rpg-project#984): two panes within the
+ * workspace's height, each scrolling on its own; compact rows (a name, one
+ * line of summary, small links); stacked below 52rem, detail after list. */
+.es-list-detail {
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
+  gap: 0;
+  height: calc(100vh - 13rem);
+  min-height: 20rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-bg);
+}
+.es-ld-list-pane {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--wb-border);
+  background: var(--wb-panel);
+  padding: 0.35rem 0;
+}
+.es-ld-detail-pane {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+}
+.es-ld-detail-pane:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -2px;
+}
+.es-ld-group > h3 {
+  margin: 0.5rem 0.75rem 0.25rem;
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  color: var(--wb-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.es-ld-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.es-ld-row {
+  border-left: 3px solid transparent;
+}
+.es-ld-row[data-selected] {
+  border-left-color: var(--wb-accent);
+  background: var(--wb-raised);
+}
+.encounter-studio .es-ld-choose {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.encounter-studio .es-ld-choose[aria-pressed='true'] {
+  background: transparent;
+  font-weight: 600;
+}
+.es-ld-name {
+  color: var(--wb-text);
+}
+.es-ld-summary {
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.es-ld-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  padding: 0 0.75rem 0.35rem;
+  font-size: var(--es-text-help);
+}
+.es-list-detail[data-stacked] {
+  grid-template-columns: 1fr;
+  height: auto;
+}
+.es-list-detail[data-stacked] .es-ld-list-pane {
+  max-height: 50vh;
+  border-right: 0;
+  border-bottom: 1px solid var(--wb-border);
+}
+@media (max-width: 52rem) {
+  .es-list-detail {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
