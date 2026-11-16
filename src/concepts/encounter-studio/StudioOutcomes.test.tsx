@@ -160,7 +160,7 @@ describe('the outcomes form', () => {
   it('shows the castle’s arrest and jail as forms, never as written JSON, and keeps them through a neighbour’s edit (rpg-project#925, #975 C)', () => {
     const commit = renderOutcomes();
     expect(
-      screen.getByRole('heading', { name: 'Entering arrested' })
+      screen.getByRole('heading', { name: 'On entering arrested' })
     ).toBeTruthy();
     expect(
       (
