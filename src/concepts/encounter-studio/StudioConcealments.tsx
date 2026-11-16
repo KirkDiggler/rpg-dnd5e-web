@@ -10,6 +10,7 @@ import {
   type SiteConcealmentSpec,
 } from '../world-building/siteScope';
 import { AboutPanel, FieldHelp } from './FieldHelp';
+import { RevealButton } from './RevealDiv';
 import { StudioCheckRows, type StudioCheck } from './StudioCheckRows';
 import { StudioSection } from './StudioSection';
 import type { EncounterStudioSession } from './studioSession';
@@ -76,14 +77,16 @@ export function StudioConcealments({
       ) : (
         <nav className="es-buttons" aria-label="Concealment list">
           {ids.map((id) => (
-            <button
+            <RevealButton
               type="button"
               key={id}
+              revealKey={{ kind: 'concealment', id }}
+              onReveal={() => setOpenId(id)}
               aria-pressed={open === id}
               onClick={() => setOpenId(id)}
             >
               {id}
-            </button>
+            </RevealButton>
           ))}
         </nav>
       )}

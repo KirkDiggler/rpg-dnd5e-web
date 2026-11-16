@@ -19,6 +19,7 @@
  */
 import { useState } from 'react';
 import { parse, stringify } from 'yaml';
+import { RevealLi } from '../encounter-studio/RevealDiv';
 import type { AnswerEntryShape } from './answerTableShape';
 import { groupRefusals } from './bundles';
 import { BundleParamsContext } from './bundlesContext';
@@ -308,7 +309,11 @@ function BundleCard({
   );
 
   return (
-    <li className="wb-bundle" aria-label={`Bundle ${id}`}>
+    <RevealLi
+      revealKey={{ kind: 'bundle', id }}
+      className="wb-bundle"
+      aria-label={`Bundle ${id}`}
+    >
       <header className="wb-bundle-header">
         <label>
           <span>Bundle id</span>
@@ -407,7 +412,7 @@ function BundleCard({
           Remove bundle
         </button>
       </footer>
-    </li>
+    </RevealLi>
   );
 }
 

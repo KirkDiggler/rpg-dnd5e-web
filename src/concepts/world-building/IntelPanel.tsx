@@ -16,6 +16,7 @@
  * rewrite a creature's `holds` — the server names the dangling reference.
  */
 import { useEffect, useState } from 'react';
+import { RevealLi } from '../encounter-studio/RevealDiv';
 import {
   addIntelRecord,
   intelHolders,
@@ -150,8 +151,9 @@ export function IntelPanel({
               ]),
             ];
             return (
-              <li
+              <RevealLi
                 key={record.id}
+                revealKey={{ kind: 'record', id: record.id }}
                 className="wb-policy-faction"
                 data-testid={`intel-${record.id}`}
               >
@@ -337,7 +339,7 @@ export function IntelPanel({
                     </button>
                   </div>
                 </details>
-              </li>
+              </RevealLi>
             );
           })}
         </ul>

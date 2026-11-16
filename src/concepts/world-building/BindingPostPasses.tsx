@@ -1,3 +1,4 @@
+import { RevealDiv } from '../encounter-studio/RevealDiv';
 import { PassField } from './PassField';
 import { bindingPosts, setBindingPostPass } from './postPass';
 import type { RoomMonsterBinding } from './roomDraft';
@@ -37,8 +38,9 @@ export function BindingPostPasses({
         const post = posts[state];
         const label = `${owner} ${state}`;
         return (
-          <div
+          <RevealDiv
             key={state}
+            path={`room.room.monsterBindings.${owner}.posts.${state}`}
             className="wb-state-post"
             aria-label={`Behavior post for ${label}`}
           >
@@ -61,7 +63,7 @@ export function BindingPostPasses({
             ) : (
               <p className="wb-help">Pass: {JSON.stringify(post.pass)}</p>
             )}
-          </div>
+          </RevealDiv>
         );
       })}
     </fieldset>

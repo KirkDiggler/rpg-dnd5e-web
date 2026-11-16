@@ -21,6 +21,7 @@ import { documentPlacementNames } from '../world-building/placementNames';
 import { ActionRefList } from './ActionRefList';
 import { AboutPanel, FieldHelp } from './FieldHelp';
 import { NpcLookPicker } from './NpcLookPicker';
+import { RevealLi } from './RevealDiv';
 import { StudioCastAppearance } from './StudioCastAppearance';
 import type { EncounterStudioSession } from './studioSession';
 
@@ -715,7 +716,10 @@ export function StudioCast({
           {cast.length ? (
             <ul aria-label="Cast members" className="es-inspector-list">
               {cast.map((entry) => (
-                <li key={entry.ref}>
+                <RevealLi
+                  key={entry.ref}
+                  revealKey={{ kind: 'cast', id: entry.ref }}
+                >
                   <button
                     type="button"
                     aria-pressed={!adding && pressedRef === entry.ref}
@@ -731,7 +735,7 @@ export function StudioCast({
                     {entry.placements.length} placement
                     {entry.placements.length === 1 ? '' : 's'}
                   </button>
-                </li>
+                </RevealLi>
               ))}
             </ul>
           ) : (

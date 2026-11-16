@@ -1,5 +1,6 @@
 import type { SiteExit } from '../world-building/siteScope';
 import type { RefusalTarget } from './refusalJump';
+import { RevealLi } from './RevealDiv';
 
 /** THE EXITS, IN WAYS OUT (rpg-project#970): each is set on its hex on the
  * map; here each is listed with a jump to that hex, beside the endings that
@@ -9,7 +10,7 @@ export function StudioExits({
   onJump,
 }: {
   exits: readonly SiteExit[];
-  onJump?(target: RefusalTarget): void;
+  onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   return (
     <section aria-label="Exits" className="es-exits">
@@ -21,7 +22,11 @@ export function StudioExits({
       ) : (
         <ul aria-label="Exit list">
           {exits.map((exit) => (
-            <li key={exit.id} data-exit={exit.id}>
+            <RevealLi
+              key={exit.id}
+              revealKey={{ kind: 'exit', id: exit.id }}
+              data-exit={exit.id}
+            >
               <button
                 type="button"
                 className="es-link"
@@ -33,7 +38,7 @@ export function StudioExits({
               >
                 {`${exit.id} · q ${exit.cell.q}, r ${exit.cell.r}`}
               </button>
-            </li>
+            </RevealLi>
           ))}
         </ul>
       )}

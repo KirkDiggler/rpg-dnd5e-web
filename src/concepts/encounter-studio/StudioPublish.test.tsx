@@ -778,7 +778,12 @@ describe('S6 Save & Play', () => {
     expect(
       refusals.getByText('mapping values are not allowed here')
     ).toBeTruthy();
-    expect(refusals.getAllByRole('button')).toHaveLength(1);
+    // Each refusal is one jump; its raw path has its own Copy path control.
+    expect(
+      refusals
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') !== 'Copy path')
+    ).toHaveLength(1);
     expect(lobby.createLobby).toHaveLength(0);
     expect(status()).toBe('');
     // The jump selects the creature and opens its inspector.
@@ -1543,5 +1548,53 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     expect(sink.gets).toHaveLength(0);
     expect(savePuts()[0]!.request.key).toBe('the-cells');
+  });
+});
+
+describe('a refusal on a creature’s line lands on the line (rpg-project#983)', () => {
+  it('the jump selects the creature and reveals the refused line in its form', async () => {
+    const document = createCastleS4Document();
+    const bindings = document.draft.room.monsterBindings!;
+    bindings['gate-1'] = {
+      ...bindings['gate-1'],
+      options: [
+        { id: 'hail', say: 'Halt!' },
+        { id: 'wave', say: 'Wave.', do: 'You wave.' },
+      ],
+    };
+    mount(document, { characterId: null });
+    await settled();
+    siteOperation('save');
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    await act(async () =>
+      preview.deferred.resolve({
+        errors: [
+          {
+            path: 'room.room.monsterBindings.gate-1.options[1].do',
+            message: 'said or done, not both',
+          },
+        ],
+      } as never)
+    );
+    const refusals = within(
+      await screen.findByRole('group', { name: 'Server refusals' })
+    );
+    fireEvent.click(
+      refusals.getByRole('button', { name: /said or done, not both$/ })
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('option-gate-1-1').hasAttribute('data-revealed')
+        ).toBe(true),
+      { timeout: 2000 }
+    );
   });
 });

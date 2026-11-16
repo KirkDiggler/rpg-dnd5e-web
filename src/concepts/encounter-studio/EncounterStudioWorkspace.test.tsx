@@ -969,7 +969,10 @@ describe('shared Arrange context lifecycle', () => {
       // A refusal with no noun stays a sentence, with its path.
       expect(list.getByText('bad yaml')).toBeTruthy();
       expect(
-        list.getAllByRole('button').map((button) => button.textContent)
+        list
+          .getAllByRole('button')
+          .filter((button) => button.getAttribute('aria-label') !== 'Copy path')
+          .map((button) => button.textContent)
       ).toEqual([`${name}: ${SAYS_AND_DOES}`, 'Close refusals']);
       expect(
         screen.queryByRole('region', { name: 'Save and Play' })

@@ -3,10 +3,12 @@
  * the words where the studio can pick on its Layout, written as the reader's
  * shapes, edited as chips, and refused at the row in the engine's sentence.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { readDraftYaml } from '../encounter-studio/draftFile';
+import { RevealProvider } from '../encounter-studio/reveal';
+import { useReveal, type RevealKey } from '../encounter-studio/useReveal';
 import type { AnswerEntryShape } from './answerTableShape';
 import { SiteBundlesContext } from './bundlesContext';
 import {
@@ -24,10 +26,13 @@ function mount(
     picking,
     refusals,
     collapsed = false,
+    revealPath,
   }: {
     picking?: RoutePicking;
     refusals?: RowRefusals;
     collapsed?: boolean;
+    /** A jump to this row, after mounting (rpg-project#983). */
+    revealPath?: string;
   } = {}
 ) {
   const onChange = vi.fn();
@@ -45,16 +50,25 @@ function mount(
   ) : (
     panel
   );
+  let reveal: (key: RevealKey) => void = () => {};
+  function Trigger() {
+    reveal = useReveal();
+    return null;
+  }
   render(
-    picking ? (
-      <RoutePickContext.Provider value={picking}>
-        {withRefusals}
-      </RoutePickContext.Provider>
-    ) : (
-      withRefusals
-    )
+    <RevealProvider>
+      <Trigger />
+      {picking ? (
+        <RoutePickContext.Provider value={picking}>
+          {withRefusals}
+        </RoutePickContext.Provider>
+      ) : (
+        withRefusals
+      )}
+    </RevealProvider>
   );
-  if (!refusals?.focus) fireEvent.click(screen.getByLabelText('Table patrol'));
+  if (revealPath) act(() => reveal({ kind: 'path', id: revealPath }));
+  else fireEvent.click(screen.getByLabelText('Table patrol'));
   return () =>
     (onChange.mock.calls.at(-1)?.[0] as SiteScope | undefined)?.tables?.patrol
       ?.time?.[0];
@@ -330,7 +344,6 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
             { path: 'tables.patrol.on.time[0].toward.path', message: sentence },
             { path: 'tables.patrol.on.time[1].toward', message: 'not mine' },
           ],
-          focus: null,
         },
       }
     );
@@ -339,7 +352,7 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     ).toEqual([sentence]);
   });
 
-  it('a jump to a row opens its table and the row', () => {
+  it('a jump to a collapsed row — a refusal’s or a read-back’s, both one reveal — opens its table and the row and marks it', () => {
     mount(
       { when: { enemy: 'none' }, toward: { path: [{ q: 1, r: 0 }] } },
       {
@@ -348,8 +361,8 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
           refusals: [
             { path: 'tables.patrol.on.time[0].toward.path', message: 'no' },
           ],
-          focus: { path: 'tables.patrol.on.time[0]', nonce: 1 },
         },
+        revealPath: 'tables.patrol.on.time[0]',
       }
     );
     expect(
@@ -359,6 +372,13 @@ describe('a cell and a route on toward (rpg-project#720)', () => {
     expect(
       screen.getByRole('list', { name: 'Route for time entry' })
     ).toBeTruthy();
+    // One mechanism for every jump (rpg-project#983): the row is opened by
+    // its own `onReveal`, landed on and marked, never scrolled by the row.
+    const row = screen
+      .getByRole('list', { name: 'Route for time entry' })
+      .closest('[data-reveal-key]')!;
+    expect(row.getAttribute('data-revealed')).toBe('true');
+    expect(document.activeElement).toBe(row);
   });
 });
 

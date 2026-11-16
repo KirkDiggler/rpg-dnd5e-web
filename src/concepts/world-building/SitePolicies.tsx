@@ -50,6 +50,7 @@ import {
 import { paletteNameForRef } from '@/author/paletteData';
 import {
   Fragment,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -59,7 +60,9 @@ import {
 import { ActionRefList } from '../encounter-studio/ActionRefList';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
+import { RevealDiv, RevealLi } from '../encounter-studio/RevealDiv';
 import { StudioSection } from '../encounter-studio/StudioSection';
+import { useRevealable } from '../encounter-studio/useReveal';
 import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
@@ -856,17 +859,16 @@ function UseEntryRow({
   const bundles = useContext(SiteBundlesContext);
   const inBundle = useContext(BundleParamsContext);
   const [open, setOpen] = useState(false);
-  const { refusals, focused, rowRef } = useRowRefusalsAt(at);
+  // A jump to this row opens its route editor first (rpg-project#983).
+  const { refusals, rowRef } = useRowRefusalsAt(at, () => {
+    if (routes.length > 0) setEditingRoute(true);
+  });
   // A ROUTE GIVEN TO A BUNDLE (rpg-project#720): `with: { path: [...] }` is
   // edited here the way a row's own route is, its waypoints as chips.
   const routes = Object.entries(entry.with ?? {}).filter(([, v]) =>
     isRouteValue(v)
   ) as [string, AnswerWaypointShape[]][];
   const [editingRoute, setEditingRoute] = useState(false);
-  useEffect(() => {
-    if (focused && routes.length > 0) setEditingRoute(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focused]);
   // INSIDE A BUNDLE a `with` value may itself be a parameter, `$path`, which
   // is only a route once the outer bundle is used; the line shows it as a
   // chip, and the rows it makes are shown where the outer bundle is used.
@@ -1030,10 +1032,8 @@ function WordEntryRow({
   allowNoWord?: boolean;
 }) {
   const [open, setOpen] = useState(!collapsed);
-  const { refusals, focused, rowRef } = useRowRefusalsAt(at);
-  useEffect(() => {
-    if (focused) setOpen(true);
-  }, [focused]);
+  // A jump to a collapsed row opens it first (rpg-project#983).
+  const { refusals, rowRef } = useRowRefusalsAt(at, () => setOpen(true));
   const words = answerWordsForTrigger(answerRowKind(trigger)).filter(
     (candidate) => !excludeWords.includes(candidate.key)
   );
@@ -1521,6 +1521,8 @@ function FactionRow({
   useEffect(() => setTypedId(faction.id), [faction.id, scope]);
   /** Where the engine addresses this faction (`factions[i]`): its rows and
    * lines show their own refusal, and the faction opens on one (R34). */
+  // A jump to this faction lands here (rpg-project#983).
+  const revealFaction = useRevealable({ kind: 'faction', id: faction.id });
   const at = `factions[${(scope.factions ?? []).indexOf(faction)}]`;
   const { refusals } = useRowRefusals();
   const refused = refusals.some((r) => isUnder(r.path, at));
@@ -1532,6 +1534,14 @@ function FactionRow({
       !/^\.(?:on\.[^.[]+\[\d+\]|options\[\d+\])/.test(r.path.slice(at.length))
   );
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  // One stable ref: the faction registers once, not on every render.
+  const factionRef = useCallback(
+    (element: HTMLDetailsElement | null) => {
+      detailsRef.current = element;
+      revealFaction(element);
+    },
+    [revealFaction]
+  );
   useEffect(() => {
     if (refused && detailsRef.current) detailsRef.current.open = true;
   }, [refused]);
@@ -1557,7 +1567,7 @@ function FactionRow({
   return (
     <li className="wb-policy-faction" data-faction-id={faction.id}>
       <details
-        ref={detailsRef}
+        ref={factionRef}
         className="wb-policy-row"
         data-testid={`faction-${faction.id}`}
       >
@@ -1889,7 +1899,8 @@ function DispositionRow({
   const [a, b] = disposition.between;
   const options = factionNameOptions(scope, a, b);
   return (
-    <li
+    <RevealLi
+      path={`dispositions[${index}]`}
       className="wb-policy-disposition"
       data-disposition={disposition.between.join('|')}
     >
@@ -1966,7 +1977,7 @@ function DispositionRow({
           </button>
         </div>
       </details>
-    </li>
+    </RevealLi>
   );
 }
 
@@ -2404,11 +2415,18 @@ export function CreatureOrders({
   placementNames,
   titled = true,
 }: CreatureOrdersProps) {
+  // A jump to this creature lands on its form; a jump to a place in it that
+  // nothing smaller claims lands here too (rpg-project#983).
+  const revealCreature = useRevealable({ kind: 'creature', id: monster.id });
   const faction = binding?.faction
     ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
     : undefined;
   return (
-    <div className="wb-creature-orders" aria-label="Selected creature">
+    <div
+      ref={revealCreature}
+      className="wb-creature-orders"
+      aria-label="Selected creature"
+    >
       <AboutPanel>
         <p data-testid="temper-asymmetry">
           A faction’s `temper` is a word or a mix; a placement’s is one word,
@@ -2746,8 +2764,9 @@ export function OptionsEditor({
         const commit = (next: OptionShape) => onChange(index, next);
         const line = at ? `${at}.options[${index}]` : undefined;
         return (
-          <div
+          <RevealDiv
             key={index}
+            path={line}
             className="wb-option wb-policy-block"
             data-testid={`option-${owner}-${index}`}
           >
@@ -3001,7 +3020,7 @@ export function OptionsEditor({
             >
               Remove line
             </button>
-          </div>
+          </RevealDiv>
         );
       })}
       <div className="wb-actions">
