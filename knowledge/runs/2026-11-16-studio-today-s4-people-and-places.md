@@ -22,11 +22,17 @@ Slice [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970) o
 - The toolbar strip reads "Encounter configuration" with no suffix: the bars show the group and section, and a breadcrumb would say it twice — [rpg-project#982](https://github.com/KirkDiggler/rpg-project/issues/982).
 - Each bar is a `tablist` of `tab`s with roving tabindex (Left/Right move and select, Home/End to the ends, Tab leaves); the group bar controls a `tabpanel` holding the section bar and the section's own `tabpanel`, each labelled by its selected tab — [WAI-ARIA tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/).
 
+- The picker checks a creature's own `posts` keys and `blockingStates` against each definition's `recipe.states`, and lists a definition missing one disabled with the states named ("gate-1 holds posts or blocks in `alert`, `challenged`, `posted`; `captain-policy` has no state …"), because the engine refuses that pair ("body \"policy\" has no source state \"alert\""); this compares names the document holds and is no rule about what runs. A recipe naming no states inline cannot be checked and stays offered — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1443#pullrequestreview-5921919791).
+- Behaviours also lists a definition no creature runs, which the engine says under not-yet-said (kind `routine`), with the engine's own sentence and no "Run by", since the picker still offers it — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1443#pullrequestreview-5921919791).
+- The editors the retired keys no longer need are deleted with their tests: `StatesEditor`, `statePostEdits`, `setMonsterTable`, the faction answer-entry edits, `FactionInherits`, `AnswerTableReadout`, `TableNameSelect` — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1443#pullrequestreview-5921919791).
+
 ## Found
 
 - All ten castle behaviour definitions are concrete (`recipe` + `table`), each run by the one creature it is named for, and each creature binds it as `{ id: policy, use: <name> }`; `hall-1`, `keep-*`, `reserve-*`, `sergeant` and `turnkey` carry no `behaviorState` — [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970).
 - The engine inherits a faction's `behaviors`, `behaviorState`, `blockingStates` and `posts` for a member that writes none of its own — [rpg-toolkit `dungeonspec/behaviors.go` roomBehaviorInput](https://github.com/KirkDiggler/rpg-toolkit/blob/bb5806f7/rulebooks/dnd5e/encounter/dungeonspec/behaviors.go).
 
+- The picker's output compiles: hall-1 → `keep-1-policy` and the king → `keep-1-policy`, written exactly as the tests pin them, read back clean with rpg-toolkit `main` bb5806f7 `cmd/readback --full` ("The routine `keep-1-policy` is run by Knight (keep-1) and The Mad King (king)"); gate-1 → `captain-policy` is refused by the engine, which the picker now prevents — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1443#pullrequestreview-5921919791).
+
 ## Mistaken
 
-- none observed
+- The first head's picker offered definitions the engine refuses for a creature with posts, and Behaviours dropped a definition no creature runs; the claim that a pick compiles had no evidence. Review ran the picks through the engine and found both — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1443#pullrequestreview-5921919791).

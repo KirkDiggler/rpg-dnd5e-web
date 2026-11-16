@@ -73,7 +73,6 @@ import {
   whenNamesDeedShape,
   type AnswerEntryShape,
   type AnswerSelectorShape,
-  type AnswerTableShape,
   type AnswerWaypointShape,
   type AnswerWhenCondition,
   type AnswerWhenShape,
@@ -93,6 +92,7 @@ import {
   assignBehaviour,
   behaviourChoicesOf,
   bindingBehaviours,
+  namedBodyStates,
 } from './behaviourChoice';
 import { BindingPostPasses } from './BindingPostPasses';
 import { heardPatternMatches, paramText, resolveUse } from './bundles';
@@ -102,7 +102,6 @@ import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
 import { grantedTopics } from './interactionOutcomes';
-import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
   addMonsterHold,
@@ -219,102 +218,6 @@ function factionTemperText(temper: SiteTemper): string {
   return Object.entries(temper)
     .map(([word, share]) => `${word} ×${share}`)
     .join(' · ');
-}
-
-/** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
- * facts view, which stays a readout: the faction owns the table, so it is
- * edited in the `Policies` node and never from inside a creature's panel.
- *
- * EXPORTED (rpg-dnd5e-web#1201) so a creature's panel can show the ROOT TABLE
- * it names without a second readout: the whole point of a named table is that
- * the author can SEE it whole from where it is referenced, which is the hazard
- * it removes. */
-export function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
-  return (
-    <ul className="wb-policy-table">
-      {Object.entries(table).map(([trigger, entries]) => (
-        <li key={trigger}>
-          <span className="wb-policy-trigger">{trigger}</span>
-          <ul>
-            {entries.map((entry, index) => (
-              <li key={index}>{entryText(entry, trigger)}</li>
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * What a faction hands its members, trigger by trigger, as the compiler
- * layers it (`inheritedOrders`): its own rows over the table it names, the
- * nearer winning each trigger wholesale (rpg-project#576, B11).
- *
- * THE HAZARD IT REMOVES is reading one layer as the answer: a readout of the
- * faction's own rows alone reported "no shared table" for a faction that
- * names one. `ownRows` is false where the own rows are the editor right
- * above, so they are not listed twice.
- */
-export function FactionInherits({
-  scope,
-  faction,
-  ownRows,
-}: {
-  scope: SiteScope;
-  faction: SiteFaction;
-  ownRows: boolean;
-}) {
-  const declared =
-    faction.table !== undefined && scope.tables?.[faction.table] !== undefined;
-  const layers = factionLayers(scope, faction);
-  const triggers = Object.keys(layers).filter(
-    (key) => layers[key] !== undefined
-  );
-  return (
-    <div
-      className="wb-policy-inherits"
-      data-testid={`faction-inherits-${faction.id}`}
-    >
-      {faction.table !== undefined &&
-        (declared ? (
-          <p className="wb-help">Inherits {faction.table}</p>
-        ) : (
-          <p className="wb-help" data-testid="faction-table-dangling">
-            This faction names the table “{faction.table}”, and this site
-            declares no table with that id. The server refuses it by name.
-          </p>
-        ))}
-      {triggers.length === 0 && faction.table === undefined && (
-        <p className="wb-help">No shared table is authored.</p>
-      )}
-      {triggers.map((trigger) => {
-        const layer = layers[trigger]!;
-        const fromTable = layer.source.kind === 'faction-table';
-        if (!fromTable && !ownRows && layer.overridden === undefined)
-          return null;
-        return (
-          <div key={trigger} className="wb-policy-trigger-block">
-            <p className="wb-policy-trigger" data-layer={layer.source.kind}>
-              <code>{trigger}</code>{' '}
-              {fromTable
-                ? `from ${faction.table}`
-                : layer.overridden !== undefined
-                  ? `from ${faction.id}’s own rows, which override ${faction.table}’s ${trigger} rows`
-                  : `from ${faction.id}’s own rows`}
-            </p>
-            {(fromTable || ownRows) && (
-              <ul className="wb-policy-entries">
-                {layer.rows.map((entry, index) => (
-                  <li key={index}>{entryText(entry, trigger)}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
@@ -1504,57 +1407,6 @@ export function EntryList<T extends object>({
     <ul className="wb-policy-entries">
       {rows.map((row, index) => children(row, index, keys[index]!))}
     </ul>
-  );
-}
-
-/** A NAMED ROOT TABLE, CHOSEN FROM WHAT THE SITE DECLARES (rpg-toolkit#1897,
- * rpg-dnd5e-web#1201).
- *
- * A CLOSED LIST IS RIGHT HERE, and it is the opposite of `CreatureWeaponEditor`
- * — which refuses to offer a vocabulary because the engine carries weapon refs
- * and NEVER interprets them. A table name is different in kind: the engine
- * RESOLVES it, and refuses by name an id the document does not declare
- * (`bindingTable`/`factionTable`). So the universe is exactly the root's
- * `tables:` keys, which this panel can see, and offering anything else would be
- * offering a document the server rejects.
- *
- * A NAME THAT RESOLVES TO NOTHING IS STILL SHOWN. A hand-written file may name
- * a table this site does not declare — `IntelPanel`'s treatment of a `holds`
- * that outlived its record, for the same reason: the builder must not silently
- * rewrite the author's bytes, and the engine's refusal is the sentence worth
- * surfacing. It appears as its own option so selecting it is not a way to lose
- * it. */
-export function TableNameSelect({
-  scope,
-  value,
-  label,
-  placeholder,
-  onChange,
-}: {
-  scope: SiteScope;
-  value: string | undefined;
-  label: string;
-  placeholder: string;
-  onChange: (next: string | undefined) => void;
-}) {
-  const declared = Object.keys(scope.tables ?? {});
-  const dangling = value !== undefined && !declared.includes(value);
-  return (
-    <select
-      aria-label={label}
-      value={value ?? ''}
-      onChange={(event) =>
-        onChange(event.target.value === '' ? undefined : event.target.value)
-      }
-    >
-      <option value="">{placeholder}</option>
-      {declared.map((id) => (
-        <option key={id} value={id}>
-          {id}
-        </option>
-      ))}
-      {dangling && <option value={value}>{value} (not declared here)</option>}
-    </select>
   );
 }
 
@@ -3217,8 +3069,15 @@ function BehaviourPicker({
   binding: RoomMonsterBinding | undefined;
   onChange?: (next: RoomMonsterBinding | undefined) => void;
 }): React.JSX.Element | null {
-  const choices = behaviourChoicesOf(scope);
+  const choices = behaviourChoicesOf(scope, binding, owner);
   const own = bindingBehaviours(binding);
+  const named = namedBodyStates(binding);
+  const current0 =
+    own?.length === 1 && typeof own[0]?.use === 'string' ? own[0].use : '';
+  // With posts or blocking states, say so when no other definition fits.
+  const noOther =
+    named.length > 0 &&
+    !choices.some((choice) => choice.assignable && choice.id !== current0);
   if (choices.length === 0 && own === undefined) return null;
   const current =
     own?.length === 1 && typeof own[0]?.use === 'string' ? own[0].use : '';
@@ -3263,6 +3122,11 @@ function BehaviourPicker({
             ))}
           </select>
         </label>
+      )}
+      {noOther && (
+        <p className="wb-help">
+          {`No other behaviour this file defines has the states ${owner} holds posts or blocks in.`}
+        </p>
       )}
       <p className="wb-help">
         Picking one writes this creature’s behaviors and behaviorState only.

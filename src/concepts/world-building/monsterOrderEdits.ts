@@ -125,18 +125,6 @@ export function setMonsterFaction(
   return normalizeBinding({ ...working(binding), faction });
 }
 
-/** Set or clear ONE creature's named root table (rpg-toolkit#1897). A name is a
- * REFERENCE, so clearing it is `undefined` and never an empty string — the
- * other half of the bug `normalizeBinding` carried. Everything else on the
- * binding is untouched, which is the point: naming a table is not an edit to
- * the creature's arms, temper or reserve. */
-export function setMonsterTable(
-  binding: RoomMonsterBinding | undefined,
-  table: string | undefined
-): RoomMonsterBinding | undefined {
-  return normalizeBinding({ ...working(binding), table });
-}
-
 /** Set or clear ONE creature's orders in the map. `undefined` deletes the
  * entry, and a map that empties becomes `undefined` so the key is omitted from
  * the document rather than written as `{}`. */

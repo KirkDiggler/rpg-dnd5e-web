@@ -3,6 +3,8 @@
  * engine's read-back, with the engine's fold of what it does and who runs
  * it, each a jump. Building one is not this slice.
  */
+import { create } from '@bufbuild/protobuf';
+import { ReadBackUnsaidSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   cleanup,
   fireEvent,
@@ -113,5 +115,43 @@ describe('StudioBehaviours', () => {
     expect(within(panel()).getByRole('status').textContent).toBe(
       'The engine has not said the behaviours yet.'
     );
+  });
+
+  it('a behaviour no creature runs is still listed, with the engine’s own sentence and no Run by', () => {
+    // hall-1 given keep-1-policy: the engine moves hall-1-policy out of the
+    // Routines section into not-yet-said.
+    const readBack = castleRoutinesReadBack();
+    for (const section of readBack.sections)
+      section.groups = section.groups.filter(
+        (group) => group.about?.id !== 'hall-1-policy'
+      );
+    readBack.notYetSaid = [
+      create(ReadBackUnsaidSchema, {
+        path: 'behaviorDefinitions.hall-1-policy',
+        kind: 'routine',
+        why: 'no creature runs it, so it is not in the compiled encounter to be said',
+      }),
+    ];
+    render(
+      <StudioBehaviours
+        document={castle}
+        readBack={{ readBack, readBackIsCurrent: true, unavailable: null }}
+        focus={null}
+        onSelect={vi.fn()}
+        onJump={vi.fn()}
+      />
+    );
+    const row = within(panel())
+      .getAllByRole('listitem')
+      .find((item) => item.dataset.routine === 'hall-1-policy')!;
+    expect(row.textContent).toContain(
+      'no creature runs it, so it is not in the compiled encounter to be said'
+    );
+    expect(within(row).queryByText('Run by')).toBeNull();
+    expect(
+      within(panel())
+        .getAllByRole('listitem')
+        .map((item) => item.dataset.routine)
+    ).toHaveLength(10);
   });
 });

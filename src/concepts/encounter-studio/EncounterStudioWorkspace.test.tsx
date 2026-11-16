@@ -16,7 +16,7 @@ import type {
   EncounterStudioSession,
   LayoutViewportProps,
 } from './studioSession';
-import { studioButton } from './studioTestNavigation';
+import { encounterSection, studioButton } from './studioTestNavigation';
 
 const observed = vi.hoisted(() => ({
   session: null as EncounterStudioSession | null,
@@ -691,6 +691,49 @@ describe('shared Arrange context lifecycle', () => {
         .map((node) => node.textContent)
     ).toEqual(['Build', 'Encounter']);
   });
+  // Re-homed from the Tables section (rpg-project#970 review): the Bundles
+  // section, which remains, guards the same lifecycle.
+  it('keeps exactly one sidebar section and the canvas across section switches and N', () => {
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
+    const canvas = screen.getByLabelText('Layout floor surface');
+    const bundles = (): void => {
+      fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
+      fireEvent.click(encounterSection('Bundles'));
+    };
+    bundles();
+    expect(screen.getByRole('heading', { name: 'Bundles' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Options (N)' })).toBeNull();
+    click('Wall');
+    expect(
+      screen.getByRole('region', { name: 'New wall palette' })
+    ).toBeTruthy();
+    bundles();
+    expect(
+      screen.queryByRole('region', { name: 'New wall palette' })
+    ).toBeNull();
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(
+      screen.queryByRole('complementary', { name: 'Studio options' })
+    ).toBeNull();
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(
+      screen
+        .getByRole('button', { name: 'Encounter' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    observed.session = { ...observed.session!, arrange: null };
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(
+      screen
+        .getByRole('button', { name: 'Encounter' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByLabelText('Layout floor surface')).toBe(canvas);
+    expect(observed.layoutUnmounts).toBe(0);
+  });
+
   it('N ignores text fields, selects, contenteditable, modifiers, repeats and composition', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Wall');

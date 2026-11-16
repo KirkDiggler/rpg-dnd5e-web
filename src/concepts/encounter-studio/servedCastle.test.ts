@@ -7,7 +7,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import type { CreatureStates } from '../world-building/creatureStates';
 import { setDoorBindingState } from '../world-building/doorBindingEdits';
 import {
   dungeonSourceLost,
@@ -30,10 +29,6 @@ import {
   saveRoomDraft,
   stringifyRoomDraft,
 } from '../world-building/roomDraft';
-import {
-  patchStateHolds,
-  setStateBlocks,
-} from '../world-building/statePostEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import posts from './fixtures/the-mad-king-posts.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
@@ -488,57 +483,6 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
     expect(
       exportDraftYaml({ draft: loaded.value, scope: loaded.scope }, result.key)
     ).toBe(served);
-  });
-
-  it('the two authored post fields edit and export, and only their lines change', () => {
-    const result = read(posts);
-    const binding = result.draft.room.monsterBindings!['gate-1'];
-    let states: CreatureStates = setStateBlocks(
-      binding.states!,
-      'alert',
-      false
-    );
-    states = patchStateHolds(states, 'posted', {
-      against: 'leaving',
-      pass: undefined,
-    });
-    const draft = {
-      ...result.draft,
-      room: {
-        ...result.draft.room,
-        monsterBindings: {
-          ...result.draft.room.monsterBindings,
-          'gate-1': { ...binding, states },
-        },
-      },
-    };
-    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
-    const gate = parse(saved).room.room.monsterBindings['gate-1'].states;
-    expect(gate.posted.holds).toEqual({
-      door: 'gate-wall-door',
-      at: [
-        { q: -3, r: 7 },
-        { q: -4, r: 7 },
-      ],
-      against: 'leaving',
-    });
-    expect(gate.alert).not.toHaveProperty('blocks');
-    expect(gate.alert.holds.against).toBe('entering');
-    const held =
-      '            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }\n';
-    expect(saved).toBe(
-      posts
-        .replace(
-          held,
-          '            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: leaving }\n'
-        )
-        .replace(
-          '          alert:\n            blocks: true\n',
-          '          alert:\n'
-        )
-    );
-    const again = read(saved);
-    expect(again.draft.room.monsterBindings!['gate-1'].states).toEqual(states);
   });
 });
 

@@ -7,6 +7,11 @@
  * jump; a selected behaviour opens to its Read back. Building or editing a
  * behaviour is not here: a creature is given one in its inspector.
  *
+ * A BEHAVIOUR NO CREATURE RUNS is not in the compiled encounter, so the
+ * engine says it under not-yet-said (kind `routine`, path
+ * `behaviorDefinitions.<id>`) with its own reason. It is listed here the
+ * same, with that sentence and no "Run by", since the picker still offers it.
+ *
  * WHO RUNS IT is the engine's `runs` connections, as said: a creature whose
  * faction supplies its behaviour is listed when, and as, the engine says it
  * runs it. The studio infers no runner of its own.
@@ -43,6 +48,12 @@ export function StudioBehaviours({
     section.groups.filter((group) => group.about?.kind === ROUTINE)
   );
   const folds = (said?.folded ?? []).flatMap((section) => section.items);
+  const unrun = (said?.notYetSaid ?? []).flatMap((unsaid) => {
+    const match = /^behaviorDefinitions\.([^.[\]]+)$/.exec(unsaid.path);
+    return unsaid.kind === ROUTINE && match
+      ? [{ id: match[1]!, why: unsaid.why }]
+      : [];
+  });
   const foldOf = (group: ReadBackGroup): string => {
     const own = group.statements[0];
     const item = own
@@ -107,6 +118,18 @@ export function StudioBehaviours({
               </li>
             );
           })}
+          {unrun.map(({ id, why }) => (
+            <li key={id} data-routine={id} data-unrun="">
+              <button
+                type="button"
+                aria-pressed={focus === id}
+                onClick={() => onSelect(id)}
+              >
+                <span className="es-threads-id">{id}</span>
+              </button>
+              <p className="es-help">{why}</p>
+            </li>
+          ))}
         </ul>
         {focus && said && (
           <div className="es-threads-thread" data-behaviour={focus}>

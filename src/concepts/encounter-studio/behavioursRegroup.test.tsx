@@ -96,6 +96,29 @@ describe('the behaviour picker', () => {
     );
   });
 
+  it('the king, who runs nothing yet, is given keep-1-policy: the binding gains behaviors and behaviorState, nothing else', () => {
+    // The reviewer compiled exactly this file with the engine (rpg-toolkit
+    // bb5806f7, `cmd/readback --full`): "The routine `keep-1-policy` is run
+    // by Knight (keep-1) and The Mad King (king)". The hall-1 case above
+    // compiled the same way (rpg-dnd5e-web#1443 review).
+    const result = read(served);
+    const room = result.draft.room;
+    const after = assignBehaviour(room.monsterBindings!.king, 'keep-1-policy');
+    const draft = {
+      ...result.draft,
+      room: {
+        ...room,
+        monsterBindings: withBinding(room.monsterBindings, 'king', after),
+      },
+    };
+    expect(exportDraftYaml({ draft, scope: result.scope }, result.key)).toBe(
+      served.replace(
+        '      king:\n        faction: loyalists\n',
+        '      king:\n        faction: loyalists\n        behaviors:\n          - id: policy\n            use: keep-1-policy\n        behaviorState: policy\n'
+      )
+    );
+  });
+
   it('the creature form names its behaviour and its picker writes through the orders', () => {
     const result = read(served);
     const monster = result.draft.room.monsterDeclarations.find(
@@ -122,6 +145,62 @@ describe('the behaviour picker', () => {
         behaviorState: 'policy',
       })
     );
+  });
+});
+
+describe('the picker checks a creature’s posts against a definition’s states (rpg-project#970 review B)', () => {
+  const pickerFor = (id: string) => {
+    const result = read(served);
+    const monster = result.draft.room.monsterDeclarations.find(
+      (m) => m.id === id
+    )!;
+    render(
+      <CreatureOrders
+        scope={result.scope}
+        monster={monster}
+        room={result.draft.room}
+        binding={result.draft.room.monsterBindings![id]}
+        onOrdersChange={vi.fn()}
+      />
+    );
+    return screen.getByRole('combobox', {
+      name: `Behaviour for ${id}`,
+    }) as HTMLSelectElement;
+  };
+  const option = (select: HTMLSelectElement, value: string) =>
+    [...select.options].find((entry) => entry.value === value)!;
+
+  it('gate-1 cannot take captain-policy, which has none of the states it posts and blocks in', () => {
+    const result = read(served);
+    const gate = result.draft.room.monsterBindings!['gate-1'];
+    const choices = behaviourChoicesOf(result.scope, gate, 'gate-1');
+    expect(choices.find((c) => c.id === 'captain-policy')).toEqual({
+      id: 'captain-policy',
+      assignable: false,
+      reason:
+        'gate-1 holds posts or blocks in `alert`, `challenged`, `posted`; `captain-policy` has no state `alert`, `challenged`, `posted`',
+    });
+    expect(choices.find((c) => c.id === 'gate-1-policy')?.assignable).toBe(
+      true
+    );
+    const select = pickerFor('gate-1');
+    expect(option(select, 'captain-policy').disabled).toBe(true);
+    expect(option(select, 'gate-1-policy').disabled).toBe(false);
+    // No other definition fits, and the form says so.
+    expect(
+      screen.getByText(
+        'No other behaviour this file defines has the states gate-1 holds posts or blocks in.'
+      )
+    ).toBeTruthy();
+  });
+
+  it('a creature with no posts can take any concrete definition', () => {
+    const select = pickerFor('hall-1');
+    expect(
+      [...select.options]
+        .filter((entry) => entry.value !== '')
+        .every((entry) => !entry.disabled)
+    ).toBe(true);
   });
 });
 
