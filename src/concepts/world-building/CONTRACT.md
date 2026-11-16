@@ -1036,9 +1036,9 @@ nouns persist across rooms.
   `Expand workspace`.
 - **Right, collapsible site nouns** — `Monsters` (placement, party start, the
   placed-creature list with Move/Remove, and for the selected creature its
-  faction, weapons (`actions`) and the **named root table it answers with**
-  (`TableNameSelect`; see the tables section above for why the inline `on:`
-  editor is gone), which are named placeholders until those v4 shapes land),
+  faction, weapons (`actions`) and the behaviour it runs, picked among the
+  file's definitions (rpg-project#970: a creature's `table`, `on` and
+  `states` are retired; the engine refuses them)),
   `Doors` (`doorBindings`
   editable per placed item, whose own state decides what it blocks — see the
   doors section below) and `Policies`

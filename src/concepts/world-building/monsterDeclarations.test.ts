@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import {
-  setMonsterFaction,
-  setMonsterTable,
-  withBinding,
-} from './monsterOrderEdits';
+import { setMonsterFaction, withBinding } from './monsterOrderEdits';
 import {
   createRoomDraft,
   moveRoomMonster,
@@ -66,9 +62,9 @@ describe('monster declarations consumer contract', () => {
     expect(withBinding(undefined, 'guard', bound)).toEqual({
       guard: { faction: 'watch' },
     });
-    const orders = setMonsterTable(bound, 'watch-drill');
-    expect(orders).toEqual({ faction: 'watch', table: 'watch-drill' });
-    expect(setMonsterTable(orders, undefined)).toEqual(bound);
+    // A creature's `table` is retired (rpg-project#970): a binding that
+    // still carries one keeps it when its membership is cleared.
+    const orders = { ...bound, table: 'watch-drill' };
     expect(setMonsterFaction(orders, undefined)).toEqual({
       table: 'watch-drill',
     });

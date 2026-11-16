@@ -102,14 +102,11 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       within(panel).getByText('temper coward ×2 · soldier ×1 · aggressive ×1')
     ).toBeTruthy();
 
-    // The shared table, trigger by trigger. The engine's example carries
-    // `time` alone since the social keys retired to options (rpg-project#569
-    // R2): what the goblin SAYS when spoken to is on its line now.
+    // Its `on` table is retired (rpg-project#970): no editor, one line.
     expect(within(panel).queryByText('intimidated')).toBeNull();
-    expect(within(panel).getByText('time')).toBeTruthy();
-    expect(
-      within(panel).getByText('when enemy reach · weight 1 · attack enemy')
-    ).toBeTruthy();
+    expect(within(panel).getByTestId('faction-retired-keys').textContent).toBe(
+      'This faction still carries `on`, which the engine no longer reads; it refuses the file until it is removed.'
+    );
 
     // A disposition is the pair, its stance, and the `until` that ends it —
     // read from the DISPOSITIONS node, which is its own top-level node now.
@@ -200,12 +197,10 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
     const creature = screen.getByLabelText('Selected creature');
     expect(within(creature).getByText('goblins')).toBeTruthy();
 
-    // Inherited: the faction's mix and its shared `time` table.
+    // Inherited: the faction's mix. Its `on` table is retired
+    // (rpg-project#970) and no longer read out.
     expect(
       within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
-    ).toBeTruthy();
-    expect(
-      within(creature).getByText('when enemy seen · weight 1 · toward enemy')
     ).toBeTruthy();
     // And its own line, read out (no editor is given here).
     expect(
@@ -214,11 +209,14 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
       )
     ).toBeTruthy();
 
-    // Overridden: its own ONE word, its own `time` table and its actions.
+    // Overridden: its own ONE word and its actions; its own `on` is retired
+    // and said in one line.
     expect(within(creature).getByText(/^temper coward$/)).toBeTruthy();
     expect(
-      within(creature).getByText('when enemy reach · weight 1 · hold')
-    ).toBeTruthy();
+      within(creature).getByTestId('creature-retired-keys').textContent
+    ).toBe(
+      'This creature still carries `on`, which the engine no longer reads; it refuses the file until it is removed.'
+    );
     expect(
       within(creature).getByText(
         /dnd5e:weapons:scimitar, dnd5e:weapons:shortbow/
@@ -226,7 +224,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
     ).toBeTruthy();
   });
 
-  it('states the two asymmetries where the orders are read', () => {
+  it('states the temper asymmetry where the orders are read', () => {
     render(
       <CreatureOrders
         scope={siteScope}
@@ -234,12 +232,6 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
         room={fixture.draft.room}
         binding={fixture.draft.room.monsterBindings?.['goblin-1']}
       />
-    );
-    expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
-      /nearest key wins WHOLESALE/
-    );
-    expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
-      /entry lists are never merged/
     );
     expect(screen.getByTestId('temper-asymmetry').textContent).toMatch(
       /a word or a mix/
@@ -624,21 +616,6 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     expect(picker.value).toBe('time');
   });
 
-  it('opens a FACTION’s picker on `time` too, for the same reason', () => {
-    // FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
-    // the faction's was not, so a faction author landed on the social half
-    // where no condition control can ever appear. Same invisibility, same fix.
-    const bare: SiteScope = { factions: [{ id: 'goblins' }] };
-    render(<SiteFacts scope={bare} />);
-    // The label carries the faction's own id, and the faction list is
-    // collapsed by default — so open the faction's row first.
-    fireEvent.click(screen.getByLabelText('Faction goblins'));
-    const picker = screen.getByLabelText(
-      'Add trigger to goblins'
-    ) as HTMLSelectElement;
-    expect(picker.value).toBe('time');
-  });
-
   it('offers no span the author did not type', () => {
     // FOUND IN REVIEW (independent-gate): clearing the span committed
     // `within: 0` — `Number('')` — a number nobody typed, where a weight's
@@ -980,80 +957,6 @@ describe('the Options sub-section has one heading (rpg-project#579)', () => {
     const options = screen.getByRole('region', { name: 'Options' });
     expect(within(options).queryByText(/what a character can say/)).toBeNull();
     expect(within(options).getByText('About this panel')).toBeTruthy();
-  });
-});
-
-describe('a faction reads back the table it names (rpg-project#576)', () => {
-  const PATROL: AnswerTableShape = {
-    time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
-  };
-  const openFaction = (id: string) =>
-    fireEvent.click(screen.getByLabelText(`Faction ${id}`));
-
-  it('a faction naming a table and no rows shows that table, not "No shared table"', () => {
-    render(
-      <FactionsPanel
-        scope={{
-          tables: { 'gate-patrol': PATROL },
-          factions: [{ id: 'garrison', table: 'gate-patrol' }],
-        }}
-        onChange={() => {}}
-      />
-    );
-    openFaction('garrison');
-    const inherits = screen.getByTestId('faction-inherits-garrison');
-    expect(within(inherits).getByText('Inherits gate-patrol')).toBeTruthy();
-    expect(within(inherits).getByText('from gate-patrol')).toBeTruthy();
-    expect(
-      within(inherits).getByText('when enemy reach · weight 1 · attack enemy')
-    ).toBeTruthy();
-    expect(screen.queryByText('No shared table is authored.')).toBeNull();
-  });
-
-  it('a faction’s own time rows are labelled as overriding its table’s time rows', () => {
-    render(
-      <CreatureOrders
-        scope={{
-          tables: { 'gate-patrol': PATROL },
-          factions: [
-            {
-              id: 'garrison',
-              table: 'gate-patrol',
-              on: { time: [{ when: { enemy: 'none' }, hold: {} }] },
-            },
-          ],
-        }}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{ faction: 'garrison' }}
-      />
-    );
-    const inherits = screen.getByTestId('faction-inherits-garrison');
-    expect(
-      within(inherits).getByText(
-        'from garrison’s own rows, which override gate-patrol’s time rows'
-      )
-    ).toBeTruthy();
-    expect(
-      within(inherits).getByText('when enemy none · weight 1 · hold')
-    ).toBeTruthy();
-    expect(
-      within(inherits).queryByText('when enemy reach · weight 1 · attack enemy')
-    ).toBeNull();
-  });
-
-  it('a faction naming an undeclared table says so by name', () => {
-    render(
-      <FactionsPanel
-        scope={{ factions: [{ id: 'garrison', table: 'gate-patrol' }] }}
-        onChange={() => {}}
-      />
-    );
-    openFaction('garrison');
-    expect(screen.getByTestId('faction-table-dangling').textContent).toContain(
-      '“gate-patrol”'
-    );
-    expect(screen.queryByText('No shared table is authored.')).toBeNull();
   });
 });
 

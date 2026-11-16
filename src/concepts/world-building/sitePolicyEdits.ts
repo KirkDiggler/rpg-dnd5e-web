@@ -222,63 +222,6 @@ export function setAnswerEntryWord(
   return next as AnswerEntryShape;
 }
 
-export function addSiteAnswerEntry(
-  scope: SiteScope,
-  factionId: string,
-  trigger: string
-): SiteScope {
-  const faction = (scope.factions ?? []).find(
-    (entry) => entry.id === factionId
-  );
-  const table = faction?.on ?? {};
-  return patchSiteFaction(scope, factionId, {
-    on: {
-      ...table,
-      [trigger]: [
-        ...(answerRows(table, trigger) ?? []),
-        defaultAnswerEntry(trigger),
-      ],
-    },
-  });
-}
-
-/** Patch one entry by index. An empty trigger or an empty table drops its key
- * so the document never carries a list the engine reads as "nothing happens
- * here" — but a trigger is never dropped for having no entries, because an
- * empty list is what the toggle-off produces and the author removes it
- * deliberately. */
-export function patchSiteAnswerEntry(
-  scope: SiteScope,
-  factionId: string,
-  trigger: string,
-  index: number,
-  entry: AnswerEntryShape
-): SiteScope {
-  const faction = (scope.factions ?? []).find((item) => item.id === factionId);
-  const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = [...(answerRows(table, trigger) ?? [])];
-  if (index < 0 || index >= entries.length) return scope;
-  entries[index] = entry;
-  table[trigger] = heaviestFirst(entries);
-  return patchSiteFaction(scope, factionId, { on: table });
-}
-
-export function removeSiteAnswerEntry(
-  scope: SiteScope,
-  factionId: string,
-  trigger: string,
-  index: number
-): SiteScope {
-  const faction = (scope.factions ?? []).find((item) => item.id === factionId);
-  const table: AnswerTableShape = { ...(faction?.on ?? {}) };
-  const entries = (answerRows(table, trigger) ?? []).filter(
-    (_, i) => i !== index
-  );
-  if (entries.length === 0) delete table[trigger];
-  else table[trigger] = entries;
-  return patchSiteFaction(scope, factionId, { on: table });
-}
-
 // ---------------------------------------------------------------------------
 // THE SITE'S ROOT ANSWER TABLES (rpg-toolkit#1897, rpg-dnd5e-web#1201)
 // ---------------------------------------------------------------------------

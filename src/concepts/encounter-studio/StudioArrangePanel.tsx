@@ -513,7 +513,7 @@ function SelectedArrange({
                 aria-label="Open encounter definitions"
               >
                 <button type="button" onClick={() => onConfigure('intel')}>
-                  Edit intel definitions
+                  Edit records
                 </button>
                 {selection.kind === 'actor' && (
                   <>
@@ -521,16 +521,13 @@ function SelectedArrange({
                       type="button"
                       onClick={() => onConfigure('factions')}
                     >
-                      Edit factions
+                      Edit sides
                     </button>
                     <button
                       type="button"
-                      onClick={() => onConfigure('dispositions')}
+                      onClick={() => onConfigure('behaviours')}
                     >
-                      Edit dispositions
-                    </button>
-                    <button type="button" onClick={() => onConfigure('tables')}>
-                      Edit behavior tables
+                      Open behaviours
                     </button>
                   </>
                 )}

@@ -113,6 +113,7 @@ import {
 import {
   castleEngineReadBack,
   castlePlacesReadBack,
+  castleRoutinesReadBack,
   castleThreadsReadBack,
 } from './fixtures/engineReadBack';
 import {
@@ -135,7 +136,7 @@ import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
 import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
-import { studioButton } from './studioTestNavigation';
+import { encounterSection, studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
 
@@ -572,7 +573,8 @@ it('authors social definitions in Encounter and attaches records to selected cre
   const factionId = nextFactionId(original.scope);
   const mounted = mount(storage);
   fireEvent.click(button('Encounter'));
-  fireEvent.click(screen.getByRole('button', { name: 'Intel' }));
+  // Intel is Records, under What is known (rpg-project#970).
+  fireEvent.click(encounterSection('Records'));
   fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
   fireEvent.click(screen.getByLabelText(`Intel ${recordId}`));
   fireEvent.change(
@@ -595,7 +597,8 @@ it('authors social definitions in Encounter and attaches records to selected cre
     reveals: { fact: 'orders-authentic' },
   });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Factions' }));
+  // Factions and Dispositions are one section, Sides (rpg-project#970).
+  fireEvent.click(encounterSection('Sides'));
   fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
   fireEvent.click(screen.getByLabelText(`Faction ${factionId}`));
   const factionInput = screen.getByLabelText(`Faction id for ${factionId}`);
@@ -610,7 +613,6 @@ it('authors social definitions in Encounter and attaches records to selected cre
   ).not.toBeNull();
   fireEvent.change(mind, { target: { value: 'goblin-1' } });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Dispositions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
   const newPair = screen
     .getAllByTestId('disposition-goblins-party')
@@ -655,11 +657,9 @@ it('authors social definitions in Encounter and attaches records to selected cre
   expect(
     screen.getByRole('region', { name: 'Authored dispositions' }).textContent
   ).toContain('orders-authentic');
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Edit intel definitions' })
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
   expect(
-    screen.getByRole('region', { name: 'Intel definitions' })
+    screen.getByRole('region', { name: 'Records definitions' })
   ).toBeTruthy();
   expect(
     screen.getByTestId('intel-held-by-orders-letter').textContent
@@ -683,9 +683,7 @@ it('authors social definitions in Encounter and attaches records to selected cre
   fireEvent.click(button('Redo'));
   expect(storage.document()).toEqual(attached);
   act(() => viewport().onSelect(['table']));
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Edit intel definitions' })
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
   expect(
     screen.getByTestId('intel-held-by-orders-letter').textContent
   ).toContain('table');
@@ -1637,48 +1635,6 @@ describe('Studio authoring homes through the real owner', () => {
 });
 
 describe('Studio configuration tables through the real owner', () => {
-  it('authors multiple rows, preserves unrelated data, shares Undo/Redo and reloads in either view', () => {
-    const doc = seed();
-    delete doc.scope.tables;
-    const storage = new MemoryStorage(doc);
-    const mounted = mount(storage);
-    const baseline = storage.document();
-    fireEvent.click(button('Tables'));
-    fireEvent.click(button('Add table'));
-    expect(storage.document().scope.tables).toEqual({ 'table-1': {} });
-    fireEvent.click(screen.getByLabelText('Table table-1'));
-    fireEvent.change(screen.getByLabelText('Table id for table-1'), {
-      target: { value: 'patrol' },
-    });
-    fireEvent.click(button('Apply table name'));
-    fireEvent.click(screen.getByLabelText('Table patrol'));
-    fireEvent.click(button('Add entry on time to patrol'));
-    fireEvent.click(button('Add entry on time to patrol'));
-    expect(storage.document().scope.tables?.patrol.time).toHaveLength(2);
-    const declared = storage.document();
-    expect(declared.draft).toEqual(baseline.draft);
-    expect({ ...declared.scope, tables: undefined }).toEqual({
-      ...baseline.scope,
-      tables: undefined,
-    });
-    fireEvent.click(button('Undo'));
-    expect(storage.document().scope.tables?.patrol.time).toHaveLength(1);
-    fireEvent.click(button('Redo'));
-    expect(storage.document()).toEqual(declared);
-    fireEvent.click(button('Build'));
-    switchTo('3D');
-    fireEvent.click(button('Encounter'));
-    expect(
-      screen.getByRole('region', { name: 'Encounter configuration' })
-    ).toBeTruthy();
-    expect(storage.document()).toEqual(declared);
-    mounted.unmount();
-    mount(storage);
-    fireEvent.click(button('Tables'));
-    expect(screen.getByLabelText('Table patrol')).toBeTruthy();
-    expect(storage.document()).toEqual(declared);
-  });
-
   it('table intents preserve absence on no-op and reject a captured stale snapshot', () => {
     const doc = seed();
     delete doc.scope.tables;
@@ -5128,11 +5084,7 @@ describe('S0 one selection across the homes', () => {
     );
   const openCast = (): void => {
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Cast' })
-    );
+    fireEvent.click(encounterSection('Cast'));
   };
 
   it("a placement selected on its cast member's form is the map selection with the inspector open", async () => {
@@ -5183,42 +5135,108 @@ describe('S0 one selection across the homes', () => {
     ).toBeTruthy();
   });
 
-  it('the home lists Cast, Tables, Bundles, Factions, Dispositions, Intel and Facts, and no Creatures or Stat blocks', async () => {
+  it('the Encounter side is people and places: four groups, opening on People → Cast, and no Tables, Scenarios, Creatures or Stat blocks (rpg-project#970)', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    expect(
-      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
-        .getAllByRole('button')
-        .map((node) => node.textContent)
-    ).toEqual([
-      'Cast',
-      'Party',
-      'Tables',
-      'Bundles',
-      'Factions',
-      'Dispositions',
-      'Intel',
-      'Endings',
-      'Concealments',
-      'Interactions',
-      'Scenarios',
-      'Threads',
+    const groups = within(
+      screen.getByRole('tablist', { name: 'Encounter groups' })
+    );
+    const sections = () =>
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getAllByRole('tab')
+        .map((node) => node.textContent);
+    expect(groups.getAllByRole('tab').map((node) => node.textContent)).toEqual([
+      'People',
+      'Places',
+      'What is known',
+      'Pieces',
     ]);
+    expect(
+      groups.getByRole('tab', { name: 'People' }).getAttribute('aria-selected')
+    ).toBe('true');
+    expect(sections()).toEqual(['Cast', 'Sides', 'Party', 'Conversations']);
+    expect(
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getByRole('tab', { name: 'Cast' })
+        .getAttribute('aria-selected')
+    ).toBe('true');
+    fireEvent.click(groups.getByRole('tab', { name: 'Places' }));
+    expect(sections()).toEqual(['Secrets', 'Ways out']);
+    fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
+    expect(sections()).toEqual(['Records', 'Threads']);
+    fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
+    expect(sections()).toEqual(['Behaviours', 'Bundles']);
+    expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
+    fireEvent.click(groups.getByRole('tab', { name: 'People' }));
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+
+  it('the two bars are tab bars: arrows, Home and End move and select; the panel is labelled by its tab (rpg-project#982)', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    const groups = within(
+      screen.getByRole('tablist', { name: 'Encounter groups' })
+    );
+    const tools = () =>
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }));
+    const selected = (bar: ReturnType<typeof within>): string[] =>
+      bar
+        .getAllByRole('tab')
+        .filter(
+          (tab: HTMLElement) => tab.getAttribute('aria-selected') === 'true'
+        )
+        .map((tab: HTMLElement) => tab.textContent ?? '');
+    // Roving tabindex: only the selected tab is in the Tab order.
+    expect(
+      groups.getAllByRole('tab').map((tab) => tab.getAttribute('tabindex'))
+    ).toEqual(['0', '-1', '-1', '-1']);
+    const people = groups.getByRole('tab', { name: 'People' });
+    people.focus();
+    fireEvent.keyDown(people, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['Places']);
+    expect(document.activeElement).toBe(
+      groups.getByRole('tab', { name: 'Places' })
+    );
+    expect(selected(tools())).toEqual(['Secrets']);
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(selected(groups)).toEqual(['People']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['People']);
+    const cast = tools().getByRole('tab', { name: 'Cast' });
+    cast.focus();
+    fireEvent.keyDown(cast, { key: 'ArrowRight' });
+    expect(selected(tools())).toEqual(['Sides']);
+    // Each bar names the panel it controls, and the panel is labelled by
+    // the selected tab.
+    const sides = tools().getByRole('tab', { name: 'Sides' });
+    const panel = document.getElementById(
+      sides.getAttribute('aria-controls')!
+    )!;
+    expect(panel.getAttribute('role')).toBe('tabpanel');
+    expect(panel.getAttribute('aria-labelledby')).toBe(sides.id);
+    expect(within(panel).getByRole('region', { name: 'Sides' })).toBeTruthy();
+    const peopleTab = groups.getByRole('tab', { name: 'People' });
+    expect(
+      document
+        .getElementById(peopleTab.getAttribute('aria-controls')!)!
+        .getAttribute('aria-labelledby')
+    ).toBe(peopleTab.id);
   });
 
   it('the Party dial moves the real owner’s sharing (rpg-project#935)', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Party' })
-    );
+    fireEvent.click(encounterSection('Party'));
     const readBack = () =>
       screen.getByLabelText('Party sharing read back').textContent;
     expect(readBack()).toBe(
@@ -5248,11 +5266,7 @@ describe('threads through the real owner (rpg-project#973)', () => {
     await settled();
     await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Threads' })
-    );
+    fireEvent.click(encounterSection('Threads'));
   };
   const hub = (id: string): HTMLElement =>
     within(screen.getByRole('region', { name: 'Threads' })).getByRole(
@@ -5431,18 +5445,14 @@ describe('threads through the real owner (rpg-project#973)', () => {
 
 describe('S4 the hidden nouns through the real owner', () => {
   const section = (name: string): void => {
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
-    );
+    fireEvent.click(encounterSection(name));
   };
 
   it('an ending added on the home is one history entry', async () => {
     mount(new MemoryStorage(createCastleReadBackDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Endings');
+    section('Ways out');
     const endings = () =>
       within(screen.getByRole('region', { name: 'Endings' }));
     fireEvent.click(endings().getByRole('button', { name: 'Add ending' }));
@@ -5468,11 +5478,7 @@ describe('S4 the hidden nouns through the real owner', () => {
 
 describe('S4 concealments through the real owner', () => {
   const section = (name: string): void => {
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
-    );
+    fireEvent.click(encounterSection(name));
   };
   const withStash = (): RoomDraftDocument => {
     const document = createPopulatedStudioDocument();
@@ -5495,7 +5501,7 @@ describe('S4 concealments through the real owner', () => {
     )!;
     expect(cell).toBeTruthy();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'stash' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Add members on the map' })
@@ -5529,7 +5535,7 @@ describe('S4 concealments through the real owner', () => {
     mount(storage);
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'stash' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Add members on the map' })
@@ -5559,7 +5565,7 @@ describe('S4 concealments through the real owner', () => {
       'lifetime is not read by the engine; removed from studio-secret, attempts keep max and reset_hexes'
     );
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     expect(
       (
         screen.getByLabelText(
@@ -5584,7 +5590,7 @@ describe('S4 concealments through the real owner', () => {
     mount(storage);
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'Remove concealment' }));
     expect(storage.document().scope.concealments).toBeUndefined();
     fireEvent.click(button('Build'));
@@ -6063,11 +6069,7 @@ describe('S4 scenario bindings follow the exit, not a namesake (rpg-project#578 
 
 describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', () => {
   const section = (name: string): void => {
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
-    );
+    fireEvent.click(encounterSection(name));
   };
 
   it('opens with the refusal on the form and cannot be saved until a member is picked', async () => {
@@ -6088,7 +6090,7 @@ describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', 
     ).toBeTruthy();
     expect(screen.queryByText(/Room draft load failed/)).toBeNull();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'empty' }));
     const form = within(
       screen.getByRole('group', { name: 'Concealment empty' })
@@ -7137,11 +7139,7 @@ describe('S3 the overview through the real owner', () => {
     await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
     expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Threads' })
-    );
+    fireEvent.click(encounterSection('Threads'));
     const threads = screen.getByRole('region', { name: 'Threads' });
     fireEvent.click(
       within(threads).getByRole('button', { name: /^king-is-cultist\b/ })
@@ -7316,51 +7314,6 @@ describe('Save and Play through the real owner (S6)', () => {
   });
 });
 
-it('the castle’s gate tables read as use: lines that resolve in the studio (rpg-project#670)', async () => {
-  const read = readDraftYaml(referenceCastleYaml);
-  if (!read.ok) throw new Error(read.refusal);
-  // THE STUDIO'S OWN TREE, not a panel mounted alone: the first build drew
-  // the lines and said "names no bundle" beside each, because the studio
-  // renders outside the document root the bundles were provided at.
-  const original = createEmptyCastDocument();
-  original.scope.bundles = read.scope.bundles;
-  original.scope.tables = { 'gate-patrol': read.scope.tables!['gate-patrol'] };
-  mount(new MemoryStorage(original));
-  await settled();
-  fireEvent.click(button('Encounter'));
-  fireEvent.click(button('Tables'));
-  const tables = screen.getByRole('list', { name: 'Site tables' });
-  const lines = Array.from(
-    tables.querySelectorAll('li.wb-entry-use .wb-entry-summary')
-  ).map((node) => node.textContent);
-  expect(lines).toEqual([
-    // ONE LINE, `guard-base`, a bundle of the dasher, the pursuer, the alarm
-    // and the patrol; the route given to it is its waypoints as chips
-    // (rpg-project#720).
-    'guard-base · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
-  ]);
-  expect(within(tables).queryByRole('alert')).toBeNull();
-  fireEvent.click(
-    within(tables).getByRole('button', {
-      name: /Show the rows of .* entry guard-base/,
-    })
-  );
-  expect(
-    within(within(tables).getByLabelText('guard-base rows'))
-      .getAllByRole('listitem')
-      .map((node) => node.textContent)
-  ).toEqual([
-    'dasher',
-    'pursuer · when enemy lost',
-    'alarm-reactor',
-    'patrol · with path a route of 3 waypoints',
-  ]);
-});
-
-// The benchmark harness's stroke marks (rpg-project#750, B11): only a stroke
-// that changes the document marks its commit and, a frame after the grid's
-// commit, its paint. A no-op stroke marks neither, and leaves nothing armed
-// for the next unrelated edit to fire.
 describe('stroke perf marks', () => {
   const url = window.location.href;
   afterEach(() => {
@@ -7650,5 +7603,87 @@ describe('the places view through the real owner (rpg-project#972)', () => {
       within(screen.getByRole('region', { name: 'Joins' })).getByRole('status')
         .textContent
     ).toMatch(/^The engine has not said the places yet\./);
+  });
+});
+
+describe('read-back jumps land in the ruled sections (rpg-project#970)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openCaptain = async (): Promise<void> => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    // The captain's own read-back with the whole Routines section in place
+    // of its one routine.
+    readBack.sections = readBack.sections.filter(
+      (section) => section.title !== 'Routines'
+    );
+    readBack.sections.push(
+      ...castleRoutinesReadBack().sections,
+      ...castleThreadsReadBack().sections
+    );
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+  };
+  const pressed = (bar: string, name: string): string | null =>
+    within(screen.getByRole('tablist', { name: bar }))
+      .getByRole('tab', { name })
+      .getAttribute('aria-selected');
+
+  it('a routine opens Behaviours on it; a conversation opens Conversations', async () => {
+    await openCaptain();
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    fireEvent.click(
+      (
+        await inspector.findAllByRole('button', {
+          name: 'Open routine captain-policy',
+        })
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'Pieces')).toBe('true');
+    expect(pressed('Encounter tools', 'Behaviours')).toBe('true');
+    const behaviours = screen.getByRole('region', { name: 'Behaviours' });
+    expect(
+      within(behaviours)
+        .getByRole('button', { name: /^captain-policy\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // Back to the captain: his line's conversation opens Conversations.
+    fireEvent.click(button('Build'));
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByRole(
+        'button',
+        { name: 'Open conversation front-gate' }
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'People')).toBe('true');
+    expect(pressed('Encounter tools', 'Conversations')).toBe('true');
+  });
+
+  it('a record thread’s Edit in Intel opens Records', async () => {
+    await openCaptain();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Threads'));
+    const threads = screen.getByRole('region', { name: 'Threads' });
+    fireEvent.click(
+      within(threads).getByRole('button', { name: /^kitchen-way\b/ })
+    );
+    fireEvent.click(
+      within(threads).getByRole('button', { name: 'Edit in Intel' })
+    );
+    expect(pressed('Encounter groups', 'What is known')).toBe('true');
+    expect(pressed('Encounter tools', 'Records')).toBe('true');
   });
 });

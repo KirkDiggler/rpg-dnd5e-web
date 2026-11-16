@@ -125,11 +125,11 @@ describe('connectionJump on the served castle', () => {
     });
   });
 
-  it('an id the document does not hold, and a routine, land nowhere', () => {
+  it('an id the document does not hold lands nowhere; a routine opens Behaviours on it (rpg-project#970)', () => {
     for (const kind of ['faction', 'bundle', 'exit', 'door'])
       expect(connectionJump({ kind, id: 'no-such-id' }, castle)).toBeNull();
     expect(
       connectionJump({ kind: 'routine', id: 'captain-policy' }, castle)
-    ).toBeNull();
+    ).toEqual({ kind: 'hub', hub: 'routine', id: 'captain-policy' });
   });
 });

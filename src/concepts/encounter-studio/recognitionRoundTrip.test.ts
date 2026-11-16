@@ -22,7 +22,6 @@ import {
   passForm,
   setBindingPostPass,
 } from '../world-building/postPass';
-import { patchStateHolds } from '../world-building/statePostEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import posts from './fixtures/the-mad-king-posts.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
@@ -384,21 +383,5 @@ describe('a post’s pass edits only its own line (rpg-project#928)', () => {
     expect(
       exportDraftYaml({ draft: back, scope: again.scope }, again.key)
     ).toBe(served);
-  });
-
-  it('a state’s post switches from a password to recognition', () => {
-    const result = read(posts);
-    const draft = structuredClone(result.draft);
-    const binding = draft.room.monsterBindings!['gate-1'];
-    binding.states = patchStateHolds(binding.states!, 'posted', {
-      pass: { recognized: 'admitted' },
-    });
-    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
-    const after = parse(saved).room.room.monsterBindings['gate-1'].states;
-    expect(after.posted.holds.pass).toEqual({ recognized: 'admitted' });
-    expect(after.alert).toEqual(
-      parse(posts).room.room.monsterBindings['gate-1'].states.alert
-    );
-    roundTrips(saved);
   });
 });
