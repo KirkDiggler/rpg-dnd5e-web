@@ -11,6 +11,7 @@
  * being enough (`place.way.partial`) or that nothing lifts its bar
  * (`place.way.none`). The studio decides no way, bar or join of its own.
  */
+import { refId } from '@/utils/refs';
 import type {
   ReadBack,
   ReadBackConnection,
@@ -186,15 +187,17 @@ const words = (text: string): string =>
 /** A method chip's text: the method's name from its id, and its difficulty
  * when the engine gives one (`skill:performance` 13 → "Performance 13"). */
 export function methodLabel(method: { id: string; value: number }): string {
-  const [kind, ...rest] = method.id.split(':');
-  const name = rest.join(':');
+  // `<kind>:<name>`; a tool's name is a ref, taken apart by the one parser.
+  const at = method.id.indexOf(':');
+  const kind = at < 0 ? method.id : method.id.slice(0, at);
+  const name = at < 0 ? '' : method.id.slice(at + 1);
   const label =
     kind === 'skill'
       ? words(name)
       : kind === 'ability'
         ? (ABILITIES[name] ?? name)
         : kind === 'tool'
-          ? (name.split(':').pop() ?? name)
+          ? (refId(name) ?? name)
           : method.id;
   return method.value ? `${label} ${method.value}` : label;
 }

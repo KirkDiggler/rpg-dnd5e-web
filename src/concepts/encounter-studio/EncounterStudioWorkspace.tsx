@@ -51,6 +51,7 @@ import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
+import { PlacesJoinList } from './PlacesJoinList';
 import {
   browserPublicationStorage,
   clearPublication,
@@ -105,7 +106,7 @@ import {
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
 import { StudioWallControls } from './StudioWallControls';
-import { PlacesJoinList, usePlacesView } from './usePlacesView';
+import { usePlacesView } from './usePlacesView';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
