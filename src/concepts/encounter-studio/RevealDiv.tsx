@@ -31,16 +31,3 @@ export function RevealLi({
   const byKey = useRevealable(revealKey, onReveal);
   return <li ref={revealKey ? byKey : byPath} {...props} />;
 }
-
-/** A button a jump can land on: an entry in a list whose detail it opens. */
-export function RevealButton({
-  revealKey,
-  onReveal,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  revealKey: RevealKey;
-  onReveal?: () => void;
-}): React.JSX.Element {
-  const ref = useRevealable(revealKey, onReveal);
-  return <button ref={ref} {...props} />;
-}

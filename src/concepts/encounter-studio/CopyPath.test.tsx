@@ -11,7 +11,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CopyPath } from './CopyPath';
+import { CopyPath, CopyPathGroup } from './CopyPath';
 
 const PATH = 'room.room.monsterBindings.captain.options[4].failure[0]';
 
@@ -58,5 +58,46 @@ describe('CopyPath', () => {
         }) as HTMLInputElement
       ).value
     ).toBe(PATH);
+  });
+  it('the hand-copy field takes focus once when it opens, not on every render', async () => {
+    vi.stubGlobal('navigator', {});
+    const { rerender } = render(<CopyPath path={PATH} />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Copy path' }))
+    );
+    const field = screen.getByRole('textbox', {
+      name: 'Path to copy',
+    }) as HTMLInputElement;
+    // The author narrows the selection; a re-render must not reselect.
+    field.setSelectionRange(0, 4);
+    const focus = vi.spyOn(field, 'focus');
+    rerender(<CopyPath path={PATH} />);
+    rerender(<CopyPath path={PATH} />);
+    expect(focus).not.toHaveBeenCalled();
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, 4]);
+  });
+
+  it('beside a focusable place it is quiet: not a Tab stop until the place has focus, then the next one', () => {
+    vi.stubGlobal('navigator', {});
+    render(
+      <>
+        <CopyPathGroup path={PATH}>
+          <button type="button">captain · line `stand-aside`</button>
+        </CopyPathGroup>
+        <button type="button">after</button>
+      </>
+    );
+    const copy = screen.getByRole('button', { name: 'Copy path' });
+    expect(copy.tabIndex).toBe(-1);
+    act(() =>
+      screen
+        .getByRole('button', { name: 'captain · line `stand-aside`' })
+        .focus()
+    );
+    expect(copy.tabIndex).toBe(0);
+    act(() => copy.focus());
+    expect(copy.tabIndex).toBe(0);
+    act(() => screen.getByRole('button', { name: 'after' }).focus());
+    expect(copy.tabIndex).toBe(-1);
   });
 });

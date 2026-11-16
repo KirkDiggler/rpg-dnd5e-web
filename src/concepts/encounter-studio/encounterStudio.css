@@ -1898,6 +1898,18 @@
   color: var(--wb-text);
   border-color: var(--wb-accent);
 }
+/* Quiet beside a focusable place: shown on hover or while its group has
+ * focus, or while it says something. */
+.encounter-studio
+  .es-copy-group
+  .es-copy-path[data-state='idle']
+  .es-copy-path-button {
+  opacity: 0;
+}
+.encounter-studio .es-copy-group:hover .es-copy-path-button,
+.encounter-studio .es-copy-group:focus-within .es-copy-path-button {
+  opacity: 1;
+}
 .es-copy-path-said {
   font-size: var(--es-text-help);
   color: var(--wb-accent);

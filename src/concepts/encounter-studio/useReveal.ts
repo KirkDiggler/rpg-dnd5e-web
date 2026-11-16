@@ -9,8 +9,12 @@
  *   collapsed row opens), and every closed `<details>` around it opens;
  * - scrolled into view within ITS OWN scroll container (the nearest
  *   scrolling ancestor, or one marked `data-scroll-pane`), never the page;
- * - focused itself — never a control inside it — given `tabindex="-1"`
- *   when it takes no focus, and named for a screen reader from its key;
+ * - focused itself — never a field inside it — given `tabindex="-1"`
+ *   when it takes no focus; an item may name its own navigation control
+ *   (`data-reveal-focus` on a direct child, as a list row's button) to take
+ *   the focus instead. A plain container is named for a screen reader from
+ *   its key (a `div` or `span` as `role="group"`); a control keeps the name
+ *   it says;
  * - marked with `data-revealed="true"` (an outline round the whole item and
  *   a tint, with a short entrance that `prefers-reduced-motion` drops). The
  *   mark LASTS: it moves with the next jump and clears on a new selection,
@@ -26,7 +30,7 @@
  *
  * EXTENDING IT (also in CONTRACT.md, "Reveal"):
  * - A new id-keyed screen: put `useRevealable({kind, id}, onReveal)` (or
- *   `RevealLi`/`RevealDiv`/`RevealButton` with `revealKey`) on each item's
+ *   `RevealLi`/`RevealDiv` with `revealKey`) on each item's
  *   whole block; `onReveal` opens whatever hides it. A list-and-detail
  *   screen gets this from `StudioListDetail`.
  * - A new path-keyed place inside a thing: register the element by its file
@@ -150,14 +154,34 @@ function land(element: HTMLElement): void {
     if (node instanceof HTMLDetailsElement && !node.open) node.open = true;
   }
   bringIntoView(element);
-  // FOCUS THE ITEM ITSELF, never a control inside it: a jump must not put
-  // the cursor in a field where the next key edits content. An item that
-  // takes no focus is given `tabindex="-1"` while it is marked; the mark is
-  // its focus treatment.
+  // FOCUS THE ITEM ITSELF, never a field inside it: a jump must not put the
+  // cursor where the next key edits content. An item may name its own
+  // navigation control as where focus goes (`data-reveal-focus` on a direct
+  // child: a list row's button, which only chooses the row); otherwise the
+  // item takes focus, given `tabindex="-1"` while marked when it has none.
+  // The mark is its focus treatment.
+  const own = focusTargetOf(element);
+  if (own !== element) {
+    own.focus({ preventScroll: true });
+    return;
+  }
   if (!element.matches(FOCUSABLE) || (element as HTMLButtonElement).disabled)
     element.setAttribute('tabindex', '-1');
   element.focus({ preventScroll: true });
 }
+
+/** Where a revealed item's focus goes: its own `data-reveal-focus` control,
+ * or the item. */
+function focusTargetOf(element: HTMLElement): HTMLElement {
+  return (
+    element.querySelector<HTMLElement>(':scope > [data-reveal-focus]') ??
+    element
+  );
+}
+
+/** Controls that carry their own name (their text): an `aria-label` would
+ * override what they say, so a revealed one is not relabelled. */
+const NAMED_CONTROL = 'a[href],button,input,select,textarea,summary';
 
 /** Keys that edit or activate: a printable character, Enter, Space,
  * Backspace, Delete. A bare modifier, Tab, an arrow or Escape only looks
@@ -211,16 +235,28 @@ export function useRevealController(): RevealController {
     };
     const mark = (element: HTMLElement, added: string[]): void => {
       element.setAttribute('data-revealed', 'true');
-      // A screen reader hears where the jump landed.
+      // A screen reader hears where the jump landed: a plain container is
+      // named, and a `div` or `span` given `role="group"` so the name is
+      // announced. A control (or an item whose focus goes to its own
+      // control) already says its name.
       const key = keys.current.get(element);
       const name = key ? namer.current?.(key) : null;
       if (
         name &&
+        focusTargetOf(element) === element &&
+        !element.matches(NAMED_CONTROL) &&
         !element.hasAttribute('aria-label') &&
         !element.hasAttribute('aria-labelledby')
       ) {
         element.setAttribute('aria-label', name);
         added.push('aria-label');
+        if (
+          (element.tagName === 'DIV' || element.tagName === 'SPAN') &&
+          !element.hasAttribute('role')
+        ) {
+          element.setAttribute('role', 'group');
+          added.push('role');
+        }
       }
       // The author's next act elsewhere clears it: a pointer down, or a key
       // that edits or activates, outside the item. Listening starts after

@@ -196,6 +196,9 @@ export function StudioListDetail({
                       <button
                         type="button"
                         className="es-ld-choose"
+                        // A jump to the row focuses this button, so Up and
+                        // Down work at once (rpg-project#983, #984).
+                        data-reveal-focus=""
                         aria-pressed={isSelected}
                         tabIndex={mine === tabStop ? 0 : -1}
                         onClick={() => choose(row.key)}

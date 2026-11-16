@@ -9,7 +9,7 @@
  * and one sentence per failure. It holds no transaction state of its own.
  */
 import { useEffect, useRef, type Ref } from 'react';
-import { CopyPath } from './CopyPath';
+import { CopyPath, CopyPathGroup } from './CopyPath';
 import { FieldHelp } from './FieldHelp';
 import type { RefusalJump, RefusalTarget } from './refusalJump';
 import {
@@ -319,16 +319,23 @@ export function RefusalList({
     <ul className="es-refusals">
       {jumps.map((jump, index) => (
         <li key={`${jump.path}:${index}`}>
-          {jump.target ? (
-            <button
-              type="button"
-              title={jump.path}
-              onClick={() => onJump(jump.target!, jump.path)}
-            >
-              {nameOf(jump.target)}: {jump.message}
-            </button>
-          ) : null}
-          {jump.target && jump.path && <CopyPath path={jump.path} />}
+          {jump.target &&
+            (() => {
+              const place = (
+                <button
+                  type="button"
+                  title={jump.path}
+                  onClick={() => onJump(jump.target!, jump.path)}
+                >
+                  {nameOf(jump.target)}: {jump.message}
+                </button>
+              );
+              return jump.path ? (
+                <CopyPathGroup path={jump.path}>{place}</CopyPathGroup>
+              ) : (
+                place
+              );
+            })()}
           {jump.target ? null : (
             <span>
               {jump.message}

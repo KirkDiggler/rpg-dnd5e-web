@@ -175,6 +175,20 @@ describe('StudioListDetail', () => {
     );
   });
 
+  it('after a jump to a row, focus is on its button and Down works at once', () => {
+    const onSelect = vi.fn();
+    render(
+      <RevealProvider>
+        <Harness onSelect={onSelect} />
+      </RevealProvider>
+    );
+    act(() => revealNow({ kind: 'fact', id: 'bravo' }));
+    expect(document.activeElement).toBe(row('bravo'));
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(onSelect).toHaveBeenLastCalledWith('charlie');
+    expect(document.activeElement).toBe(row('charlie'));
+  });
+
   it('the list is one Tab stop: only the chosen row is tabbable; Home and End go to the ends', () => {
     const onSelect = vi.fn();
     render(

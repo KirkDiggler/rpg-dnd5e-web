@@ -259,9 +259,28 @@ describe('reveal', () => {
     expect(document.activeElement).toBe(row);
     expect(row.getAttribute('tabindex')).toBe('-1');
     expect(row.getAttribute('aria-label')).toBe('gate-1 · line options[1]');
+    // A plain div is announced by its name only as a group.
+    expect(row.getAttribute('role')).toBe('group');
     expect(document.activeElement).not.toBe(
       screen.getByRole('combobox', { name: 'Do' })
     );
+  });
+
+  it('a control keeps the name it says: a revealed button is not relabelled', () => {
+    render(
+      <RevealProvider namer={() => 'faction `loyalists`'}>
+        <Trigger />
+        <Item
+          revealKey={{ kind: 'faction', id: 'loyalists' }}
+          label="loyalists"
+        />
+      </RevealProvider>
+    );
+    act(() => revealNow({ kind: 'faction', id: 'loyalists' }));
+    const item = screen.getByRole('button', { name: 'loyalists' });
+    expect(item.getAttribute('data-revealed')).toBe('true');
+    expect(item.hasAttribute('aria-label')).toBe(false);
+    expect(item.hasAttribute('role')).toBe(false);
   });
 
   it('a key whose thing nothing owns lands nowhere and marks nothing', () => {

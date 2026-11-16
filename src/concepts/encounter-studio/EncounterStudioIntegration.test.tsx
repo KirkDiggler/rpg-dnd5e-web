@@ -6198,6 +6198,16 @@ describe('S1 the cast through the real owner', () => {
       inspector().getByRole('button', { name: 'Open cast member Guard' })
     );
     expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+    // It is a jump like any other (rpg-project#983): the member's form in
+    // the inspector is landed on and marked.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('region', { name: 'Inspector' })
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-key')
+      ).toMatch(/^(cast|template):/)
+    );
   });
 
   it("deleting the selected member's template falls back to nothing", async () => {

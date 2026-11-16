@@ -1593,7 +1593,7 @@ function StudioSurface({
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
-                onOpenCastMember={(ref) => session.cast.select(ref)}
+                onOpenCastMember={(ref) => jumpTo({ kind: 'castMember', ref })}
                 onOpenRegion={(regionId) => {
                   session.selectRegion(regionId);
                 }}
