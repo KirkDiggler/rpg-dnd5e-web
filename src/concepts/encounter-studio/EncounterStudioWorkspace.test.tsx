@@ -642,6 +642,8 @@ describe('shared Arrange context lifecycle', () => {
       'Wall',
       'Door',
       'Note',
+      // The places mode toggle (rpg-project#972).
+      'Places',
       'Inspector (N)',
       'Undo',
       'Redo',

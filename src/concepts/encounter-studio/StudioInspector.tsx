@@ -19,6 +19,7 @@ import { exitAt, setExitAt } from '../world-building/exitEdits';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
+import { joinName, placesOf } from './placesView';
 import { ReadBack } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { selectionName } from './StudioArrangeFields';
@@ -65,6 +66,8 @@ export interface StudioInspectorProps {
   /** Land on what a read-back connection or path names: the workspace's
    * refusal jump, so a sentence and a refusal land through one map. */
   onJump?(target: RefusalTarget): void;
+  /** Select the join a door makes (rpg-project#972). */
+  onOpenJoin?(joinId: string): void;
   onMoveCreature(): void;
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
@@ -300,13 +303,37 @@ function WallView({
 function DoorView({
   session,
   arrange,
+  readBack,
+  onOpenJoin,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element {
+  const doorId = arrange.kind === 'door' ? arrange.door.id : null;
+  const join =
+    doorId && readBack?.readBack
+      ? placesOf(readBack.readBack).joins.find((entry) => entry.door === doorId)
+      : undefined;
+  const regionName = (id: string): string => {
+    const region = session.document.draft.room.regions.find(
+      (entry) => entry.id === id
+    );
+    return region?.name || id;
+  };
   return (
     <>
       {arrange.kind === 'door' && (
         <div className="es-context-panel es-door-view">
+          {join && onOpenJoin && (
+            <p className="es-door-join">
+              <button
+                type="button"
+                className="es-link"
+                onClick={() => onOpenJoin(join.id)}
+              >
+                {joinName(join, regionName)}
+              </button>
+            </p>
+          )}
           <DoorState session={session} doorId={arrange.door.id} />
         </div>
       )}

@@ -215,3 +215,29 @@ export const BAR_STATES: Record<string, string> = {
 export const barHeading = (bar: string): string =>
   BAR_HEADINGS[bar] ?? `To pass the bar \`${bar}\`, any of:`;
 export const barState = (bar: string): string => BAR_STATES[bar] ?? bar;
+
+/** A join's accessible name, from its connections: "Join: Gatehouse and
+ * Courtyard, by the door gate-wall-door, held". The words between the
+ * engine's names are the studio's chrome. */
+export function joinName(
+  join: PlaceJoin,
+  regionName: (id: string) => string
+): string {
+  const state =
+    join.bars.length === 0 ? 'unbarred' : join.bars.map(barState).join(' and ');
+  const by = (c: { kind: string; id: string }) => `the ${c.kind} ${c.id}`;
+  if (join.to) {
+    const from = join.from.map(regionName).join(' and ');
+    const carrier = join.carriers[0];
+    return `Join: passage from ${from || 'somewhere'} to ${regionName(join.to)}${carrier ? `, by ${by(carrier)}` : ''}, ${state}`;
+  }
+  const places = join.regions.map(regionName).join(' and ');
+  const how = join.door
+    ? `by the door ${join.door}`
+    : join.kind === 'place.join.open'
+      ? 'on open floor'
+      : join.carriers[0]
+        ? `by ${by(join.carriers[0])}`
+        : join.kind;
+  return `Join: ${places}, ${how}, ${state}`;
+}

@@ -64,6 +64,7 @@ import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { regionOverview } from './overviewColours';
 import { frameOf } from './overviewFrame';
+import { PlacesOverlay } from './PlacesOverlay';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 /** A point an author may place a note at: finite and within the world
@@ -305,6 +306,7 @@ export function LayoutViewport({
   concealedCells,
   frameTarget,
   routePick,
+  places,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -1158,6 +1160,7 @@ export function LayoutViewport({
       // The live view frame, as presentation state (never document state):
       // zoom is relative to the derived grid's fit and rescales as the grid
       // grows, so a reader mapping points needs the frame actually drawn.
+      data-places={places ? '' : undefined}
       data-frame-zoom={viewFrame.zoom}
       data-frame-x={viewFrame.center.x}
       data-frame-z={viewFrame.center.z}
@@ -1381,6 +1384,9 @@ export function LayoutViewport({
           preview={wallPreview}
           layer="handles"
         />
+      )}
+      {transform && places && (
+        <PlacesOverlay draft={draft} transform={transform} places={places} />
       )}
       {transform && routePick && (
         <LayoutRouteOverlay

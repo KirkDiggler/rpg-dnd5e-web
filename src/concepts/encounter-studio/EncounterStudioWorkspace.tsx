@@ -45,6 +45,7 @@ import {
   readInspectorWidth,
   writeInspectorWidth,
 } from './inspectorWidth';
+import { JoinInspector } from './JoinInspector';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
@@ -104,6 +105,7 @@ import {
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
 import { StudioWallControls } from './StudioWallControls';
+import { PlacesJoinList, usePlacesView } from './usePlacesView';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
@@ -526,6 +528,10 @@ function StudioSurface({
   const draftId = session.document.draft.id;
   const seededFor = useRef<string | null>(null);
   const { setKey: setPublishKey } = publishing;
+  /** The engine's read-back, and the places mode drawn from it
+   * (rpg-project#968, #972). */
+  const readBack = studioReadBackOf(publishing, gate.state);
+  const placesView = usePlacesView(session, readBack);
   useEffect(() => {
     if (seededFor.current === draftId) return;
     seededFor.current = draftId;
@@ -1329,6 +1335,13 @@ function StudioSurface({
                     {label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  aria-pressed={placesView.on}
+                  onClick={placesView.toggle}
+                >
+                  Places
+                </button>
               </div>
             ) : (
               <div className="es-buttons" role="group" aria-label="Prop tools">
@@ -1474,7 +1487,16 @@ function StudioSurface({
               />
             }
           >
-            {home === 'build' && (
+            {home === 'build' && placesView.selectedJoin && (
+              <JoinInspector
+                join={placesView.selectedJoin}
+                document={session.document}
+                current={placesView.current}
+                onJump={jumpTo}
+                onOpenFact={openFact}
+              />
+            )}
+            {home === 'build' && !placesView.selectedJoin && (
               <StudioInspector
                 session={session}
                 inspection={inspection}
@@ -1483,7 +1505,8 @@ function StudioSurface({
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
                 onOpenFact={openFact}
-                readBack={studioReadBackOf(publishing, gate.state)}
+                readBack={readBack}
+                onOpenJoin={placesView.selectJoin}
                 onJump={jumpTo}
                 onMoveCreature={moveSelectedCreature}
                 onFrameChange={onFrameChange}
@@ -1526,7 +1549,9 @@ function StudioSurface({
                   onShowEntire={() =>
                     frameBounds(contentBounds(session.document.draft))
                   }
-                />
+                >
+                  <PlacesJoinList view={placesView} />
+                </LayoutRoomList>
               )}
               <div className="es-layout-main">
                 <div className="es-canvas">
@@ -1566,6 +1591,7 @@ function StudioSurface({
                     exits={session.document.scope.exits}
                     concealedCells={concealedCells}
                     frameTarget={frameTarget}
+                    places={placesView.layer}
                     routePick={
                       picking && routePick
                         ? {

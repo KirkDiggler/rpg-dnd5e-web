@@ -258,6 +258,10 @@ export interface LayoutViewportProps {
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
   /** The root `exits`, drawn with the placed nouns (rpg-project#578). */
   exits?: readonly import('../world-building/siteScope').SiteExit[];
+  /** The places mode (rpg-project#972): the joins the engine says, drawn
+   * over the regions, the placed nouns dimmed. Absent is the ordinary
+   * Layout. */
+  places?: import('./PlacesOverlay').LayoutPlaces | null;
   /** The armed concealment's cells, hatched (rpg-project#578). */
   concealedCells?: readonly RoomHexCell[];
   /** A request to frame these world bounds: the viewport fits them to its
