@@ -23,7 +23,19 @@ import {
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import placesJson from './engineReadBack.places.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(castleJson) as JsonValue);
+}
+
+/**
+ * THE CASTLE'S JOINS AND WAYS (rpg-project#972), recorded the same way from
+ * rpg-toolkit `main` cdefe89a (`rulebooks/dnd5e/encounter` v0.218.0, the
+ * bar model) on the same castle bytes: the site group "Where the places
+ * join" whole — 12 joins and their 29 ways — and nothing else. Every
+ * sentence and connection is the engine's, unedited.
+ */
+export function castlePlacesReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(placesJson) as JsonValue);
 }
