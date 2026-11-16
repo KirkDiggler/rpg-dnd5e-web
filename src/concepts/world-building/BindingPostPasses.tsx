@@ -92,108 +92,127 @@ export function BindingPosts({
             className="wb-state-post"
             aria-label={`Behavior post for ${label}`}
           >
-            <h5>{state}</h5>
-            <RevealDiv path={`${path}.door`} className="wb-post-field">
-              <label>
-                <span>Door</span>
-                <select
-                  aria-label={`Door for ${label}`}
-                  value={door}
-                  disabled={!onChange}
-                  onChange={(event) =>
-                    set(withPost(post, { door: event.target.value }))
-                  }
-                >
-                  {!names.doors.includes(door) && (
-                    <option value={door}>{door || '(choose a door)'}</option>
-                  )}
-                  {names.doors.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </RevealDiv>
-            <RevealDiv path={`${path}.against`} className="wb-post-field">
-              <label>
-                <span>Against</span>
-                <select
-                  aria-label={`Against for ${label}`}
-                  value={against}
-                  disabled={!onChange}
-                  onChange={(event) =>
-                    set(withPost(post, { against: event.target.value }))
-                  }
-                >
-                  <option value="">Both ways</option>
-                  {POST_AGAINST.map((way) => (
-                    <option key={way} value={way}>
-                      {AGAINST_LABELS[way]}
-                    </option>
-                  ))}
-                  {against !== '' &&
-                    !(POST_AGAINST as readonly string[]).includes(against) && (
-                      <option value={against}>
-                        {AGAINST_LABELS[against] ?? against}
-                      </option>
-                    )}
-                </select>
-              </label>
-            </RevealDiv>
-            <RevealDiv path={`${path}.at`} className="wb-post-field">
-              <span>Held from</span>
-              <span className="wb-help" data-testid={`Held cells ${label}`}>
-                {cells.length === 0
-                  ? 'its own cell'
-                  : `${cells.length} ${cells.length === 1 ? 'cell' : 'cells'}`}
-              </span>
-              {picking && onChange && (
+            <div className="wb-post-head">
+              <h5>
+                Post in <code>{state}</code>
+              </h5>
+              {onChange && (
                 <button
                   type="button"
-                  aria-label={`Pick held cells on map for ${label}`}
+                  className="wb-danger"
+                  aria-label={`Remove post ${label}`}
                   onClick={() =>
-                    picking.arm({
-                      mode: 'cells',
-                      label: `${owner}’s post in ${state}`,
-                      route: cells.map((cell) => ({ q: cell.q, r: cell.r })),
-                      onDone: (picked) => set(withPost(post, { at: picked })),
-                    })
+                    onChange(setBindingPost(binding, state, undefined))
                   }
                 >
-                  Pick on map
+                  Remove post
                 </button>
               )}
-            </RevealDiv>
-            {onChange ? (
-              <PassField
-                label={label}
-                value={post.pass}
-                topics={topics}
-                onChange={(pass) =>
-                  onChange(setBindingPostPass(binding, state, pass))
-                }
-              />
-            ) : null}
-            {onChange && (
-              <button
-                type="button"
-                className="wb-danger"
-                aria-label={`Remove post ${label}`}
-                onClick={() =>
-                  onChange(setBindingPost(binding, state, undefined))
-                }
+            </div>
+            <div className="wb-post-fields">
+              <RevealDiv path={`${path}.door`} className="wb-post-field">
+                <label>
+                  <span>Door</span>
+                  <select
+                    aria-label={`Door for ${label}`}
+                    value={door}
+                    disabled={!onChange}
+                    onChange={(event) =>
+                      set(withPost(post, { door: event.target.value }))
+                    }
+                  >
+                    {!names.doors.includes(door) && (
+                      <option value={door}>{door || '(choose a door)'}</option>
+                    )}
+                    {names.doors.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </RevealDiv>
+              <RevealDiv path={`${path}.against`} className="wb-post-field">
+                <label>
+                  <span>Against</span>
+                  <select
+                    aria-label={`Against for ${label}`}
+                    value={against}
+                    disabled={!onChange}
+                    onChange={(event) =>
+                      set(withPost(post, { against: event.target.value }))
+                    }
+                  >
+                    <option value="">Both ways</option>
+                    {POST_AGAINST.map((way) => (
+                      <option key={way} value={way}>
+                        {AGAINST_LABELS[way]}
+                      </option>
+                    ))}
+                    {against !== '' &&
+                      !(POST_AGAINST as readonly string[]).includes(
+                        against
+                      ) && (
+                        <option value={against}>
+                          {AGAINST_LABELS[against] ?? against}
+                        </option>
+                      )}
+                  </select>
+                </label>
+              </RevealDiv>
+              <RevealDiv
+                path={`${path}.at`}
+                className="wb-post-field wb-post-held"
               >
-                Remove post
-              </button>
-            )}
+                <span className="wb-post-label">Held from</span>
+                <div className="wb-post-held-line">
+                  <span className="wb-help" data-testid={`Held cells ${label}`}>
+                    {cells.length === 0
+                      ? 'its own cell'
+                      : `${cells.length} ${cells.length === 1 ? 'cell' : 'cells'}`}
+                  </span>
+                  {picking && onChange && (
+                    <button
+                      type="button"
+                      aria-label={`Pick held cells on map for ${label}`}
+                      onClick={() =>
+                        picking.arm({
+                          mode: 'cells',
+                          label: `${owner}’s post in ${state}`,
+                          route: cells.map((cell) => ({
+                            q: cell.q,
+                            r: cell.r,
+                          })),
+                          onDone: (picked) =>
+                            set(withPost(post, { at: picked })),
+                        })
+                      }
+                    >
+                      Pick on map
+                    </button>
+                  )}
+                </div>
+              </RevealDiv>
+              {onChange ? (
+                <div className="wb-post-pass">
+                  <PassField
+                    label={label}
+                    value={post.pass}
+                    topics={topics}
+                    onChange={(pass) =>
+                      onChange(setBindingPostPass(binding, state, pass))
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
           </RevealDiv>
         );
       })}
       {onChange && free.length > 0 && (
-        <div className="wb-actions">
+        <div className="wb-post-add">
           <label>
-            <span>Post in</span>
+            <span>Add a post in</span>
             <select
               aria-label={`Add post state for ${owner}`}
               value={addState}
