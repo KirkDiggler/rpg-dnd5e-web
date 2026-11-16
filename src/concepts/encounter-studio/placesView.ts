@@ -26,13 +26,36 @@ export interface PlaceWay {
   /** The bars this way says nothing lifts (`place.way.none`'s
    * `{bar, id, unlifted}`). */
   unlifted: string[];
-  /** `{method, <id>, by}` with the check's difficulty as `value`. */
-  methods: { id: string; value: number }[];
+  /** Its approaches, one per `{method, <id>, by}` with the check's
+   * difficulty as `value`; a `{method, <id>, with}` that follows one is a
+   * part of that approach (its tool), never an alternative of its own
+   * (rpg-toolkit#2444). */
+  methods: WayMethod[];
   /** What carries the way (`by`, not its method): a line, a creature, a
    * prop, a door, a record, a concealment, a conversation. */
   carriers: ReadBackConnection[];
   needs: ReadBackConnection[];
   onMiss: ReadBackConnection[];
+}
+
+export interface WayMethod {
+  id: string;
+  value: number;
+  /** The approach's further parts (`with`): its tool. */
+  with: { id: string; value: number }[];
+}
+
+/** A way's approaches, in the engine's order: each `by` method opens one,
+ * each `with` method joins the one before it. */
+function approachesOf(statement: ReadBackStatement): WayMethod[] {
+  const out: WayMethod[] = [];
+  for (const c of statement.connects) {
+    if (c.kind !== 'method') continue;
+    if (c.role === 'by') out.push({ id: c.id, value: c.value, with: [] });
+    else if (c.role === 'with')
+      out.at(-1)?.with.push({ id: c.id, value: c.value });
+  }
+  return out;
 }
 
 export interface PlaceJoin {
@@ -64,6 +87,13 @@ export interface Places {
 }
 
 const KIND_JOIN = 'join';
+/** The engine's contract (rpg-project#974): a join is a statement of a
+ * `place.join.` kind and a way one of a `place.way.` kind. A statement of
+ * any other kind that repeats a way under a hub (`record.lift`,
+ * `secret.find`) points at it and is never itself a way, whatever it
+ * connects. */
+const JOIN_KIND = 'place.join.';
+const WAY_KIND = 'place.way.';
 const ROLE_THROUGH = 'through';
 const ROLE_LIFTS = 'lifts';
 const ROLE_UNLIFTED = 'unlifted';
@@ -87,9 +117,7 @@ function wayOf(statement: ReadBackStatement): PlaceWay {
     kind: statement.kind,
     bars: [...new Set(ids(statement, 'bar', ROLE_LIFTS))],
     unlifted: [...new Set(ids(statement, 'bar', ROLE_UNLIFTED))],
-    methods: by
-      .filter((c) => c.kind === 'method')
-      .map((c) => ({ id: c.id, value: c.value })),
+    methods: approachesOf(statement),
     carriers: by.filter((c) => c.kind !== 'method'),
     needs: statement.connects.filter((c) => c.role === 'needs'),
     onMiss: statement.connects.filter((c) => c.role === 'on-miss'),
@@ -104,6 +132,7 @@ export function placesOf(readBack: ReadBack): Places {
   const joins = new Map<string, PlaceJoin>();
   for (const statement of statements) {
     if (statement.about?.kind !== KIND_JOIN) continue;
+    if (!statement.kind.startsWith(JOIN_KIND)) continue;
     const id = statement.about.id;
     if (joins.has(id)) continue;
     const doors = ids(statement, 'door', 'by');
@@ -123,7 +152,7 @@ export function placesOf(readBack: ReadBack): Places {
     });
   }
   for (const statement of statements) {
-    if (statement.about?.kind === KIND_JOIN) continue;
+    if (!statement.kind.startsWith(WAY_KIND)) continue;
     for (const joinId of new Set(ids(statement, KIND_JOIN, ROLE_THROUGH))) {
       const join = joins.get(joinId);
       if (!join) continue;
@@ -190,22 +219,35 @@ const words = (text: string): string =>
     )
     .join(' ');
 
-/** A method chip's text: the method's name from its id, and its difficulty
- * when the engine gives one (`skill:performance` 13 → "Performance 13"). */
-export function methodLabel(method: { id: string; value: number }): string {
+/** A method chip's text: the method's name from its id, its difficulty
+ * when the engine gives one (`skill:performance` 13 → "Performance 13"), and
+ * the parts it is made with ("Dexterity 13 with thieves-tools"). */
+export function methodLabel(method: {
+  id: string;
+  value: number;
+  with?: readonly { id: string }[];
+}): string {
+  const parts = (method.with ?? []).map((part) => methodName(part.id));
+  const named = method.value
+    ? `${methodName(method.id)} ${method.value}`
+    : methodName(method.id);
+  return parts.length ? `${named} with ${parts.join(' and ')}` : named;
+}
+
+/** A method's name from its id alone: `skill:persuasion` → "Persuasion",
+ * `ability:dex` → "Dexterity", a tool's ref by its id. */
+export function methodName(id: string): string {
   // `<kind>:<name>`; a tool's name is a ref, taken apart by the one parser.
-  const at = method.id.indexOf(':');
-  const kind = at < 0 ? method.id : method.id.slice(0, at);
-  const name = at < 0 ? '' : method.id.slice(at + 1);
-  const label =
-    kind === 'skill'
-      ? words(name)
-      : kind === 'ability'
-        ? (ABILITIES[name] ?? name)
-        : kind === 'tool'
-          ? (refId(name) ?? name)
-          : method.id;
-  return method.value ? `${label} ${method.value}` : label;
+  const at = id.indexOf(':');
+  const kind = at < 0 ? id : id.slice(0, at);
+  const name = at < 0 ? '' : id.slice(at + 1);
+  return kind === 'skill'
+    ? words(name)
+    : kind === 'ability'
+      ? (ABILITIES[name] ?? name)
+      : kind === 'tool'
+        ? (refId(name) ?? name)
+        : id;
 }
 
 /** A bar's words where the screen names it, and a join's state in its

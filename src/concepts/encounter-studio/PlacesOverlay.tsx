@@ -18,6 +18,8 @@ import type { PlaceJoin, Places } from './placesView';
 export interface LayoutPlaces {
   places: Places;
   selectedJoinId: string | null;
+  /** Joins whose ways use the pressed method row (rpg-project#974). */
+  methodJoinIds?: ReadonlySet<string>;
   onSelectJoin(id: string): void;
   /** The join's accessible name (`joinName`). */
   nameOf(join: PlaceJoin): string;
@@ -100,6 +102,7 @@ export function PlacesOverlay({
           'data-join-kind': join.kind,
           'data-join-bars': join.bars.join(' '),
           'data-selected': selected || undefined,
+          'data-uses-method': places.methodJoinIds?.has(join.id) || undefined,
           className: 'es-places-join',
           role: 'button',
           tabIndex: 0,

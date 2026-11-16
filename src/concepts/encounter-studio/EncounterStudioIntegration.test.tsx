@@ -105,6 +105,7 @@ import {
 } from './fixtures/castleKeep';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createCastleS4Document } from './fixtures/castleS4';
+import { expectedCastleWayTable } from './fixtures/castleWayTable';
 import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
@@ -7440,11 +7441,13 @@ describe('the inspector speaks the engine’s sentences (rpg-project#968)', () =
 
 describe('the places view through the real owner (rpg-project#972)', () => {
   afterEach(() => localStorage.removeItem(PLACES_VIEW_STORAGE_KEY));
+  let latestStorage: MemoryStorage | null = null;
 
   const mountCastle = async (): Promise<void> => {
     const read = readDraftYaml(servedCastleYaml);
     if (!read.ok) throw new Error(read.refusal);
-    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    latestStorage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(latestStorage);
     await settled();
   };
 
@@ -7522,6 +7525,88 @@ describe('the places view through the real owner (rpg-project#972)', () => {
         { name: 'To pass the lock, any of:' }
       )
     ).toBeTruthy();
+  });
+
+  it('Ways by method counts the castle’s ways, highlights a method’s joins, and lists the ways into the Cells (rpg-project#974)', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    const storage = latestStorage!;
+    const draftBefore = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const list = await screen.findByRole('list', { name: 'Join list' });
+    await waitFor(() =>
+      expect(within(list).getAllByRole('button')).toHaveLength(12)
+    );
+    const count = screen.getByRole('group', { name: 'Ways by method' });
+    const table = within(count).getByRole('table', { name: 'Ways by method' });
+    const rows = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) =>
+        [...row.querySelectorAll('th, td')].map((cell) => cell.textContent)
+      );
+    // Computed from the fixture's connections, not from the module.
+    const expected = expectedCastleWayTable();
+    expect(rows).toHaveLength(expected.size);
+    for (const [method, cells] of [
+      ['ability:dex', ['Dexterity', '2 ways', 'DC 13']],
+      ['skill:performance', ['Performance', '1 way', 'DC 13']],
+      ['fight', ['the fight', '1 way', '']],
+    ] as const) {
+      expect(expected.get(method)!.ways).toBe(Number(cells[1][0]));
+      expect(rows).toContainEqual(cells);
+    }
+    expect(rows.some((cells) => /thieves/.test(cells[0] ?? ''))).toBe(false);
+    // A method row highlights the joins its ways use; again clears.
+    const dex = within(table).getByRole('button', { name: 'Dexterity' });
+    fireEvent.click(dex);
+    expect(dex.getAttribute('aria-pressed')).toBe('true');
+    const marked = () =>
+      within(list)
+        .getAllByRole('button')
+        .filter((row) => row.hasAttribute('data-uses-method'))
+        .map((row) => row.getAttribute('data-join-row'));
+    expect(marked().sort()).toEqual(
+      [
+        'door:region-barracks:region-cells:cells-wall-door',
+        'door:region-great-hall:region-kitchen:kitchen-wall-door',
+      ].sort()
+    );
+    const surface = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    expect(surface.querySelectorAll('[data-uses-method]')).toHaveLength(2);
+    fireEvent.click(dex);
+    expect(marked()).toEqual([]);
+    // The Cells: the ways into it.
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Room list' })).getByRole(
+        'button',
+        { name: /^Room Cells,/ }
+      )
+    );
+    const into = within(
+      screen.getByRole('region', { name: 'Ways into Cells' })
+    );
+    expect(
+      into
+        .getAllByRole('button')
+        .map((join) => join.getAttribute('data-join-row'))
+        .sort()
+    ).toEqual(
+      [
+        'door:region-barracks:region-cells:cells-wall-door',
+        'passage:region-kitchen:region-cells:prop-grate',
+        'passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate',
+      ].sort()
+    );
+    expect(into.getByText(/said to: gate-1, gate-2, captain/)).toBeTruthy();
+    // Counting writes nothing to the draft.
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(draftBefore);
   });
 
   it('with no read-back the places mode says the engine has not said the places', async () => {

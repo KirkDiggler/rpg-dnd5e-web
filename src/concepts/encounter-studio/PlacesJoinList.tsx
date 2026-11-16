@@ -1,11 +1,15 @@
+import { PlacesWayCount } from './PlacesWayCount';
 import type { PlacesView } from './usePlacesView';
 
 /** The joins as a list under the rooms: each focuses and selects its mark's
  * join, so every join is reachable by keyboard. */
 export function PlacesJoinList({
   view,
+  selectedRegionId = null,
 }: {
   view: PlacesView;
+  /** The place whose ways in are listed (rpg-project#974). */
+  selectedRegionId?: string | null;
 }): React.JSX.Element | null {
   if (!view.on) return null;
   const joins = view.places?.joins ?? [];
@@ -26,6 +30,12 @@ export function PlacesJoinList({
                 data-join-row={join.id}
                 aria-pressed={view.selectedJoin?.id === join.id}
                 aria-label={view.nameOf(join)}
+                data-uses-method={view.methodJoinIds.has(join.id) || undefined}
+                aria-describedby={
+                  view.methodJoinIds.has(join.id)
+                    ? 'es-method-marked'
+                    : undefined
+                }
                 onClick={() => view.selectJoin(join.id)}
               >
                 {view.nameOf(join).replace(/^Join: /, '')}
@@ -34,6 +44,7 @@ export function PlacesJoinList({
           ))}
         </ul>
       )}
+      <PlacesWayCount view={view} selectedRegionId={selectedRegionId} />
       {(view.places?.unjoined.length ?? 0) > 0 && (
         <ul aria-label="Unreached rooms">
           {view.places!.unjoined.map(({ regionId, statement }) => (
