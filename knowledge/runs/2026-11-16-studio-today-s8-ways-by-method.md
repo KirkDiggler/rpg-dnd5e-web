@@ -14,12 +14,14 @@ Slice [rpg-project#974](https://github.com/KirkDiggler/rpg-project/issues/974) o
 - `free` is a row like any method, since the engine says it as one; the castle's doors and floors make it the largest — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - A door or open floor is "into" both its places; a passage only into its `to`; the panel says so in one line — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - The marks are a dashed outline on a list row and a heavier dashed stroke on a map mark, with a status sentence the rows point to, so the mark is not colour alone — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
+- A way is a statement whose kind begins `place.way.` and that goes through a join; a join one whose kind begins `place.join.`; a hub repeat of a way under any other kind is never a way, whatever it connects (the engine's contract, not its current shape) — [`7eec955b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/7eec955b).
 
 ## Found
 
 - The castle's table, folded: free 10; Persuasion 3 (DC 11–15); Deception 2 (DC 15); Dexterity 2 (DC 13); Investigation 2 (DC 18); knowledge 2; Intimidation 1 (DC 14); Performance 1 (DC 13); Strength 1 (DC 15); the fight 1 — 23 ways from the engine's 29 statements — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
 - The engine says no Religion way on the castle, so the checklist's "Religion shows one" cannot hold on the castle as served; Persuasion leads among the checked methods, `free` leads overall — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
 - Re-recording changed exactly two connections, the thieves'-tools methods `by` → `with` — [`ae228c0b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae228c0b).
+- The full castle read-back on encounter v0.218.1 (toolkit `main` f3deb20f) has 29 statements with `{join, through}`, all of `place.way.` kinds in "The place"; no fact or topic hub repeats a way, so dev counts the gate's 11 ways as the engine says, not more — [`7eec955b`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/7eec955b).
 
 ## Mistaken
 
