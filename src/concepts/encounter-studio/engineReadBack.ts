@@ -31,7 +31,8 @@ import { targetOfPath, type RefusalTarget } from './refusalJump';
 
 /** The selections the inspector reads back. */
 export interface ReadBackSelection {
-  kind: 'creature' | 'prop';
+  /** A placed thing, or a hub (rpg-project#973): a fact or a topic. */
+  kind: 'creature' | 'prop' | 'fact' | 'topic';
   id: string;
 }
 
@@ -220,7 +221,8 @@ export function landsOn(
  * the studio has no place for, or an id the document does not hold. */
 export type ReadBackJump =
   | { kind: 'target'; target: RefusalTarget }
-  | { kind: 'fact'; id: string };
+  /** A hub: opens its thread (rpg-project#973). */
+  | { kind: 'fact'; id: string; hub: 'fact' | 'topic' };
 
 export function connectionJump(
   connection: Pick<ReadBackConnection, 'kind' | 'id'>,
@@ -243,7 +245,7 @@ export function connectionJump(
   switch (kind) {
     case 'fact':
     case 'topic':
-      return { kind: 'fact', id };
+      return { kind: 'fact', id, hub: kind };
     case 'creature':
       return through(`room.room.monsterBindings.${id}`);
     case 'prop':

@@ -18,7 +18,7 @@ export interface JoinInspectorProps {
   /** False while the read-back is from an earlier draft. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
 }
 
 /** The studio's own words on this screen: the headings. Every sentence is
@@ -103,7 +103,7 @@ function Way({
   way: PlaceWay;
   document: Readonly<RoomDraftDocument>;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
 }): React.JSX.Element {
   const jumps = (label: string, connections: readonly ReadBackConnection[]) => {
     const seen = new Set<string>();
@@ -116,7 +116,7 @@ function Way({
       const go = !jump
         ? undefined
         : jump.kind === 'fact'
-          ? onOpenFact && (() => onOpenFact(jump.id))
+          ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
           : onJump && (() => onJump(jump.target));
       if (!go) continue;
       buttons.push(

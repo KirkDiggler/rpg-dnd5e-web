@@ -59,7 +59,7 @@ export interface StudioInspectorProps {
   onConfigure(section: StudioSocialSection): void;
   /** Open the Facts section on one fact or topic, from a read-back
    * connection. */
-  onOpenFact?(fact: string): void;
+  onOpenFact?(fact: string, hub?: 'fact' | 'topic'): void;
   /** The engine's read-back (rpg-project#968, R25), from the publishing
    * hook. Absent, the panel says the server has not checked the draft. */
   readBack?: StudioReadBack;

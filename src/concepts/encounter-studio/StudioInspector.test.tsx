@@ -1200,7 +1200,7 @@ describe('StudioInspector', () => {
           name: 'Open topic admitted',
         })[0]!
       );
-      expect(onOpenFact).toHaveBeenCalledWith('admitted');
+      expect(onOpenFact).toHaveBeenCalledWith('admitted', 'topic');
     });
   });
 });

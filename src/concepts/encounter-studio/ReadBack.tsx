@@ -26,7 +26,7 @@ export interface ReadBackProps {
    * refusal jump). */
   onJump?(target: RefusalTarget): void;
   /** Open the Facts section on a fact or topic. */
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
 }
 
 export const STALE_READ_BACK_SENTENCE =
@@ -275,7 +275,7 @@ function Statement({
    * Connections resolve by id and stay jumps. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: 'fact' | 'topic'): void;
 }): React.JSX.Element {
   const seen = new Set<string>();
   const links: React.JSX.Element[] = [];
@@ -287,7 +287,7 @@ function Statement({
     if (!jump) continue;
     const go =
       jump.kind === 'fact'
-        ? onOpenFact && (() => onOpenFact(jump.id))
+        ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
         : onJump && (() => onJump(jump.target));
     if (!go) continue;
     links.push(
