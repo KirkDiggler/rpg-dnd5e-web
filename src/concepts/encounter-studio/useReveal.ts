@@ -9,9 +9,10 @@
  * - scrolled into view within ITS OWN scroll container (the nearest
  *   scrolling ancestor), never by scrolling the page;
  * - focused, when it can take focus;
- * - marked for a few seconds with `data-revealed` (an outline and a brief
- *   background, styled once in the studio's CSS, still under
- *   `prefers-reduced-motion`).
+ * - marked with `data-revealed="true"` (an outline round the whole item and
+ *   a tint, with a short entrance that `prefers-reduced-motion` drops; the
+ *   outline is static). The mark LASTS: it moves with the next jump and
+ *   clears on a click or key press outside the item, never on a timer.
  *
  * A key nothing owns yet is held until an item registers under it (a jump
  * usually switches home, group or section first), then fires once. If none
@@ -39,7 +40,6 @@ export interface RevealKey {
 /** How long a reveal waits for its exact key before it settles for an
  * ancestor, and how long the mark stays. */
 export const REVEAL_WAIT_MS = 700;
-export const REVEAL_MARK_MS = 2500;
 
 const SEP = '\u0000';
 export const revealKeyString = (key: RevealKey): string =>
@@ -129,12 +129,14 @@ export function useRevealController(): RevealController {
    * detail, a closed form opens. */
   const openers = useRef(new WeakMap<HTMLElement, () => void>());
   const pending = useRef<{ chain: RevealKey[]; timer: number } | null>(null);
-  const marked = useRef<{ element: HTMLElement; timer: number } | null>(null);
+  const marked = useRef<{ element: HTMLElement; release: () => void } | null>(
+    null
+  );
   const resolver = useRef<((path: string) => RevealKey | null) | null>(null);
   useEffect(
     () => () => {
       if (pending.current) window.clearTimeout(pending.current.timer);
-      if (marked.current) window.clearTimeout(marked.current.timer);
+      marked.current?.release();
     },
     []
   );
@@ -143,17 +145,34 @@ export function useRevealController(): RevealController {
       const set = registry.current.get(revealKeyString(key));
       return set ? [...set].find((element) => element.isConnected) : undefined;
     };
+    const unmark = (): void => {
+      marked.current?.release();
+      marked.current = null;
+    };
     const mark = (element: HTMLElement): void => {
-      if (marked.current) {
-        window.clearTimeout(marked.current.timer);
-        marked.current.element.removeAttribute('data-revealed');
-      }
-      element.setAttribute('data-revealed', '');
-      const timer = window.setTimeout(() => {
-        element.removeAttribute('data-revealed');
-        if (marked.current?.element === element) marked.current = null;
-      }, REVEAL_MARK_MS);
-      marked.current = { element, timer };
+      unmark();
+      element.setAttribute('data-revealed', 'true');
+      // The author's next act elsewhere clears it: a click or key outside
+      // the item. Listening starts after this turn, so the act that made
+      // the jump does not clear its own mark.
+      const outside = (event: Event): void => {
+        if (event.target instanceof Node && element.contains(event.target))
+          return;
+        unmark();
+      };
+      const listen = window.setTimeout(() => {
+        document.addEventListener('pointerdown', outside, true);
+        document.addEventListener('keydown', outside, true);
+      }, 0);
+      marked.current = {
+        element,
+        release: () => {
+          window.clearTimeout(listen);
+          document.removeEventListener('pointerdown', outside, true);
+          document.removeEventListener('keydown', outside, true);
+          element.removeAttribute('data-revealed');
+        },
+      };
     };
     const show = (element: HTMLElement): void => {
       openers.current.get(element)?.();

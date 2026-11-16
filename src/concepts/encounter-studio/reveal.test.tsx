@@ -5,7 +5,13 @@
  * A reveal of a key nothing owns yet waits for it, then falls back to the
  * nearest registered ancestor and says nothing false.
  */
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RevealProvider } from './reveal';
@@ -54,6 +60,45 @@ describe('reveal', () => {
     expect(page).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(item);
     expect(item.hasAttribute('data-revealed')).toBe(true);
+  });
+
+  it('the mark lasts until the next jump or a click or key elsewhere, never a timer', () => {
+    vi.useFakeTimers();
+    render(
+      <RevealProvider>
+        <Trigger />
+        <Item
+          revealKey={{ kind: 'faction', id: 'loyalists' }}
+          label="loyalists"
+        />
+        <Item
+          revealKey={{ kind: 'faction', id: 'garrison' }}
+          label="garrison"
+        />
+        <p data-testid="elsewhere">elsewhere</p>
+      </RevealProvider>
+    );
+    const loyalists = screen.getByRole('button', { name: 'loyalists' });
+    const garrison = screen.getByRole('button', { name: 'garrison' });
+    act(() => revealNow({ kind: 'faction', id: 'loyalists' }));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(loyalists.getAttribute('data-revealed')).toBe('true');
+    // A click inside the marked item keeps it.
+    fireEvent.pointerDown(loyalists);
+    expect(loyalists.getAttribute('data-revealed')).toBe('true');
+    // The next jump moves the mark.
+    act(() => revealNow({ kind: 'faction', id: 'garrison' }));
+    expect(loyalists.hasAttribute('data-revealed')).toBe(false);
+    expect(garrison.getAttribute('data-revealed')).toBe('true');
+    // A click elsewhere clears it.
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.pointerDown(screen.getByTestId('elsewhere'));
+    expect(garrison.hasAttribute('data-revealed')).toBe(false);
+    // So does a key pressed elsewhere.
+    act(() => revealNow({ kind: 'faction', id: 'loyalists' }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.keyDown(screen.getByTestId('elsewhere'), { key: 'Tab' });
+    expect(loyalists.hasAttribute('data-revealed')).toBe(false);
   });
 
   it('opens a closed disclosure around the item first', () => {
@@ -133,9 +178,9 @@ describe('reveal', () => {
         .getByRole('button', { name: 'gate-1' })
         .hasAttribute('data-revealed')
     ).toBe(false);
-    // The mark is brief.
+    // The mark lasts: no timer takes it away.
     act(() => vi.advanceTimersByTime(5000));
-    expect(line.hasAttribute('data-revealed')).toBe(false);
+    expect(line.getAttribute('data-revealed')).toBe('true');
   });
 
   it('a key whose thing nothing owns lands nowhere and marks nothing', () => {

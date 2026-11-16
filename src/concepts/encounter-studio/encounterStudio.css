@@ -1742,27 +1742,37 @@
   padding: 1rem;
 }
 
-/* WHERE A JUMP LANDED (rpg-project#983): the revealed item is outlined and
- * washed briefly; the outline, not the colour, is the mark. The wash fades
- * out unless the viewer asks for reduced motion, when it simply holds. */
-.encounter-studio [data-revealed] {
-  outline: 2px solid var(--wb-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-  animation: es-revealed 2.4s ease-out;
+/* WHERE A JUMP LANDED (rpg-project#983): the revealed item — the whole
+ * row block — is outlined and tinted until the author's next jump or a
+ * click or key elsewhere. The outline sits inside the item so a scroll
+ * container's edge never clips it, and it is static; only the entrance
+ * pulse moves, and reduced motion drops it. */
+.encounter-studio {
+  --es-revealed-ring: var(--wb-accent);
+  --es-revealed-tint: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  --es-revealed-pulse: color-mix(in srgb, var(--wb-accent) 45%, transparent);
 }
-@keyframes es-revealed {
-  from {
-    background-color: var(--wb-raised);
+.encounter-studio [data-revealed='true'] {
+  outline: 2px solid var(--es-revealed-ring);
+  outline-offset: -2px;
+  border-radius: 4px;
+  background-color: var(--es-revealed-tint);
+  box-shadow: 0 0 0 3px var(--es-revealed-tint);
+  animation: es-revealed-in 0.9s ease-out;
+}
+@keyframes es-revealed-in {
+  0% {
+    box-shadow: 0 0 0 0 var(--es-revealed-pulse);
+    background-color: var(--es-revealed-pulse);
   }
-  to {
-    background-color: transparent;
+  100% {
+    box-shadow: 0 0 0 3px var(--es-revealed-tint);
+    background-color: var(--es-revealed-tint);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .encounter-studio [data-revealed] {
+  .encounter-studio [data-revealed='true'] {
     animation: none;
-    background-color: var(--wb-raised);
   }
 }
 .encounter-studio .es-readback-path {

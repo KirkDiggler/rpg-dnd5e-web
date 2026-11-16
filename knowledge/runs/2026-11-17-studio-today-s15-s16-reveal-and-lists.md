@@ -16,6 +16,7 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - A statement's place inside the selection itself (its line, its row) is now a link too, because it reveals that place in the form below; while stale the place is text, as before — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - A jump to a creature or prop centres the Layout on it at the current zoom; it does not test whether the thing was already in view, because the Layout surface exposes no visible-bounds query to the workspace — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The work is split: reveal, jumps and place names here; the list-and-detail piece in the next PR on top, so each is reviewable — [lead's brief](https://github.com/KirkDiggler/rpg-project/issues/983).
+- The mark lasts: `data-revealed="true"` stays until the next jump or a click or key press outside the item, never a timer; it is an outline inside the whole row block plus an accent tint, with a short entrance pulse that reduced motion drops — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 
 ## Found
 
@@ -23,4 +24,5 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 
 ## Mistaken
 
+- The first mark lasted 2.5 s and washed with `--wb-raised`, the very colour of the cards it sat on; on the stack the only sign left was the row's own "→", so the lead sent it back before the operator's look — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The first cut exported hooks and components from one file, which the fast-refresh lint refuses; the providers moved to `reveal.tsx` and the hooks to `useReveal.ts` before the PR — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
