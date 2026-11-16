@@ -18,7 +18,11 @@ export interface JoinInspectorProps {
   /** False while the read-back is from an earlier draft. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** What opens the join a way pointer's way goes through
+   * (rpg-project#973), or null when the studio cannot: the pointer is then
+   * text. */
+  wayOpener?(wayId: string): (() => void) | null;
 }
 
 /** The studio's own words on this screen: the headings. Every sentence is
@@ -36,6 +40,7 @@ export function JoinInspector({
   current,
   onJump,
   onOpenFact,
+  wayOpener,
 }: JoinInspectorProps): React.JSX.Element {
   const sections = waySectionsOf(join);
   const wayList = (ways: readonly PlaceWay[]) => (
@@ -47,6 +52,7 @@ export function JoinInspector({
           document={document}
           onJump={onJump}
           onOpenFact={onOpenFact}
+          wayOpener={wayOpener}
         />
       ))}
     </ul>
@@ -99,11 +105,16 @@ function Way({
   document,
   onJump,
   onOpenFact,
+  wayOpener,
 }: {
   way: PlaceWay;
   document: Readonly<RoomDraftDocument>;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** What opens the join a way pointer's way goes through
+   * (rpg-project#973), or null when the studio cannot: the pointer is then
+   * text. */
+  wayOpener?(wayId: string): (() => void) | null;
 }): React.JSX.Element {
   const jumps = (label: string, connections: readonly ReadBackConnection[]) => {
     const seen = new Set<string>();
@@ -115,9 +126,11 @@ function Way({
       const jump = connectionJump(connection, document);
       const go = !jump
         ? undefined
-        : jump.kind === 'fact'
-          ? onOpenFact && (() => onOpenFact(jump.id))
-          : onJump && (() => onJump(jump.target));
+        : jump.kind === 'hub'
+          ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
+          : jump.kind === 'way'
+            ? (wayOpener?.(jump.id) ?? undefined)
+            : onJump && (() => onJump(jump.target));
       if (!go) continue;
       buttons.push(
         <button

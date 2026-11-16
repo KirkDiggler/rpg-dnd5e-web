@@ -12,7 +12,6 @@ import {
 import type { AnswerWaypointShape } from '../world-building/answerTableShape';
 import { BundlesPanel } from '../world-building/BundlesPanel';
 import { castMemberOf } from '../world-building/cast';
-import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { regionLabelPoint } from '../world-building/regionLabel';
 import { cellOwners } from '../world-building/roomDraft';
@@ -70,7 +69,6 @@ import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
 import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
-import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
 import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
@@ -105,7 +103,9 @@ import {
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
+import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
+import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
@@ -122,7 +122,8 @@ const ENCOUNTER_SECTIONS = {
   concealments: 'Concealments',
   interactions: 'Interactions',
   scenarios: 'Scenarios',
-  facts: 'Facts',
+  // The fact index became Threads (rpg-project#973); the section key stays.
+  facts: 'Threads',
 } as const;
 
 /** A mount with no route into the game cannot play; the capability then
@@ -458,29 +459,14 @@ function StudioSurface({
     changeHome('encounter');
     setEncounterSection(section);
   };
-  /** A fact a read-back ref named; the Facts section brings it into view. */
-  const [focusFact, setFocusFact] = useState<string | null>(null);
-  const openFact = (fact: string): void => {
-    setFocusFact(fact);
+  /** The hub a read-back connection named: Threads opens on its thread
+   * (rpg-project#973). */
+  const [focusHub, setFocusHub] = useState<ThreadHub | null>(null);
+  const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
+    setFocusHub({ kind: hub, id });
     openDefinitions('facts');
   };
-  /** A writer or reader in the fact index: select the placed thing on the
-   * map, or open the home section that holds it. */
   const [focusEnding, setFocusEnding] = useState<{ id: string } | null>(null);
-  const openFactUse = (target: FactUseTarget): void => {
-    if ('home' in target) {
-      if (target.home === 'endings') setFocusEnding({ id: target.id });
-      setEncounterSection(target.home);
-      return;
-    }
-    const selected =
-      target.kind === 'creature'
-        ? session.creatures.select(target.id)
-        : session.selectScene([target.id]);
-    if (!selected) return;
-    changeHome('build');
-    setSidebarOpen(true);
-  };
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
   const [siteOperation, setSiteOperation] = useState<SiteOperation | null>(
@@ -533,6 +519,31 @@ function StudioSurface({
    * (rpg-project#968, #972). */
   const readBack = studioReadBackOf(publishing, gate.state);
   const placesView = usePlacesView(session, readBack);
+  /** A way pointer on a record's or a secret's entry opens the join its way
+   * goes through, as Places selects it (rpg-project#973). The pointer names
+   * the way; the way's own statement names its join. */
+  const [pendingJoin, setPendingJoin] = useState<string | null>(null);
+  /** A pointer whose way Places does not hold (no read-back yet, or a
+   * stale one) has no opener: it renders as text. */
+  const wayOpener = (wayId: string): (() => void) | null => {
+    const join = placesView.places?.joins.find((candidate) =>
+      candidate.ways.some((way) => way.statement.about?.id === wayId)
+    );
+    if (!join) return null;
+    return () => {
+      changeHome('build');
+      setSidebarOpen(true);
+      setPendingJoin(join.id);
+    };
+  };
+  // The join is selected once Build is the home, where the map's selection
+  // can be cleared for it.
+  const { selectJoin } = placesView;
+  useEffect(() => {
+    if (pendingJoin === null || home !== 'build') return;
+    setPendingJoin(null);
+    selectJoin(pendingJoin);
+  }, [pendingJoin, home, selectJoin]);
   useEffect(() => {
     if (seededFor.current === draftId) return;
     seededFor.current = draftId;
@@ -1495,6 +1506,7 @@ function StudioSurface({
                 current={placesView.current}
                 onJump={jumpTo}
                 onOpenFact={openFact}
+                wayOpener={wayOpener}
               />
             )}
             {home === 'build' && !placesView.selectedJoin && (
@@ -1506,6 +1518,7 @@ function StudioSurface({
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
                 onOpenFact={openFact}
+                wayOpener={wayOpener}
                 readBack={readBack}
                 onOpenJoin={placesView.selectJoin}
                 onJump={jumpTo}
@@ -1789,10 +1802,14 @@ function StudioSurface({
             <StudioScenarios document={session.document} />
           )}
           {home === 'encounter' && encounterSection === 'facts' && (
-            <StudioFacts
+            <StudioThreads
               document={session.document}
-              focus={focusFact}
-              onOpen={openFactUse}
+              readBack={readBack}
+              focus={focusHub}
+              onSelect={setFocusHub}
+              onJump={jumpTo}
+              onOpenFact={openFact}
+              wayOpener={wayOpener}
             />
           )}
           <RoutePickContext.Provider value={routePicking}>

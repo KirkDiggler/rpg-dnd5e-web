@@ -13,7 +13,6 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { factIndexOf } from '../world-building/factIndex';
 import {
   validateSiteDispositions,
   validateSiteEndings,
@@ -113,22 +112,6 @@ describe('the leave ending reads in the engine’s sentences', () => {
     ).toThrow(
       'Site disposition at index 0 until.left: `left` waits for the party to walk out, and only an ending waits for that (`endings: [{ id, when: { left: gate }, outcome: success|failure }]`)'
     );
-  });
-
-  it('the fact index reads a leave ending’s if', () => {
-    const session = gateSession();
-    session.document.scope.endings = [
-      {
-        id: 'freed',
-        when: { left: 'front-door' },
-        if: { fact: 'cells-opened' },
-        outcome: 'success',
-      },
-    ];
-    const row = factIndexOf(session.document).find(
-      (r) => r.fact === 'cells-opened'
-    );
-    expect(row?.readers.map((u) => u.label)).toEqual(['ending freed']);
   });
 });
 
