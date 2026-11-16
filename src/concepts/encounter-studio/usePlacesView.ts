@@ -11,6 +11,7 @@ import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import { joinName, placesOf, type PlaceJoin, type Places } from './placesView';
 import type { StudioReadBack } from './studioPublishing';
 import type { EncounterStudioSession } from './studioSession';
+import { methodCountsOf, type MethodCount } from './waysByMethod';
 
 export const PLACES_VIEW_STORAGE_KEY = 'encounter-studio.places-view';
 export const NO_PLACES_SENTENCE = 'The engine has not said the places yet.';
@@ -39,6 +40,13 @@ export interface PlacesView {
   layer: LayoutPlaces | null;
   regionName(id: string): string;
   nameOf(join: PlaceJoin): string;
+  /** The ways counted by method (rpg-project#974), or empty. */
+  counts: MethodCount[];
+  /** The method row pressed, whose joins are marked; null for none. */
+  method: MethodCount | null;
+  toggleMethod(key: string): void;
+  /** The joins whose ways use the pressed method. */
+  methodJoinIds: ReadonlySet<string>;
 }
 
 export function usePlacesView(
@@ -50,6 +58,7 @@ export function usePlacesView(
 ): PlacesView {
   const [on, setOn] = useState(remembered);
   const [joinId, setJoinId] = useState<string | null>(null);
+  const [methodKey, setMethodKey] = useState<string | null>(null);
   const places = useMemo(
     () => (readBack.readBack ? placesOf(readBack.readBack) : null),
     [readBack.readBack]
@@ -65,7 +74,16 @@ export function usePlacesView(
   if (draftId !== joinDraft) {
     setJoinDraft(draftId);
     setJoinId(null);
+    setMethodKey(null);
   }
+  const counts = useMemo(
+    () => (places ? methodCountsOf(places) : []),
+    [places]
+  );
+  const method =
+    (draftId === joinDraft && counts.find((row) => row.key === methodKey)) ||
+    null;
+  const methodJoinIds = useMemo(() => new Set(method?.joinIds ?? []), [method]);
   // Escape clears the selection, the join as the map's.
   useEffect(() => {
     if (joinId === null) return;
@@ -114,6 +132,10 @@ export function usePlacesView(
     selectedJoin,
     selectJoin,
     clearJoin: () => setJoinId(null),
+    counts,
+    method,
+    methodJoinIds,
+    toggleMethod: (key) => setMethodKey((was) => (was === key ? null : key)),
     regionName,
     nameOf,
     layer:
@@ -121,6 +143,7 @@ export function usePlacesView(
         ? {
             places,
             selectedJoinId: selectedJoin?.id ?? null,
+            methodJoinIds,
             onSelectJoin: selectJoin,
             nameOf,
             regionName,

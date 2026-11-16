@@ -1551,7 +1551,10 @@ function StudioSurface({
                     frameBounds(contentBounds(session.document.draft))
                   }
                 >
-                  <PlacesJoinList view={placesView} />
+                  <PlacesJoinList
+                    view={placesView}
+                    selectedRegionId={selectedRegion?.id ?? null}
+                  />
                 </LayoutRoomList>
               )}
               <div className="es-layout-main">
