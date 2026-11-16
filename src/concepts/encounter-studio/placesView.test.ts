@@ -83,7 +83,9 @@ describe('placesOf on the castle', () => {
     expect(sections.bars[0]!.bar).toBe('lock');
     expect(
       sections.bars[0]!.ways.map((way) => way.methods.map(methodLabel))
-    ).toEqual([['Strength 15'], ['Dexterity 13', 'thieves-tools 13']]);
+      // The tool is a part of the Dexterity approach (`with`), not an
+      // alternative of its own (rpg-toolkit#2444).
+    ).toEqual([['Strength 15'], ['Dexterity 13 with thieves-tools']]);
   });
 
   it('the grate’s passage: search and told under the hidden bar, the passage way apart', () => {

@@ -1550,6 +1550,46 @@
 .es-places-list button[aria-pressed='true'] {
   border-color: var(--wb-accent);
 }
+/* WAYS BY METHOD (rpg-project#974): a method row marks the joins whose ways
+ * use it, by shape (a dashed outline, a heavier dashed mark), not colour
+ * alone. */
+.es-places-list button[data-uses-method] {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: -4px;
+}
+.es-places-join[data-uses-method] .es-places-mark,
+.es-places-join[data-uses-method] .es-places-passage {
+  stroke: var(--wb-text);
+  stroke-width: 4;
+  stroke-dasharray: 2 2;
+}
+.es-way-count summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.es-way-count table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.es-way-count :is(th, td) {
+  padding: 0.15rem 0.25rem;
+  text-align: left;
+  vertical-align: top;
+}
+.es-way-count tbody th button {
+  width: auto;
+  padding: 0.1rem 0.35rem;
+}
+.es-ways-into h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+.es-ways-into ul ul {
+  padding-left: 0.9rem;
+  font-size: 0.78rem;
+  color: var(--wb-muted);
+}
 .encounter-studio .es-join-ways {
   margin: 0.25rem 0 0;
   padding-left: 1.1rem;
