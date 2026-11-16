@@ -12,8 +12,9 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import { castlePlacesReadBack } from './fixtures/engineReadBack';
+import { syntheticJoin } from './fixtures/placesSynthetic';
 import served from './fixtures/the-mad-king-served.yaml?raw';
-import { JoinInspector } from './JoinInspector';
+import { EVERY_BAR_SENTENCE, JoinInspector } from './JoinInspector';
 import { placesOf } from './placesView';
 
 afterEach(cleanup);
@@ -158,6 +159,61 @@ describe('JoinInspector', () => {
     show(GATE, false);
     expect(within(inspector()).getByRole('status').textContent).toBe(
       'These sentences are from the last draft that compiled.'
+    );
+  });
+});
+
+describe('JoinInspector on the engine’s other shapes', () => {
+  it('two bars: says every bar must be passed; partial and none stand apart', () => {
+    const join = placesOf(
+      syntheticJoin([
+        {
+          kind: 'place.way.lock',
+          connects: [
+            ['bar', 'lock', 'lifts'],
+            ['method', 'ability:str', 'by'],
+          ],
+        },
+        {
+          kind: 'place.way.partial',
+          connects: [
+            ['bar', 'hold', 'lifts'],
+            ['creature', 'x', 'still-holds'],
+          ],
+        },
+        { kind: 'place.way.none', connects: [['bar', 'hold', 'unlifted']] },
+      ])
+    ).joins[0]!;
+    render(
+      <JoinInspector join={join} document={castle} current onJump={vi.fn()} />
+    );
+    expect(inspector().textContent).toContain(EVERY_BAR_SENTENCE);
+    expect(section('To pass the lock, any of:').textContent).toContain(
+      'Way 0 (place.way.lock).'
+    );
+    expect(
+      within(inspector()).queryByRole('region', {
+        name: 'To pass the holders, any of:',
+      })
+    ).toBeNull();
+    expect(section('Helps, not enough alone').textContent).toContain(
+      'Way 1 (place.way.partial).'
+    );
+    expect(section('Nothing lifts').textContent).toContain(
+      'Way 2 (place.way.none).'
+    );
+  });
+
+  it('one bar says nothing of every bar', () => {
+    const join = placesOf(
+      syntheticJoin([
+        { kind: 'place.way.none', connects: [['bar', 'lock', 'unlifted']] },
+      ])
+    ).joins[0]!;
+    render(<JoinInspector join={join} document={castle} current />);
+    expect(inspector().textContent).not.toContain(EVERY_BAR_SENTENCE);
+    expect(section('Nothing lifts').textContent).toContain(
+      'Way 0 (place.way.none).'
     );
   });
 });

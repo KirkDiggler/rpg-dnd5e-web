@@ -1587,7 +1587,10 @@ function StudioSurface({
                         ? session.concealments.pick({ kind: 'cell', cell })
                         : session.selectHex(cell))
                     }
-                    onClearSelection={() => void session.clearSelection()}
+                    onClearSelection={() => {
+                      placesView.clearJoin();
+                      void session.clearSelection();
+                    }}
                     placedEditing={placedEditing}
                     exits={session.document.scope.exits}
                     concealedCells={concealedCells}

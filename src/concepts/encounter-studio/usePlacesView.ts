@@ -32,6 +32,8 @@ export interface PlacesView {
   current: boolean;
   selectedJoin: PlaceJoin | null;
   selectJoin(id: string): void;
+  /** Select no join: a click on empty canvas, as the map's selection. */
+  clearJoin(): void;
   /** For the Layout surface; null while the mode is off or nothing is
    * said. */
   layer: LayoutPlaces | null;
@@ -56,6 +58,23 @@ export function usePlacesView(
   useEffect(() => {
     if (session.arrange) setJoinId(null);
   }, [session.arrange]);
+  // Another draft drops the join in the same render, so a same-id join in
+  // that draft is never reselected unchosen (the read-back's own fence).
+  const draftId = session.document.draft.id;
+  const [joinDraft, setJoinDraft] = useState(draftId);
+  if (draftId !== joinDraft) {
+    setJoinDraft(draftId);
+    setJoinId(null);
+  }
+  // Escape clears the selection, the join as the map's.
+  useEffect(() => {
+    if (joinId === null) return;
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setJoinId(null);
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [joinId]);
   const regions = session.document.draft.room.regions;
   const regionName = (id: string): string => {
     const region = regions.find((entry) => entry.id === id);
@@ -63,7 +82,10 @@ export function usePlacesView(
   };
   const nameOf = (join: PlaceJoin): string => joinName(join, regionName);
   const selectedJoin =
-    (joinId && places?.joins.find((join) => join.id === joinId)) || null;
+    (draftId === joinDraft &&
+      joinId &&
+      places?.joins.find((join) => join.id === joinId)) ||
+    null;
   const selectJoin = (id: string): void => {
     session.clearSelection();
     setJoinId(id);
@@ -91,6 +113,7 @@ export function usePlacesView(
     current: readBack.readBackIsCurrent,
     selectedJoin,
     selectJoin,
+    clearJoin: () => setJoinId(null),
     regionName,
     nameOf,
     layer:

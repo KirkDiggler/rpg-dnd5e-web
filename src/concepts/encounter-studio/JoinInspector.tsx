@@ -65,7 +65,7 @@ export function JoinInspector({
         <p className="es-join-sentence" data-kind={join.kind}>
           {join.statement.sentence}
         </p>
-        {sections.bars.length >= 2 && (
+        {join.bars.length >= 2 && (
           <p className="es-help">{EVERY_BAR_SENTENCE}</p>
         )}
         {join.ways.length === 0 && <p className="es-help">{NO_WAY_SENTENCE}</p>}

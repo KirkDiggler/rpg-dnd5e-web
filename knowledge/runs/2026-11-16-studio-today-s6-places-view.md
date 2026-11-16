@@ -16,6 +16,9 @@ Slice [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972) o
 - Bars are told apart by shape (square lock, diamond holders, dashed ring hiding, triangle for an unknown bar, plain ring for none), never colour alone; the join's accessible name says the state in words — [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972).
 - The hidden bar's heading reads "To pass the hiding, any of:", by analogy with the lead's lock and holders headings — [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972).
 
+- A join's bars are the bar ids over its ways' `lifts` and `unlifted` connections; a join with no way at all is named "no way said", never "unbarred"; the every-bar sentence counts the join's bars, the engine's — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1440#pullrequestreview-5914291117).
+- The join selection ends as the map's does: Escape, a click on empty canvas, and another draft (keyed on the draft id, as the read-back is) — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1440#pullrequestreview-5914291117).
+
 ## Found
 
 - On the castle at toolkit `main` cdefe89a: 12 joins (7 door, 2 open, 3 passage) and 29 ways; bars: the gate `hold`, the kitchen and cells doors `lock`, the grate's two passages `hidden`, the rest none; no sight seam, door-within, door-edge or unjoined region — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
@@ -26,3 +29,4 @@ Slice [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972) o
 
 - The first commit kept the list component and the hook in one file, which the lint rule for fast refresh refuses; split before the PR — [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972).
 - The first method-chip label split method ids on `:` by hand; `refs.guard.test.ts` refused it, and the tool's ref now goes through `refId` — [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972).
+- The first head read only `lifts`, so a door locked or hidden with no way past it (the engine's `place.way.none` with `{bar, X, unlifted}`) would have been drawn plain and named "unbarred"; the castle has no such join, so its fixture could not show it. A synthetic read-back in the engine's shapes now pins it, with partial ways and two bars — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1440#pullrequestreview-5914291117).

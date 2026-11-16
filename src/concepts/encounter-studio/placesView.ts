@@ -23,6 +23,9 @@ export interface PlaceWay {
   kind: string;
   /** The bars this way says it lifts, in the engine's order. */
   bars: string[];
+  /** The bars this way says nothing lifts (`place.way.none`'s
+   * `{bar, id, unlifted}`). */
+  unlifted: string[];
   /** `{method, <id>, by}` with the check's difficulty as `value`. */
   methods: { id: string; value: number }[];
   /** What carries the way (`by`, not its method): a line, a creature, a
@@ -49,7 +52,8 @@ export interface PlaceJoin {
    * creature or conversation. */
   carriers: ReadBackConnection[];
   ways: PlaceWay[];
-  /** The distinct bars over its ways, in the order the ways say them. */
+  /** The distinct bars over its ways — those they lift and those the engine
+   * says nothing lifts — in the order the ways say them. */
   bars: string[];
 }
 
@@ -62,6 +66,7 @@ export interface Places {
 const KIND_JOIN = 'join';
 const ROLE_THROUGH = 'through';
 const ROLE_LIFTS = 'lifts';
+const ROLE_UNLIFTED = 'unlifted';
 const PARTIAL = 'place.way.partial';
 const NONE = 'place.way.none';
 const UNJOINED = 'place.region.unjoined';
@@ -81,6 +86,7 @@ function wayOf(statement: ReadBackStatement): PlaceWay {
     statement,
     kind: statement.kind,
     bars: [...new Set(ids(statement, 'bar', ROLE_LIFTS))],
+    unlifted: [...new Set(ids(statement, 'bar', ROLE_UNLIFTED))],
     methods: by
       .filter((c) => c.kind === 'method')
       .map((c) => ({ id: c.id, value: c.value })),
@@ -123,7 +129,7 @@ export function placesOf(readBack: ReadBack): Places {
       if (!join) continue;
       const way = wayOf(statement);
       join.ways.push(way);
-      for (const bar of way.bars)
+      for (const bar of [...way.bars, ...way.unlifted])
         if (!join.bars.includes(bar)) join.bars.push(bar);
     }
   }
@@ -227,7 +233,11 @@ export function joinName(
   regionName: (id: string) => string
 ): string {
   const state =
-    join.bars.length === 0 ? 'unbarred' : join.bars.map(barState).join(' and ');
+    join.ways.length === 0
+      ? 'no way said'
+      : join.bars.length === 0
+        ? 'unbarred'
+        : join.bars.map(barState).join(' and ');
   const by = (c: { kind: string; id: string }) => `the ${c.kind} ${c.id}`;
   if (join.to) {
     const from = join.from.map(regionName).join(' and ');

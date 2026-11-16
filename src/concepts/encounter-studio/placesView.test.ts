@@ -6,9 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import { castlePlacesReadBack } from './fixtures/engineReadBack';
+import { syntheticJoin } from './fixtures/placesSynthetic';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { joinAnchor } from './placesGeometry';
-import { methodLabel, placesOf, waySectionsOf } from './placesView';
+import { joinName, methodLabel, placesOf, waySectionsOf } from './placesView';
 
 const castle = (() => {
   const read = readDraftYaml(served);
@@ -140,5 +141,68 @@ describe('joinAnchor: where a join is drawn (presentation)', () => {
         x: item.transform.x,
         z: item.transform.z,
       });
+  });
+});
+
+const regionName = (id: string) => id.toUpperCase();
+
+describe('bars nothing lifts, partial ways and two bars (engine shapes)', () => {
+  it('a locked door whose only way is place.way.none is marked locked, and named so', () => {
+    const join = placesOf(
+      syntheticJoin([
+        { kind: 'place.way.none', connects: [['bar', 'lock', 'unlifted']] },
+      ])
+    ).joins[0]!;
+    expect(join.bars).toEqual(['lock']);
+    expect(joinName(join, regionName)).toBe(
+      'Join: A and B, by the door d1, locked'
+    );
+    const sections = waySectionsOf(join);
+    expect(sections.bars).toEqual([]);
+    expect(sections.none.map((way) => way.kind)).toEqual(['place.way.none']);
+  });
+
+  it('a join the engine says no way for is not named unbarred', () => {
+    const join = placesOf(syntheticJoin([])).joins[0]!;
+    expect(join.bars).toEqual([]);
+    expect(joinName(join, regionName)).toBe(
+      'Join: A and B, by the door d1, no way said'
+    );
+  });
+
+  it('two bars, a partial way and a none: each set apart by the engine’s kind', () => {
+    const join = placesOf(
+      syntheticJoin([
+        {
+          kind: 'place.way.lock',
+          connects: [
+            ['bar', 'lock', 'lifts'],
+            ['method', 'ability:str', 'by'],
+          ],
+        },
+        {
+          kind: 'place.way.partial',
+          connects: [
+            ['bar', 'hold', 'lifts'],
+            ['creature', 'x', 'still-holds'],
+          ],
+        },
+        { kind: 'place.way.none', connects: [['bar', 'hold', 'unlifted']] },
+      ])
+    ).joins[0]!;
+    expect(join.bars).toEqual(['lock', 'hold']);
+    expect(joinName(join, regionName)).toBe(
+      'Join: A and B, by the door d1, locked and held'
+    );
+    const sections = waySectionsOf(join);
+    expect(sections.bars.map((group) => group.bar)).toEqual(['lock']);
+    expect(sections.bars[0]!.ways.map((way) => way.kind)).toEqual([
+      'place.way.lock',
+    ]);
+    expect(sections.partial.map((way) => way.kind)).toEqual([
+      'place.way.partial',
+    ]);
+    expect(sections.none.map((way) => way.kind)).toEqual(['place.way.none']);
+    expect(sections.free).toEqual([]);
   });
 });

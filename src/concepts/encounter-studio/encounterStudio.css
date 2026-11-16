@@ -1483,8 +1483,14 @@
   cursor: pointer;
   pointer-events: visiblePainted;
 }
+/* Keyboard focus is its own ring, apart from the selected state's heavier
+ * stroke, so a focused mark is seen whether or not it is selected. */
 .es-places-join:focus {
   outline: none;
+}
+.es-places-join:focus-visible {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: 4px;
 }
 .es-places-mark {
   fill: var(--wb-panel);
@@ -1494,8 +1500,8 @@
 .es-places-mark-hidden {
   stroke-dasharray: 3 2;
 }
-.es-places-join:is(:hover, :focus-visible, [data-selected]) .es-places-mark,
-.es-places-join:is(:hover, :focus-visible, [data-selected]) .es-places-passage {
+.es-places-join:is(:hover, [data-selected]) .es-places-mark,
+.es-places-join:is(:hover, [data-selected]) .es-places-passage {
   stroke: var(--wb-text);
   stroke-width: 3;
 }
