@@ -712,6 +712,7 @@ export function StudioCast({
         </button>
       </div>
       <StudioListDetail
+        id="cast"
         label="Cast members"
         groups={[
           {

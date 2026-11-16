@@ -20,6 +20,8 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 - Bundles, Records, Sides (factions and dispositions) and Conversations stay long forms of inline-edited cards: each card already is its own detail, so they get reveal registration only and no list piece — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 - A jump to a list row chooses the row (the piece's `onReveal`), so a jump into Threads, Behaviours, Secrets or Cast lands with the detail shown, not only the row marked — [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984).
 - The mark lasts: `data-revealed="true"` stays until the next jump or a click or key press outside the item, never a timer; it is an outline inside the whole row block plus an accent tint, with a short entrance pulse that reduced motion drops — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
+- The piece takes its height from its container, never the viewport: the Encounter home is a flex column (tab bars `flex: none`, the group and its panel `flex: 1; min-height: 0`), a list-and-detail section (`data-layout="list-detail"` on the panel: Cast, Secrets, Threads, Behaviours) fills the panel and only its two panes scroll; every other section scrolls as one pane in the same panel. The piece keeps a 10rem floor so a very short window still shows both panes — [rpg-dnd5e-web#1445 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1445#pullrequestreview-5924589431).
+- Choosing a row by hand marks nothing (the chosen row shows the choice; the mark is for jumps); stacked, the detail is scrolled into view after it renders. The list is one Tab stop (roving tabindex); Up/Down/Home/End move and choose; Enter/Right go into the detail; Escape, or Left on the detail itself, return; a row's secondary links stay in the Tab order after the focused row — [rpg-dnd5e-web#1445 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1445#pullrequestreview-5924589431).
 
 ## Found
 
@@ -28,5 +30,6 @@ Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) 
 
 ## Mistaken
 
+- The first piece guessed its height as `calc(100vh - 13rem)`; the room above it differs per screen, so it overflowed the Encounter home by about 93 px (Threads, Behaviours) to 163 px (Cast, Secrets) and the section scrolled as well as the panes — [rpg-dnd5e-web#1445 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1445#pullrequestreview-5924589431).
 - The first mark lasted 2.5 s and washed with `--wb-raised`, the very colour of the cards it sat on; on the stack the only sign left was the row's own "→", so the lead sent it back before the operator's look — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).
 - The first cut exported hooks and components from one file, which the fast-refresh lint refuses; the providers moved to `reveal.tsx` and the hooks to `useReveal.ts` before the PR — [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983).

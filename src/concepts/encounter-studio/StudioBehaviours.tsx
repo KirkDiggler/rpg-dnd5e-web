@@ -76,6 +76,7 @@ export function StudioBehaviours({
         </p>
       )}
       <StudioListDetail
+        id="behaviours"
         label="Behaviours"
         groups={[
           {

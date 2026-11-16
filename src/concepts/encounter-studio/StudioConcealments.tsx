@@ -84,6 +84,7 @@ export function StudioConcealments({
         </button>
       </div>
       <StudioListDetail
+        id="secrets"
         label="Concealment list"
         groups={[
           {

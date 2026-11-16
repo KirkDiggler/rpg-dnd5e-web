@@ -17,6 +17,9 @@ import { RevealProvider } from './reveal';
 import { StudioListDetail, type ListDetailRow } from './StudioListDetail';
 import { useReveal, type RevealKey } from './useReveal';
 
+// jsdom has no layout: give the scroll a body to spy on.
+HTMLElement.prototype.scrollIntoView ??= function () {};
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -34,6 +37,7 @@ function Harness({ onSelect = vi.fn() }: { onSelect?: (id: string) => void }) {
   revealNow = useReveal();
   return (
     <StudioListDetail
+      id="facts"
       label="Facts"
       groups={[{ title: 'Facts', rows }]}
       selected={selected ? { kind: 'fact', id: selected } : null}
@@ -106,7 +110,7 @@ describe('StudioListDetail', () => {
     ).toBe(true);
   });
 
-  it('below a width the panes stack, and choosing a row reveals the detail after the list', () => {
+  it('below a width the panes stack; choosing a row brings the rendered detail into view and marks nothing', () => {
     vi.stubGlobal(
       'matchMedia',
       (query: string) =>
@@ -117,6 +121,12 @@ describe('StudioListDetail', () => {
           removeEventListener: () => {},
         }) as unknown as MediaQueryList
     );
+    const scrolled: string[] = [];
+    const into = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(function (this: HTMLElement) {
+        scrolled.push(this.textContent ?? '');
+      });
     render(
       <RevealProvider>
         <Harness />
@@ -126,10 +136,108 @@ describe('StudioListDetail', () => {
       list().closest('.es-list-detail')!.hasAttribute('data-stacked')
     ).toBe(true);
     fireEvent.click(row('bravo'));
+    // Scrolled after the detail rendered: it already says bravo.
+    expect(scrolled).toEqual(['detail of bravo']);
     expect(
       screen
         .getByRole('region', { name: 'Thread' })
         .hasAttribute('data-revealed')
-    ).toBe(true);
+    ).toBe(false);
+    into.mockRestore();
+  });
+
+  it('beside each other, choosing a row scrolls nothing and marks nothing', () => {
+    const into = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    render(
+      <RevealProvider>
+        <Harness />
+      </RevealProvider>
+    );
+    fireEvent.click(row('bravo'));
+    expect(into).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-revealed]')).toBeNull();
+    into.mockRestore();
+  });
+
+  it('a jump to a row chooses it, so its detail shows', () => {
+    const onSelect = vi.fn();
+    render(
+      <RevealProvider>
+        <Harness onSelect={onSelect} />
+      </RevealProvider>
+    );
+    act(() => revealNow({ kind: 'fact', id: 'charlie' }));
+    expect(onSelect).toHaveBeenCalledWith('charlie');
+    expect(screen.getByRole('region', { name: 'Thread' }).textContent).toBe(
+      'detail of charlie'
+    );
+  });
+
+  it('the list is one Tab stop: only the chosen row is tabbable; Home and End go to the ends', () => {
+    const onSelect = vi.fn();
+    render(
+      <RevealProvider>
+        <Harness onSelect={onSelect} />
+      </RevealProvider>
+    );
+    expect(row('alpha').tabIndex).toBe(0);
+    expect(row('bravo').tabIndex).toBe(-1);
+    expect(row('charlie').tabIndex).toBe(-1);
+    row('alpha').focus();
+    fireEvent.keyDown(row('alpha'), { key: 'End' });
+    expect(onSelect).toHaveBeenLastCalledWith('charlie');
+    expect(document.activeElement).toBe(row('charlie'));
+    expect(row('charlie').tabIndex).toBe(0);
+    expect(row('alpha').tabIndex).toBe(-1);
+    fireEvent.keyDown(row('charlie'), { key: 'Home' });
+    expect(onSelect).toHaveBeenLastCalledWith('alpha');
+    expect(document.activeElement).toBe(row('alpha'));
+  });
+
+  it('Escape, or Left at the detail itself, returns focus to the chosen row', () => {
+    render(
+      <RevealProvider>
+        <Harness />
+      </RevealProvider>
+    );
+    const detail = screen.getByRole('region', { name: 'Thread' });
+    fireEvent.keyDown(row('alpha'), { key: 'Enter' });
+    expect(document.activeElement).toBe(detail);
+    fireEvent.keyDown(detail, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(row('alpha'));
+    fireEvent.keyDown(row('alpha'), { key: 'ArrowRight' });
+    fireEvent.keyDown(detail, { key: 'Escape' });
+    expect(document.activeElement).toBe(row('alpha'));
+  });
+
+  it('two pieces with the same label keep their own ids', () => {
+    render(
+      <RevealProvider>
+        <StudioListDetail
+          id="one"
+          label="Same"
+          groups={[{ rows }]}
+          selected={null}
+          onSelect={() => {}}
+          detailLabel="One"
+          detail={null}
+        />
+        <StudioListDetail
+          id="two"
+          label="Same"
+          groups={[{ rows: [] }]}
+          selected={null}
+          onSelect={() => {}}
+          detailLabel="Two"
+          detail={null}
+        />
+      </RevealProvider>
+    );
+    const one = screen.getByRole('region', { name: 'One' });
+    const two = screen.getByRole('region', { name: 'Two' });
+    expect(one.id).not.toBe(two.id);
+    expect(one.id).toContain('one');
   });
 });

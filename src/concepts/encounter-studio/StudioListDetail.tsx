@@ -1,27 +1,35 @@
 /**
- * ONE LIST-AND-DETAIL PIECE (rpg-project#984). Two panes within the
- * workspace's height, each scrolling on its own: the list (compact rows —
- * a name, one line of summary, small secondary links) and the chosen row's
- * detail beside it, which stays in view however far down the list the row
- * is. Rows are revealable by their key (rpg-project#983), so a jump lands on
- * the row and the row stays visible in its own pane. Up and Down move the
- * choice; Enter or Right goes to the detail. Below a width the panes stack,
- * the detail after the list, and choosing a row reveals the detail.
+ * ONE LIST-AND-DETAIL PIECE (rpg-project#984). Two panes that fill the
+ * height their container gives them, each scrolling on its own: the list
+ * (compact rows — a name, one line of summary, small secondary links) and
+ * the chosen row's detail beside it, which stays in view however far down
+ * the list the row is. The piece takes its height from its container (a
+ * flex chain with `min-height: 0`, see `.es-encounter-panel` in the CSS),
+ * never a guess at the viewport.
+ *
+ * Rows are revealable by their key (rpg-project#983): a jump lands on the
+ * row, CHOOSES it so its detail shows, and marks it. Choosing a row by hand
+ * marks nothing — the chosen row shows the choice; the mark is for jumps.
+ *
+ * KEYBOARD: the list is one Tab stop (a roving tabindex over the rows).
+ * Up and Down move and choose; Home and End go to the ends; Enter or Right
+ * moves focus into the detail; Escape anywhere in the detail, or Left on
+ * the detail itself, returns to the chosen row. A row's secondary links
+ * stay in the Tab order: Tab from the focused row reaches them.
+ *
+ * Below a width the panes stack, the detail after the list, and choosing a
+ * row scrolls the detail into view once it has rendered.
  */
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { RevealLi } from './RevealDiv';
-import {
-  revealKeyString,
-  useReveal,
-  useRevealable,
-  type RevealKey,
-} from './useReveal';
+import { revealKeyString, type RevealKey } from './useReveal';
 
 type DataAttributes = { [name: `data-${string}`]: string | undefined };
 
@@ -44,7 +52,8 @@ export interface ListDetailGroup {
   rows: readonly ListDetailRow[];
 }
 
-/** Below this width the panes stack. */
+/** Below this width the panes stack: the one source of the stacked layout
+ * (the CSS styles `[data-stacked]`, it has no media query of its own). */
 export const STACK_QUERY = '(max-width: 52rem)';
 
 function useStacked(): boolean {
@@ -67,6 +76,7 @@ function useStacked(): boolean {
 }
 
 export function StudioListDetail({
+  id,
   label,
   groups,
   selected,
@@ -75,6 +85,8 @@ export function StudioListDetail({
   detailLabel,
   empty,
 }: {
+  /** The piece's own id: its panes' element ids derive from it. */
+  id: string;
   /** The list's name when it has one group with no title. */
   label: string;
   groups: readonly ListDetailGroup[];
@@ -86,49 +98,78 @@ export function StudioListDetail({
   empty?: ReactNode;
 }): React.JSX.Element {
   const stacked = useStacked();
-  const reveal = useReveal();
-  const detailKey: RevealKey = { kind: 'list-detail', id: label };
+  const listRef = useRef<HTMLDivElement | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
-  const registerDetail = useRevealable(detailKey);
   const selectedId = selected ? revealKeyString(selected) : null;
+  const rows = groups.flatMap((group) => group.rows);
+  const selectedIndex = rows.findIndex(
+    (row) => revealKeyString(row.key) === selectedId
+  );
+  const tabStop = selectedIndex >= 0 ? selectedIndex : 0;
+  // Stacked, a row chosen by hand brings its detail into view — after the
+  // detail has rendered, so the scroll lands on the new detail.
+  const [scrollToDetail, setScrollToDetail] = useState(0);
+  useLayoutEffect(() => {
+    if (scrollToDetail > 0)
+      detailRef.current?.scrollIntoView({ block: 'start' });
+  }, [scrollToDetail]);
   const choose = (key: RevealKey): void => {
     onSelect(key);
-    // Stacked, the detail is below the list: bring it into view.
-    if (stacked) reveal(detailKey);
+    if (stacked) setScrollToDetail((count) => count + 1);
   };
-  const rows = groups.flatMap((group) => group.rows);
-  const move = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    index: number
-  ): void => {
+  const rowButtons = (): HTMLButtonElement[] => [
+    ...(listRef.current?.querySelectorAll<HTMLButtonElement>(
+      'button.es-ld-choose'
+    ) ?? []),
+  ];
+  const focusRow = (index: number): void => {
+    rowButtons()[index]?.focus();
+  };
+  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = rows.length - 1;
     const target =
       event.key === 'ArrowDown'
-        ? index + 1
+        ? Math.min(index + 1, last)
         : event.key === 'ArrowUp'
-          ? index - 1
-          : null;
+          ? Math.max(index - 1, 0)
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
     if (target !== null) {
       event.preventDefault();
-      const next = rows[target];
-      if (!next) return;
-      onSelect(next.key);
-      const pane = event.currentTarget.closest('.es-ld-list-pane');
-      const buttons =
-        pane?.querySelectorAll<HTMLButtonElement>('button.es-ld-choose') ?? [];
-      buttons[target]?.focus();
+      if (target !== index) onSelect(rows[target]!.key);
+      focusRow(target);
       return;
     }
     if (event.key === 'Enter' || event.key === 'ArrowRight') {
       event.preventDefault();
       if (revealKeyString(rows[index]!.key) !== selectedId)
-        choose(rows[index]!.key);
+        onSelect(rows[index]!.key);
       detailRef.current?.focus();
+    }
+  };
+  const backToList = (event: KeyboardEvent<HTMLElement>): void => {
+    const atStart = event.target === event.currentTarget;
+    if (event.key === 'Escape' || (event.key === 'ArrowLeft' && atStart)) {
+      event.preventDefault();
+      focusRow(tabStop);
     }
   };
   let index = -1;
   return (
-    <div className="es-list-detail" data-stacked={stacked || undefined}>
-      <div className="es-ld-list-pane" style={{ overflowY: 'auto' }}>
+    <div
+      className="es-list-detail"
+      data-stacked={stacked || undefined}
+      id={`${id}-list-detail`}
+    >
+      <div
+        ref={listRef}
+        className="es-ld-list-pane"
+        id={`${id}-list`}
+        data-scroll-pane=""
+      >
         {rows.length === 0 && empty}
         {groups.map((group, at) =>
           group.rows.length === 0 ? null : (
@@ -138,11 +179,11 @@ export function StudioListDetail({
                 {group.rows.map((row) => {
                   index += 1;
                   const mine = index;
-                  const id = revealKeyString(row.key);
-                  const isSelected = id === selectedId;
+                  const key = revealKeyString(row.key);
+                  const isSelected = key === selectedId;
                   return (
                     <RevealLi
-                      key={id}
+                      key={key}
                       revealKey={row.key}
                       // A jump to a row chooses it, so its detail shows.
                       onReveal={() => {
@@ -156,6 +197,7 @@ export function StudioListDetail({
                         type="button"
                         className="es-ld-choose"
                         aria-pressed={isSelected}
+                        tabIndex={mine === tabStop ? 0 : -1}
                         onClick={() => choose(row.key)}
                         onKeyDown={(event) => move(event, mine)}
                         {...row.buttonData}
@@ -180,14 +222,13 @@ export function StudioListDetail({
         )}
       </div>
       <section
-        ref={(element) => {
-          detailRef.current = element;
-          registerDetail(element);
-        }}
+        ref={detailRef}
+        id={`${id}-detail`}
         className="es-ld-detail-pane"
-        style={{ overflowY: 'auto' }}
+        data-scroll-pane=""
         aria-label={detailLabel}
         tabIndex={-1}
+        onKeyDown={backToList}
       >
         {detail}
       </section>

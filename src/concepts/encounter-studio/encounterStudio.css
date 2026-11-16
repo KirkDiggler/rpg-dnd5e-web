@@ -576,13 +576,64 @@
   position: absolute;
   inset: 0;
   padding: 1.25rem;
-  overflow: auto;
   background: var(--wb-bg);
+  /* THE HEIGHT CHAIN (rpg-project#984): the home is a flex column under the
+   * header; the tab bars take what they need and the section's panel takes
+   * the rest (`flex: 1; min-height: 0`). A list-and-detail screen fills the
+   * panel and only its two panes scroll; any other screen scrolls as one
+   * pane inside the panel. No height here is a guess at the viewport. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.es-encounter-home[hidden] {
+  display: none;
 }
 .es-encounter-home > * {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 72rem;
   margin-left: auto;
   margin-right: auto;
+}
+.es-encounter-home > .es-encounter-nav {
+  flex: none;
+}
+.es-encounter-home > .es-encounter-group {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.es-encounter-group > .es-tabbar {
+  flex: none;
+}
+.es-encounter-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.es-encounter-panel[data-layout='list-detail'] {
+  display: flex;
+  flex-direction: column;
+}
+.es-encounter-panel[data-layout='list-detail'] > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.es-encounter-panel[data-layout='list-detail'] > * > * {
+  flex: none;
+}
+.es-encounter-panel[data-layout='list-detail'] > * > .es-list-detail {
+  flex: 1 1 auto;
+}
+.es-encounter-panel[data-layout='list-detail']
+  > *
+  > .es-list-detail[data-stacked] {
+  flex: none;
 }
 .es-creature-palette,
 .es-creature-palette section,
@@ -609,24 +660,8 @@
   width: 100%;
   min-width: 0;
 }
-.es-cast-workspace {
-  display: grid;
-  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-.es-cast-members {
-  position: sticky;
-  top: 0;
-}
-.es-cast-members button {
-  width: 100%;
-  text-align: left;
-}
 .es-cast-editor {
   min-width: 0;
-  border-left: 1px solid #465366;
-  padding-left: 1rem;
 }
 .es-cast-look-summary {
   border: 1px solid #465366;
@@ -640,19 +675,6 @@
 .es-cast-look-summary .es-look-grid {
   max-height: 24rem;
   overflow-y: auto;
-}
-@media (max-width: 700px) {
-  .es-cast-workspace {
-    grid-template-columns: 1fr;
-  }
-  .es-cast-members {
-    position: static;
-  }
-  .es-cast-editor {
-    border-left: 0;
-    border-top: 1px solid #465366;
-    padding: 0.75rem 0 0;
-  }
 }
 
 .es-creature-panel {
@@ -1634,33 +1656,7 @@
   font-size: var(--es-text-help);
 }
 
-/* Threads (rpg-project#973): the hubs the engine says beside the selected
- * hub's thread, which is the Read back of that hub. */
-.es-threads-body {
-  display: grid;
-  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-.es-threads-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin: 0 0 0.75rem;
-  padding: 0;
-  list-style: none;
-}
-.es-threads-list button {
-  width: 100%;
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-.es-threads-list button[aria-pressed='true'] {
-  border-color: var(--wb-accent);
-}
-.es-threads-list small {
-  color: var(--wb-muted);
-}
+/* Threads (rpg-project#973): a hub's id in code style. */
 .es-threads-id {
   font-family: var(--es-font-mono, monospace);
 }
@@ -1787,8 +1783,9 @@
   display: grid;
   grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
   gap: 0;
-  height: calc(100vh - 13rem);
-  min-height: 20rem;
+  /* The height is its container's (see the chain on .es-encounter-home);
+   * a floor keeps both panes usable when the window is very short. */
+  min-height: 10rem;
   border: 1px solid var(--wb-border);
   border-radius: 6px;
   background: var(--wb-bg);
@@ -1867,10 +1864,4 @@
   max-height: 50vh;
   border-right: 0;
   border-bottom: 1px solid var(--wb-border);
-}
-@media (max-width: 52rem) {
-  .es-list-detail {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
 }

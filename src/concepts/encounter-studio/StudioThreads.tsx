@@ -64,6 +64,7 @@ export function StudioThreads({
         </p>
       )}
       <StudioListDetail
+        id="threads"
         label="Hubs"
         groups={sections.map((section) => ({
           title: section.title,

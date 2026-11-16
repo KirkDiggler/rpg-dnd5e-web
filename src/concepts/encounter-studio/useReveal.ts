@@ -79,6 +79,9 @@ function scrollContainerOf(element: HTMLElement): HTMLElement | null {
     node && node !== document.body;
     node = node.parentElement
   ) {
+    // A pane can say it scrolls (`data-scroll-pane`) where its overflow
+    // comes from a stylesheet the page may not have loaded yet.
+    if (node.hasAttribute('data-scroll-pane')) return node;
     const overflow = getComputedStyle(node).overflowY;
     if (overflow === 'auto' || overflow === 'scroll') return node;
   }
