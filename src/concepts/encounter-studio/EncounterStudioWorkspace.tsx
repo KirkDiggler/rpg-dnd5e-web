@@ -19,6 +19,7 @@ import { cellOwners } from '../world-building/roomDraft';
 import { appendWaypoint } from '../world-building/routeEdits';
 import {
   RoutePickContext,
+  toggledCell,
   type RoutePicking,
   type RoutePickRequest,
 } from '../world-building/routePicking';
@@ -785,6 +786,13 @@ function StudioSurface({
     if (!routePick) return;
     if (routePick.request.mode === 'cell')
       return finishPick(true, [{ q: cell.q, r: cell.r }]);
+    // A set of cells (rpg-project#975 C): a click adds a cell, or takes it
+    // away again.
+    if (routePick.request.mode === 'cells')
+      return setRoutePick({
+        ...routePick,
+        waypoints: toggledCell(routePick.waypoints, cell),
+      });
     setRoutePick({
       ...routePick,
       waypoints: appendWaypoint(routePick.waypoints, cell),
@@ -1338,7 +1346,9 @@ function StudioSurface({
               <strong>
                 {routePick.request.mode === 'cell'
                   ? `Picking a cell for ${routePick.request.label} · click the cell to walk to`
-                  : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
+                  : routePick.request.mode === 'cells'
+                    ? `Picking cells for ${routePick.request.label} · click a cell to add or take it away · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'cell' : 'cells'}`
+                    : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
               </strong>
               {routePick.request.mode === 'route' && (
                 <>
@@ -1362,6 +1372,11 @@ function StudioSurface({
                     Done picking route
                   </button>
                 </>
+              )}
+              {routePick.request.mode === 'cells' && (
+                <button type="button" onClick={() => finishPick(true)}>
+                  Done picking cells
+                </button>
               )}
               <button type="button" onClick={() => finishPick(false)}>
                 Cancel picking
@@ -1922,7 +1937,10 @@ function StudioSurface({
                 />
               )}
               {home === 'encounter' && encounterSection === 'interactions' && (
-                <StudioInteractions session={session} />
+                // An arrest's cells are picked on the map (rpg-project#975).
+                <RoutePickContext.Provider value={routePicking}>
+                  <StudioInteractions session={session} />
+                </RoutePickContext.Provider>
               )}
               {home === 'encounter' && encounterSection === 'behaviours' && (
                 <StudioBehaviours

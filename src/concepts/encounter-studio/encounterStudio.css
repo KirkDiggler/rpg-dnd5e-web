@@ -1927,3 +1927,43 @@
   font-family: var(--es-font-mono, monospace);
   font-size: var(--es-text-help);
 }
+
+/* A CONVERSATION'S OUTCOMES (rpg-project#975 C): each entry a card of its
+ * fields — its kind first, then a recognition's, an arrest's (held in,
+ * seized in) or a jail's (words, rounds, the fact on an escape). */
+.encounter-studio .es-outcome-list {
+  display: grid;
+  gap: 0.5rem;
+}
+.encounter-studio .es-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-outcome > label,
+.encounter-studio .es-outcome > .es-field {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.encounter-studio .es-outcome > .wb-relocation-words {
+  flex: 2 1 16rem;
+}
+.encounter-studio .es-outcome > .wb-relocation-rounds {
+  flex: 0 0 5rem;
+}
+.encounter-studio .es-outcome > fieldset {
+  flex: 1 1 100%;
+  align-items: center;
+}
+.encounter-studio .es-outcome-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}

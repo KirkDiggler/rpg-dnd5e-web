@@ -205,7 +205,7 @@ export interface LayoutLabelEditing {
 /** The Layout's half of a row's pick on map: what to draw and where a
  * clicked cell goes. */
 export interface LayoutRoutePick {
-  mode: 'cell' | 'route';
+  mode: 'cell' | 'route' | 'cells';
   /** The waypoints picked so far, in walking order. */
   waypoints: readonly RoomHexCell[];
   onPick(cell: RoomHexCell): void;

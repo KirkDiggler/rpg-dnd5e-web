@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import {
   approachRefusal,
   interactionApproach,
@@ -6,19 +6,40 @@ import {
   SPEAK_REACH_CELLS,
 } from '../world-building/interactionApproach';
 import {
-  aboutWords,
-  grantedTopics,
-  HEARD_WORDS,
-  holderWords,
+  ABOUT_PARTY_IN_SIGHT,
+  arrestOf,
+  arrests,
+  HEARD_BY_WITNESSES,
+  jailOf,
+  newOutcome,
+  OUTCOME_KINDS,
+  outcomeKindOf,
   outcomesOf,
   recipeStates,
   recognizeOf,
+  withAbout,
+  withArrestCell,
+  withArrestCells,
+  withArrestRegion,
+  withEntry,
   withEntryRemoved,
   withHeard,
-  withRecognizeAdded,
+  withJail,
+  withOutcomeAdded,
   withTopic,
+  type OutcomeKind,
   type Outcomes,
 } from '../world-building/interactionOutcomes';
+import { fromRows, rowCellCount } from '../world-building/regionRuns';
+import type { RoomCellRow, RoomHexCell } from '../world-building/roomDraft';
+import { useRoutePicking } from '../world-building/routePicking';
+import {
+  RecognitionFields,
+  RegionField,
+  RoundsField,
+  WordsField,
+} from '../world-building/RowGrantFields';
+import { SiteNamesContext } from '../world-building/siteNames';
 import { AboutPanel } from './FieldHelp';
 import { RevealLi } from './RevealDiv';
 import type { EncounterStudioSession } from './studioSession';
@@ -80,7 +101,6 @@ export function StudioInteractions({
                 id={id}
                 outcomes={outcomesOf(session.document.scope, id)}
                 states={recipeStates(session.document.scope, id)}
-                topics={grantedTopics(session.document.scope)}
                 commit={(outcomes) =>
                   session.commitInteractionOutcomes(id, outcomes)
                 }
@@ -173,105 +193,246 @@ function ApproachField({
   );
 }
 
+const KIND_LABELS: Record<OutcomeKind, string> = {
+  recognize: 'Recognises',
+  arrest: 'Arrests',
+  jail: 'Jails',
+};
+
 /**
- * One interaction's outcomes (rpg-project#928): for each state with any, its
- * recognitions in plain words, each with its topic to edit, whether the
- * witnessing carriers hear it, and a remove; and an add for a state the
- * recipe declares. The holder and subjects have one word each today, shown
- * and not offered. An entry this form cannot say (another kind, a word it
- * does not know) is shown as written and kept. Every change commits the
- * whole map, one undoable edit; the compiler judges it at Save & Play.
+ * One conversation's outcomes (rpg-project#928, #975 C): for each state it
+ * enters, what follows — each entry ONE kind, chosen like a row's grant: it
+ * recognises, arrests or jails. A form, not a sentence: what an arrest does
+ * is the engine's read-back (here and in the places view's arrest passage).
+ *
+ * An arrest and a jail are a relocation reached from a conversation (R33),
+ * and use the relocation's parts: an arrest its Region, as where the taken
+ * are "Held in", with where they are "Seized in" (regions, and cells picked
+ * on the map); a jail its Words and Rounds — it moves the taken into the
+ * arrest's cell, so it names no region — and the fact taught when one
+ * escapes.
+ *
+ * The engine's refusals are prevented by construction: one kind per entry;
+ * Jails only beside an arrest; the last place an arrest seizes in cannot be
+ * taken away; states from the recipe. An entry of another kind is shown as
+ * written and kept. Every change commits the whole map, one undoable edit.
  */
 function OutcomesField({
   id,
   outcomes,
   states,
-  topics,
   commit,
 }: {
   id: string;
   outcomes: Outcomes;
   states: readonly string[];
-  topics: readonly string[];
   commit: (outcomes: Outcomes) => boolean;
 }): React.JSX.Element {
+  const names = useContext(SiteNamesContext);
+  const picking = useRoutePicking();
   const [adding, setAdding] = useState(states[0] ?? '');
-  const topicList = `outcome-topics-${id}`;
+  const [addingKind, setAddingKind] = useState<OutcomeKind>('recognize');
   const entered = Object.keys(outcomes);
+  const siteRegions = names.regions.map((region) => region.id);
+  const canJail = arrests(outcomes);
   return (
     <div aria-label={`Outcomes for ${id}`} className="es-outcomes">
       <h3>When it enters a state</h3>
-      <datalist id={topicList}>
-        {topics.map((topic) => (
-          <option key={topic} value={topic} />
-        ))}
-      </datalist>
       {entered.length === 0 && <p className="es-help">Nothing follows.</p>}
       {entered.map((state) => (
         <div key={state} aria-label={`Outcomes on entering ${state} in ${id}`}>
           <h4>Entering {state}</h4>
-          <ul className="es-inspector-list">
-            {outcomes[state].map((entry, index) => {
-              const r = recognizeOf(entry);
+          <ul className="es-inspector-list es-outcome-list">
+            {outcomes[state]!.map((entry, index) => {
               const label = `${id} ${state} ${index + 1}`;
-              if (!r)
+              const path = `interactions.${id}.outcomes.${state}[${index}]`;
+              const kind = outcomeKindOf(entry);
+              const set = (next: unknown) =>
+                commit(withEntry(outcomes, state, index, next));
+              const remove = (
+                <button
+                  type="button"
+                  className="wb-danger"
+                  aria-label={`Remove outcome ${label}`}
+                  onClick={() =>
+                    commit(withEntryRemoved(outcomes, state, index))
+                  }
+                >
+                  Remove
+                </button>
+              );
+              if (!kind)
                 return (
-                  <li key={index}>
+                  <RevealLi key={index} path={path} className="es-outcome">
                     <pre aria-label={`Outcome as written ${label}`}>
                       {JSON.stringify(entry)}
                     </pre>
                     <p className="es-help">
                       This form does not edit it; it is kept as written.
                     </p>
-                  </li>
+                    {remove}
+                  </RevealLi>
                 );
+              const jailOffered = arrests(outcomes, { state, index });
+              const recognize =
+                kind === 'recognize' ? recognizeOf(entry) : undefined;
+              const arrest = arrestOf(entry);
+              const jail = jailOf(entry);
+              const seizedCells = arrest?.area.cells ?? [];
               return (
-                <li key={index} aria-label={`Recognition ${label}`}>
-                  <p>
-                    {holderWords(r.holder)} recognises {aboutWords(r.about)}
-                    {r.heard ? `${HEARD_WORDS}.` : '.'}
-                  </p>
+                <RevealLi key={index} path={path} className="es-outcome">
                   <label className="es-field">
-                    <span>Topic</span>
-                    <input
-                      aria-label={`Recognition topic ${label}`}
-                      list={topicList}
-                      value={r.topic}
+                    <span>This state</span>
+                    <select
+                      aria-label={`Outcome kind ${label}`}
+                      value={kind}
                       onChange={(event) =>
-                        commit(
-                          withTopic(outcomes, state, index, event.target.value)
+                        set(
+                          newOutcome(event.target.value as OutcomeKind, names)
                         )
                       }
-                    />
+                    >
+                      {OUTCOME_KINDS.map((option) => (
+                        <option
+                          key={option}
+                          value={option}
+                          disabled={
+                            option === 'jail' && !jailOffered && kind !== 'jail'
+                          }
+                        >
+                          {KIND_LABELS[option]}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                  <label className="es-field">
-                    <input
-                      type="checkbox"
-                      aria-label={`Heard by the witnessing carriers ${label}`}
-                      checked={r.heard}
-                      onChange={(event) =>
-                        commit(
-                          withHeard(
-                            outcomes,
-                            state,
-                            index,
-                            event.target.checked
-                          )
-                        )
+                  {kind === 'recognize' && (
+                    <RecognitionFields
+                      label={label}
+                      recognize={
+                        recognize
+                          ? {
+                              topic: recognize.topic,
+                              about: recognize.about,
+                              heard_by: recognize.heard
+                                ? HEARD_BY_WITNESSES
+                                : undefined,
+                            }
+                          : { topic: '', about: ABOUT_PARTY_IN_SIGHT }
                       }
+                      canBeWitnessed
+                      onChange={(patch) => {
+                        let next = outcomes;
+                        if (patch.topic !== undefined)
+                          next = withTopic(next, state, index, patch.topic);
+                        if (patch.about !== undefined)
+                          next = withAbout(next, state, index, patch.about);
+                        if (patch.heard !== undefined)
+                          next = withHeard(next, state, index, patch.heard);
+                        commit(next);
+                      }}
                     />
-                    <span>The other carriers who saw it hear it</span>
-                  </label>
-                  <button
-                    type="button"
-                    aria-label={`Remove recognition ${label}`}
-                    onClick={() =>
-                      commit(withEntryRemoved(outcomes, state, index))
-                    }
-                  >
-                    Remove
-                  </button>
-                </li>
+                  )}
+                  {arrest && (
+                    <>
+                      <RegionField
+                        label={label}
+                        name="Held in"
+                        region={arrest.cell}
+                        onChange={(cell) => set(withArrestCell(arrest, cell))}
+                      />
+                      <fieldset className="wb-requirement-states">
+                        <legend>Seized in</legend>
+                        {[
+                          ...siteRegions,
+                          ...(arrest.area.regions ?? []).filter(
+                            (region) => !siteRegions.includes(region)
+                          ),
+                        ].map((region) => {
+                          const seized = (arrest.area.regions ?? []).includes(
+                            region
+                          );
+                          const last =
+                            seized &&
+                            (arrest.area.regions ?? []).length === 1 &&
+                            seizedCells.length === 0;
+                          return (
+                            <label key={region} className="wb-check">
+                              <input
+                                type="checkbox"
+                                aria-label={`Seized in ${region} for ${label}`}
+                                checked={seized}
+                                disabled={last}
+                                onChange={(event) =>
+                                  set(
+                                    withArrestRegion(
+                                      arrest,
+                                      region,
+                                      event.target.checked,
+                                      siteRegions
+                                    )
+                                  )
+                                }
+                              />
+                              <span>
+                                {names.regions.find((r) => r.id === region)
+                                  ?.name ?? region}
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <span
+                          className="es-help"
+                          data-testid={`Seized cells ${label}`}
+                        >
+                          {`${rowCellCount(seizedCells)} cells`}
+                        </span>
+                        {picking && (
+                          <button
+                            type="button"
+                            aria-label={`Pick seized cells on map for ${label}`}
+                            onClick={() =>
+                              picking.arm({
+                                mode: 'cells',
+                                label: `${id} on entering ${state}`,
+                                route: cellsOf(seizedCells),
+                                onDone: (cells) =>
+                                  set(withArrestCells(arrest, cells)),
+                              })
+                            }
+                          >
+                            Pick on map
+                          </button>
+                        )}
+                      </fieldset>
+                    </>
+                  )}
+                  {jail && (
+                    <>
+                      <WordsField
+                        label={label}
+                        words={jail.words ?? ''}
+                        onChange={(words) => set(withJail(jail, { words }))}
+                      />
+                      <RoundsField
+                        label={label}
+                        rounds={jail.rounds}
+                        onChange={(rounds) => set(withJail(jail, { rounds }))}
+                      />
+                      <label className="es-field">
+                        <span>Fact when they escape</span>
+                        <input
+                          aria-label={`Fact when they escape for ${label}`}
+                          placeholder="a fact id, or none"
+                          value={jail.escaped ?? ''}
+                          onChange={(event) =>
+                            set(withJail(jail, { escaped: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                  {remove}
+                </RevealLi>
               );
             })}
           </ul>
@@ -279,17 +440,23 @@ function OutcomesField({
       ))}
       {states.length > 0 && (
         <form
+          className="es-outcome-add"
           onSubmit={(event) => {
             event.preventDefault();
             commit(
-              withRecognizeAdded(outcomes, adding, topics[0] ?? 'admitted')
+              withOutcomeAdded(
+                outcomes,
+                adding,
+                newOutcome(addingKind, names),
+                states
+              )
             );
           }}
         >
           <label className="es-field">
-            <span>Add a recognition on entering</span>
+            <span>On entering</span>
             <select
-              aria-label={`Add recognition state for ${id}`}
+              aria-label={`Add outcome state for ${id}`}
               value={adding}
               onChange={(event) => setAdding(event.target.value)}
             >
@@ -300,11 +467,40 @@ function OutcomesField({
               ))}
             </select>
           </label>
-          <button type="submit" aria-label={`Add recognition for ${id}`}>
+          <label className="es-field">
+            <span>It</span>
+            <select
+              aria-label={`Add outcome kind for ${id}`}
+              value={addingKind}
+              onChange={(event) =>
+                setAddingKind(event.target.value as OutcomeKind)
+              }
+            >
+              {OUTCOME_KINDS.map((option) => (
+                <option
+                  key={option}
+                  value={option}
+                  disabled={option === 'jail' && !canJail}
+                >
+                  {KIND_LABELS[option]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" aria-label={`Add outcome for ${id}`}>
             Add
           </button>
         </form>
       )}
     </div>
   );
+}
+
+/** Row runs as single cells, for a pick that starts from them. */
+function cellsOf(rows: readonly RoomCellRow[]): RoomHexCell[] {
+  try {
+    return fromRows(rows, 'cells');
+  } catch {
+    return [];
+  }
 }

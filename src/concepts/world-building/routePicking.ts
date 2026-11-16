@@ -17,7 +17,9 @@
 import { createContext, useContext, useRef } from 'react';
 import type { AnswerCellShape, AnswerWaypointShape } from './answerTableShape';
 
-export type RoutePickMode = 'cell' | 'route';
+/** A cell (one click answers), a route (clicks in walking order), or a set
+ * of cells (each click adds or takes away one; rpg-project#975 C). */
+export type RoutePickMode = 'cell' | 'route' | 'cells';
 
 export interface RoutePickRequest {
   mode: RoutePickMode;
@@ -64,4 +66,16 @@ export function useLatest<Args extends unknown[]>(
   ref.current = fn;
   const stable = useRef((...args: Args) => ref.current(...args));
   return stable.current;
+}
+
+/** A set of cells with one cell added, or taken away when it is already
+ * there (rpg-project#975 C): a click in a `cells` pick. */
+export function toggledCell(
+  cells: readonly AnswerWaypointShape[],
+  cell: AnswerCellShape
+): AnswerWaypointShape[] {
+  const held = cells.some((c) => c.q === cell.q && c.r === cell.r);
+  return held
+    ? cells.filter((c) => !(c.q === cell.q && c.r === cell.r))
+    : [...cells, { q: cell.q, r: cell.r }];
 }

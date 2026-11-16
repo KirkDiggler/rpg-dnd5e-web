@@ -74,14 +74,112 @@ export function LoudnessSelect({
   );
 }
 
-/** THE RELOCATION: a region, words, rounds. Shared by a row's `relocate`
- * and a conversation's `jail` and `arrest` (R33). */
+/** A region of the site, offered by name. The relocation's Region; an
+ * arrest's "Held in". */
+export function RegionField({
+  label,
+  name = 'Region',
+  region,
+  onChange,
+}: {
+  /** What the control is named for: "<name> for <label>". */
+  label: string;
+  name?: string;
+  region: string;
+  onChange(region: string): void;
+}): React.JSX.Element {
+  const names = useContext(SiteNamesContext);
+  const known = names.regions.some((entry) => entry.id === region);
+  return (
+    <label>
+      <span>{name}</span>
+      <select
+        aria-label={`${name} for ${label}`}
+        value={region}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {!known && (
+          <option value={region}>
+            {region === '' ? '(choose a region)' : region}
+          </option>
+        )}
+        {names.regions.map((entry) => (
+          <option key={entry.id} value={entry.id}>
+            {entry.name === entry.id ? entry.id : `${entry.name} (${entry.id})`}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** What the one moved is told. A relocation's Words; a jail's. */
+export function WordsField({
+  label,
+  words,
+  onChange,
+}: {
+  label: string;
+  words: string;
+  onChange(words: string): void;
+}): React.JSX.Element {
+  return (
+    <label className="wb-relocation-words">
+      <span>Words</span>
+      <textarea
+        aria-label={`Words for ${label}`}
+        placeholder="What the one moved is told"
+        rows={2}
+        value={words}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+/** How many world rounds the move takes; empty is none. A relocation's
+ * Rounds; a jail's. */
+export function RoundsField({
+  label,
+  rounds,
+  onChange,
+}: {
+  label: string;
+  rounds: number | undefined;
+  /** null: the field emptied, written as nothing. */
+  onChange(rounds: number | null): void;
+}): React.JSX.Element {
+  return (
+    <label className="wb-relocation-rounds">
+      <span>Rounds</span>
+      <input
+        type="number"
+        min={0}
+        step={1}
+        aria-label={`Rounds for ${label}`}
+        placeholder="0"
+        value={rounds === undefined ? '' : String(rounds)}
+        onChange={(event) => {
+          const raw = event.target.value;
+          if (raw === '') return onChange(null);
+          const n = Number(raw);
+          if (Number.isInteger(n) && n >= 0) onChange(n);
+        }}
+      />
+    </label>
+  );
+}
+
+/** THE RELOCATION (R33): a region, the words the moved are told, the rounds
+ * it takes — a row's `relocate`. A conversation's `jail` and `arrest` are
+ * the same primitive and use its parts: a jail its Words and Rounds (it
+ * moves the taken into the arrest's cell, so it names no region), an arrest
+ * its Region as where the taken are held. */
 export function RelocationFields({
   label,
   region,
   words,
   rounds,
-  regionLabel = 'Region',
   onChange,
 }: {
   /** What the controls are named for: "<…> entry". */
@@ -89,66 +187,101 @@ export function RelocationFields({
   region: string;
   words: string;
   rounds: number | undefined;
-  regionLabel?: string;
   onChange(patch: {
     to?: string;
     words?: string;
     rounds?: number | null;
   }): void;
 }): React.JSX.Element {
-  const names = useContext(SiteNamesContext);
-  const known = names.regions.some((entry) => entry.id === region);
   return (
     <div className="wb-relocation">
+      <RegionField
+        label={label}
+        region={region}
+        onChange={(to) => onChange({ to })}
+      />
+      <WordsField
+        label={label}
+        words={words}
+        onChange={(next) => onChange({ words: next })}
+      />
+      <RoundsField
+        label={label}
+        rounds={rounds}
+        onChange={(next) => onChange({ rounds: next })}
+      />
+    </div>
+  );
+}
+
+/** A RECOGNITION's fields: the topic held, who holds it (the one spoken to,
+ * the only word), whom it is about, and whether the witnessing carriers of
+ * the conversation hold it too. A line's row grants one; a conversation's
+ * outcome writes one. */
+export function RecognitionFields({
+  label,
+  recognize,
+  canBeWitnessed,
+  onChange,
+}: {
+  /** What the controls are named for: "<field> for <label>". */
+  label: string;
+  recognize: { topic: string; about: string; heard_by?: string };
+  /** Whether there are carriers to witness it (a line naming a
+   * conversation, or a conversation's own outcome). */
+  canBeWitnessed: boolean;
+  onChange(patch: { topic?: string; about?: string; heard?: boolean }): void;
+}): React.JSX.Element {
+  const names = useContext(SiteNamesContext);
+  const topicsId = useId();
+  return (
+    <>
       <label>
-        <span>{regionLabel}</span>
-        <select
-          aria-label={`${regionLabel} for ${label}`}
-          value={region}
-          onChange={(event) => onChange({ to: event.target.value })}
-        >
-          {!known && (
-            <option value={region}>
-              {region === '' ? '(choose a region)' : region}
-            </option>
-          )}
-          {names.regions.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name === entry.id
-                ? entry.id
-                : `${entry.name} (${entry.id})`}
-            </option>
+        <span>Topic</span>
+        <input
+          aria-label={`Topic for ${label}`}
+          list={topicsId}
+          placeholder="a topic, or a new one"
+          value={recognize.topic}
+          onChange={(event) => onChange({ topic: event.target.value })}
+        />
+        <datalist id={topicsId}>
+          {names.topics.map((topic) => (
+            <option key={topic} value={topic} />
           ))}
+        </datalist>
+      </label>
+      <label>
+        <span>Held by</span>
+        <select aria-label={`Held by for ${label}`} value="spoken_to" disabled>
+          <option value="spoken_to">The one spoken to</option>
         </select>
       </label>
-      <label className="wb-relocation-words">
-        <span>Words</span>
-        <textarea
-          aria-label={`Words for ${label}`}
-          placeholder="What the one moved is told"
-          rows={2}
-          value={words}
-          onChange={(event) => onChange({ words: event.target.value })}
-        />
+      <label>
+        <span>About</span>
+        <select
+          aria-label={`About for ${label}`}
+          value={recognize.about}
+          onChange={(event) => onChange({ about: event.target.value })}
+        >
+          <option value="party_in_sight">The speaker’s party in sight</option>
+          <option value="speaker">The speaker</option>
+          {!(RECOGNITION_ABOUT as readonly string[]).includes(
+            recognize.about
+          ) && <option value={recognize.about}>{recognize.about}</option>}
+        </select>
       </label>
-      <label className="wb-relocation-rounds">
-        <span>Rounds</span>
+      <label className="wb-check">
         <input
-          type="number"
-          min={0}
-          step={1}
-          aria-label={`Rounds for ${label}`}
-          placeholder="0"
-          value={rounds === undefined ? '' : String(rounds)}
-          onChange={(event) => {
-            const raw = event.target.value;
-            if (raw === '') return onChange({ rounds: null });
-            const n = Number(raw);
-            if (Number.isInteger(n) && n >= 0) onChange({ rounds: n });
-          }}
+          type="checkbox"
+          aria-label={`Witnessing carriers hold it too for ${label}`}
+          checked={recognize.heard_by === RECOGNITION_HEARD_BY}
+          disabled={!canBeWitnessed && recognize.heard_by === undefined}
+          onChange={(event) => onChange({ heard: event.target.checked })}
         />
+        <span>Also held by the conversation’s carriers who witness it</span>
       </label>
-    </div>
+    </>
   );
 }
 
@@ -180,7 +313,6 @@ export function RowGrantFields({
   onCommit(row: GrantingRow): void;
 }): React.JSX.Element {
   const names = useContext(SiteNamesContext);
-  const topicsId = useId();
   const grant = grantOf(row);
   const offered: RowGrant[] = isProp
     ? ['tells', 'relocate']
@@ -231,63 +363,12 @@ export function RowGrantFields({
           path={at ? `${at}.recognize` : undefined}
           className="wb-entry-grant-fields"
         >
-          <label>
-            <span>Topic</span>
-            <input
-              aria-label={`Topic for ${named}`}
-              list={topicsId}
-              placeholder="a topic, or a new one"
-              value={recognize.topic}
-              onChange={(event) =>
-                onCommit(withRecognition(row, { topic: event.target.value }))
-              }
-            />
-            <datalist id={topicsId}>
-              {names.topics.map((topic) => (
-                <option key={topic} value={topic} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            <span>Held by</span>
-            <select
-              aria-label={`Held by for ${named}`}
-              value="spoken_to"
-              disabled
-            >
-              <option value="spoken_to">The one spoken to</option>
-            </select>
-          </label>
-          <label>
-            <span>About</span>
-            <select
-              aria-label={`About for ${named}`}
-              value={recognize.about}
-              onChange={(event) =>
-                onCommit(withRecognition(row, { about: event.target.value }))
-              }
-            >
-              <option value="party_in_sight">
-                The speaker’s party in sight
-              </option>
-              <option value="speaker">The speaker</option>
-              {!(RECOGNITION_ABOUT as readonly string[]).includes(
-                recognize.about
-              ) && <option value={recognize.about}>{recognize.about}</option>}
-            </select>
-          </label>
-          <label className="wb-check">
-            <input
-              type="checkbox"
-              aria-label={`Witnessing carriers hold it too for ${named}`}
-              checked={recognize.heard_by === RECOGNITION_HEARD_BY}
-              disabled={!namesConversation && recognize.heard_by === undefined}
-              onChange={(event) =>
-                onCommit(withRecognition(row, { heard: event.target.checked }))
-              }
-            />
-            <span>Also held by the conversation’s carriers who witness it</span>
-          </label>
+          <RecognitionFields
+            label={named}
+            recognize={recognize}
+            canBeWitnessed={namesConversation}
+            onChange={(patch) => onCommit(withRecognition(row, patch))}
+          />
         </RevealDiv>
       )}
       {grant === 'tells' && (
