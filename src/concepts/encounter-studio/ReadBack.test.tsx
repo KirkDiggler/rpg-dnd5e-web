@@ -119,7 +119,7 @@ describe('ReadBack: the engine’s sentences for the selection', () => {
         name: 'Open fact guards-turned',
       })[0]!
     );
-    expect(onOpenFact).toHaveBeenCalledWith('guards-turned');
+    expect(onOpenFact).toHaveBeenCalledWith('guards-turned', 'fact');
   });
 
   it('a door connection selects the door through the one path map', () => {
@@ -398,7 +398,7 @@ describe('ReadBack: the engine’s folded read-back (rpg-project#978)', () => {
         name: 'Open fact feast-tonight',
       })[0]!
     );
-    expect(onOpenFact).toHaveBeenCalledWith('feast-tonight');
+    expect(onOpenFact).toHaveBeenCalledWith('feast-tonight', 'fact');
   });
 
   it('every statement the selection shows in full is reachable from the folded view', () => {

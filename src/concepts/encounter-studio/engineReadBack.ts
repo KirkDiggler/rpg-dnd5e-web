@@ -31,7 +31,9 @@ import { targetOfPath, type RefusalTarget } from './refusalJump';
 
 /** The selections the inspector reads back. */
 export interface ReadBackSelection {
-  kind: 'creature' | 'prop';
+  /** A placed thing, or a hub (rpg-project#973): a fact, a topic, a
+   * record or a concealment — any subject kind the engine groups a hub by. */
+  kind: string;
   id: string;
 }
 
@@ -89,13 +91,25 @@ function selectedGroups(
   group: ReadBackGroup;
   statements: ReadBackStatement[];
 }[] {
+  // A thing with a group of its own (a creature, a routine, a hub) is said
+  // by that group alone: a hub's site statement (`place.intel`,
+  // `place.concealment`) is the place's, not the hub's thread. A thing with
+  // no group (a prop) is said wherever its statements are.
+  const hasOwnGroup = readBack.sections.some((section) =>
+    section.groups.some((group) =>
+      same(group.about, selection.kind, selection.id)
+    )
+  );
   const own = readBack.sections.flatMap((section) =>
     section.groups.map((group) => ({
       section,
       group,
-      statements: group.statements.filter((statement) =>
-        same(statement.about, selection.kind, selection.id)
-      ),
+      statements:
+        hasOwnGroup && !same(group.about, selection.kind, selection.id)
+          ? []
+          : group.statements.filter((statement) =>
+              same(statement.about, selection.kind, selection.id)
+            ),
     }))
   );
   const used = new Set<string>();
@@ -220,7 +234,11 @@ export function landsOn(
  * the studio has no place for, or an id the document does not hold. */
 export type ReadBackJump =
   | { kind: 'target'; target: RefusalTarget }
-  | { kind: 'fact'; id: string };
+  /** A hub: opens its thread (rpg-project#973). */
+  | { kind: 'hub'; id: string; hub: string }
+  /** A way pointer (`{way, id, is}`, on a record's or a secret's entry):
+   * opens the way's join. It is never itself a way. */
+  | { kind: 'way'; id: string };
 
 export function connectionJump(
   connection: Pick<ReadBackConnection, 'kind' | 'id'>,
@@ -243,7 +261,11 @@ export function connectionJump(
   switch (kind) {
     case 'fact':
     case 'topic':
-      return { kind: 'fact', id };
+    case 'record':
+    case 'concealment':
+      return { kind: 'hub', id, hub: kind };
+    case 'way':
+      return { kind: 'way', id };
     case 'creature':
       return through(`room.room.monsterBindings.${id}`);
     case 'prop':
@@ -256,12 +278,8 @@ export function connectionJump(
       return through(`interactions.${id}`);
     case 'faction':
       return indexed('factions', scope.factions);
-    case 'record':
-      return indexed('intel', scope.intel);
     case 'bundle':
       return through(`bundles.${id}`);
-    case 'concealment':
-      return through(`concealments.${id}`);
     case 'exit':
       return indexed('exits', scope.exits);
     // `routine` has no studio home yet (rpg-project#970): it stays text.

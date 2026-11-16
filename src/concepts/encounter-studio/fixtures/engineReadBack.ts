@@ -24,6 +24,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
+import threadsJson from './engineReadBack.threads.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(castleJson) as JsonValue);
@@ -39,4 +40,19 @@ export function castleEngineReadBack(): ReadBack {
  */
 export function castlePlacesReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(placesJson) as JsonValue);
+}
+
+/**
+ * THE CASTLE'S HUBS (rpg-project#973), recorded the same way from
+ * rpg-toolkit `main` cdefe89a on the same castle bytes: the "Topics" and
+ * "Facts" sections cut to the topics `admitted` and `jailed` and the facts
+ * `feast-tonight`, `guards-turned`, `king-is-cultist` and
+ * `party-recognized` and `throne-taken`, the scullion's group, the whole
+ * "Records" and "Secrets" sections, and the site's own statements about the
+ * record `kitchen-way` and the secret `kitchen-passage` (re-recorded from
+ * `main` bb5806f7, encounter v0.219.0), with their folded entries. Every
+ * sentence and entry is the engine's, unedited.
+ */
+export function castleThreadsReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(threadsJson) as JsonValue);
 }

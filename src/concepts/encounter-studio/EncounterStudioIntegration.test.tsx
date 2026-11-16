@@ -113,6 +113,7 @@ import {
 import {
   castleEngineReadBack,
   castlePlacesReadBack,
+  castleThreadsReadBack,
 } from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
@@ -5202,7 +5203,7 @@ describe('S0 one selection across the homes', () => {
       'Concealments',
       'Interactions',
       'Scenarios',
-      'Facts',
+      'Threads',
     ]);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
@@ -5233,26 +5234,198 @@ describe('S0 one selection across the homes', () => {
   });
 });
 
-describe('S2 the fact index through the real owner', () => {
-  it('clicking a writer in Facts selects the cook in the inspector', async () => {
-    mount(new MemoryStorage(createCastleReadBackDocument()));
+describe('threads through the real owner (rpg-project#973)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openThreads = async (): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
     await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
     fireEvent.click(button('Encounter'));
     fireEvent.click(
       within(
         screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Facts' })
+      ).getByRole('button', { name: 'Threads' })
     );
-    const facts = screen.getByRole('region', { name: 'Facts' });
+  };
+  const hub = (id: string): HTMLElement =>
+    within(screen.getByRole('region', { name: 'Threads' })).getByRole(
+      'button',
+      { name: new RegExp(`^${id}\\b`) }
+    );
+
+  it('a thread’s entry jumps by its path to the creature that teaches it', async () => {
+    await openThreads();
+    fireEvent.click(await waitFor(() => hub('feast-tonight')));
+    const thread = within(
+      screen.getByRole('region', { name: 'Threads' })
+    ).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
     fireEvent.click(
-      within(
-        facts.querySelector('[data-fact="feast-tonight"]') as HTMLElement
-      ).getByRole('button', { name: 'cook: gossip' })
+      within(thread).getAllByRole('button', {
+        name: /^Open room\.room\.monsterBindings\.cook\./,
+      })[0]!
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { level: 2 }
+      ).textContent
+    ).toBe('Commoner');
+  });
+
+  it('a fact connection in the Read back opens that fact’s thread', async () => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    readBack.sections.push(...castleThreadsReadBack().sections);
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
     );
     const inspector = screen.getByRole('region', { name: 'Inspector' });
+    fireEvent.click(
+      (
+        await within(inspector).findAllByRole('button', {
+          name: 'Open fact guards-turned',
+        })
+      )[0]!
+    );
+    const threads = screen.getByRole('region', { name: 'Threads' });
     expect(
-      within(inspector).getByRole('heading', { level: 2 }).textContent
-    ).toBe('cook');
+      within(threads)
+        .getByRole('button', { name: /^guards-turned\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      within(threads).getByRole('region', { name: 'Read back' }).textContent
+    ).toContain('Fact `guards-turned`');
+  });
+
+  it('the secret passage reads as one chain, by clicks, in the default Folded view (rpg-project#960)', async () => {
+    gate.state = 'live';
+    // The engine's real fold, as the api sends it; the joins are the places
+    // fixture's (same castle, same ids).
+    const readBack = castleThreadsReadBack();
+    readBack.sections.unshift(...castlePlacesReadBack().sections);
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    const inspector = () =>
+      within(screen.getByRole('region', { name: 'Inspector' }));
+    const threads = () =>
+      within(screen.getByRole('region', { name: 'Threads' }));
+    const thread = () =>
+      within(threads().getByRole('region', { name: 'Read back' }));
+    /** Open a folded entry through the disclosure the panel owns, and say
+     * it is open before reading what it shows. */
+    const open = (
+      scope: ReturnType<typeof within>,
+      entry: RegExp
+    ): HTMLElement => {
+      const disclosure = scope.getByRole('button', { name: entry });
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(disclosure);
+      expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+      return disclosure.closest('li') as HTMLElement;
+    };
+    // 1. The scullion's line tells the record.
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="scullion"] circle')!,
+      { button: 0 }
+    );
+    await waitFor(() =>
+      expect(
+        inspector()
+          .getByRole('button', { name: 'Folded' })
+          .getAttribute('aria-pressed')
+      ).toBe('true')
+    );
+    const said = open(inspector(), /^Full sentences: When said: the commoner/);
+    fireEvent.click(
+      within(said).getByRole('button', { name: 'Open record kitchen-way' })
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-way\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 2. The record reveals the secret; its own thread repeats nothing.
+    expect(
+      thread().queryByRole('list', { name: 'Said in full only' })
+    ).toBeNull();
+    const record = open(thread(), /^Full sentences: Record `kitchen-way`/);
+    fireEvent.click(
+      within(record).getByRole('button', {
+        name: 'Open concealment kitchen-passage',
+      })
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-passage\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 3. The ways that need the secret open the passage joins it bars.
+    const needed = open(thread(), /^Full sentences: Needed by:/);
+    fireEvent.click(
+      within(needed).getByRole('button', {
+        name: 'Open way way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel',
+      })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Join'
+    );
+    expect(
+      screen.getByRole('region', { name: 'Inspector' }).textContent
+    ).toContain('is a passage to Chapel (region-chapel)');
+    // 4. Back to the secret: it hides the grate.
+    fireEvent.click(button('Encounter'));
+    const secret = open(thread(), /^Full sentences: Secret `kitchen-passage`/);
+    fireEvent.click(
+      within(secret).getByRole('button', { name: 'Open prop grate' })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Grate by the Hearth'
+    );
+  });
+
+  it('a thread’s entry opens the ending that asks it', async () => {
+    await openThreads();
+    fireEvent.click(await waitFor(() => hub('throne-taken')));
+    const thread = within(
+      screen.getByRole('region', { name: 'Threads' })
+    ).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    fireEvent.click(
+      within(thread).getByRole('button', { name: 'Open endings[1]' })
+    );
+    const endings = within(screen.getByRole('region', { name: 'Endings' }));
+    expect(
+      (endings.getByLabelText('Ending id') as HTMLInputElement).value
+    ).toBe('king-deposed');
   });
 });
 
@@ -5264,27 +5437,6 @@ describe('S4 the hidden nouns through the real owner', () => {
       ).getByRole('button', { name })
     );
   };
-
-  it('the fact index opens the ending it names', async () => {
-    const document = createCastleReadBackDocument();
-    document.scope.endings = [
-      { id: 'king-deposed', when: { fact: 'king-deposed' } },
-    ];
-    mount(new MemoryStorage(document));
-    await settled();
-    fireEvent.click(button('Encounter'));
-    section('Facts');
-    const facts = screen.getByRole('region', { name: 'Facts' });
-    fireEvent.click(
-      within(
-        facts.querySelector('[data-fact="king-deposed"]') as HTMLElement
-      ).getByRole('button', { name: 'ending king-deposed' })
-    );
-    const endings = within(screen.getByRole('region', { name: 'Endings' }));
-    expect(
-      (endings.getByLabelText('Ending id') as HTMLInputElement).value
-    ).toBe('king-deposed');
-  });
 
   it('an ending added on the home is one history entry', async () => {
     mount(new MemoryStorage(createCastleReadBackDocument()));
@@ -6973,25 +7125,39 @@ describe('S3 the overview through the real owner', () => {
     expect(ids.length).toBeGreaterThan(0);
   });
 
-  it('a prop writer in Facts selects the prop from Layout', async () => {
-    mount(new MemoryStorage(createCastleReadBackDocument()));
+  it('a thread entry set on a prop selects the prop from Layout', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
     await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
     expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(button('Encounter'));
     fireEvent.click(
       within(
         screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Facts' })
+      ).getByRole('button', { name: 'Threads' })
     );
-    const facts = screen.getByRole('region', { name: 'Facts' });
-    const row = facts.querySelector(
-      '[data-fact="king-is-cultist"]'
-    ) as HTMLElement;
-    fireEvent.click(within(row).getAllByRole('button')[0]);
+    const threads = screen.getByRole('region', { name: 'Threads' });
+    fireEvent.click(
+      within(threads).getByRole('button', { name: /^king-is-cultist\b/ })
+    );
+    const thread = within(threads).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    fireEvent.click(
+      within(thread).getAllByRole('button', {
+        name: /^Open room\.room\.propBindings\.altar\./,
+      })[0]!
+    );
     expect(pressed('Build')).toBe('true');
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
     );
+    localStorage.clear();
   });
 
   it("the group view's Select member selects the member from Layout", async () => {

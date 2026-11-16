@@ -1622,3 +1622,34 @@
   padding: 0 0.45rem;
   font-size: var(--es-text-help);
 }
+
+/* Threads (rpg-project#973): the hubs the engine says beside the selected
+ * hub's thread, which is the Read back of that hub. */
+.es-threads-body {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.es-threads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.es-threads-list button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.es-threads-list button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+}
+.es-threads-list small {
+  color: var(--wb-muted);
+}
+.es-threads-id {
+  font-family: var(--es-font-mono, monospace);
+}

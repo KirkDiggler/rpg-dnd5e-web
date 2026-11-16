@@ -26,7 +26,11 @@ export interface ReadBackProps {
    * refusal jump). */
   onJump?(target: RefusalTarget): void;
   /** Open the Facts section on a fact or topic. */
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** What opens the join a way pointer's way goes through
+   * (rpg-project#973), or null when the studio cannot: the pointer is then
+   * text. */
+  wayOpener?(wayId: string): (() => void) | null;
 }
 
 export const STALE_READ_BACK_SENTENCE =
@@ -72,6 +76,7 @@ export function ReadBack({
   state,
   onJump,
   onOpenFact,
+  wayOpener,
 }: ReadBackProps): React.JSX.Element {
   const { readBack, readBackIsCurrent, unavailable } = state;
   const [chosenView, setChosenView] = useState<ReadBackView>(rememberedView);
@@ -106,6 +111,7 @@ export function ReadBack({
     current: readBackIsCurrent,
     onJump,
     onOpenFact,
+    wayOpener,
   };
   return (
     <div className="es-context-panel">
@@ -265,6 +271,7 @@ function Statement({
   current,
   onJump,
   onOpenFact,
+  wayOpener,
 }: {
   statement: ReadBackStatement;
   document: Readonly<RoomDraftDocument>;
@@ -275,7 +282,11 @@ function Statement({
    * Connections resolve by id and stay jumps. */
   current: boolean;
   onJump?(target: RefusalTarget): void;
-  onOpenFact?(id: string): void;
+  onOpenFact?(id: string, hub?: string): void;
+  /** What opens the join a way pointer's way goes through
+   * (rpg-project#973), or null when the studio cannot: the pointer is then
+   * text. */
+  wayOpener?(wayId: string): (() => void) | null;
 }): React.JSX.Element {
   const seen = new Set<string>();
   const links: React.JSX.Element[] = [];
@@ -283,13 +294,28 @@ function Statement({
     const name = `${connection.kind} ${connection.id}`;
     if (seen.has(name)) continue;
     seen.add(name);
+    // A link to the selection itself goes nowhere: dropped, as a path that
+    // lands on the selection is.
+    if (connection.kind === selection.kind && connection.id === selection.id)
+      continue;
     const jump = connectionJump(connection, document);
     if (!jump) continue;
     const go =
-      jump.kind === 'fact'
-        ? onOpenFact && (() => onOpenFact(jump.id))
-        : onJump && (() => onJump(jump.target));
-    if (!go) continue;
+      jump.kind === 'hub'
+        ? onOpenFact && (() => onOpenFact(jump.id, jump.hub))
+        : jump.kind === 'way'
+          ? (wayOpener?.(jump.id) ?? undefined)
+          : onJump && (() => onJump(jump.target));
+    if (!go) {
+      // A way pointer the studio cannot open says what it names, as text.
+      if (jump.kind === 'way')
+        links.push(
+          <span key={name} className="es-readback-ref" data-ref-kind="way">
+            {name}
+          </span>
+        );
+      continue;
+    }
     links.push(
       <button
         key={name}

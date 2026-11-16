@@ -10,7 +10,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import { createCastleReadBackDocument } from '../encounter-studio/fixtures/castleReadBack';
 import { validateOptions, type OptionShape } from './answerTableShape';
-import { factIndexOf } from './factIndex';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { PredicateEditor } from './PredicateEditor';
 import {
@@ -134,14 +133,6 @@ describe('the not predicate is read and written', () => {
 });
 
 describe('a not predicate is read as “unless …”', () => {
-  it('the fact index counts the not requires as a read of the fact', () => {
-    const row = factIndexOf(castleWithTheTheft()).find(
-      (r) => r.fact === 'caught-in-kitchen'
-    );
-    expect(row).toBeDefined();
-    expect(JSON.stringify(row)).toContain('requires');
-  });
-
   it('a not predicate reads as the inner one turned over', () => {
     const names = new Map([['goblin-1', 'the goblin']]);
     expect(predicateSentence({ not: goblinsNeutral }, { names })).toBe(

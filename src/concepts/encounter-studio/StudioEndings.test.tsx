@@ -6,7 +6,6 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { factIndexOf } from '../world-building/factIndex';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { StudioEndings } from './StudioEndings';
@@ -137,18 +136,5 @@ describe('StudioEndings (rpg-project#578)', () => {
     expect(
       (endings().getByLabelText('Ending when fact') as HTMLInputElement).value
     ).toBe('king-deposed');
-  });
-
-  it("the fact index lists an ending as its fact's reader, linked to Endings", () => {
-    const row = factIndexOf(castleSession().document).find(
-      (candidate) => candidate.fact === 'king-deposed'
-    );
-    expect(row?.readers).toEqual([
-      {
-        kind: 'ending',
-        label: 'ending king-deposed',
-        target: { home: 'endings', id: 'king-deposed' },
-      },
-    ]);
   });
 });

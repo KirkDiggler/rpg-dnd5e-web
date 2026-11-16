@@ -79,13 +79,24 @@ describe('connectionJump on the served castle', () => {
     );
   });
 
-  it('a record opens Intel on that record', () => {
+  it('a record, a concealment, a fact and a topic open their hub’s thread (rpg-project#973)', () => {
+    for (const [kind, id] of [
+      ['record', 'cooks-ledger'],
+      ['concealment', 'kitchen-passage'],
+      ['fact', 'guards-turned'],
+      ['topic', 'admitted'],
+    ] as const)
+      expect(connectionJump({ kind, id }, castle)).toEqual({
+        kind: 'hub',
+        hub: kind,
+        id,
+      });
+  });
+
+  it('a way pointer is a jump to its way, never a way itself', () => {
     expect(
-      connectionJump({ kind: 'record', id: 'cooks-ledger' }, castle)
-    ).toEqual({
-      kind: 'target',
-      target: { kind: 'home', section: 'intel', id: 'cooks-ledger' },
-    });
+      connectionJump({ kind: 'way', id: 'way:passage:x:told:y' }, castle)
+    ).toEqual({ kind: 'way', id: 'way:passage:x:told:y' });
   });
 
   it('a bundle opens Bundles on that bundle', () => {
@@ -115,7 +126,7 @@ describe('connectionJump on the served castle', () => {
   });
 
   it('an id the document does not hold, and a routine, land nowhere', () => {
-    for (const kind of ['faction', 'record', 'bundle', 'exit', 'door'])
+    for (const kind of ['faction', 'bundle', 'exit', 'door'])
       expect(connectionJump({ kind, id: 'no-such-id' }, castle)).toBeNull();
     expect(
       connectionJump({ kind: 'routine', id: 'captain-policy' }, castle)

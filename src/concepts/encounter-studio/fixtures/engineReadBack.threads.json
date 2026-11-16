@@ -1,0 +1,2072 @@
+{
+  "key": "the-mad-king",
+  "name": "The Mad King’s Castle",
+  "sections": [
+    {
+      "title": "The place",
+      "groups": [
+        {
+          "title": "The Mad King’s Castle (the-mad-king)",
+          "about": {
+            "kind": "site",
+            "id": "the-mad-king"
+          },
+          "statements": [
+            {
+              "kind": "place.concealment",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "hides"
+                }
+              ]
+            },
+            {
+              "kind": "place.intel",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Creatures",
+      "groups": [
+        {
+          "title": "Commoner (scullion)",
+          "about": {
+            "kind": "creature",
+            "id": "scullion"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "Commoner (scullion) is a dnd5e:monsters:commoner of the faction `kitchen`, standing at q -19, r -9 in Kitchen (region-kitchen), facing ne; it looks like dnd5e:npcs:kingdom:peasant-female-01.",
+              "path": "room.room.monsterDeclarations[10]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "kitchen",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The speaker can say the line “There's a coin in it if you know a way out of here.” (`favour`) to Commoner (scullion). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.scullion.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "scullion",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The line “There's a coin in it if you know a way out of here.” (`favour`) is offered to a speaker only while the speaker carries the prop `purse`.",
+              "path": "room.room.monsterBindings.scullion.options[0].requires",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "purse",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, Commoner (scullion) answers “The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.”, at `speak`: its words reach everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (scullion) answer and caught none of the line is told only that Commoner (scullion) answered and what Commoner (scullion) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Topics",
+      "groups": [
+        {
+          "title": "Topic `admitted`",
+          "about": {
+            "kind": "topic",
+            "id": "admitted"
+          },
+          "statements": [
+            {
+              "kind": "topic",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 5 places and asked for or woken on in 13 places.",
+              "path": "room.room.monsterBindings.gate-1.options[0].success[0].recognize"
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-1) — the creature the line is said to — comes to hold `admitted` about the speaker and each member of the speaker's party that Guard (gate-1) sees at that moment (a member out of Guard (gate-1)'s sight is not recognised): Guard (gate-1) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-1.options[0].success[0].recognize",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-1) — the creature the line is said to — comes to hold `admitted` about the speaker alone, if Guard (gate-1) sees the speaker (not whoever stands beside the speaker): Guard (gate-1) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-1.options[1].success[0].recognize",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-2) — the creature the line is said to — comes to hold `admitted` about the speaker and each member of the speaker's party that Guard (gate-2) sees at that moment (a member out of Guard (gate-2)'s sight is not recognised): Guard (gate-2) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-2.options[0].success[0].recognize",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-2) — the creature the line is said to — comes to hold `admitted` about the speaker alone, if Guard (gate-2) sees the speaker (not whoever stands beside the speaker): Guard (gate-2) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-2.options[1].success[0].recognize",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to (whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) comes to hold `admitted` about the speaker and each member of the speaker's party that the creature sees at that moment (a member out of the creature's sight is not recognised): that creature recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard Captain (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
+              "path": "interactions.front-gate.outcomes.admitted[0].recognize",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "holds"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.gate-1.posts.alert.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.gate-1.posts.challenged.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.gate-1.posts.posted.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-1) recognises the speaker as `admitted` (Guard (gate-1) holds `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-1.options[0].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-1) does NOT recognise the speaker as `admitted` (Guard (gate-1) does not hold `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-1.options[1].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-1) does NOT recognise the speaker as `admitted` (Guard (gate-1) does not hold `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-1.options[2].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard (gate-2) lets a walker through that post, as an ally walks, when Guard (gate-2) recognises the walker as `admitted` (Guard (gate-2) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.gate-2.posts.ready.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-2) recognises the speaker as `admitted` (Guard (gate-2) holds `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-2.options[0].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-2) does NOT recognise the speaker as `admitted` (Guard (gate-2) does not hold `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-2.options[1].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-2) does NOT recognise the speaker as `admitted` (Guard (gate-2) does not hold `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.gate-2.options[2].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) recognises the walker as `admitted` (Guard Captain (captain) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.captain.posts.ready.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) recognises the speaker as `admitted` (Guard Captain (captain) holds `admitted` about the speaker).",
+              "path": "room.room.monsterBindings.captain.options[8].requires",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds the topic `admitted` about anyone (Guard Captain (captain) recognises someone as `admitted`), Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "wakes-on"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Topic `jailed`",
+          "about": {
+            "kind": "topic",
+            "id": "jailed"
+          },
+          "statements": [
+            {
+              "kind": "topic",
+              "about": {
+                "kind": "topic",
+                "id": "jailed"
+              },
+              "sentence": "The file does not say what the topic `jailed` means: topics carry no declared meaning yet. It is granted in 1 place and asked for or woken on in 0 places.",
+              "path": "interactions.front-gate.outcomes.jailed[0].jail"
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "jailed"
+              },
+              "sentence": "When the conversation `front-gate` enters `jailed`, every member its arrest took who is still in the run and still held is set down on a free cell of Cells (region-cells), without walking the way between, and is told `The guards march you to the cells.`. 5 rounds pass on the world clock with it, and creatures due in them act. Whoever saw a member leave is told they were taken away, never where; whoever sees them arrive is told they arrived, never from where. The carriers who are up come to hold `jailed` about each of them. A taken member who has left the run is not moved and becomes wanted. Nobody is held by the jail itself: the cell's walls and door hold them, and a member may pick the door and walk out. When one of the conversation's carriers who holds `arrested` about a jailed member sees them outside Cells (region-cells), the carrier's faction's mind learns `prisoners-escaped`. If there are not enough free cells, or nobody to take, the line that leads here is refused.",
+              "path": "interactions.front-gate.outcomes.jailed[0].jail",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "jailed",
+                  "role": "grants"
+                },
+                {
+                  "kind": "fact",
+                  "id": "prisoners-escaped",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Facts",
+      "groups": [
+        {
+          "title": "Fact `feast-tonight`",
+          "about": {
+            "kind": "fact",
+            "id": "feast-tonight"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The file does not say what the fact `feast-tonight` means: facts carry no declared meaning yet. It is taught in 4 places and asked for or woken on in 4 places.",
+              "path": "room.room.monsterBindings.cook.options[1].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “Busy night?” (`gossip`), Commoner (cook) answers “Feast for the whole court, and him sitting there grinning after what he did to Ashford.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[1].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “Ten gold says you never saw us.” (`bribe`), Commoner (cook) answers “Saw who?”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[3].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast for the whole court tonight — they’ll want players.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a miss of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast, tonight. Now leave me be.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.gate-1.options[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.gate-2.options[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.captain.options[1].requires[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The line “What did he do to Ashford?” (`ashford`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.cook.options[2].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `guards-turned`",
+          "about": {
+            "kind": "fact",
+            "id": "guards-turned"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The file does not say what the fact `guards-turned` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 16 places.",
+              "path": "room.room.monsterBindings.captain.options[5].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "On a win of the line “He burned Ashford. Your own village. You know what he is.” (`turn`), Guard Captain (captain) answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `guards-turned` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[5].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The factions `garrison` and `party` start neutral; they become allied once the pair's mind, Guard Captain (captain), knows the fact `guards-turned`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `party-recognized`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `prisoners-escaped`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `refused-arrest` (the first step that holds wins).",
+              "path": "dispositions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "prisoners-escaped",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "refused-arrest",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The factions `garrison` and `loyalists` start neutral; they become hostile once the pair's mind, Guard Captain (captain) or The Mad King (king), knows the fact `guards-turned`.",
+              "path": "dispositions[2]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`) is offered to a speaker only while the speaker knows the fact `guards-turned`.",
+              "path": "room.room.monsterBindings.captain.options[6].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `ready`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `cowed`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "`time` row 2 of `captain-policy`: if Guard Captain (captain) knows the fact `guards-turned` and Guard Captain (captain) knows of no enemy (none in reach, seen, remembered or lost), Guard Captain (captain) walks toward the nearest ally of Guard Captain (captain).",
+              "path": "behaviorDefinitions.captain-policy.table.time[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `posted`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `alert`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `challenged`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `cowed`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "`time` row 1 of `gate-1-policy`: if Guard (gate-1) knows the fact `guards-turned` and Guard (gate-1) knows of no enemy (none in reach, seen, remembered or lost), Guard (gate-1) walks toward the cell q 10, r -19.",
+              "path": "behaviorDefinitions.gate-1-policy.table.time[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `ready`, when Guard (gate-2) learns a fact, if Guard (gate-2) knows the fact `guards-turned`, Guard (gate-2) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `cowed`, when Guard (gate-2) learns a fact, if Guard (gate-2) knows the fact `guards-turned`, Guard (gate-2) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "`time` row 1 of `gate-2-policy`: if Guard (gate-2) knows the fact `guards-turned` and Guard (gate-2) knows of no enemy (none in reach, seen, remembered or lost), Guard (gate-2) walks toward the cell q 10, r -19.",
+              "path": "behaviorDefinitions.gate-2-policy.table.time[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "`time` row 1 of `hall-1-policy`: if Guard (hall-1) knows the fact `guards-turned` and Guard (hall-1) knows of no enemy (none in reach, seen, remembered or lost), Guard (hall-1) walks toward the cell q 10, r -19.",
+              "path": "behaviorDefinitions.hall-1-policy.table.time[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `king-is-cultist`",
+          "about": {
+            "kind": "fact",
+            "id": "king-is-cultist"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "king-is-cultist"
+              },
+              "sentence": "The file does not say what the fact `king-is-cultist` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 0 places.",
+              "path": "room.room.propBindings.altar.options[0].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "king-is-cultist"
+              },
+              "sentence": "On a win of the thing to do “You examine the altar.” (`examine`), the one who did it and every witness shown the prop Altar (altar) are told “The sigils are the Pale One’s. The king keeps a shrine to it.” and the one who did it and every witness shown the prop Altar (altar) learn the fact `king-is-cultist`.",
+              "path": "room.room.propBindings.altar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-is-cultist",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `party-recognized`",
+          "about": {
+            "kind": "fact",
+            "id": "party-recognized"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "The file does not say what the fact `party-recognized` means: facts carry no declared meaning yet. It is taught in 3 places and asked for or woken on in 1 place.",
+              "path": "intel[1]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "The record `captains-orders`: whoever comes to hold it learns the fact `party-recognized`.",
+              "path": "intel[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "On a win of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “Big words. GUARDS!”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words (weight 1 of 4: one row is picked by weight).",
+              "path": "room.room.monsterBindings.captain.options[4].success[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "On a miss of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “You’ll bleed first.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[4].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "The factions `garrison` and `party` start neutral; they become allied once the pair's mind, Guard Captain (captain), knows the fact `guards-turned`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `party-recognized`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `prisoners-escaped`; else they become hostile once the pair's mind, Guard Captain (captain), knows the fact `refused-arrest` (the first step that holds wins).",
+              "path": "dispositions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "prisoners-escaped",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "refused-arrest",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `throne-taken`",
+          "about": {
+            "kind": "fact",
+            "id": "throne-taken"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "throne-taken"
+              },
+              "sentence": "The file does not say what the fact `throne-taken` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 1 place.",
+              "path": "room.room.monsterBindings.captain.options[6].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "throne-taken"
+              },
+              "sentence": "On a win of the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), Guard Captain (captain) answers “Done. Go finish it.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `throne-taken` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[6].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "throne-taken",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "throne-taken"
+              },
+              "sentence": "The run ends `king-deposed`, a success, when the last standing member of the party leaves by the exit `front-door`, if the fact `throne-taken` is known. It is ending 2 of 4; the first in the list whose condition holds is the one the run ends on.",
+              "path": "endings[1]",
+              "connects": [
+                {
+                  "kind": "exit",
+                  "id": "front-door",
+                  "role": "asks"
+                },
+                {
+                  "kind": "fact",
+                  "id": "throne-taken",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Records",
+      "groups": [
+        {
+          "title": "Record `captains-orders`",
+          "about": {
+            "kind": "record",
+            "id": "captains-orders"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "captains-orders"
+              },
+              "sentence": "The record `captains-orders`: whoever comes to hold it learns the fact `party-recognized`.",
+              "path": "intel[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "captains-orders"
+              },
+              "sentence": "The prop The Captain’s Orders (orders) can be picked up and carried; it holds the records `captains-orders`, so whoever takes it comes to hold them.",
+              "path": "room.room.propBindings.orders",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "captains-orders",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `cooks-ledger`",
+          "about": {
+            "kind": "record",
+            "id": "cooks-ledger"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "cooks-ledger"
+              },
+              "sentence": "The record `cooks-ledger`: whoever comes to hold it learns the fact `king-burned-village`.",
+              "path": "intel[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "cooks-ledger"
+              },
+              "sentence": "The prop Ledger (ledger) can be picked up and carried; it holds the records `cooks-ledger`, so whoever takes it comes to hold them.",
+              "path": "room.room.propBindings.ledger",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cooks-ledger",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `key-bearer`",
+          "about": {
+            "kind": "record",
+            "id": "key-bearer"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "The record `key-bearer`: whoever comes to hold it learns the fact `sergeant-holds-keys`.",
+              "path": "intel[3]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "sergeant-holds-keys",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-1) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-1.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-2) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-2.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-3) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-3.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "key-bearer"
+              },
+              "sentence": "Prisoner (prisoner-4) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-4.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `king-whereabouts`",
+          "about": {
+            "kind": "record",
+            "id": "king-whereabouts"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "The record `king-whereabouts`: whoever comes to hold it learns the fact `king-in-throne-room`.",
+              "path": "intel[2]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-in-throne-room",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-1) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-1.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-2) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-2.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-3) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-3.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            },
+            {
+              "kind": "record.hold",
+              "about": {
+                "kind": "record",
+                "id": "king-whereabouts"
+              },
+              "sentence": "Prisoner (prisoner-4) holds the records `king-whereabouts` and `key-bearer` from the start.",
+              "path": "room.room.monsterBindings.prisoner-4.holds",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "king-whereabouts",
+                  "role": "holds"
+                },
+                {
+                  "kind": "record",
+                  "id": "key-bearer",
+                  "role": "holds"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `kitchen-way`",
+          "about": {
+            "kind": "record",
+            "id": "kitchen-way"
+          },
+          "statements": [
+            {
+              "kind": "record.reveal",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            },
+            {
+              "kind": "record.tell",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            },
+            {
+              "kind": "record.lift",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Chapel by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-chapel:prop-grate:told:kitchen-way",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "record.lift",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "Holding the record `kitchen-way` reveals the secret `kitchen-passage`, lifting the hidden bar of the passage to Cells by the prop `grate`: whoever comes to hold the record — told it, or taking what carries it — knows the prop `grate`. Who tells it or carries it is said with the record.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-cells:prop-grate:told:kitchen-way",
+                  "role": "is"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Secrets",
+      "groups": [
+        {
+          "title": "Secret `kitchen-passage`",
+          "about": {
+            "kind": "concealment",
+            "id": "kitchen-passage"
+          },
+          "statements": [
+            {
+              "kind": "secret.hide",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "hides"
+                }
+              ]
+            },
+            {
+              "kind": "secret.reveal",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            },
+            {
+              "kind": "secret.find",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "A search with Investigation against DC 18 finds the secret `kitchen-passage`.",
+              "path": "concealments.kitchen-passage.checks",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "finds"
+                }
+              ]
+            },
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-chapel` of the prop `grate` carries the passage to Chapel by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-cells` of the prop `grate` carries the passage to Cells by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-cells:prop-grate:line:prop-grate:to-cells",
+                  "role": "is"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "not_yet_said": [],
+  "folded": [
+    {
+      "title": "The place",
+      "items": [
+        {
+          "text": "The Mad King’s Castle (the-mad-king)",
+          "paths": null,
+          "items": [
+            {
+              "text": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "paths": ["concealments.kitchen-passage"]
+            },
+            {
+              "text": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "paths": ["intel[4]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Creatures",
+      "items": [
+        {
+          "text": "Commoner (scullion): a dnd5e:monsters:commoner of `kitchen` at q -19, r -9 in Kitchen, facing ne; looks like dnd5e:npcs:kingdom:peasant-female-01",
+          "paths": ["room.room.monsterDeclarations[10]"],
+          "base": "room.room.monsterBindings.scullion",
+          "items": [
+            {
+              "text": "At `speak`, the commoner's words reach everyone in the commoner's room (the wall partition the commoner stands in), and anyone in the next room within 30 feet of the commoner by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand.",
+              "paths": [
+                "room.room.monsterBindings.scullion.options[0].success[0]",
+                "room.room.monsterBindings.scullion.options[0].success[0].tells"
+              ]
+            },
+            {
+              "text": "“There's a coin in it if you know a way out of here.” (`favour`), said to the commoner; plain: rolls nothing, cannot be missed, free",
+              "paths": ["room.room.monsterBindings.scullion.options[0]"],
+              "base": "room.room.monsterBindings.scullion.options[0]",
+              "items": [
+                {
+                  "text": "Offered while: the speaker carries the prop `purse`.",
+                  "paths": [
+                    "room.room.monsterBindings.scullion.options[0].requires"
+                  ]
+                },
+                {
+                  "text": "When said: the commoner answers “The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.”, at `speak`; every member the commoner's words reach comes to hold the record `kitchen-way`",
+                  "paths": [
+                    "room.room.monsterBindings.scullion.options[0].success[0]",
+                    "room.room.monsterBindings.scullion.options[0].success[0].tells"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Topics",
+      "items": [
+        {
+          "text": "`admitted` — its meaning is not declared in the file.",
+          "paths": [
+            "room.room.monsterBindings.gate-1.options[0].success[0].recognize"
+          ],
+          "items": [
+            {
+              "text": "Granted by: saying `vouch` (gate-1, gate-2); a win of `straggler` (gate-1, gate-2); the conversation `front-gate` on entering `admitted`.",
+              "paths": [
+                "room.room.monsterBindings.gate-1.options[0].success[0].recognize",
+                "room.room.monsterBindings.gate-1.options[1].success[0].recognize",
+                "room.room.monsterBindings.gate-2.options[0].success[0].recognize",
+                "room.room.monsterBindings.gate-2.options[1].success[0].recognize",
+                "interactions.front-gate.outcomes.admitted[0].recognize"
+              ]
+            },
+            {
+              "text": "Asked by: the posts (gate-1, gate-2, captain); `vouch` (gate-1, gate-2); `straggler` (gate-1, gate-2); `friends-inside` (gate-1, gate-2); `the-way-in` (captain).",
+              "paths": [
+                "room.room.monsterBindings.gate-1.posts.alert.pass",
+                "room.room.monsterBindings.gate-1.posts.challenged.pass",
+                "room.room.monsterBindings.gate-1.posts.posted.pass",
+                "room.room.monsterBindings.gate-1.options[0].requires[1]",
+                "room.room.monsterBindings.gate-1.options[1].requires[1]",
+                "room.room.monsterBindings.gate-1.options[2].requires[1]",
+                "room.room.monsterBindings.gate-2.posts.ready.pass",
+                "room.room.monsterBindings.gate-2.options[0].requires[1]",
+                "room.room.monsterBindings.gate-2.options[1].requires[1]",
+                "room.room.monsterBindings.gate-2.options[2].requires[1]",
+                "room.room.monsterBindings.captain.posts.ready.pass",
+                "room.room.monsterBindings.captain.options[8].requires"
+              ]
+            },
+            {
+              "text": "Wakes: the routine `captain-policy`.",
+              "paths": [
+                "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "`jailed` — its meaning is not declared in the file.",
+          "paths": ["interactions.front-gate.outcomes.jailed[0].jail"],
+          "items": [
+            {
+              "text": "Granted by: the conversation `front-gate` on entering `jailed`.",
+              "paths": ["interactions.front-gate.outcomes.jailed[0].jail"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Facts",
+      "items": [
+        {
+          "text": "`feast-tonight` — its meaning is not declared in the file.",
+          "paths": ["room.room.monsterBindings.cook.options[1].success[0]"],
+          "items": [
+            {
+              "text": "Taught by: a win of `gossip` (cook); a win of `bribe` (cook); a win of `tonight` (pedlar); a miss of `tonight` (pedlar).",
+              "paths": [
+                "room.room.monsterBindings.cook.options[1].success[0]",
+                "room.room.monsterBindings.cook.options[3].success[0]",
+                "room.room.monsterBindings.pedlar.options[0].success[0]",
+                "room.room.monsterBindings.pedlar.options[0].failure[0]"
+              ]
+            },
+            {
+              "text": "Asked by: `troupe` (gate-1, gate-2, captain); `ashford` (cook).",
+              "paths": [
+                "room.room.monsterBindings.gate-1.options[3].requires[0]",
+                "room.room.monsterBindings.gate-2.options[3].requires[0]",
+                "room.room.monsterBindings.captain.options[1].requires[0]",
+                "room.room.monsterBindings.cook.options[2].requires"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "`guards-turned` — its meaning is not declared in the file.",
+          "paths": ["room.room.monsterBindings.captain.options[5].success[0]"],
+          "items": [
+            {
+              "text": "Taught by: a win of `turn` (captain).",
+              "paths": [
+                "room.room.monsterBindings.captain.options[5].success[0]"
+              ]
+            },
+            {
+              "text": "Asked by: how `garrison` and `party` stand; how `garrison` and `loyalists` stand; `hold-the-castle` (captain); the routine `captain-policy`; the routine `gate-1-policy`; the routine `gate-2-policy`; the routine `hall-1-policy`.",
+              "paths": [
+                "dispositions[0]",
+                "dispositions[2]",
+                "room.room.monsterBindings.captain.options[6].requires",
+                "behaviorDefinitions.captain-policy.table.time[1]",
+                "behaviorDefinitions.gate-1-policy.table.time[0]",
+                "behaviorDefinitions.gate-2-policy.table.time[0]",
+                "behaviorDefinitions.hall-1-policy.table.time[0]"
+              ]
+            },
+            {
+              "text": "Wakes: the routine `captain-policy`; the routine `gate-1-policy`; the routine `gate-2-policy`.",
+              "paths": [
+                "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
+                "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]",
+                "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",
+                "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[0]",
+                "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[0]",
+                "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[0]",
+                "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[0]",
+                "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[0]"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "`king-is-cultist` — its meaning is not declared in the file.",
+          "paths": ["room.room.propBindings.altar.options[0].success[0]"],
+          "items": [
+            {
+              "text": "Taught by: a win of `examine` (altar).",
+              "paths": ["room.room.propBindings.altar.options[0].success[0]"]
+            }
+          ]
+        },
+        {
+          "text": "`party-recognized` — its meaning is not declared in the file.",
+          "paths": ["intel[1]"],
+          "items": [
+            {
+              "text": "Taught by: holding the record `captains-orders`; a win of `stand-aside` (captain); a miss of `stand-aside` (captain).",
+              "paths": [
+                "intel[1]",
+                "room.room.monsterBindings.captain.options[4].success[1]",
+                "room.room.monsterBindings.captain.options[4].failure[0]"
+              ]
+            },
+            {
+              "text": "Asked by: how `garrison` and `party` stand.",
+              "paths": ["dispositions[0]"]
+            }
+          ]
+        },
+        {
+          "text": "`throne-taken` — its meaning is not declared in the file.",
+          "paths": ["room.room.monsterBindings.captain.options[6].success[0]"],
+          "items": [
+            {
+              "text": "Taught by: a win of `hold-the-castle` (captain).",
+              "paths": [
+                "room.room.monsterBindings.captain.options[6].success[0]"
+              ]
+            },
+            {
+              "text": "Asked by: the ending `king-deposed`.",
+              "paths": ["endings[1]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Records",
+      "items": [
+        {
+          "text": "Record `captains-orders` — The record `captains-orders`: whoever comes to hold it learns the fact `party-recognized`.",
+          "paths": ["intel[1]"],
+          "items": [
+            {
+              "text": "Held by: the prop `orders`.",
+              "paths": ["room.room.propBindings.orders"]
+            }
+          ]
+        },
+        {
+          "text": "Record `cooks-ledger` — The record `cooks-ledger`: whoever comes to hold it learns the fact `king-burned-village`.",
+          "paths": ["intel[0]"],
+          "items": [
+            {
+              "text": "Held by: the prop `ledger`.",
+              "paths": ["room.room.propBindings.ledger"]
+            }
+          ]
+        },
+        {
+          "text": "Record `key-bearer` — The record `key-bearer`: whoever comes to hold it learns the fact `sergeant-holds-keys`.",
+          "paths": ["intel[3]"],
+          "items": [
+            {
+              "text": "Held by: the creature `prisoner-1`; the creature `prisoner-2`; the creature `prisoner-3`; the creature `prisoner-4`.",
+              "paths": [
+                "room.room.monsterBindings.prisoner-1.holds",
+                "room.room.monsterBindings.prisoner-2.holds",
+                "room.room.monsterBindings.prisoner-3.holds",
+                "room.room.monsterBindings.prisoner-4.holds"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Record `king-whereabouts` — The record `king-whereabouts`: whoever comes to hold it learns the fact `king-in-throne-room`.",
+          "paths": ["intel[2]"],
+          "items": [
+            {
+              "text": "Held by: the creature `prisoner-1`; the creature `prisoner-2`; the creature `prisoner-3`; the creature `prisoner-4`.",
+              "paths": [
+                "room.room.monsterBindings.prisoner-1.holds",
+                "room.room.monsterBindings.prisoner-2.holds",
+                "room.room.monsterBindings.prisoner-3.holds",
+                "room.room.monsterBindings.prisoner-4.holds"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Record `kitchen-way` — The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+          "paths": ["intel[4]"],
+          "items": [
+            {
+              "text": "Told by: saying `favour` (scullion).",
+              "paths": [
+                "room.room.monsterBindings.scullion.options[0].success[0].tells"
+              ]
+            },
+            {
+              "text": "Lifts the hidden bar of: the told way through `passage:region-kitchen:region-chapel:prop-grate`; the told way through `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": ["intel[4]", "intel[4]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Secrets",
+      "items": [
+        {
+          "text": "Secret `kitchen-passage` — The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+          "paths": ["concealments.kitchen-passage"],
+          "items": [
+            {
+              "text": "Revealed by: the record `kitchen-way`.",
+              "paths": ["intel[4]"]
+            },
+            {
+              "text": "Found by: a search with Investigation against DC 18 finds the secret `kitchen-passage`.",
+              "paths": ["concealments.kitchen-passage.checks"]
+            },
+            {
+              "text": "Bars: the join `passage:region-kitchen:region-chapel:prop-grate`; the join `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": [
+                "room.room.propBindings.grate.options[0].success[0].relocate",
+                "room.room.propBindings.grate.options[1].success[0].relocate"
+              ]
+            },
+            {
+              "text": "Needed by: the passage way through `passage:region-kitchen:region-chapel:prop-grate`; the passage way through `passage:region-kitchen:region-cells:prop-grate`.",
+              "paths": [
+                "room.room.propBindings.grate.options[0]",
+                "room.room.propBindings.grate.options[1]"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
