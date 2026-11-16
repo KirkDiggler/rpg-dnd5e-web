@@ -10,6 +10,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CopyPath, CopyPathGroup } from './CopyPath';
 
@@ -95,9 +96,29 @@ describe('CopyPath', () => {
         .focus()
     );
     expect(copy.tabIndex).toBe(0);
+    // The group says it is active, which the CSS shows it by.
+    const group = copy.closest('.es-copy-group')!;
+    expect(group.hasAttribute('data-active')).toBe(true);
     act(() => copy.focus());
     expect(copy.tabIndex).toBe(0);
     act(() => screen.getByRole('button', { name: 'after' }).focus());
     expect(copy.tabIndex).toBe(-1);
+    expect(group.hasAttribute('data-active')).toBe(false);
+  });
+  it('the stylesheet hides it with one rule that yields to hover, focus and its own words', () => {
+    // jsdom cannot hover: pin the one hiding rule, so no other rule can
+    // out-rank a "show" rule again.
+    const css = readFileSync(
+      'src/concepts/encounter-studio/encounterStudio.css',
+      'utf8'
+    );
+    const hiding = css.match(/[^{}]*\{[^}]*opacity:\s*0;[^}]*\}/g) ?? [];
+    const copy = hiding.filter((rule) => rule.includes('es-copy-path-button'));
+    expect(copy).toHaveLength(1);
+    expect(copy[0]).toMatch(/:not\(:hover\)/);
+    expect(copy[0]).toMatch(/:not\(:focus-within\)/);
+    expect(copy[0]).toMatch(/:not\(\[data-active\]\)/);
+    expect(copy[0]).toMatch(/\[data-state='idle'\]/);
+    expect(css).not.toMatch(/es-copy-path-button[^{]*\{[^}]*transition/);
   });
 });

@@ -98,6 +98,7 @@ export function CopyPathGroup({
   return (
     <span
       className="es-copy-group"
+      data-active={within || undefined}
       onFocus={() => setWithin(true)}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null))

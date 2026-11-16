@@ -1898,17 +1898,16 @@
   color: var(--wb-text);
   border-color: var(--wb-accent);
 }
-/* Quiet beside a focusable place: shown on hover or while its group has
- * focus, or while it says something. */
+/* Quiet beside a focusable place (rpg-project#983): ONE rule hides the
+ * control, and only while its group is neither hovered nor holding focus
+ * (`:focus-within`, or `data-active`, which the group sets from JS while it
+ * has focus) and the control says nothing. There is no competing "show"
+ * rule to lose on specificity, and no transition: shown is opacity 1. */
 .encounter-studio
-  .es-copy-group
+  .es-copy-group:not(:hover):not(:focus-within):not([data-active])
   .es-copy-path[data-state='idle']
   .es-copy-path-button {
   opacity: 0;
-}
-.encounter-studio .es-copy-group:hover .es-copy-path-button,
-.encounter-studio .es-copy-group:focus-within .es-copy-path-button {
-  opacity: 1;
 }
 .es-copy-path-said {
   font-size: var(--es-text-help);
