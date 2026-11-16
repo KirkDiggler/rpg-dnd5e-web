@@ -87,6 +87,13 @@ export interface Places {
 }
 
 const KIND_JOIN = 'join';
+/** The engine's contract (rpg-project#974): a join is a statement of a
+ * `place.join.` kind and a way one of a `place.way.` kind. A statement of
+ * any other kind that repeats a way under a hub (`record.lift`,
+ * `secret.find`) points at it and is never itself a way, whatever it
+ * connects. */
+const JOIN_KIND = 'place.join.';
+const WAY_KIND = 'place.way.';
 const ROLE_THROUGH = 'through';
 const ROLE_LIFTS = 'lifts';
 const ROLE_UNLIFTED = 'unlifted';
@@ -125,6 +132,7 @@ export function placesOf(readBack: ReadBack): Places {
   const joins = new Map<string, PlaceJoin>();
   for (const statement of statements) {
     if (statement.about?.kind !== KIND_JOIN) continue;
+    if (!statement.kind.startsWith(JOIN_KIND)) continue;
     const id = statement.about.id;
     if (joins.has(id)) continue;
     const doors = ids(statement, 'door', 'by');
@@ -144,7 +152,7 @@ export function placesOf(readBack: ReadBack): Places {
     });
   }
   for (const statement of statements) {
-    if (statement.about?.kind === KIND_JOIN) continue;
+    if (!statement.kind.startsWith(WAY_KIND)) continue;
     for (const joinId of new Set(ids(statement, KIND_JOIN, ROLE_THROUGH))) {
       const join = joins.get(joinId);
       if (!join) continue;

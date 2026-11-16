@@ -10,6 +10,7 @@ import { syntheticJoin } from './fixtures/placesSynthetic';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { joinAnchor } from './placesGeometry';
 import { joinName, methodLabel, placesOf, waySectionsOf } from './placesView';
+import { methodCountsOf } from './waysByMethod';
 
 const castle = (() => {
   const read = readDraftYaml(served);
@@ -206,5 +207,69 @@ describe('bars nothing lifts, partial ways and two bars (engine shapes)', () => 
     ]);
     expect(sections.none.map((way) => way.kind)).toEqual(['place.way.none']);
     expect(sections.free).toEqual([]);
+  });
+});
+
+describe('a way is a statement of a `place.way.` kind (rpg-project#974)', () => {
+  const lock = {
+    kind: 'place.way.lock',
+    connects: [
+      ['bar', 'lock', 'lifts'],
+      ['method', 'ability:str', 'by'],
+    ] as [string, string, string][],
+  };
+
+  it('a hub repeat carrying {join, through} and methods adds no way and nothing to the count', () => {
+    const places = placesOf(
+      syntheticJoin([
+        lock,
+        {
+          kind: 'record.lift',
+          about: { kind: 'record', id: 'kitchen-way' },
+          connects: [
+            ['bar', 'lock', 'lifts'],
+            ['method', 'skill:persuasion', 'by'],
+          ],
+        },
+        {
+          kind: 'secret.find',
+          about: { kind: 'way', id: 'way:j1:0' },
+          connects: [
+            ['bar', 'lock', 'lifts'],
+            ['method', 'ability:str', 'by'],
+          ],
+        },
+      ])
+    );
+    expect(places.joins[0]!.ways.map((way) => way.kind)).toEqual([
+      'place.way.lock',
+    ]);
+    expect(methodCountsOf(places).map((row) => [row.key, row.ways])).toEqual([
+      ['ability:str', 1],
+    ]);
+  });
+
+  it('a hub statement about a join is not a join', () => {
+    const readBack = syntheticJoin([lock]);
+    const group = readBack.sections[0]!.groups[0]!;
+    group.statements.push({
+      ...group.statements[0]!,
+      kind: 'secret.hides',
+      about: { ...group.statements[0]!.about!, id: 'j2' },
+    });
+    expect(placesOf(readBack).joins.map((join) => join.id)).toEqual(['j1']);
+  });
+
+  it('an unknown `place.way.<new>` kind still lists plainly', () => {
+    const places = placesOf(
+      syntheticJoin([
+        {
+          kind: 'place.way.vanish',
+          connects: [['method', 'free', 'by']],
+        },
+      ])
+    );
+    const sections = waySectionsOf(places.joins[0]!);
+    expect(sections.free.map((way) => way.kind)).toEqual(['place.way.vanish']);
   });
 });
