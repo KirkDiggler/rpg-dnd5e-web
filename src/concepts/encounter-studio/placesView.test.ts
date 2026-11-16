@@ -273,3 +273,22 @@ describe('a way is a statement of a `place.way.` kind (rpg-project#974)', () => 
     expect(sections.free.map((way) => way.kind)).toEqual(['place.way.vanish']);
   });
 });
+
+describe('one label for one method (rpg-project#974)', () => {
+  it('the engine’s method ids read as the count names them', () => {
+    expect(methodLabel({ id: 'free', value: 0 })).toBe('no check');
+    expect(methodLabel({ id: 'fight', value: 0 })).toBe('the fight');
+    expect(methodLabel({ id: 'item', value: 0 })).toBe('an item');
+    expect(methodLabel({ id: 'knowledge', value: 0 })).toBe('knowledge');
+    expect(methodLabel({ id: 'skill:persuasion', value: 13 })).toBe(
+      'Persuasion 13'
+    );
+  });
+
+  it('the grate’s passage line chip reads "no check"', () => {
+    const passage = joinBy(GRATE_TO_CHAPEL).ways.find(
+      (way) => way.kind === 'place.way.passage'
+    )!;
+    expect(passage.methods.map(methodLabel)).toEqual(['no check']);
+  });
+});

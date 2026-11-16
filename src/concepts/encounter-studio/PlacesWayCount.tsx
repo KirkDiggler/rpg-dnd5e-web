@@ -4,7 +4,7 @@
  * Numbers and names only: the studio counts, it does not judge. See
  * `waysByMethod.ts` for what one way is.
  */
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { methodLabel } from './placesView';
 import type { PlacesView } from './usePlacesView';
 import {
@@ -67,42 +67,31 @@ export function PlacesWayCount({
       {view.counts.length === 0 ? (
         <p className="es-help">The engine says no way that can be counted.</p>
       ) : (
-        <table aria-label="Ways by method">
-          <thead>
-            <tr>
-              <th scope="col">Method</th>
-              <th scope="col">Ways</th>
-              <th scope="col">Difficulty</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.counts.map((row) => (
-              <Fragment key={row.key}>
-                <tr>
-                  <th scope="row">
-                    <button
-                      type="button"
-                      aria-pressed={view.method?.key === row.key}
-                      title="Mark the joins whose ways use it"
-                      onClick={() => view.toggleMethod(row.key)}
-                    >
-                      {row.label}
-                    </button>
-                  </th>
-                  <td>{plural(row.ways)}</td>
-                  <td>{difficultyRange(row)}</td>
-                </tr>
+        <ul aria-label="Ways by method" className="es-way-count-list">
+          {view.counts.map((row) => {
+            const dc = difficultyRange(row);
+            return (
+              <li key={row.key}>
+                <button
+                  type="button"
+                  aria-pressed={view.method?.key === row.key}
+                  title="Mark the joins whose ways use it"
+                  onClick={() => view.toggleMethod(row.key)}
+                >
+                  {row.label}
+                </button>
+                <span className="es-way-count-figures">
+                  {dc ? `${plural(row.ways)} · ${dc}` : plural(row.ways)}
+                </span>
                 {row.key === 'free' && (
-                  <tr className="es-way-count-sub">
-                    <td colSpan={3}>
-                      {row.open} open · {row.needing} need something first
-                    </td>
-                  </tr>
+                  <span className="es-way-count-sub">
+                    {row.open} open · {row.needing} need something first
+                  </span>
                 )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+              </li>
+            );
+          })}
+        </ul>
       )}
       <p className="es-help">
         A way with alternatives counts under each of its methods, so the rows

@@ -114,17 +114,9 @@ export function wayUnitsOf(join: PlaceJoin): WayUnit[] {
   return [...units.values()];
 }
 
-const COUNT_LABELS: Record<string, string> = {
-  knowledge: 'knowledge',
-  item: 'an item',
-  fight: 'the fight',
-  /** The engine's `free`: a way taken with no check. */
-  free: 'no check',
-};
-
 /** A method row's label: the method's plain name. */
 export function methodCountLabel(key: string): string {
-  return COUNT_LABELS[key] ?? methodName(key);
+  return methodName(key);
 }
 
 /** Every method the encounter's ways can be taken by, with how many ways

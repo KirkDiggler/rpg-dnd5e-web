@@ -234,9 +234,21 @@ export function methodLabel(method: {
   return parts.length ? `${named} with ${parts.join(' and ')}` : named;
 }
 
+/** The method ids that are not a check, as the studio names them; the
+ * engine's `free` is a way taken with no check. One label per method, in
+ * the count and on every chip. */
+const NO_CHECK_NAMES: Record<string, string> = {
+  knowledge: 'knowledge',
+  item: 'an item',
+  fight: 'the fight',
+  free: 'no check',
+};
+
 /** A method's name from its id alone: `skill:persuasion` → "Persuasion",
- * `ability:dex` → "Dexterity", a tool's ref by its id. */
+ * `ability:dex` → "Dexterity", a tool's ref by its id, `free` → "no
+ * check". */
 export function methodName(id: string): string {
+  if (Object.hasOwn(NO_CHECK_NAMES, id)) return NO_CHECK_NAMES[id]!;
   // `<kind>:<name>`; a tool's name is a ref, taken apart by the one parser.
   const at = id.indexOf(':');
   const kind = at < 0 ? id : id.slice(0, at);

@@ -7565,15 +7565,14 @@ describe('the places view through the real owner (rpg-project#972)', () => {
       expect(within(list).getAllByRole('button')).toHaveLength(12)
     );
     const count = screen.getByRole('group', { name: 'Ways by method' });
-    const table = within(count).getByRole('table', { name: 'Ways by method' });
+    // One item per method: its name, then "N ways · DC a–b".
+    const table = within(count).getByRole('list', { name: 'Ways by method' });
     const rows = within(table)
-      .getAllByRole('row')
-      .slice(1)
-      // A method's row has its header; the no-check row's sub-counts do not.
-      .filter((row) => row.querySelector('th') !== null)
-      .map((row) =>
-        [...row.querySelectorAll('th, td')].map((cell) => cell.textContent)
-      );
+      .getAllByRole('listitem')
+      .map((item) => [
+        within(item).getByRole('button').textContent,
+        item.querySelector('.es-way-count-figures')?.textContent,
+      ]);
     // Computed from the fixture's connections, not from the module.
     const expected = expectedCastleWayTable();
     expect(within(count).getByText('23 ways')).toBeTruthy();
@@ -7588,9 +7587,9 @@ describe('the places view through the real owner (rpg-project#972)', () => {
     ).toHaveLength(1);
     expect(rows).toHaveLength(expected.size);
     for (const [method, cells] of [
-      ['ability:dex', ['Dexterity', '2 ways', 'DC 13']],
-      ['skill:performance', ['Performance', '1 way', 'DC 13']],
-      ['fight', ['the fight', '1 way', '']],
+      ['ability:dex', ['Dexterity', '2 ways · DC 13']],
+      ['skill:performance', ['Performance', '1 way · DC 13']],
+      ['fight', ['the fight', '1 way']],
     ] as const) {
       expect(expected.get(method)!.ways).toBe(Number(cells[1][0]));
       expect(rows).toContainEqual(cells);

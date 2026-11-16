@@ -1567,23 +1567,34 @@
   cursor: pointer;
   font-weight: 600;
 }
-.es-way-count table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
+.es-way-count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0;
+  padding: 0;
+  list-style: none;
 }
-.es-way-count :is(th, td) {
-  padding: 0.15rem 0.25rem;
-  text-align: left;
-  vertical-align: top;
+/* Two lines in the narrow left column: the method's name, never broken
+ * mid-word, then its count and difficulty. */
+.es-way-count-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  font-size: var(--es-text-help);
 }
-.es-way-count tbody th button {
+.es-places-list .es-way-count-list button {
   width: auto;
   padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
-.es-way-count-sub td {
-  padding-left: 1rem;
-  font-size: 0.75rem;
+.es-way-count-figures {
+  padding-left: 0.35rem;
+}
+.es-way-count-sub {
+  padding-left: 0.85rem;
   color: var(--wb-muted);
 }
 .es-ways-into h3 {
