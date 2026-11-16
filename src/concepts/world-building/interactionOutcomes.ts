@@ -75,6 +75,34 @@ function interactionsOf(scope: Readonly<SiteScope>): Record<string, unknown> {
   return mapping(interactions) ? interactions : {};
 }
 
+/** The ids of the site's root interactions (Conversations), in the file's
+ * order. */
+export function interactionIds(scope: Readonly<SiteScope>): string[] {
+  return Object.keys(interactionsOf(scope));
+}
+
+/** The beats the interaction's recipe listens for — every transition's
+ * `on`, in the file's order, each once (rpg-project#975 B): what a line's
+ * `advance` may step it on. */
+export function recipeBeats(scope: Readonly<SiteScope>, id: string): string[] {
+  const interaction = interactionsOf(scope)[id];
+  if (!mapping(interaction) || !mapping(interaction.recipe)) return [];
+  const states = interaction.recipe.states;
+  if (!mapping(states)) return [];
+  const beats: string[] = [];
+  for (const state of Object.values(states)) {
+    if (!mapping(state) || !Array.isArray(state.transitions)) continue;
+    for (const transition of state.transitions)
+      if (
+        mapping(transition) &&
+        typeof transition.on === 'string' &&
+        !beats.includes(transition.on)
+      )
+        beats.push(transition.on);
+  }
+  return beats;
+}
+
 /** The states the interaction's recipe declares, in the file's order. */
 export function recipeStates(scope: Readonly<SiteScope>, id: string): string[] {
   const interaction = interactionsOf(scope)[id];

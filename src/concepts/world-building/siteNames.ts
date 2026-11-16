@@ -13,19 +13,39 @@
  * bundles are; a form outside it offers nothing and keeps what is written.
  */
 import { createContext } from 'react';
-import { grantedTopics } from './interactionOutcomes';
+import {
+  grantedTopics,
+  interactionIds,
+  recipeBeats,
+  recipeStates,
+} from './interactionOutcomes';
 import type { SiteScope } from './siteScope';
+
+export interface SiteConversation {
+  readonly id: string;
+  /** The states its recipe declares, in the file's order. */
+  readonly states: readonly string[];
+  /** The beats its recipe listens for, in the file's order. */
+  readonly beats: readonly string[];
+}
 
 export interface SiteNames {
   readonly records: readonly string[];
   readonly regions: readonly { readonly id: string; readonly name: string }[];
+  /** Every topic the file mentions, granted or asked for. Which of them
+   * something grants is the engine's to say (a conversation's arrest grants
+   * topics of its own): a requirement on one nothing grants is refused at
+   * its field, in the engine's words. */
   readonly topics: readonly string[];
+  /** The site's conversations (root `interactions`). */
+  readonly conversations: readonly SiteConversation[];
 }
 
 export const NO_SITE_NAMES: SiteNames = Object.freeze({
   records: [],
   regions: [],
   topics: [],
+  conversations: [],
 });
 
 export const SiteNamesContext = createContext<SiteNames>(NO_SITE_NAMES);
@@ -79,5 +99,10 @@ export function siteNamesOf(
       name: region.name || region.id,
     })),
     topics: [...topics].sort(),
+    conversations: interactionIds(scope).map((id) => ({
+      id,
+      states: recipeStates(scope, id),
+      beats: recipeBeats(scope, id),
+    })),
   };
 }

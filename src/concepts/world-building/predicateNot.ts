@@ -108,62 +108,9 @@ export function requiresFacts(r: OptionRequires | undefined): string[] {
   });
 }
 
-/** The requires picker's choices, in the order it lists them. `listed` is
- * not offered: it names a `requires` the picker shows but does not edit — a
- * list, or an interaction read. */
-export const REQUIRES_CHOICES = [
-  { value: '', label: 'Always offered' },
-  { value: 'fact', label: 'The speaker knows a fact' },
-  { value: 'holds', label: 'The speaker carries a prop' },
-  { value: 'not-fact', label: 'Unless the speaker knows a fact' },
-  { value: 'not-holds', label: 'Unless the speaker carries a prop' },
-] as const;
-export type RequiresChoice =
-  | (typeof REQUIRES_CHOICES)[number]['value']
-  | 'listed';
-
 /** The read inside one requirement, negated or not. */
 export function requiresRead(r: OptionRequirement): OptionRead {
   return 'not' in r ? r.not : r;
-}
-
-/** Which choice a requirement is; `listed` for a list or an interaction. */
-export function requiresChoice(r: OptionRequires | undefined): RequiresChoice {
-  if (r === undefined) return '';
-  if (Array.isArray(r)) return 'listed';
-  const read = requiresRead(r);
-  if ('interaction' in read || 'recognized' in read) return 'listed';
-  const form = 'fact' in read ? 'fact' : 'holds';
-  return 'not' in r ? `not-${form}` : form;
-}
-
-/** The id a single fact or holding names; '' for anything the picker does
- * not edit. */
-export function requiresId(r: OptionRequires | undefined): string {
-  if (r === undefined || Array.isArray(r)) return '';
-  const read = requiresRead(r);
-  if ('fact' in read) return read.fact;
-  if ('holds' in read) return read.holds;
-  return '';
-}
-
-/** A requirement of one choice naming one id; undefined for "always". */
-export function requiresOf(
-  choice: Exclude<RequiresChoice, 'listed'>,
-  id: string
-): OptionRequires | undefined {
-  switch (choice) {
-    case '':
-      return undefined;
-    case 'fact':
-      return { fact: id };
-    case 'holds':
-      return { holds: id };
-    case 'not-fact':
-      return { not: { fact: id } };
-    case 'not-holds':
-      return { not: { holds: id } };
-  }
 }
 
 /** The interaction read as words: "front-gate is fresh or warned-troupe". */
