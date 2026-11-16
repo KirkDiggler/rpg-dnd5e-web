@@ -153,18 +153,18 @@ describe('StudioThreads', () => {
         .getAllByRole('button')
         .map((button) => `${button.dataset.hub}: ${button.textContent}`);
     expect(rows('Records')).toEqual([
-      'captains-orders: captains-orders hold 1',
-      'cooks-ledger: cooks-ledger hold 1',
-      'key-bearer: key-bearer hold 4',
-      'king-whereabouts: king-whereabouts hold 4',
-      'kitchen-way: kitchen-way tell 1 · lift 2',
+      'captains-orders: captains-orders held by 1',
+      'cooks-ledger: cooks-ledger held by 1',
+      'key-bearer: key-bearer held by 4',
+      'king-whereabouts: king-whereabouts held by 4',
+      'kitchen-way: kitchen-way told by 1, lifts 2',
     ]);
     expect(rows('Secrets')).toEqual([
-      'kitchen-passage: kitchen-passage reveal 1 · find 1 · bar 2 · need 2',
+      'kitchen-passage: kitchen-passage revealed by 1, found by 1, bars 2, needed by 2',
     ]);
   });
 
-  it('a record nothing holds or tells, and a secret no record reveals, are marked', () => {
+  it('a record nothing holds or tells is marked; a secret no record reveals is noted', () => {
     const readBack = castleThreadsReadBack();
     const groups = readBack.sections.flatMap((section) => section.groups);
     const way = groups.find((g) => g.about?.id === 'kitchen-way')!;
@@ -177,30 +177,95 @@ describe('StudioThreads', () => {
     expect(row('Records', 'kitchen-way').textContent).toContain(
       'nothing holds or tells it'
     );
-    expect(row('Secrets', 'kitchen-passage').textContent).toContain(
+    // A secret found only by search is normal: a neutral note, not a mark.
+    const secretRow = row('Secrets', 'kitchen-passage');
+    expect(secretRow.querySelector('[data-note]')?.textContent?.trim()).toBe(
       'no record reveals it'
     );
+    expect(secretRow.querySelector('.es-fact-mark')).toBeNull();
+    expect(
+      row('Records', 'kitchen-way').querySelector('.es-fact-mark')
+    ).not.toBeNull();
     expect(row('Records', 'cooks-ledger').textContent).not.toContain('nothing');
   });
 
-  it('a record’s thread is its Read back, and links to its editing home', () => {
-    const onConfigure = vi.fn();
+  it('a record’s thread is its own group only, in the default Folded view', () => {
+    show({ kind: 'record', id: 'kitchen-way' });
+    const thread = within(threads()).getByRole('region', { name: 'Read back' });
+    expect(
+      within(thread)
+        .getByRole('button', { name: 'Folded' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(thread.textContent).toContain(
+      'Told by: saying `favour` (scullion).'
+    );
+    // The site's own sentence about the record is not repeated as a
+    // statement behind no entry.
+    expect(
+      within(thread).queryByRole('list', { name: 'Said in full only' })
+    ).toBeNull();
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    const groups = thread.querySelectorAll('details');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.open).toBe(true);
+    expect(groups[0]!.querySelector('summary')?.textContent).toBe(
+      'Record `kitchen-way`'
+    );
+  });
+
+  it('a hub’s thread has no link back to the hub itself', () => {
+    show({ kind: 'concealment', id: 'kitchen-passage' });
+    const thread = within(threads()).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    expect(
+      within(thread).queryAllByRole('button', {
+        name: 'Open concealment kitchen-passage',
+      })
+    ).toEqual([]);
+    expect(
+      within(thread).getAllByRole('button', { name: 'Open prop grate' }).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('Edit in Concealments lands on the secret’s own form through the path map', () => {
+    const onJump = vi.fn();
     render(
       <StudioThreads
         document={castle}
         readBack={state()}
-        focus={{ kind: 'record', id: 'kitchen-way' }}
+        focus={{ kind: 'concealment', id: 'kitchen-passage' }}
         onSelect={vi.fn()}
-        onConfigure={onConfigure}
+        onJump={onJump}
+      />
+    );
+    fireEvent.click(
+      within(threads()).getByRole('button', { name: 'Edit in Concealments' })
+    );
+    expect(onJump).toHaveBeenCalledWith({
+      kind: 'home',
+      section: 'concealments',
+      id: 'kitchen-passage',
+    });
+  });
+
+  it('a way pointer the studio cannot open is text, not a button', () => {
+    render(
+      <StudioThreads
+        document={castle}
+        readBack={state()}
+        focus={{ kind: 'concealment', id: 'kitchen-passage' }}
+        onSelect={vi.fn()}
+        wayOpener={() => null}
       />
     );
     const thread = within(threads()).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    expect(
+      within(thread).queryAllByRole('button', { name: /^Open way / })
+    ).toEqual([]);
     expect(thread.textContent).toContain(
-      'Told by: saying `favour` (scullion).'
+      'way way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel'
     );
-    fireEvent.click(
-      within(threads()).getByRole('button', { name: 'Edit in Intel' })
-    );
-    expect(onConfigure).toHaveBeenCalledWith('intel');
   });
 });

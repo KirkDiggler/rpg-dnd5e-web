@@ -523,14 +523,18 @@ function StudioSurface({
    * goes through, as Places selects it (rpg-project#973). The pointer names
    * the way; the way's own statement names its join. */
   const [pendingJoin, setPendingJoin] = useState<string | null>(null);
-  const openWay = (wayId: string): void => {
+  /** A pointer whose way Places does not hold (no read-back yet, or a
+   * stale one) has no opener: it renders as text. */
+  const wayOpener = (wayId: string): (() => void) | null => {
     const join = placesView.places?.joins.find((candidate) =>
       candidate.ways.some((way) => way.statement.about?.id === wayId)
     );
-    if (!join) return;
-    changeHome('build');
-    setSidebarOpen(true);
-    setPendingJoin(join.id);
+    if (!join) return null;
+    return () => {
+      changeHome('build');
+      setSidebarOpen(true);
+      setPendingJoin(join.id);
+    };
   };
   // The join is selected once Build is the home, where the map's selection
   // can be cleared for it.
@@ -1502,7 +1506,7 @@ function StudioSurface({
                 current={placesView.current}
                 onJump={jumpTo}
                 onOpenFact={openFact}
-                onOpenWay={openWay}
+                wayOpener={wayOpener}
               />
             )}
             {home === 'build' && !placesView.selectedJoin && (
@@ -1514,7 +1518,7 @@ function StudioSurface({
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
                 onOpenFact={openFact}
-                onOpenWay={openWay}
+                wayOpener={wayOpener}
                 readBack={readBack}
                 onOpenJoin={placesView.selectJoin}
                 onJump={jumpTo}
@@ -1805,11 +1809,7 @@ function StudioSurface({
               onSelect={setFocusHub}
               onJump={jumpTo}
               onOpenFact={openFact}
-              onOpenWay={openWay}
-              onConfigure={(section) => {
-                changeHome('encounter');
-                setEncounterSection(section);
-              }}
+              wayOpener={wayOpener}
             />
           )}
           <RoutePickContext.Provider value={routePicking}>

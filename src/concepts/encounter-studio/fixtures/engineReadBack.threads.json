@@ -3,6 +3,52 @@
   "name": "The Mad King’s Castle",
   "sections": [
     {
+      "title": "The place",
+      "groups": [
+        {
+          "title": "The Mad King’s Castle (the-mad-king)",
+          "about": {
+            "kind": "site",
+            "id": "the-mad-king"
+          },
+          "statements": [
+            {
+              "kind": "place.concealment",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "path": "concealments.kitchen-passage",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "hides"
+                }
+              ]
+            },
+            {
+              "kind": "place.intel",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "path": "intel[4]",
+              "connects": [
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "reveals"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "Creatures",
       "groups": [
         {
@@ -1693,6 +1739,25 @@
   ],
   "not_yet_said": [],
   "folded": [
+    {
+      "title": "The place",
+      "items": [
+        {
+          "text": "The Mad King’s Castle (the-mad-king)",
+          "paths": null,
+          "items": [
+            {
+              "text": "The secret `kitchen-passage` hides the prop Grate by the Hearth (grate). A search finds it on Investigation against DC 18. Until a member knows it — found, told, read in a record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+              "paths": ["concealments.kitchen-passage"]
+            },
+            {
+              "text": "The record `kitchen-way`: whoever comes to hold it learns the secret `kitchen-passage`.",
+              "paths": ["intel[4]"]
+            }
+          ]
+        }
+      ]
+    },
     {
       "title": "Creatures",
       "items": [

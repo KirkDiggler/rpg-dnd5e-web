@@ -10,7 +10,7 @@
  */
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { ReadBack } from './ReadBack';
-import type { RefusalTarget } from './refusalJump';
+import { targetOfPath, type RefusalTarget } from './refusalJump';
 import type { StudioReadBack } from './studioPublishing';
 import {
   hubSectionsOf,
@@ -19,10 +19,9 @@ import {
 } from './threadHubs';
 
 /** Where a hub is edited: the thread reads it, its home writes it. */
-export type HubHome = 'intel' | 'concealments';
-const EDITING_HOMES: Record<string, { section: HubHome; label: string }> = {
-  record: { section: 'intel', label: 'Edit in Intel' },
-  concealment: { section: 'concealments', label: 'Edit in Concealments' },
+const EDITING_HOMES: Record<string, { label: string }> = {
+  record: { label: 'Edit in Intel' },
+  concealment: { label: 'Edit in Concealments' },
 };
 
 export function StudioThreads({
@@ -32,8 +31,7 @@ export function StudioThreads({
   onSelect,
   onJump,
   onOpenFact,
-  onOpenWay,
-  onConfigure,
+  wayOpener,
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -41,12 +39,21 @@ export function StudioThreads({
   onSelect(hub: ThreadHub): void;
   onJump?(target: RefusalTarget): void;
   onOpenFact?(id: string, hub?: string): void;
-  onOpenWay?(wayId: string): void;
-  /** Open a hub's editing home. */
-  onConfigure?(section: HubHome): void;
+  wayOpener?(wayId: string): (() => void) | null;
 }): React.JSX.Element {
   const sections = hubSectionsOf(readBack.readBack);
   const home = focus ? EDITING_HOMES[focus.kind] : undefined;
+  // The edit link lands on the hub's own form through the one path map, by
+  // the path of the hub's own statement (the first of its group).
+  const hubPath = focus
+    ? readBack.readBack?.sections
+        .flatMap((section) => section.groups)
+        .find(
+          (group) =>
+            group.about?.kind === focus.kind && group.about.id === focus.id
+        )?.statements[0]?.path
+    : undefined;
+  const editTarget = hubPath ? targetOfPath(hubPath, document) : null;
   return (
     <section className="es-threads wb-panel" aria-label="Threads">
       <h2>Threads</h2>
@@ -75,6 +82,9 @@ export function StudioThreads({
                       >
                         <span className="es-threads-id">{row.hub.id}</span>{' '}
                         <small>{row.summary}</small>
+                        {row.note && (
+                          <small data-note={row.note}> {row.note}</small>
+                        )}
                         {row.mark && (
                           <span className="es-fact-mark" data-mark={row.mark}>
                             {' '}
@@ -94,11 +104,11 @@ export function StudioThreads({
             className="es-threads-thread"
             data-thread={`${focus.kind}:${focus.id}`}
           >
-            {home && onConfigure && (
+            {home && editTarget && onJump && (
               <button
                 type="button"
                 className="es-link"
-                onClick={() => onConfigure(home.section)}
+                onClick={() => onJump(editTarget)}
               >
                 {home.label}
               </button>
@@ -109,7 +119,7 @@ export function StudioThreads({
               state={readBack}
               onJump={onJump}
               onOpenFact={onOpenFact}
-              onOpenWay={onOpenWay}
+              wayOpener={wayOpener}
             />
           </div>
         )}

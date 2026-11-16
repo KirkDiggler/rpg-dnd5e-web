@@ -46,8 +46,11 @@ export function castlePlacesReadBack(): ReadBack {
  * rpg-toolkit `main` cdefe89a on the same castle bytes: the "Topics" and
  * "Facts" sections cut to the topics `admitted` and `jailed` and the facts
  * `feast-tonight`, `guards-turned`, `king-is-cultist` and
- * `party-recognized`, with their folded entries. Every sentence and entry is
- * the engine's, unedited.
+ * `party-recognized` and `throne-taken`, the scullion's group, the whole
+ * "Records" and "Secrets" sections, and the site's own statements about the
+ * record `kitchen-way` and the secret `kitchen-passage` (re-recorded from
+ * `main` bb5806f7, encounter v0.219.0), with their folded entries. Every
+ * sentence and entry is the engine's, unedited.
  */
 export function castleThreadsReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(threadsJson) as JsonValue);

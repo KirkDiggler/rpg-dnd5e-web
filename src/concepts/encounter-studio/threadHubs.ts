@@ -9,7 +9,8 @@
  * WHICH SECTIONS ARE HUB SECTIONS: every section from "Topics" on. The
  * engine puts its hub sections last, after the things they connect; a hub
  * section it adds later lists the same way, with counts only. (The wire has
- * no marker of its own for a hub section.)
+ * no marker of its own for a hub section; the engine follow-up that marks
+ * them is filed from rpg-dnd5e-web#1441's review.)
  *
  * The row's counts and its mark are a presence check over the group's own
  * entries by the engine's kinds; a section with no presence rule below
@@ -32,9 +33,12 @@ export interface HubRow {
   counts: { kind: string; count: number }[];
   /** The row's one line of counts. */
   summary: string;
-  /** Which presence check failed, in words; null when none did or the
-   * section has no check. */
+  /** Which presence check failed, in words, shown as a warning; null when
+   * none did or the section has no check. */
   mark: string | null;
+  /** A neutral note from a presence check that is normal to fail (a secret
+   * found only by search has no record revealing it). */
+  note: string | null;
 }
 
 export interface HubSection {
@@ -55,6 +59,7 @@ const RULES: Record<
   {
     summary(counts: HubRow['counts']): string;
     mark(counts: HubRow['counts']): string | null;
+    note?(counts: HubRow['counts']): string | null;
   }
 > = {
   fact: {
@@ -86,19 +91,36 @@ const RULES: Record<
   },
   concealment: {
     summary: generic,
-    mark: (c) =>
+    mark: () => null,
+    note: (c) =>
       count(c, 'secret.reveal') === 0 ? 'no record reveals it' : null,
   },
 };
 
-/** "hold 4", "reveal 1 · find 1 · bar 2": each entry kind's last word and
- * its count. */
+/** The row's words for an entry kind, matching the engine's fold
+ * headings ("Held by:", "Told by:", "Lifts the hidden bar of:", "Revealed
+ * by:", "Found by:", "Bars:", "Needed by:"). */
+const ENTRY_WORDS: Record<string, string> = {
+  'record.hold': 'held by',
+  'record.tell': 'told by',
+  'record.lift': 'lifts',
+  'secret.reveal': 'revealed by',
+  'secret.find': 'found by',
+  'secret.bar': 'bars',
+  'secret.need': 'needed by',
+};
+
+/** "held by 4", "revealed by 1, found by 1, bars 2": each entry kind in
+ * words and its count; an unknown kind by its last segment. */
 function generic(counts: HubRow['counts']): string {
   return counts.length === 0
     ? 'no entries'
     : counts
-        .map(({ kind, count: n }) => `${kind.split('.').pop()} ${n}`)
-        .join(' · ');
+        .map(
+          ({ kind, count: n }) =>
+            `${ENTRY_WORDS[kind] ?? kind.split('.').pop()} ${n}`
+        )
+        .join(', ');
 }
 
 function rowOf(group: ReadBackGroup): HubRow {
@@ -115,6 +137,7 @@ function rowOf(group: ReadBackGroup): HubRow {
     counts,
     summary: rule ? rule.summary(counts) : generic(counts),
     mark: rule ? rule.mark(counts) : null,
+    note: rule?.note ? rule.note(counts) : null,
   };
 }
 

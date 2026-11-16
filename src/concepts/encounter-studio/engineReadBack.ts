@@ -91,13 +91,25 @@ function selectedGroups(
   group: ReadBackGroup;
   statements: ReadBackStatement[];
 }[] {
+  // A thing with a group of its own (a creature, a routine, a hub) is said
+  // by that group alone: a hub's site statement (`place.intel`,
+  // `place.concealment`) is the place's, not the hub's thread. A thing with
+  // no group (a prop) is said wherever its statements are.
+  const hasOwnGroup = readBack.sections.some((section) =>
+    section.groups.some((group) =>
+      same(group.about, selection.kind, selection.id)
+    )
+  );
   const own = readBack.sections.flatMap((section) =>
     section.groups.map((group) => ({
       section,
       group,
-      statements: group.statements.filter((statement) =>
-        same(statement.about, selection.kind, selection.id)
-      ),
+      statements:
+        hasOwnGroup && !same(group.about, selection.kind, selection.id)
+          ? []
+          : group.statements.filter((statement) =>
+              same(statement.about, selection.kind, selection.id)
+            ),
     }))
   );
   const used = new Set<string>();

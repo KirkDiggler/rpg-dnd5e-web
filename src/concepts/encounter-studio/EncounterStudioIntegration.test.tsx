@@ -5317,11 +5317,12 @@ describe('threads through the real owner (rpg-project#973)', () => {
     ).toContain('Fact `guards-turned`');
   });
 
-  it('the secret passage reads as one chain, by clicks (rpg-project#960)', async () => {
+  it('the secret passage reads as one chain, by clicks, in the default Folded view (rpg-project#960)', async () => {
     gate.state = 'live';
+    // The engine's real fold, as the api sends it; the joins are the places
+    // fixture's (same castle, same ids).
     const readBack = castleThreadsReadBack();
     readBack.sections.unshift(...castlePlacesReadBack().sections);
-    readBack.folded = [];
     services.putDungeon.mockResolvedValue(
       create(PutDungeonResponseSchema, { readBack })
     );
@@ -5336,6 +5337,18 @@ describe('threads through the real owner (rpg-project#973)', () => {
       within(screen.getByRole('region', { name: 'Threads' }));
     const thread = () =>
       within(threads().getByRole('region', { name: 'Read back' }));
+    /** Open a folded entry through the disclosure the panel owns, and say
+     * it is open before reading what it shows. */
+    const open = (
+      scope: ReturnType<typeof within>,
+      entry: RegExp
+    ): HTMLElement => {
+      const disclosure = scope.getByRole('button', { name: entry });
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(disclosure);
+      expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+      return disclosure.closest('li') as HTMLElement;
+    };
     // 1. The scullion's line tells the record.
     fireEvent.pointerDown(
       screen
@@ -5343,32 +5356,41 @@ describe('threads through the real owner (rpg-project#973)', () => {
         .querySelector('[data-placed-creature="scullion"] circle')!,
       { button: 0 }
     );
+    await waitFor(() =>
+      expect(
+        inspector()
+          .getByRole('button', { name: 'Folded' })
+          .getAttribute('aria-pressed')
+      ).toBe('true')
+    );
+    const said = open(inspector(), /^Full sentences: When said: the commoner/);
     fireEvent.click(
-      (
-        await inspector().findAllByRole('button', {
-          name: 'Open record kitchen-way',
-        })
-      )[0]!
+      within(said).getByRole('button', { name: 'Open record kitchen-way' })
     );
     expect(
       threads()
         .getByRole('button', { name: /^kitchen-way\b/ })
         .getAttribute('aria-pressed')
     ).toBe('true');
-    // 2. The record reveals the secret.
+    // 2. The record reveals the secret; its own thread repeats nothing.
+    expect(
+      thread().queryByRole('list', { name: 'Said in full only' })
+    ).toBeNull();
+    const record = open(thread(), /^Full sentences: Record `kitchen-way`/);
     fireEvent.click(
-      thread().getAllByRole('button', {
+      within(record).getByRole('button', {
         name: 'Open concealment kitchen-passage',
-      })[0]!
+      })
     );
     expect(
       threads()
         .getByRole('button', { name: /^kitchen-passage\b/ })
         .getAttribute('aria-pressed')
     ).toBe('true');
-    // 3. The secret's way pointers open the passage joins it bars.
+    // 3. The ways that need the secret open the passage joins it bars.
+    const needed = open(thread(), /^Full sentences: Needed by:/);
     fireEvent.click(
-      thread().getByRole('button', {
+      within(needed).getByRole('button', {
         name: 'Open way way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel',
       })
     );
@@ -5380,8 +5402,9 @@ describe('threads through the real owner (rpg-project#973)', () => {
     ).toContain('is a passage to Chapel (region-chapel)');
     // 4. Back to the secret: it hides the grate.
     fireEvent.click(button('Encounter'));
+    const secret = open(thread(), /^Full sentences: Secret `kitchen-passage`/);
     fireEvent.click(
-      thread().getAllByRole('button', { name: 'Open prop grate' })[0]!
+      within(secret).getByRole('button', { name: 'Open prop grate' })
     );
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Grate by the Hearth'
