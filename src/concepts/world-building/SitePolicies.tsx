@@ -105,6 +105,7 @@ import { turnsTo } from './engineLaws';
 import { entryText } from './entryText';
 import { factionNameOptions } from './factionNameOptions';
 import { grantedTopics } from './interactionOutcomes';
+import { AdvanceFields, RequiresFields } from './LineWiringFields';
 import {
   addMonsterAction,
   addMonsterHold,
@@ -136,14 +137,7 @@ import { ParamChip, ParamSlot } from './ParamSlot';
 import { PlacedMonstersContext } from './placedMonstersContext';
 import { placementDisplayNames } from './placementNames';
 import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
-import {
-  REQUIRES_CHOICES,
-  requiresChoice,
-  requiresGate,
-  requiresId,
-  requiresOf,
-  type RequiresChoice,
-} from './predicateNot';
+import { requiresGate } from './predicateNot';
 import {
   dispositionLine,
   pairMindNameIn,
@@ -2760,9 +2754,6 @@ export function CreatureOrders({
 // OPTIONS — the lines a character can say (rpg-project#569)
 // ---------------------------------------------------------------------------
 
-/** What gates a line, as the picker names it. */
-const REQUIRES_FORMS = REQUIRES_CHOICES;
-
 const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
   success: 'When the check is beaten',
   failure: 'When the check is missed',
@@ -2822,16 +2813,6 @@ export function OptionsEditor({
       {options.map((option, index) => {
         const n = index + 1;
         const of = `line ${n} of ${owner}`;
-        // `not:` around either read (rpg-project#719): the choice carries
-        // whether it is negated, and the fact or prop controls read through.
-        const requiresChoiceNow = requiresChoice(option.requires);
-        const negated = requiresChoiceNow.startsWith('not-');
-        const requiresForm = requiresChoiceNow.replace('not-', '') as
-          | ''
-          | 'fact'
-          | 'holds';
-        const heldId =
-          requiresForm === 'holds' ? requiresId(option.requires) : undefined;
         const commit = (next: OptionShape) => onChange(index, next);
         const line = at ? `${at}.options[${index}]` : undefined;
         return (
@@ -2954,104 +2935,23 @@ export function OptionsEditor({
                 onAdd={() => commit(addOptionApproach(option))}
               />
             </div>
-            {requiresChoiceNow === 'listed' ? (
-              // A list, or an interaction read (rpg-project#922): shown and
-              // carried as written; this slice edits neither.
-              <p
-                className="wb-help"
-                data-testid={`option-requires-listed-${of}`}
-              >
-                Requires{requiresGate(option.requires)} — edit these in the
-                file.
-              </p>
-            ) : (
-              <>
-                <label>
-                  <span>Requires</span>
-                  <select
-                    aria-label={`Line ${n} requires for ${owner}`}
-                    value={requiresChoiceNow}
-                    onChange={(event) => {
-                      const choice = event.target.value as Exclude<
-                        RequiresChoice,
-                        'listed'
-                      >;
-                      commit(
-                        patchOption(option, {
-                          requires: requiresOf(
-                            choice,
-                            choice.endsWith('holds') ? (holdable[0] ?? '') : ''
-                          ),
-                        })
-                      );
-                    }}
-                  >
-                    {REQUIRES_FORMS.map((form) => (
-                      <option
-                        key={form.value}
-                        value={form.value}
-                        disabled={
-                          form.value.endsWith('holds') &&
-                          holdable.length === 0 &&
-                          requiresForm !== 'holds'
-                        }
-                      >
-                        {form.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {requiresForm === 'fact' && (
-                  <label>
-                    <span>Fact</span>
-                    <input
-                      aria-label={`Line ${n} requires fact for ${owner}`}
-                      value={requiresId(option.requires)}
-                      onChange={(event) =>
-                        commit(
-                          patchOption(option, {
-                            requires: requiresOf(
-                              negated ? 'not-fact' : 'fact',
-                              event.target.value
-                            ),
-                          })
-                        )
-                      }
-                    />
-                  </label>
-                )}
-                {requiresForm === 'holds' && (
-                  <label>
-                    <span>Prop</span>
-                    <select
-                      aria-label={`Line ${n} requires prop for ${owner}`}
-                      value={heldId ?? ''}
-                      onChange={(event) =>
-                        commit(
-                          patchOption(option, {
-                            requires: requiresOf(
-                              negated ? 'not-holds' : 'holds',
-                              event.target.value
-                            ),
-                          })
-                        )
-                      }
-                    >
-                      {heldId !== undefined && !holdable.includes(heldId) && (
-                        <option value={heldId}>
-                          {heldId || '(none)'} — nobody can pick it up
-                        </option>
-                      )}
-                      {holdable.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
+            <RequiresFields
+              owner={owner}
+              line={n}
+              at={line}
+              requires={option.requires}
+              isProp={isProp}
+              holdable={holdable}
+              onCommit={(requires) => commit(patchOption(option, { requires }))}
+            />
+            <AdvanceFields
+              owner={owner}
+              line={n}
+              at={line}
+              option={option}
+              checked={option.check !== undefined}
+              onCommit={commit}
+            />
             {holdable.length === 0 && (
               <p className="wb-help" data-testid={`option-no-holdable-${of}`}>
                 No placed prop can be picked up, so no line can require carrying

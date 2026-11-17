@@ -726,6 +726,61 @@ button.wb-tree-row[aria-pressed='true'] {
   gap: 0.4rem;
 }
 
+/* A LINE'S WIRING (rpg-project#975 B): its requirements as a list, each a
+ * row of its own fields, and the conversation it advances. */
+.wb-requirements,
+.wb-advance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.wb-requirements > span {
+  flex: 1 1 100%;
+}
+
+.wb-requirement-list {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-requirement {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+
+.wb-requirement > label,
+.wb-advance > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-requirement-states {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.wb-requirement-states > legend {
+  float: left;
+  margin-right: 0.5rem;
+}
+
 /* THE RELOCATION (R33): one piece wherever a relocation is written. */
 .wb-relocation {
   display: flex;
