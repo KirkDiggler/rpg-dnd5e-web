@@ -84,7 +84,9 @@ export function requirementFor(
   else
     switch (kind) {
       case 'fact':
-        read = { fact: '' };
+        // A fact the file mentions; free text (and the engine's refusal
+        // until one is typed) only on a site that mentions none.
+        read = { fact: names.facts[0] ?? '' };
         break;
       case 'holds':
         read = { holds: holdable[0] ?? '' };

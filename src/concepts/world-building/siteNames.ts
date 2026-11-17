@@ -39,6 +39,11 @@ export interface SiteNames {
   readonly topics: readonly string[];
   /** The site's conversations (root `interactions`). */
   readonly conversations: readonly SiteConversation[];
+  /** Every fact the file mentions by name (`fact: <id>` anywhere — taught,
+   * required, waited for), sorted: a fact is declared by mention, and a new
+   * requirement starts on one (rpg-project#975 B). A pattern is not a
+   * fact. */
+  readonly facts: readonly string[];
 }
 
 export const NO_SITE_NAMES: SiteNames = Object.freeze({
@@ -46,6 +51,7 @@ export const NO_SITE_NAMES: SiteNames = Object.freeze({
   regions: [],
   topics: [],
   conversations: [],
+  facts: [],
 });
 
 export const SiteNamesContext = createContext<SiteNames>(NO_SITE_NAMES);
@@ -80,13 +86,40 @@ function lineTopics(options: unknown, into: Set<string>): void {
   }
 }
 
+/** Every `fact: <id>` a value holds, at any depth. */
+function factsIn(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) return value.forEach((v) => factsIn(v, into));
+  if (!isRecord(value)) return;
+  for (const [key, inner] of Object.entries(value)) {
+    if (key === 'fact' && typeof inner === 'string') {
+      if (inner !== '' && !inner.startsWith('/')) into.add(inner);
+    } else factsIn(inner, into);
+  }
+}
+
 export function siteNamesOf(
   scope: Readonly<SiteScope>,
   room: {
     readonly regions?: readonly { id: string; name?: string }[];
     readonly monsterBindings?: Readonly<Record<string, unknown>>;
+    readonly propBindings?: Readonly<Record<string, unknown>>;
+    readonly doorBindings?: Readonly<Record<string, unknown>>;
   }
 ): SiteNames {
+  const facts = new Set<string>();
+  factsIn(
+    [
+      room.monsterBindings,
+      room.propBindings,
+      room.doorBindings,
+      scope.factions,
+      scope.dispositions,
+      scope.intel,
+      scope.endings,
+      scope.unread?.interactions,
+    ],
+    facts
+  );
   const topics = new Set<string>(grantedTopics(scope));
   for (const binding of Object.values(room.monsterBindings ?? {}))
     if (isRecord(binding)) lineTopics(binding.options, topics);
@@ -99,6 +132,7 @@ export function siteNamesOf(
       name: region.name || region.id,
     })),
     topics: [...topics].sort(),
+    facts: [...facts].sort(),
     conversations: interactionIds(scope).map((id) => ({
       id,
       states: recipeStates(scope, id),
