@@ -7863,3 +7863,61 @@ describe('a cells pick from Conversations writes through the studio (rpg-project
     );
   });
 });
+
+describe('a cells pick from the Build inspector returns to it (rpg-project#975 D review)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openGate1 = async (): Promise<MemoryStorage> => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="gate-1"] circle')!,
+      { button: 0 }
+    );
+    return storage;
+  };
+  const pickButton = () =>
+    screen.getByRole('button', {
+      name: 'Pick held cells on map for gate-1 posted',
+    });
+
+  it('Done writes the post’s cells and reopens the inspector', async () => {
+    const storage = await openGate1();
+    fireEvent.click(pickButton());
+    expect(screen.queryByRole('region', { name: 'Inspector' })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole('application', { name: 'Layout floor surface' }),
+      { ...at({ q: -4, r: 7 }), pointerId: 7, button: 0 }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done picking cells' }));
+    expect(
+      (
+        storage.document().draft.room.monsterBindings!['gate-1'] as {
+          posts: { posted: { at: unknown[] } };
+        }
+      ).posts.posted.at
+    ).toEqual([{ q: -3, r: 7 }]);
+    expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+  });
+
+  it('an Undo mid-pick cancels it and reopens the inspector', async () => {
+    await openGate1();
+    // An edit to undo, then the pick.
+    fireEvent.change(screen.getByLabelText('Against for gate-1 posted'), {
+      target: { value: 'leaving' },
+    });
+    fireEvent.click(pickButton());
+    expect(screen.queryByRole('region', { name: 'Inspector' })).toBeNull();
+    // A keyboard Undo: the document under the pick changes.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.queryByRole('button', { name: 'Done picking cells' })
+    ).toBeNull();
+    expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+  });
+});

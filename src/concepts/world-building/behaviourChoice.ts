@@ -138,3 +138,69 @@ export function assignBehaviour(
     behaviorState: id,
   } as RoomMonsterBinding;
 }
+
+/** The states a creature's behaviour stands in — what a post may be keyed
+ * by (rpg-project#975 D) — resolved EXACTLY as the engine resolves the body
+ * (`dungeonspec/behaviors.go` `roomBehaviorInput`, `bindBehaviorSource`):
+ *
+ * - `behaviors` written (even `[]`) are the creature's own; absent, its
+ *   faction's (`faction`, else `monsters`) — and its faction's
+ *   `behaviorState` only when the creature names none of its own;
+ * - the body is the `behaviorState` named, else the one behaviour when
+ *   there is exactly one; several and none named, the engine refuses every
+ *   post (`ambiguous`); a name that is not one of them, the same
+ *   (`unattached`);
+ * - its states are its definition's `recipe.states`, every one: the engine
+ *   (`encounter.validatePostStates`) accepts a post on any state of the
+ *   recipe. `unread` when the file does not write them.
+ */
+export function behaviourStates(
+  scope: SiteScope,
+  binding: RoomMonsterBinding | undefined
+):
+  | { kind: 'states'; behaviour: string; states: string[] }
+  | { kind: 'none' }
+  | { kind: 'ambiguous' }
+  | { kind: 'unattached'; body: string }
+  | { kind: 'unread'; behaviour: string } {
+  const raw = binding as Record<string, unknown> | undefined;
+  let uses: BehaviourBinding[] | undefined = Array.isArray(raw?.behaviors)
+    ? (raw.behaviors as BehaviourBinding[])
+    : undefined;
+  let body = typeof raw?.behaviorState === 'string' ? raw.behaviorState : '';
+  if (uses === undefined) {
+    const side =
+      typeof raw?.faction === 'string' && raw.faction !== ''
+        ? raw.faction
+        : 'monsters';
+    const faction = (scope.factions ?? []).find(
+      (entry) => entry.id === side
+    ) as Record<string, unknown> | undefined;
+    if (faction) {
+      uses = Array.isArray(faction.behaviors)
+        ? (faction.behaviors as BehaviourBinding[])
+        : undefined;
+      if (body === '' && typeof faction.behaviorState === 'string')
+        body = faction.behaviorState;
+    }
+  }
+  if (!uses || uses.length === 0) return { kind: 'none' };
+  if (body === '' && uses.length === 1 && typeof uses[0]!.id === 'string')
+    body = uses[0]!.id;
+  if (body === '') return { kind: 'ambiguous' };
+  const chosen = uses.find((entry) => entry.id === body);
+  if (!chosen) return { kind: 'unattached', body };
+  const use = typeof chosen.use === 'string' ? chosen.use : '';
+  const definition = definitionsOf(scope)[use];
+  const states =
+    definition !== null && typeof definition === 'object'
+      ? (definition as { recipe?: { states?: unknown } }).recipe?.states
+      : undefined;
+  if (states === null || typeof states !== 'object' || Array.isArray(states))
+    return { kind: 'unread', behaviour: use };
+  return {
+    kind: 'states',
+    behaviour: use,
+    states: Object.keys(states as Record<string, unknown>),
+  };
+}

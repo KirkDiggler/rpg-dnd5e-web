@@ -755,11 +755,17 @@ function StudioSurface({
     request: RoutePickRequest;
     waypoints: AnswerWaypointShape[];
     section: EncounterSectionKey;
+    /** Where the pick was asked from: an Encounter section returns there; a
+     * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
+    from: 'encounter' | 'build';
+    /** The Build view it was asked from, returned to when it ends. */
+    fromView: EncounterStudioView;
     document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
     arm: (request) => {
       const section = encounterSection;
+      const from = home === 'build' ? 'build' : 'encounter';
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
@@ -767,6 +773,8 @@ function StudioSurface({
         request,
         waypoints: [...request.route],
         section,
+        from,
+        fromView: view,
         document: session.document,
       });
     },
@@ -785,6 +793,11 @@ function StudioSurface({
       ? keyOfPath(pick.request.revealPath, session.document)
       : null;
     if (revealed) queueReveal(revealed);
+    if (pick.from === 'build') {
+      setSidebarOpen(true);
+      if (pick.fromView !== 'layout') switchView(pick.fromView);
+      return;
+    }
     changeHome('encounter');
     setEncounterSection(pick.section);
   };
@@ -816,8 +829,12 @@ function StudioSurface({
       routePick &&
       (!(home === 'build' && view === 'layout') ||
         routePick.document !== session.document)
-    )
+    ) {
       setRoutePick(null);
+      // A pick asked from Build's inspector (rpg-project#975 D) reopens it
+      // however it ends — a keyboard Undo mid-pick among them.
+      if (routePick.from === 'build') setSidebarOpen(true);
+    }
   }, [routePick, home, view, session.document]);
   const finishPickRef = useRef(finishPick);
   finishPickRef.current = finishPick;
@@ -1600,29 +1617,35 @@ function StudioSurface({
               />
             )}
             {home === 'build' && !placesView.selectedJoin && (
-              <StudioInspector
-                session={session}
-                inspection={inspection}
-                view={view}
-                layoutTool={layoutTool}
-                armedTool={armedTool}
-                onConfigure={openDefinitions}
-                onOpenFact={openFact}
-                wayOpener={wayOpener}
-                readBack={readBack}
-                onOpenJoin={placesView.selectJoin}
-                onJump={jumpTo}
-                onMoveCreature={moveSelectedCreature}
-                onFrameChange={onFrameChange}
-                onArmTool={armTool}
-                onPlacePartyStart={placePartyStart}
-                onOpenCastMember={(ref) => jumpTo({ kind: 'castMember', ref })}
-                onOpenRegion={(regionId) => {
-                  session.selectRegion(regionId);
-                }}
-                activeRegionId={activeRegionId}
-                onMakeActive={setActiveChoice}
-              />
+              // A post's cells are picked on the map from here
+              // (rpg-project#975 D).
+              <RoutePickContext.Provider value={routePicking}>
+                <StudioInspector
+                  session={session}
+                  inspection={inspection}
+                  view={view}
+                  layoutTool={layoutTool}
+                  armedTool={armedTool}
+                  onConfigure={openDefinitions}
+                  onOpenFact={openFact}
+                  wayOpener={wayOpener}
+                  readBack={readBack}
+                  onOpenJoin={placesView.selectJoin}
+                  onJump={jumpTo}
+                  onMoveCreature={moveSelectedCreature}
+                  onFrameChange={onFrameChange}
+                  onArmTool={armTool}
+                  onPlacePartyStart={placePartyStart}
+                  onOpenCastMember={(ref) =>
+                    jumpTo({ kind: 'castMember', ref })
+                  }
+                  onOpenRegion={(regionId) => {
+                    session.selectRegion(regionId);
+                  }}
+                  activeRegionId={activeRegionId}
+                  onMakeActive={setActiveChoice}
+                />
+              </RoutePickContext.Provider>
             )}
           </StudioSidebar>
         </div>

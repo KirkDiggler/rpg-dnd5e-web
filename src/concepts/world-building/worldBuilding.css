@@ -1750,3 +1750,96 @@ button.wb-tree-row[aria-pressed='true'] {
   width: 100%;
   padding-top: 0.35rem;
 }
+
+/* A CREATURE'S POSTS (rpg-project#975 D): one card per post, laid out
+ * like a conversation's outcome. A header line — "Post in `alert`" as the
+ * title, Remove at the far right — then the post's fields, each label above
+ * its control: Door, Against, Held from (the cell count and Pick on map on
+ * one line), and the pass's own fields on a full-width line. */
+.wb-state-post {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+}
+
+.wb-post-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.wb-post-head > h5 {
+  margin: 0;
+}
+
+.wb-post-head > button {
+  margin-left: auto;
+}
+
+.wb-post-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, max-content));
+  align-items: start;
+  gap: 0.6rem 1rem;
+}
+
+.wb-post-field label,
+.wb-post-held {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.wb-post-field select {
+  width: auto;
+  max-width: 100%;
+}
+
+.wb-post-label {
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+}
+
+.wb-post-held-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wb-post-pass {
+  grid-column: 1 / -1;
+}
+
+.wb-post-pass > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem 1rem;
+}
+
+.wb-post-pass label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.wb-post-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.wb-post-add > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}

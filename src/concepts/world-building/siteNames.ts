@@ -39,6 +39,9 @@ export interface SiteNames {
   readonly topics: readonly string[];
   /** The site's conversations (root `interactions`). */
   readonly conversations: readonly SiteConversation[];
+  /** The site's doors — every wall opening's door — by id, in wall order:
+   * what a post may hold (rpg-project#975 D). */
+  readonly doors: readonly string[];
   /** Every fact the file mentions by name (`fact: <id>` anywhere — taught,
    * required, waited for), sorted: a fact is declared by mention, and a new
    * requirement starts on one (rpg-project#975 B). A pattern is not a
@@ -51,6 +54,7 @@ export const NO_SITE_NAMES: SiteNames = Object.freeze({
   regions: [],
   topics: [],
   conversations: [],
+  doors: [],
   facts: [],
 });
 
@@ -102,6 +106,9 @@ export function siteNamesOf(
   room: {
     readonly regions?: readonly { id: string; name?: string }[];
     readonly monsterBindings?: Readonly<Record<string, unknown>>;
+    readonly walls?: readonly {
+      readonly openings: readonly { readonly door?: { readonly id: string } }[];
+    }[];
     readonly propBindings?: Readonly<Record<string, unknown>>;
     readonly doorBindings?: Readonly<Record<string, unknown>>;
   }
@@ -132,6 +139,11 @@ export function siteNamesOf(
       name: region.name || region.id,
     })),
     topics: [...topics].sort(),
+    doors: (room.walls ?? []).flatMap((wall) =>
+      wall.openings.flatMap((opening) =>
+        opening.door ? [opening.door.id] : []
+      )
+    ),
     facts: [...facts].sort(),
     conversations: interactionIds(scope).map((id) => ({
       id,
