@@ -98,7 +98,7 @@ describe('the outcomes form', () => {
     const commit = renderOutcomes();
     fireEvent.click(
       screen.getByLabelText(
-        'Witnessing carriers hold it too for front-gate admitted 1'
+        'Also held by the conversation’s carriers who witness it, for front-gate admitted 1'
       )
     );
     const unheard: Partial<typeof RECOGNITION> = { ...RECOGNITION };

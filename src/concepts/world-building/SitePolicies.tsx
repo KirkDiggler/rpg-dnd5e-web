@@ -419,9 +419,6 @@ function baseForPicker(
   };
 }
 
-/** One condition of the list. Row one's controls keep the names a single
- * `when` always had (`When for time entry`, `Within for time entry`), so a
- * table with one condition reads exactly as it did; later rows are numbered. */
 /** A heard condition with a new sound: a loudness belongs to a voice only,
  * so another sound drops it (rpg-project#975 A). */
 function withSound(
@@ -437,6 +434,9 @@ function withSound(
     : { kind: 'heard', sound, within: base.within };
 }
 
+/** One condition of the list. Row one's controls keep the names a single
+ * `when` always had (`When for time entry`, `Within for time entry`), so a
+ * table with one condition reads exactly as it did; later rows are numbered. */
 function WhenConditionRow({
   trigger,
   index,
@@ -654,7 +654,7 @@ function WhenConditionRow({
               <span>at least</span>
               <LoudnessSelect
                 label={`Heard loudness${n} for ${trigger} entry`}
-                anyLabel="Any"
+                heard
                 value={
                   typeof base.carried?.loudness === 'string'
                     ? base.carried.loudness

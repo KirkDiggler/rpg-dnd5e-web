@@ -42,6 +42,11 @@ export interface SiteNames {
   /** The site's doors — every wall opening's door — by id, in wall order:
    * what a post may hold (rpg-project#975 D). */
   readonly doors: readonly string[];
+  /** Every fact the file mentions by name (`fact: <id>` anywhere — taught,
+   * required, waited for), sorted: a fact is declared by mention, and a new
+   * requirement starts on one (rpg-project#975 B). A pattern is not a
+   * fact. */
+  readonly facts: readonly string[];
 }
 
 export const NO_SITE_NAMES: SiteNames = Object.freeze({
@@ -50,6 +55,7 @@ export const NO_SITE_NAMES: SiteNames = Object.freeze({
   topics: [],
   conversations: [],
   doors: [],
+  facts: [],
 });
 
 export const SiteNamesContext = createContext<SiteNames>(NO_SITE_NAMES);
@@ -84,6 +90,17 @@ function lineTopics(options: unknown, into: Set<string>): void {
   }
 }
 
+/** Every `fact: <id>` a value holds, at any depth. */
+function factsIn(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) return value.forEach((v) => factsIn(v, into));
+  if (!isRecord(value)) return;
+  for (const [key, inner] of Object.entries(value)) {
+    if (key === 'fact' && typeof inner === 'string') {
+      if (inner !== '' && !inner.startsWith('/')) into.add(inner);
+    } else factsIn(inner, into);
+  }
+}
+
 export function siteNamesOf(
   scope: Readonly<SiteScope>,
   room: {
@@ -92,8 +109,24 @@ export function siteNamesOf(
     readonly walls?: readonly {
       readonly openings: readonly { readonly door?: { readonly id: string } }[];
     }[];
+    readonly propBindings?: Readonly<Record<string, unknown>>;
+    readonly doorBindings?: Readonly<Record<string, unknown>>;
   }
 ): SiteNames {
+  const facts = new Set<string>();
+  factsIn(
+    [
+      room.monsterBindings,
+      room.propBindings,
+      room.doorBindings,
+      scope.factions,
+      scope.dispositions,
+      scope.intel,
+      scope.endings,
+      scope.unread?.interactions,
+    ],
+    facts
+  );
   const topics = new Set<string>(grantedTopics(scope));
   for (const binding of Object.values(room.monsterBindings ?? {}))
     if (isRecord(binding)) lineTopics(binding.options, topics);
@@ -111,6 +144,7 @@ export function siteNamesOf(
         opening.door ? [opening.door.id] : []
       )
     ),
+    facts: [...facts].sort(),
     conversations: interactionIds(scope).map((id) => ({
       id,
       states: recipeStates(scope, id),

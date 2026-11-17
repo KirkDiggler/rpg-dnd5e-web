@@ -62,6 +62,9 @@ export function normalizeOption(option: OptionShape): OptionShape {
   if (option.say !== undefined) next.say = option.say;
   if (option.do !== undefined) next.do = option.do;
   if (option.seen !== undefined) next.seen = option.seen;
+  // A line's loudness sits with its words, where the castle writes it
+  // (rpg-project#975 A): kept here so a new one is not carried to the end.
+  if (option.loudness !== undefined) next.loudness = option.loudness;
   if (option.check !== undefined)
     next.check = option.check.map((approach) => {
       const row: AnswerApproachShape = {

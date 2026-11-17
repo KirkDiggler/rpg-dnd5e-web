@@ -246,8 +246,9 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
       'party_in_sight'
     );
     expect(
-      field<HTMLInputElement>(`Witnessing carriers hold it too for ${at}`)
-        .checked
+      field<HTMLInputElement>(
+        `Also held by the conversation’s carriers who witness it, for ${at}`
+      ).checked
     ).toBe(true);
   });
 

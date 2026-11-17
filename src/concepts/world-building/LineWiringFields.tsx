@@ -47,6 +47,7 @@ function RequirementFields({
 }): React.JSX.Element | null {
   const names = useContext(SiteNamesContext);
   const topicsId = useId();
+  const factsId = useId();
   const read = requiresRead(requirement);
   const label = (what: string): string =>
     `Line ${of.line} requires ${what}${of.k} for ${of.owner}`;
@@ -56,12 +57,18 @@ function RequirementFields({
         <span>Fact</span>
         <input
           aria-label={label('fact')}
+          list={factsId}
           placeholder="a fact id"
           value={read.fact}
           onChange={(event) =>
             onChange(withRead(requirement, { fact: event.target.value }))
           }
         />
+        <datalist id={factsId}>
+          {names.facts.map((fact) => (
+            <option key={fact} value={fact} />
+          ))}
+        </datalist>
       </label>
     );
   if ('holds' in read)
@@ -238,9 +245,13 @@ export function RequiresFields({
                       key={option.value}
                       value={option.value}
                       disabled={
-                        option.value.endsWith('holds') &&
-                        holdable.length === 0 &&
-                        !choice.endsWith('holds')
+                        (option.value.endsWith('holds') &&
+                          holdable.length === 0 &&
+                          !choice.endsWith('holds')) ||
+                        // A conversation requirement needs a conversation.
+                        (option.value.endsWith('interaction') &&
+                          names.conversations.length === 0 &&
+                          !choice.endsWith('interaction'))
                       }
                     >
                       {option.label}
