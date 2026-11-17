@@ -4,7 +4,7 @@
  *
  * The engine says a routine's shape as connections on the statements it
  * already makes (rpg-project#994). State ids are local to the routine; the
- * statement's subject scopes them.
+ * routine named in the statement's path scopes them, never its subject.
  *
  * | statement                              | connection                     |
  * |----------------------------------------|--------------------------------|
@@ -98,10 +98,11 @@ export interface MachineState {
   holds: MachineHold[];
 }
 
-/** Steps that move, gathered: the same beat, the same guard reads and the
- * same target from one or more states. Drawn once. */
+/** Steps that move, gathered: the same beat, the same target, the same
+ * guard reads and the same tables picked, from one or more states. Drawn
+ * once. */
 export interface MachineEdge {
-  /** Stable within the machine: beat, target and guard reads. */
+  /** Stable within the machine: beat, target, guard reads and picks. */
   id: string;
   from: string[];
   to: string;
@@ -197,7 +198,10 @@ export function machineOf(
 
   // The creatures that run this routine, as their own `creature.routine`
   // statements say (`{routine, id, uses}`); each one's posts and blocking
-  // hang on the states their `while` names.
+  // hang on the states their `while` names. A `while` names a state id
+  // and no routine, so a creature running two routines with a same-named
+  // state would show it in both; no castle creature does (an engine
+  // follow-up can say the routine).
   const runners = new Set(
     groups.flatMap((g) =>
       g.statements
@@ -239,13 +243,14 @@ const wakesKey = (step: Pick<MachineStep, 'wakesOn'>): string =>
     .sort()
     .join(',');
 
-/** Moving steps gathered by beat, target and guard reads, in the order
- * their first step is said. */
+/** Moving steps gathered by beat, target, guard reads and picks, in the
+ * order their first step is said. Any part that differs keeps two steps
+ * apart. */
 function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
   const edges = new Map<string, MachineEdge>();
   for (const step of steps) {
     if (step.to === null) continue;
-    const id = `${step.beat}>${step.to}>${wakesKey(step)}`;
+    const id = `${step.beat}>${step.to}>${wakesKey(step)}>${step.picks.join(',')}`;
     const edge = edges.get(id);
     if (edge) {
       if (!edge.from.includes(step.from)) edge.from.push(step.from);

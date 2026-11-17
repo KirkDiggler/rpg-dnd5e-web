@@ -14,9 +14,13 @@
  * own lane: up or down from each state it leaves to the lane, along it, and
  * down or up into its target. A step several states share leaves them by
  * one dashed bracket on its lane, drawn once. A vertical stroke only ever
- * runs from a box into the channel beside its own row, so no stroke
- * crosses a box, and each lane holds one label, so no two labels meet;
- * `overlapsOf` checks both.
+ * runs from a box into the channel beside its own row, so by construction
+ * no stroke crosses a box. Within a channel no two arrows' verticals share
+ * an x, so two arrows never read as one line, and a lane's words go where
+ * no other arrow's stroke crosses them. `overlapsOf` checks boxes and words
+ * against each other; `strokeFaultsOf` checks strokes: no two arrows'
+ * strokes on one line over a shared stretch, and no arrow's words crossed
+ * by another arrow's stroke.
  *
  * Text is measured by an estimate per character, not the browser: what
  * does not fit a box or a gap is cut with an ellipsis, and the full text is
@@ -52,8 +56,8 @@ const CHANNEL_PAD = 12;
 const CHANNEL_EMPTY = 20;
 const LABEL_ABOVE = 5;
 const CAPTION_BELOW = 14;
-/** How far a lane's label may shift to clear a crossing stroke. */
-const NEAR = 48;
+/** The least distance between two arrows' vertical strokes in a channel. */
+const SEPARATION = 12;
 /** Estimated advance per character: a little wide, so an estimate never
  * undercuts the text it measures. */
 const CHAR = { line: 7, title: 8.8, pill: 6.4, caption: 6.4 } as const;
@@ -114,6 +118,16 @@ export interface LaidPiece {
   label: LaidText;
   /** Under a bracket: the states it leaves. */
   caption: LaidText | null;
+  /** Every stroke above as an axis-aligned segment, for the checks. */
+  segments: Segment[];
+}
+
+/** One straight stroke, horizontal or vertical. */
+export interface Segment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 export interface MachineLayout {
@@ -418,6 +432,42 @@ export function layoutMachine(view: MachineView): MachineLayout {
       )
     );
   }
+  // EACH ARROW ITS OWN VERTICALS. Within one channel, no two arrows'
+  // vertical strokes share an x (they would read as one line from one box
+  // to another): a clash moves the later one along its box's side to the
+  // nearest free x, in steps of SEPARATION.
+  for (let c = 0; c < channels; c++) {
+    const used: { x: number; piece: number }[] = [];
+    const inChannel = [...attachX.keys()]
+      .map((full) => {
+        const parts = full.split('|');
+        const piece = Number(parts.pop());
+        const side = parts.pop()!;
+        return { full, id: parts.join('|'), side, piece };
+      })
+      .filter(({ piece }) => pieces[piece]!.channel === c)
+      .sort(
+        (a, b) =>
+          attachX.get(a.full)! - attachX.get(b.full)! || a.piece - b.piece
+      );
+    for (const at of inChannel) {
+      const r = rect.get(at.id)!;
+      const want = attachX.get(at.full)!;
+      const free = (x: number): boolean =>
+        used.every(
+          (u) => u.piece === at.piece || Math.abs(u.x - x) >= SEPARATION
+        );
+      let x = want;
+      for (let step = 1; !free(x) && step < 64; step++) {
+        const offset = Math.ceil(step / 2) * SEPARATION * (step % 2 ? 1 : -1);
+        const tryX = want + offset;
+        if (tryX < r.x + PAD / 2 || tryX > r.x + r.w - PAD / 2) continue;
+        x = tryX;
+      }
+      attachX.set(at.full, x);
+      used.push({ x, piece: at.piece });
+    }
+  }
   const pointOf = (
     id: string,
     channel: number,
@@ -466,6 +516,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
         strokes: '',
         bracket: null,
         arrow: `M ${x1} ${ly} H ${x2 + (forward ? -2 : 2)}`,
+        segments: [{ x1, y1: ly, x2, y2: ly }],
         label: label(
           piece.full,
           piece.short,
@@ -477,36 +528,14 @@ export function layoutMachine(view: MachineView): MachineLayout {
         caption: null,
       });
     });
-  // Lanes. A label or caption on a lane goes where no stroke of its
-  // channel crosses it, as near where it wants to be as there is room.
-  const crossings = lanes.map((list, c) =>
-    list.flatMap((piece) => {
-      const index = pieces.indexOf(piece);
-      return [...piece.from, piece.to].map((id) => pointOf(id, c, index).x);
-    })
-  );
-  const clearSpot = (c: number, w: number, wantLeft: number): number => {
-    const xs = [
-      MARGIN,
-      ...crossings[c]!.filter((x) => x > MARGIN && x < width - MARGIN),
-      width - MARGIN,
-    ].sort((a, b) => a - b);
-    let best: number | null = null;
-    for (let i = 0; i + 1 < xs.length; i++) {
-      const lo = xs[i]! + 4;
-      const hi = xs[i + 1]! - 4 - w;
-      if (hi < lo) continue;
-      const at = Math.min(Math.max(wantLeft, lo), hi);
-      if (best === null || Math.abs(at - wantLeft) < Math.abs(best - wantLeft))
-        best = at;
-    }
-    // Never far from its own strokes: past a short shift, it stays where
-    // it wants to be and its halo keeps it readable over a crossing.
-    const near = best !== null && Math.abs(best - wantLeft) <= NEAR;
-    return Math.round(
-      near ? best! : Math.min(Math.max(wantLeft, MARGIN), width - MARGIN - w)
-    );
-  };
+  // Lanes: the strokes first, every lane's, then the words.
+  const placed: {
+    laid: LaidPiece;
+    lo: number;
+    hi: number;
+    endX: number;
+    laneY: number;
+  }[] = [];
   lanes.forEach((list, c) =>
     list.forEach((piece, lane) => {
       const index = pieces.indexOf(piece);
@@ -520,40 +549,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
       const runFrom = end.x < lo ? lo : end.x > hi ? hi : null;
       const run = runFrom === null ? '' : `M ${runFrom} ${laneY} H ${end.x}`;
       const into = end.y > laneY ? end.y - 2 : end.y + 2;
-      // The label sits on the lane over its run, or beside the drop.
-      const spanLo = Math.min(lo, end.x);
-      const spanHi = Math.max(hi, end.x);
-      const room = Math.max(width - 2 * MARGIN - 8, 0);
-      const chosen = label(
-        piece.full,
-        piece.short,
-        room,
-        0,
-        laneY - LABEL_ABOVE,
-        'start'
-      );
-      const preferred =
-        spanHi - spanLo >= chosen.w + 12
-          ? (spanLo + spanHi) / 2 - chosen.w / 2
-          : end.x + 6;
-      chosen.x = clearSpot(c, chosen.w, preferred);
-      const caption =
-        piece.from.length > 1
-          ? (() => {
-              const full = `from ${piece.from.join(', ')}`;
-              const text = fit(full, width - MARGIN - lo, CHAR.caption);
-              const w = estimate(text, CHAR.caption);
-              return {
-                text,
-                full,
-                x: clearSpot(c, w, lo + 4),
-                y: laneY + CAPTION_BELOW,
-                w,
-                anchor: 'start' as const,
-              };
-            })()
-          : null;
-      laidPieces.push({
+      const laid: LaidPiece = {
         id: piece.id,
         edge: piece.edge,
         from: piece.from,
@@ -562,11 +558,86 @@ export function layoutMachine(view: MachineView): MachineLayout {
         strokes: [...leads, run].filter(Boolean).join(' '),
         bracket: piece.from.length > 1 ? `M ${lo} ${laneY} H ${hi}` : null,
         arrow: `M ${end.x} ${laneY} V ${into}`,
-        label: chosen,
-        caption,
-      });
+        segments: [
+          ...starts.map((p) => ({ x1: p.x, y1: p.y, x2: p.x, y2: laneY })),
+          ...(piece.from.length > 1
+            ? [{ x1: lo, y1: laneY, x2: hi, y2: laneY }]
+            : []),
+          ...(runFrom === null
+            ? []
+            : [{ x1: runFrom, y1: laneY, x2: end.x, y2: laneY }]),
+          { x1: end.x, y1: laneY, x2: end.x, y2: end.y },
+        ],
+        label: label(
+          piece.full,
+          piece.short,
+          Math.max(width - 2 * MARGIN - 8, 0),
+          0,
+          laneY - LABEL_ABOVE,
+          'start'
+        ),
+        caption:
+          piece.from.length > 1
+            ? (() => {
+                const full = `from ${piece.from.join(', ')}`;
+                return {
+                  text: full,
+                  full,
+                  x: 0,
+                  y: laneY + CAPTION_BELOW,
+                  w: estimate(full, CHAR.caption),
+                  anchor: 'start' as const,
+                };
+              })()
+            : null,
+      };
+      laidPieces.push(laid);
+      placed.push({ laid, lo, hi, endX: end.x, laneY });
     })
   );
+  // THE WORDS ON A LANE go where no other arrow's stroke crosses them: the
+  // nearest clear place to where they want to be, along the whole lane;
+  // with none, past the rightmost stroke, and the drawing widens.
+  const clearOf = (own: LaidPiece, text: LaidText, size: number): boolean =>
+    laidPieces.every(
+      (other) =>
+        other === own ||
+        other.segments.every(
+          (segment) => !crosses(segment, textRect(text, size))
+        )
+    );
+  const settle = (
+    own: LaidPiece,
+    text: LaidText,
+    size: number,
+    want: number
+  ): void => {
+    const hi = Math.max(MARGIN, width - MARGIN - text.w);
+    const at = (x: number): boolean => {
+      text.x = x;
+      return clearOf(own, text, size);
+    };
+    const start = Math.round(Math.min(Math.max(want, MARGIN), hi));
+    for (let d = 0; d <= Math.max(start - MARGIN, hi - start); d += 2) {
+      if (start + d <= hi && at(start + d)) return;
+      if (start - d >= MARGIN && at(start - d)) return;
+    }
+    const right = Math.max(
+      ...laidPieces.flatMap((p) => p.segments.flatMap((sg) => [sg.x1, sg.x2]))
+    );
+    text.x = Math.round(right + 6);
+    width = Math.max(width, text.x + text.w + MARGIN);
+  };
+  for (const { laid, lo, hi, endX } of placed) {
+    const spanLo = Math.min(lo, endX);
+    const spanHi = Math.max(hi, endX);
+    const want =
+      spanHi - spanLo >= laid.label.w + 12
+        ? (spanLo + spanHi) / 2 - laid.label.w / 2
+        : endX + 6;
+    settle(laid, laid.label, 12, want);
+    if (laid.caption) settle(laid, laid.caption, 11, lo + 4);
+  }
   // In the order the engine says the steps.
   laidPieces.sort(
     (a, b) =>
@@ -718,3 +789,80 @@ export function pieceName(piece: LaidPiece): string {
       : piece.from[0];
   return `Step from ${from} to ${piece.to}, ${piece.label.full}`;
 }
+
+const span = (a: number, b: number): [number, number] =>
+  a < b ? [a, b] : [b, a];
+
+/** Whether two segments lie on one line and share a stretch of it. */
+function collinearOverlap(a: Segment, b: Segment): boolean {
+  const vertical = (s: Segment): boolean => s.x1 === s.x2;
+  if (vertical(a) && vertical(b) && a.x1 === b.x1) {
+    const [p, q] = span(a.y1, a.y2);
+    const [r, t] = span(b.y1, b.y2);
+    return Math.min(q, t) - Math.max(p, r) > 0;
+  }
+  if (!vertical(a) && !vertical(b) && a.y1 === b.y1) {
+    const [p, q] = span(a.x1, a.x2);
+    const [r, t] = span(b.x1, b.x2);
+    return Math.min(q, t) - Math.max(p, r) > 0;
+  }
+  return false;
+}
+
+/** Whether a segment passes through a rectangle's inside. */
+function crosses(segment: Segment, r: Rect): boolean {
+  const [x1, x2] = span(segment.x1, segment.x2);
+  const [y1, y2] = span(segment.y1, segment.y2);
+  return (
+    x1 < r.x + r.w &&
+    r.x < x2 + (x1 === x2 ? 0.001 : 0) &&
+    y1 < r.y + r.h &&
+    r.y < y2 + (y1 === y2 ? 0.001 : 0)
+  );
+}
+
+/** Every stroke fault: two strokes of different arrows on one line over a
+ * shared stretch (they would read as one line), and an arrow's label or
+ * bracket caption crossed by another arrow's stroke. Empty for a sound
+ * layout. */
+export function strokeFaultsOf(layout: MachineLayout): string[] {
+  const out: string[] = [];
+  const { pieces } = layout;
+  for (let i = 0; i < pieces.length; i++)
+    for (let j = i + 1; j < pieces.length; j++)
+      for (const a of pieces[i]!.segments)
+        for (const b of pieces[j]!.segments)
+          if (collinearOverlap(a, b))
+            out.push(
+              `${pieces[i]!.id} and ${pieces[j]!.id} share a line at ${JSON.stringify(a)}`
+            );
+  for (const own of pieces) {
+    const texts = [
+      { name: 'label', rect: textRect(own.label) },
+      ...(own.caption
+        ? [{ name: 'caption', rect: textRect(own.caption, 11) }]
+        : []),
+    ];
+    for (const other of pieces) {
+      if (other === own) continue;
+      for (const text of texts)
+        for (const segment of other.segments)
+          if (crosses(segment, text.rect))
+            out.push(`${own.id} ${text.name} is crossed by ${other.id}`);
+    }
+  }
+  return out;
+}
+
+/** Where a jump lands for a mark on the drawing (the studio's reveal
+ * contract, rpg-project#983): the box or arrow itself. */
+export const machineMarkKey = (routine: string, mark: string) => ({
+  kind: 'machine-mark',
+  id: `${routine}|${mark}`,
+});
+
+/** Where a jump lands for the marked sentences in the detail pane. */
+export const machineMarkedKey = (routine: string) => ({
+  kind: 'machine-marked',
+  id: routine,
+});

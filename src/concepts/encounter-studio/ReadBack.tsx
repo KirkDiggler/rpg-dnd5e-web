@@ -15,9 +15,11 @@ import {
 } from './engineReadBack';
 import { placeName } from './placeName';
 import { targetOfPath, type RefusalTarget } from './refusalJump';
+import { RevealDiv } from './RevealDiv';
 import { keyOfPath } from './revealKey';
 import type { StudioReadBack } from './studioPublishing';
 import { StudioSection } from './StudioSection';
+import type { RevealKey } from './useReveal';
 
 export interface ReadBackProps {
   document: Readonly<RoomDraftDocument>;
@@ -48,6 +50,9 @@ export interface ReadBackDrawing {
   canMark(statement: ReadBackStatement): boolean;
   /** Mark the statement's box or arrow on the drawing. */
   onMark(statement: ReadBackStatement): void;
+  /** The key the marked sentences register under, so marking from the
+   * drawing lands on them (the reveal contract). */
+  markedKey: RevealKey;
 }
 
 export const STALE_READ_BACK_SENTENCE =
@@ -164,7 +169,8 @@ export function ReadBack({
           </p>
         )}
         {drawing && drawing.marked.length > 0 && (
-          <div
+          <RevealDiv
+            revealKey={drawing.markedKey}
             role="group"
             aria-label="Marked on the drawing"
             className="es-readback-marked"
@@ -182,7 +188,7 @@ export function ReadBack({
                 />
               ))}
             </ol>
-          </div>
+          </RevealDiv>
         )}
         {foldedView ? (
           <>

@@ -20,6 +20,7 @@ import {
 } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
+import { RevealProvider } from './reveal';
 import { StudioBehaviours } from './StudioBehaviours';
 import type { StudioReadBack } from './studioPublishing';
 
@@ -293,6 +294,44 @@ describe('StudioBehaviours', () => {
           .getAttribute('aria-pressed')
       ).toBe('true');
       expect(posted.getAttribute('aria-pressed')).toBe('false');
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
+    });
+
+    it('a mark is a jump: it lands on the marked sentences, and a sentence lands on its mark', () => {
+      // jsdom has no layout: the landing's scroll has nothing to move.
+      HTMLElement.prototype.scrollIntoView ??= function () {};
+      render(
+        <RevealProvider>
+          <StudioBehaviours
+            document={castle}
+            readBack={machines()}
+            focus="gate-1-policy"
+            onSelect={vi.fn()}
+          />
+        </RevealProvider>
+      );
+      // From the drawing: the marked sentences come into view, focused.
+      fireEvent.click(
+        within(drawing()).getByRole('button', {
+          name: 'Step from posted to alert, on heard',
+        })
+      );
+      const group = marked()!;
+      expect(group.dataset.revealed).toBe('true');
+      expect(document.activeElement).toBe(group);
+      // From a sentence: its box comes into view, focused.
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Full' }));
+      fireEvent.click(
+        within(panel()).getByRole('button', {
+          name: /^Mark on the drawing: .*in `cowed`$/,
+        })
+      );
+      const cowed = within(drawing()).getByRole('button', {
+        name: 'State cowed',
+      });
+      expect(cowed.getAttribute('aria-pressed')).toBe('true');
+      expect(cowed.getAttribute('data-revealed')).toBe('true');
+      expect(document.activeElement).toBe(cowed);
       localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
     });
 

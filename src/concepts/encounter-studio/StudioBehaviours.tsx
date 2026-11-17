@@ -30,6 +30,8 @@ import { MachineDrawing } from './MachineDrawing';
 import {
   boxName,
   layoutMachine,
+  machineMarkedKey,
+  machineMarkKey,
   markOfStatement,
   pieceName,
   statementsOfMark,
@@ -39,6 +41,7 @@ import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
+import { useReveal } from './useReveal';
 
 const ROUTINE = 'routine';
 const RUNS = 'runs';
@@ -78,8 +81,17 @@ export function StudioBehaviours({
     machine && chosenMark && chosenMark.routine === focus
       ? chosenMark.id
       : null;
-  const markIt = (id: string): void => {
-    if (focus) setChosenMark({ routine: focus, id });
+  const reveal = useReveal();
+  // A mark is a jump: marking on the drawing lands on its sentences in the
+  // detail pane, and a sentence's "On the drawing" lands on its box or
+  // arrow, each through the studio's one reveal contract (it scrolls the
+  // target into view within its own pane and moves focus to it).
+  const markIt = (id: string, from: 'drawing' | 'sentence'): void => {
+    if (!focus) return;
+    setChosenMark({ routine: focus, id });
+    reveal(
+      from === 'drawing' ? machineMarkedKey(focus) : machineMarkKey(focus, id)
+    );
   };
   const markedBox = machine?.layout.boxes.find((box) => box.id === mark);
   const markedPiece = machine?.layout.pieces.find((piece) => piece.id === mark);
@@ -118,7 +130,7 @@ export function StudioBehaviours({
           routine={focus}
           layout={machine.layout}
           selected={mark}
-          onSelect={markIt}
+          onSelect={(id) => markIt(id, 'drawing')}
         />
       )}
       <StudioListDetail
@@ -197,9 +209,10 @@ export function StudioBehaviours({
                           ? statementsOfMark(machine.layout, mark)
                           : [],
                         canMark: (statement) => machine.markOf.has(statement),
+                        markedKey: machineMarkedKey(focus),
                         onMark: (statement) => {
                           const id = machine.markOf.get(statement);
-                          if (id) markIt(id);
+                          if (id) markIt(id, 'sentence');
                         },
                       }
                     : undefined

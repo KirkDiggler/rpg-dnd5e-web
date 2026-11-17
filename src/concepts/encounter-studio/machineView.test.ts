@@ -8,7 +8,7 @@ import {
   castleMachinesReadBack,
   castleRoutinesReadBack,
 } from './fixtures/engineReadBack';
-import { layoutMachine, overlapsOf } from './machineLayout';
+import { layoutMachine, overlapsOf, strokeFaultsOf } from './machineLayout';
 import { beatLabel, machineOf, stayLabel } from './machineView';
 
 const gate = () => {
@@ -113,6 +113,56 @@ describe('machineOf', () => {
     const heard = gate().edges.find((edge) => edge.beat === 'heard')!;
     expect(heard.from).toEqual(['posted']);
     expect(heard.to).toBe('alert');
+  });
+
+  it.each([
+    [
+      'its guard reads',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.find((x) => x.role === 'wakes-on')!.id = 'gate-cowed';
+      },
+    ],
+    [
+      'the tables it picks',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.push({ kind: 'table', id: 'post', role: 'picks' });
+      },
+    ],
+    [
+      'its beat',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.find((x) => x.role === 'on')!.id = 'topic';
+      },
+    ],
+    [
+      'its target',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.find((x) => x.role === 'to')!.id = 'challenged';
+      },
+    ],
+  ])('a shared step that differs only in %s is not merged', (_, change) => {
+    const readBack = castleMachinesReadBack();
+    const wakeAt = (state: string) =>
+      readBack.sections
+        .flatMap((s) => s.groups)
+        .flatMap((g) => g.statements)
+        .find(
+          (st) =>
+            st.path ===
+            `behaviorDefinitions.gate-1-policy.recipe.states.${state}.transitions[0]`
+        )!;
+    // posted and alert both move to turned on learning guards-turned.
+    change(
+      wakeAt('alert').connects as { kind: string; id: string; role: string }[]
+    );
+    const view = machineOf(readBack, 'gate-1-policy')!;
+    const edgeOf = (state: string) =>
+      view.edges.find((edge) =>
+        edge.steps.some((step) => step.statement === wakeAt(state))
+      )!;
+    expect(edgeOf('posted').from).toContain('posted');
+    expect(edgeOf('posted').from).not.toContain('alert');
+    expect(edgeOf('alert').from).toEqual(['alert']);
   });
 
   it('posts and blocking hang on the states their `while` names', () => {
@@ -227,6 +277,7 @@ describe('layoutMachine', () => {
       expect(view, id).not.toBeNull();
       const layout = layoutMachine(view!);
       expect(overlapsOf(layout), id).toEqual([]);
+      expect(strokeFaultsOf(layout), id).toEqual([]);
       expect(layout.width, id).toBeLessThanOrEqual(1100);
       // Every box is drawn, and every edge at least once.
       expect(layout.boxes.map((b) => b.state.id).sort(), id).toEqual(

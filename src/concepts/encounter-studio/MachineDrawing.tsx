@@ -15,11 +15,13 @@ import type {
 } from 'react';
 import {
   boxName,
+  machineMarkKey,
   pieceName,
   type LaidBox,
   type LaidPiece,
   type MachineLayout,
 } from './machineLayout';
+import { useRevealable } from './useReveal';
 
 export function MachineDrawing({
   routine,
@@ -76,6 +78,7 @@ export function MachineDrawing({
         {layout.pieces.map((piece) => (
           <Piece
             key={piece.id}
+            routine={routine}
             piece={piece}
             marker={marker}
             selected={selected === piece.id}
@@ -85,6 +88,7 @@ export function MachineDrawing({
         {layout.boxes.map((box) => (
           <Box
             key={box.id}
+            routine={routine}
             box={box}
             selected={selected === box.id}
             choose={choose(box.id)}
@@ -101,17 +105,23 @@ type Choose = {
 };
 
 function Box({
+  routine,
   box,
   selected,
   choose,
 }: {
+  routine: string;
   box: LaidBox;
   selected: boolean;
   choose: Choose;
 }): React.JSX.Element {
   const { rect } = box;
+  // A jump from a sentence lands here: an SVG mark takes focus and scrolls
+  // like any other revealed item.
+  const reveal = useRevealable(machineMarkKey(routine, box.id));
   return (
     <g
+      ref={(element) => reveal(element as unknown as HTMLElement | null)}
       className="es-machine-state"
       data-state={box.state.id}
       data-mark={box.id}
@@ -177,11 +187,13 @@ function Box({
 }
 
 function Piece({
+  routine,
   piece,
   marker,
   selected,
   choose,
 }: {
+  routine: string;
   piece: LaidPiece;
   marker: string;
   selected: boolean;
@@ -190,8 +202,10 @@ function Piece({
   const all = [piece.strokes, piece.bracket ?? '', piece.arrow]
     .filter(Boolean)
     .join(' ');
+  const reveal = useRevealable(machineMarkKey(routine, piece.id));
   return (
     <g
+      ref={(element) => reveal(element as unknown as HTMLElement | null)}
       className="es-machine-step"
       data-mark={piece.id}
       data-from={piece.from.join(' ')}
