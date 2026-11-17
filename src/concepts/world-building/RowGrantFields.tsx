@@ -40,18 +40,23 @@ export function LoudnessSelect({
   label,
   value,
   onChange,
-  anyLabel,
+  heard = false,
 }: {
   /** The select's accessible name. */
   label: string;
   value: string | undefined;
   onChange(word: string): void;
-  /** What the empty choice reads: "Speak" for a line, "Any" for a heard
-   * voice (no loudness asked). */
-  anyLabel?: string;
+  /** A heard voice's "at least" (`when.heard.loudness`): the empty choice
+   * is Any (no loudness asked), Speak is a word that means something (a
+   * voice, not a whisper), and Whisper — the quietest, so the same as Any —
+   * is offered only when the file writes it. On a line or a row the empty
+   * choice is Speak, the word written as nothing. */
+  heard?: boolean;
 }): React.JSX.Element {
-  const words = LOUDNESSES.filter(
-    (word) => word !== 'speak' || value === 'speak'
+  const words = LOUDNESSES.filter((word) =>
+    heard
+      ? word !== 'whisper' || value === 'whisper'
+      : word !== 'speak' || value === 'speak'
   );
   return (
     <select
@@ -59,7 +64,7 @@ export function LoudnessSelect({
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="">{anyLabel ?? 'Speak'}</option>
+      <option value="">{heard ? 'Any' : 'Speak'}</option>
       {words.map((word) => (
         <option key={word} value={word}>
           {LOUDNESS_LABELS[word]}
@@ -279,7 +284,7 @@ export function RowGrantFields({
           <label className="wb-check">
             <input
               type="checkbox"
-              aria-label={`Witnessing carriers hold it too for ${named}`}
+              aria-label={`Also held by the conversation’s carriers who witness it, for ${named}`}
               checked={recognize.heard_by === RECOGNITION_HEARD_BY}
               disabled={!namesConversation && recognize.heard_by === undefined}
               onChange={(event) =>
