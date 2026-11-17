@@ -758,6 +758,8 @@ function StudioSurface({
     /** Where the pick was asked from: an Encounter section returns there; a
      * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
     from: 'encounter' | 'build';
+    /** The Build view it was asked from, returned to when it ends. */
+    fromView: EncounterStudioView;
     document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
@@ -772,6 +774,7 @@ function StudioSurface({
         waypoints: [...request.route],
         section,
         from,
+        fromView: view,
         document: session.document,
       });
     },
@@ -786,6 +789,7 @@ function StudioSurface({
     if (commit) pick.request.onDone(waypoints);
     if (pick.from === 'build') {
       setSidebarOpen(true);
+      if (pick.fromView !== 'layout') switchView(pick.fromView);
       return;
     }
     changeHome('encounter');
@@ -817,8 +821,12 @@ function StudioSurface({
       routePick &&
       (!(home === 'build' && view === 'layout') ||
         routePick.document !== session.document)
-    )
+    ) {
       setRoutePick(null);
+      // A pick asked from Build's inspector (rpg-project#975 D) reopens it
+      // however it ends — a keyboard Undo mid-pick among them.
+      if (routePick.from === 'build') setSidebarOpen(true);
+    }
   }, [routePick, home, view, session.document]);
   const finishPickRef = useRef(finishPick);
   finishPickRef.current = finishPick;

@@ -18,15 +18,16 @@ Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) o
 
 - **What the form prevents by construction:**
   - an `opened` with no fact: emptying the field removes the key;
-  - a post on a state the behaviour does not have, or on a terminal state: states are offered from the behaviour's `recipe.states`, terminals left out;
+  - a post on a state the behaviour does not have: states are offered from the behaviour's `recipe.states`, every one of them (the engine's `encounter.validatePostStates` accepts any state of the recipe);
   - a post naming no door, or one the site lacks: doors are offered from the site's wall openings, and a new post starts on the first;
   - an `against` other than both, entering or leaving: it is a select.
 
   — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 
-- **Which behaviour supplies the states.** It is the one that supplies the creature's state: its own `behaviorState` binding, else its first, else its faction's. Its `recipe.states` are read straight from the file — names the document holds, no rule of the studio's — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
+- **Which behaviour supplies the states.** The body is resolved exactly as the engine resolves it (`behaviors.go` `roomBehaviorInput`, `bindBehaviorSource`): the creature's own `behaviors` (even `[]`), else its faction's (`faction`, else `monsters`); its own `behaviorState` before the faction's; else the one behaviour when there is exactly one. Several with none named, or a `behaviorState` naming none of them, is refused by the engine, and the form says so and offers no state. Its `recipe.states` are read straight from the file — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 - **Empty "Held from" means the creature's own cell.** An empty pick removes `at` and reads "its own cell", as the decoder says (`HoldsSpec`: "No `at` means the cell the creature is placed at") — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 - **A faction's posts stay file-only.** The decoder allows them, but the studio offers factions no behaviour, and the castle has none — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
+- **What can still be refused after the form.** A cell that is not floor, and a directed post (Entering or Leaving) whose door is away from its cells: that compiles and is refused only at launch, an engine gap filed as [rpg-toolkit#2449](https://github.com/KirkDiggler/rpg-toolkit/issues/2449). The studio does not restate that rule — [rpg-dnd5e-web#1449 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1449).
 
 ## Found
 
@@ -34,4 +35,5 @@ Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) o
 
 ## Mistaken
 
+- The first cut left terminal states out of "Add a post" as if the engine refused them; it does not (the "holds no post" refusal is the retired inline `states:` form's). It also resolved the body behaviour unlike the engine in five edge cases, and a written `against: both` showed "Both ways" twice — [rpg-dnd5e-web#1449 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1449).
 - **The no-behaviour note printed the placement id.** The studio never shows that id as text (`StudioInspector.test` › "never prints the placement id"), so the note now reads "This creature runs no behaviour…" — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).

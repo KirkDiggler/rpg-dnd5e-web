@@ -56,9 +56,10 @@ const field = <T extends HTMLElement>(label: string): T =>
  * written out with the binding the last edit committed. */
 function posts(
   owner: string,
-  arm: (request: RoutePickRequest) => void = vi.fn()
+  arm: (request: RoutePickRequest) => void = vi.fn(),
+  text = served
 ) {
-  const result = read(served);
+  const result = read(text);
   let last: RoomMonsterBinding | undefined =
     result.draft.room.monsterBindings![owner];
   function Harness() {
@@ -312,12 +313,76 @@ describe('a post, from the form (rpg-project#975 D)', () => {
     );
   });
 
-  it('removing a post takes its state away', () => {
+  it('removing a post takes exactly its block away', () => {
     const { saved } = posts('gate-1');
     fireEvent.click(
       screen.getByRole('button', { name: 'Remove post gate-1 challenged' })
     );
-    expect(saved()).not.toContain('          challenged:\n            door:');
+    expect(saved()).toBe(
+      served.replace(POSTED.replace('posted', 'challenged'), '')
+    );
+  });
+
+  it('removing the last post drops `posts` itself, never leaving `posts: {}`', () => {
+    const { saved } = posts('captain');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove post captain ready' })
+    );
+    expect(saved()).toBe(
+      served.replace(
+        '        posts:\n' +
+          '          ready:\n' +
+          '            door: gate-wall-door\n' +
+          '            against: entering\n' +
+          '            pass: { recognized: admitted }\n' +
+          '            at:\n' +
+          '              - q: -4\n' +
+          '                r: 8\n',
+        ''
+      )
+    );
+  });
+
+  it('the picked cells are written in the order picked', () => {
+    let request: RoutePickRequest | undefined;
+    const { saved } = posts('gate-1', (r) => {
+      request = r;
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Pick held cells on map for ${posted}`,
+      })
+    );
+    act(() =>
+      request!.onDone([
+        { q: -4, r: 7 },
+        { q: -3, r: 7 },
+      ])
+    );
+    expect(saved()).toBe(
+      served.replace(
+        POSTED,
+        POSTED.replace(
+          '              - q: -3\n                r: 7\n              - q: -4\n                r: 7\n',
+          '              - q: -4\n                r: 7\n              - q: -3\n                r: 7\n'
+        )
+      )
+    );
+  });
+
+  it('a written `against: both` is the one Both ways choice, kept as written', () => {
+    const text = served.replace(
+      POSTED,
+      POSTED.replace('against: entering', 'against: both')
+    );
+    posts('gate-1', vi.fn(), text);
+    const select = field<HTMLSelectElement>(`Against for ${posted}`);
+    expect(select.value).toBe('both');
+    expect([...select.options].map((o) => o.text)).toEqual([
+      'Both ways',
+      'Entering',
+      'Leaving',
+    ]);
   });
 
   it('a creature that runs no behaviour says so, and offers no post', () => {

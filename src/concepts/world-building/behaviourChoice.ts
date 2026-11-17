@@ -140,41 +140,56 @@ export function assignBehaviour(
 }
 
 /** The states a creature's behaviour stands in — what a post may be keyed
- * by (rpg-project#975 D): the behaviour that supplies its state (its own
- * `behaviorState` binding, else its first; else its faction's), as that
- * definition's `recipe.states` writes them, a terminal state left out (it
- * ends the machine and holds no post). `none` when it runs no behaviour,
- * `unread` when the behaviour's states are not written in the file. */
+ * by (rpg-project#975 D) — resolved EXACTLY as the engine resolves the body
+ * (`dungeonspec/behaviors.go` `roomBehaviorInput`, `bindBehaviorSource`):
+ *
+ * - `behaviors` written (even `[]`) are the creature's own; absent, its
+ *   faction's (`faction`, else `monsters`) — and its faction's
+ *   `behaviorState` only when the creature names none of its own;
+ * - the body is the `behaviorState` named, else the one behaviour when
+ *   there is exactly one; several and none named, the engine refuses every
+ *   post (`ambiguous`); a name that is not one of them, the same
+ *   (`unattached`);
+ * - its states are its definition's `recipe.states`, every one: the engine
+ *   (`encounter.validatePostStates`) accepts a post on any state of the
+ *   recipe. `unread` when the file does not write them.
+ */
 export function behaviourStates(
   scope: SiteScope,
   binding: RoomMonsterBinding | undefined
 ):
   | { kind: 'states'; behaviour: string; states: string[] }
   | { kind: 'none' }
+  | { kind: 'ambiguous' }
+  | { kind: 'unattached'; body: string }
   | { kind: 'unread'; behaviour: string } {
-  const own = bindingBehaviours(binding);
-  const faction = (binding as { faction?: unknown } | undefined)?.faction;
-  const supplier =
-    own && own.length > 0
-      ? {
-          behaviors: own,
-          state: (binding as Record<string, unknown>)?.behaviorState,
-        }
-      : (() => {
-          const f = (scope.factions ?? []).find(
-            (entry) => entry.id === faction
-          ) as Record<string, unknown> | undefined;
-          const list = Array.isArray(f?.behaviors)
-            ? (f!.behaviors as BehaviourBinding[])
-            : undefined;
-          return list && list.length > 0
-            ? { behaviors: list, state: f?.behaviorState }
-            : undefined;
-        })();
-  if (!supplier) return { kind: 'none' };
-  const chosen =
-    supplier.behaviors.find((b) => b.id === supplier.state) ??
-    supplier.behaviors[0]!;
+  const raw = binding as Record<string, unknown> | undefined;
+  let uses: BehaviourBinding[] | undefined = Array.isArray(raw?.behaviors)
+    ? (raw.behaviors as BehaviourBinding[])
+    : undefined;
+  let body = typeof raw?.behaviorState === 'string' ? raw.behaviorState : '';
+  if (uses === undefined) {
+    const side =
+      typeof raw?.faction === 'string' && raw.faction !== ''
+        ? raw.faction
+        : 'monsters';
+    const faction = (scope.factions ?? []).find(
+      (entry) => entry.id === side
+    ) as Record<string, unknown> | undefined;
+    if (faction) {
+      uses = Array.isArray(faction.behaviors)
+        ? (faction.behaviors as BehaviourBinding[])
+        : undefined;
+      if (body === '' && typeof faction.behaviorState === 'string')
+        body = faction.behaviorState;
+    }
+  }
+  if (!uses || uses.length === 0) return { kind: 'none' };
+  if (body === '' && uses.length === 1 && typeof uses[0]!.id === 'string')
+    body = uses[0]!.id;
+  if (body === '') return { kind: 'ambiguous' };
+  const chosen = uses.find((entry) => entry.id === body);
+  if (!chosen) return { kind: 'unattached', body };
   const use = typeof chosen.use === 'string' ? chosen.use : '';
   const definition = definitionsOf(scope)[use];
   const states =
@@ -186,15 +201,6 @@ export function behaviourStates(
   return {
     kind: 'states',
     behaviour: use,
-    states: Object.entries(states as Record<string, unknown>)
-      .filter(
-        ([, state]) =>
-          !(
-            state !== null &&
-            typeof state === 'object' &&
-            (state as { terminal?: unknown }).terminal === true
-          )
-      )
-      .map(([name]) => name),
+    states: Object.keys(states as Record<string, unknown>),
   };
 }

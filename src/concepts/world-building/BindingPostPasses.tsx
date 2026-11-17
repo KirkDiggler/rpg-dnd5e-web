@@ -69,6 +69,17 @@ export function BindingPosts({
           This creature runs no behaviour, so it has no state to hold a post in.
         </p>
       )}
+      {behaviour.kind === 'ambiguous' && (
+        <p className="wb-help" data-testid={`posts-no-behaviour-${owner}`}>
+          This creature runs several behaviours and names none as its
+          behaviorState: the engine needs one named before any post is held.
+        </p>
+      )}
+      {behaviour.kind === 'unattached' && (
+        <p className="wb-help" data-testid={`posts-no-behaviour-${owner}`}>
+          {`This creature’s behaviorState names \`${behaviour.body}\`, which is not one of its behaviours: the engine refuses that, so no post can be added here.`}
+        </p>
+      )}
       {behaviour.kind === 'unread' && (
         <p className="wb-help" data-testid={`posts-no-behaviour-${owner}`}>
           {`This creature runs \`${behaviour.behaviour}\`, whose states are not written in this file, so no post can be added here.`}
@@ -143,13 +154,18 @@ export function BindingPosts({
                       set(withPost(post, { against: event.target.value }))
                     }
                   >
-                    <option value="">Both ways</option>
+                    {/* A written `both` IS "Both ways": one choice, kept as
+                        written until another way is chosen. */}
+                    <option value={against === 'both' ? 'both' : ''}>
+                      Both ways
+                    </option>
                     {POST_AGAINST.map((way) => (
                       <option key={way} value={way}>
                         {AGAINST_LABELS[way]}
                       </option>
                     ))}
                     {against !== '' &&
+                      against !== 'both' &&
                       !(POST_AGAINST as readonly string[]).includes(
                         against
                       ) && (
