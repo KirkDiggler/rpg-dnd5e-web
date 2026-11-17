@@ -10,7 +10,7 @@ import {
   withPost,
 } from './postPass';
 import type { RoomMonsterBinding } from './roomDraft';
-import { useRoutePicking } from './routePicking';
+import { useLatest, useRoutePicking } from './routePicking';
 import { SiteNamesContext } from './siteNames';
 import type { SiteScope } from './siteScope';
 
@@ -56,6 +56,16 @@ export function BindingPosts({
       ? behaviour.states.filter((state) => !posted.includes(state))
       : [];
   const [adding, setAdding] = useState('');
+  // A PICK OUTLIVES THE RENDER THAT ARMED IT (`useLatest`), as a
+  // conversation's arrest does: Done writes the picked cells through this
+  // form's newest binding and change.
+  const applyCells = useLatest(
+    (state: string, cells: { q: number; r: number }[]) => {
+      const post = bindingPosts(binding)[state];
+      if (post && onChange)
+        onChange(setBindingPost(binding, state, withPost(post, { at: cells })));
+    }
+  );
   const addState = free.includes(adding) ? adding : (free[0] ?? '');
   const at = `room.room.monsterBindings.${owner}.posts`;
   return (
@@ -199,8 +209,8 @@ export function BindingPosts({
                             q: cell.q,
                             r: cell.r,
                           })),
-                          onDone: (picked) =>
-                            set(withPost(post, { at: picked })),
+                          revealPath: `${path}.at`,
+                          onDone: (picked) => applyCells(state, picked),
                         })
                       }
                     >

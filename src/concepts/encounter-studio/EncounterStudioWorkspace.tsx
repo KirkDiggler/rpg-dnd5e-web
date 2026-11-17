@@ -18,8 +18,8 @@ import { regionLabelPoint } from '../world-building/regionLabel';
 import { cellOwners } from '../world-building/roomDraft';
 import { appendWaypoint } from '../world-building/routeEdits';
 import {
+  pickedCells,
   RoutePickContext,
-  toggledCell,
   type RoutePicking,
   type RoutePickRequest,
 } from '../world-building/routePicking';
@@ -787,6 +787,12 @@ function StudioSurface({
     setRoutePick(null);
     if (!pick) return;
     if (commit) pick.request.onDone(waypoints);
+    // Back where it was asked, the thing it was for is landed on and marked
+    // (rpg-project#975 C review).
+    const revealed = pick.request.revealPath
+      ? keyOfPath(pick.request.revealPath, session.document)
+      : null;
+    if (revealed) queueReveal(revealed);
     if (pick.from === 'build') {
       setSidebarOpen(true);
       if (pick.fromView !== 'layout') switchView(pick.fromView);
@@ -804,7 +810,9 @@ function StudioSurface({
     if (routePick.request.mode === 'cells')
       return setRoutePick({
         ...routePick,
-        waypoints: toggledCell(routePick.waypoints, cell),
+        waypoints: pickedCells(routePick.waypoints, cell, (c) =>
+          cellOwners(session.document.draft).has(`${c.q},${c.r}`)
+        ),
       });
     setRoutePick({
       ...routePick,
@@ -1959,12 +1967,14 @@ function StudioSurface({
                   onOpenIntel={() => setEncounterSection('intel')}
                 />
               )}
-              {home === 'encounter' && encounterSection === 'interactions' && (
-                // An arrest's cells are picked on the map (rpg-project#975).
-                <RoutePickContext.Provider value={routePicking}>
+              {/* Conversations stays mounted, hidden, as Bundles does: an
+                  arrest's cells are picked on the map, and Done writes
+                  through the section's newest commit (rpg-project#975 C). */}
+              <RoutePickContext.Provider value={routePicking}>
+                <div hidden={encounterSection !== 'interactions'}>
                   <StudioInteractions session={session} />
-                </RoutePickContext.Provider>
-              )}
+                </div>
+              </RoutePickContext.Provider>
               {home === 'encounter' && encounterSection === 'behaviours' && (
                 <StudioBehaviours
                   document={session.document}

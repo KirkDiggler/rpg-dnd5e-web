@@ -24,6 +24,7 @@ import {
   type Outcomes,
 } from '../world-building/interactionOutcomes';
 import {
+  pickedCells,
   RoutePickContext,
   toggledCell,
   type RoutePickRequest,
@@ -51,8 +52,11 @@ function changedLines(a: string, b: string): string[] {
 
 /** The Conversations section on the castle, its outcomes held in state, and
  * the castle written out with the last outcomes it committed. */
-function conversations(arm: (request: RoutePickRequest) => void = vi.fn()) {
-  const result = read(served);
+function conversations(
+  arm: (request: RoutePickRequest) => void = vi.fn(),
+  text = served
+) {
+  const result = read(text);
   let last: Outcomes | undefined;
   function Harness() {
     const [scope, setScope] = useState(result.scope);
@@ -141,11 +145,11 @@ describe('an arrest, from the form (rpg-project#975 C)', () => {
     ]);
   });
 
-  it('seizing in the courtyard too writes it into the regions, in the site’s order', () => {
+  it('seizing in the courtyard too appends it to the authored regions', () => {
     const { saved } = conversations();
     fireEvent.click(field(`Seized in region-courtyard for ${arrest}`));
     expect(changedLines(served, saved())).toEqual([
-      '              regions: [region-courtyard, region-gatehouse]',
+      '              regions: [region-gatehouse, region-courtyard]',
     ]);
   });
 
@@ -221,8 +225,16 @@ describe('a jail, from the form (rpg-project#975 C)', () => {
     );
   });
 
-  it('a jail is offered only beside an arrest: without one, Jails cannot be chosen', () => {
+  it('a jail is offered only beside an arrest: without one, Jails cannot be chosen, and a chosen Jails falls back', () => {
     conversations();
+    // Jails chosen in the add control while the conversation arrests…
+    fireEvent.change(field('Add outcome kind for front-gate'), {
+      target: { value: 'jail' },
+    });
+    // …the jail and then the arrest go.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove outcome front-gate jailed 1' })
+    );
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Remove outcome front-gate arrested 1',
@@ -231,6 +243,27 @@ describe('a jail, from the form (rpg-project#975 C)', () => {
     const kinds = field<HTMLSelectElement>('Add outcome kind for front-gate');
     const jails = [...kinds.options].find((o) => o.value === 'jail')!;
     expect(jails.disabled).toBe(true);
+    expect(kinds.value).toBe('recognize');
+  });
+
+  it('the only arrest of a conversation that jails cannot be removed or changed', () => {
+    conversations();
+    const remove = screen.getByRole('button', {
+      name: 'Remove outcome front-gate arrested 1',
+    }) as HTMLButtonElement;
+    const kind = field<HTMLSelectElement>('Outcome kind front-gate arrested 1');
+    for (const control of [remove, kind]) {
+      expect(control.disabled).toBe(true);
+      expect(control.title).toBe(
+        'A jail in this conversation takes the taken of this arrest: remove the jail first.'
+      );
+    }
+    // Without the jail it is free again.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove outcome front-gate jailed 1' })
+    );
+    expect(remove.disabled).toBe(false);
+    expect(kind.disabled).toBe(false);
   });
 });
 
@@ -298,6 +331,86 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
       screen.getByRole('button', { name: 'Remove outcome front-gate jailed 1' })
     );
     expect(saved()).not.toContain('      jailed:\n        - jail:');
+  });
+});
+
+describe('what the form cannot fully read is shown as written (rpg-project#975 C review)', () => {
+  const ARREST =
+    '        - arrest:\n' +
+    '            cell: region-cells\n' +
+    '            area:\n' +
+    '              regions: [region-gatehouse]\n' +
+    '              cells:\n' +
+    '                - {r: 13, q: [[-8, -5]]}\n' +
+    '                - {r: 14, q: [[-8, -6]]}\n';
+
+  it('an arrest with no area is shown as written, and the section does not crash', () => {
+    expect(served).toContain(ARREST);
+    conversations(
+      vi.fn(),
+      served.replace(
+        ARREST,
+        '        - arrest:\n            cell: region-cells\n'
+      )
+    );
+    expect(
+      screen.getByLabelText('Outcome as written front-gate arrested 1')
+        .textContent
+    ).toBe('{"arrest":{"cell":"region-cells"}}');
+  });
+
+  it('an arrest with an empty area is a form seizing nothing', () => {
+    conversations(
+      vi.fn(),
+      served.replace(
+        ARREST,
+        '        - arrest:\n            cell: region-cells\n            area: {}\n'
+      )
+    );
+    expect(
+      screen.getByTestId('Seized cells front-gate arrested 1').textContent
+    ).toBe('0 cells');
+  });
+
+  it('a recognition with a word the form does not offer is shown as written, never blank', () => {
+    conversations(
+      vi.fn(),
+      served.replace(
+        '            about: party_in_sight\n            heard_by: carriers_who_witnessed\n      # Hand edit (rpg-project#925',
+        '            about: everyone\n            heard_by: carriers_who_witnessed\n      # Hand edit (rpg-project#925'
+      )
+    );
+    expect(
+      screen.getByLabelText('Outcome as written front-gate admitted 1')
+        .textContent
+    ).toContain('"about":"everyone"');
+    expect(
+      screen.queryByLabelText('Topic for front-gate admitted 1')
+    ).toBeNull();
+  });
+
+  it('a sceneMove beside them survives a neighbour’s edit byte for byte', () => {
+    const text = served.replace(
+      '      admitted:\n        - recognize:\n',
+      '      admitted:\n        - sceneMove:\n            leave: gate-left\n        - recognize:\n'
+    );
+    expect(text).not.toBe(served);
+    const { saved } = conversations(vi.fn(), text);
+    fireEvent.change(field('Topic for front-gate admitted 2'), {
+      target: { value: 'welcomed' },
+    });
+    expect(changedLines(text, saved())).toEqual([
+      '            topic: welcomed',
+    ]);
+  });
+});
+
+describe('a cells pick ignores cells that are not floor', () => {
+  it('a floor cell is added, a held one taken away, an off-floor one ignored', () => {
+    const floor = (c: { q: number; r: number }) => c.q >= 0;
+    expect(pickedCells([], { q: 1, r: 0 }, floor)).toEqual([{ q: 1, r: 0 }]);
+    expect(pickedCells([], { q: -1, r: 0 }, floor)).toEqual([]);
+    expect(pickedCells([{ q: -1, r: 0 }], { q: -1, r: 0 }, floor)).toEqual([]);
   });
 });
 

@@ -9,14 +9,15 @@ import {
   ABOUT_PARTY_IN_SIGHT,
   arrestOf,
   arrests,
+  editableRecognizeOf,
   HEARD_BY_WITNESSES,
   jailOf,
+  jails,
   newOutcome,
   OUTCOME_KINDS,
   outcomeKindOf,
   outcomesOf,
   recipeStates,
-  recognizeOf,
   withAbout,
   withArrestCell,
   withArrestCells,
@@ -32,7 +33,7 @@ import {
 } from '../world-building/interactionOutcomes';
 import { fromRows, rowCellCount } from '../world-building/regionRuns';
 import type { RoomCellRow, RoomHexCell } from '../world-building/roomDraft';
-import { useRoutePicking } from '../world-building/routePicking';
+import { useLatest, useRoutePicking } from '../world-building/routePicking';
 import {
   RecognitionFields,
   RegionField,
@@ -235,6 +236,22 @@ function OutcomesField({
   const entered = Object.keys(outcomes);
   const siteRegions = names.regions.map((region) => region.id);
   const canJail = arrests(outcomes);
+  const jailed = jails(outcomes);
+  // Jails is chosen only beside an arrest: the add control's kind falls back
+  // when the conversation no longer arrests (rpg-project#975 C review).
+  const addKind: OutcomeKind =
+    addingKind === 'jail' && !canJail ? 'recognize' : addingKind;
+  // A PICK OUTLIVES THE RENDER THAT ARMED IT (`useLatest`): Done writes the
+  // picked cells through this section's newest outcomes and commit.
+  const applyCells = useLatest(
+    (state: string, index: number, cells: RoomHexCell[]) => {
+      const arrest = arrestOf(outcomes[state]?.[index]);
+      if (arrest)
+        commit(
+          withEntry(outcomes, state, index, withArrestCells(arrest, cells))
+        );
+    }
+  );
   return (
     <div aria-label={`Outcomes for ${id}`} className="es-outcomes">
       {entered.length === 0 && (
@@ -245,14 +262,33 @@ function OutcomesField({
           outcomes[state]!.map((entry, index) => {
             const label = `${id} ${state} ${index + 1}`;
             const path = `interactions.${id}.outcomes.${state}[${index}]`;
-            const kind = outcomeKindOf(entry);
+            const written = outcomeKindOf(entry);
+            // An entry the form cannot fully read is shown as written: never
+            // a crash, never blank fields (rpg-project#975 C review).
+            const editable =
+              (written === 'recognize' && editableRecognizeOf(entry)) ||
+              (written === 'arrest' && arrestOf(entry)) ||
+              (written === 'jail' && jailOf(entry));
+            const kind = editable ? written : undefined;
             const set = (next: unknown) =>
               commit(withEntry(outcomes, state, index, next));
+            // THE ONLY ARREST OF A CONVERSATION THAT JAILS is held: a jail
+            // takes the taken of its own arrest, so the arrest cannot go or
+            // become something else while the jail is there.
+            const holdsTheJail =
+              written === 'arrest' &&
+              jailed &&
+              !arrests(outcomes, { state, index });
+            const heldTitle = holdsTheJail
+              ? 'A jail in this conversation takes the taken of this arrest: remove the jail first.'
+              : undefined;
             const remove = (
               <button
                 type="button"
                 className="wb-danger es-outcome-remove"
                 aria-label={`Remove outcome ${label}`}
+                disabled={holdsTheJail}
+                title={heldTitle}
                 onClick={() => commit(withEntryRemoved(outcomes, state, index))}
               >
                 Remove
@@ -287,7 +323,7 @@ function OutcomesField({
               );
             const jailOffered = arrests(outcomes, { state, index });
             const recognize =
-              kind === 'recognize' ? recognizeOf(entry) : undefined;
+              kind === 'recognize' ? editableRecognizeOf(entry) : undefined;
             const arrest = arrestOf(entry);
             const jail = jailOf(entry);
             const seizedCells = arrest?.area.cells ?? [];
@@ -304,6 +340,8 @@ function OutcomesField({
                     <select
                       aria-label={`Outcome kind ${label}`}
                       value={kind}
+                      disabled={holdsTheJail}
+                      title={heldTitle}
                       onChange={(event) =>
                         set(
                           newOutcome(event.target.value as OutcomeKind, names)
@@ -389,8 +427,7 @@ function OutcomesField({
                                       withArrestRegion(
                                         arrest,
                                         region,
-                                        event.target.checked,
-                                        siteRegions
+                                        event.target.checked
                                       )
                                     )
                                   }
@@ -419,8 +456,9 @@ function OutcomesField({
                                   mode: 'cells',
                                   label: `${id} on entering ${state}`,
                                   route: cellsOf(seizedCells),
+                                  revealPath: path,
                                   onDone: (cells) =>
-                                    set(withArrestCells(arrest, cells)),
+                                    applyCells(state, index, cells),
                                 })
                               }
                             >
@@ -472,7 +510,7 @@ function OutcomesField({
               withOutcomeAdded(
                 outcomes,
                 adding,
-                newOutcome(addingKind, names),
+                newOutcome(addKind, names),
                 states
               )
             );
@@ -497,7 +535,7 @@ function OutcomesField({
             <span>It</span>
             <select
               aria-label={`Add outcome kind for ${id}`}
-              value={addingKind}
+              value={addKind}
               onChange={(event) =>
                 setAddingKind(event.target.value as OutcomeKind)
               }
