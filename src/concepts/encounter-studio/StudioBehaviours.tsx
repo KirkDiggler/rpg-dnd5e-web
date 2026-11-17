@@ -15,10 +15,26 @@
  * WHO RUNS IT is the engine's `runs` connections, as said: a creature whose
  * faction supplies its behaviour is listed when, and as, the engine says it
  * runs it. The studio infers no runner of its own.
+ *
+ * THE MACHINE (rpg-project#995): a selected behaviour's machine is drawn
+ * above the list, from the shape the engine says (`machineOf`). Marking a
+ * box or an arrow puts its sentences first in the detail pane; a sentence
+ * there marks its box or arrow. A read-back that does not say the shape
+ * draws nothing, and the list is as it was.
  */
 import type { ReadBackGroup } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { useMemo, useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
+import { MachineDrawing } from './MachineDrawing';
+import {
+  boxName,
+  layoutMachine,
+  markOfStatement,
+  pieceName,
+  statementsOfMark,
+} from './machineLayout';
+import { machineOf } from './machineView';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
@@ -45,6 +61,28 @@ export function StudioBehaviours({
   onOpenFact?(id: string, hub?: string): void;
 }): React.JSX.Element {
   const said = readBack.readBack;
+  const machine = useMemo(() => {
+    if (!said || !focus) return null;
+    const view = machineOf(said, focus);
+    if (!view) return null;
+    const layout = layoutMachine(view);
+    return { layout, markOf: markOfStatement(layout) };
+  }, [said, focus]);
+  // The mark belongs to the behaviour it was made on; another behaviour
+  // starts unmarked.
+  const [chosenMark, setChosenMark] = useState<{
+    routine: string;
+    id: string;
+  } | null>(null);
+  const mark =
+    machine && chosenMark && chosenMark.routine === focus
+      ? chosenMark.id
+      : null;
+  const markIt = (id: string): void => {
+    if (focus) setChosenMark({ routine: focus, id });
+  };
+  const markedBox = machine?.layout.boxes.find((box) => box.id === mark);
+  const markedPiece = machine?.layout.pieces.find((piece) => piece.id === mark);
   const groups: ReadBackGroup[] = (said?.sections ?? []).flatMap((section) =>
     section.groups.filter((group) => group.about?.kind === ROUTINE)
   );
@@ -74,6 +112,14 @@ export function StudioBehaviours({
         <p role="status" className="es-help es-readback-notice">
           {notice}
         </p>
+      )}
+      {machine && focus && (
+        <MachineDrawing
+          routine={focus}
+          layout={machine.layout}
+          selected={mark}
+          onSelect={markIt}
+        />
       )}
       <StudioListDetail
         id="behaviours"
@@ -139,6 +185,25 @@ export function StudioBehaviours({
                 state={readBack}
                 onJump={onJump}
                 onOpenFact={onOpenFact}
+                drawing={
+                  machine
+                    ? {
+                        markedName: markedBox
+                          ? boxName(markedBox)
+                          : markedPiece
+                            ? pieceName(markedPiece)
+                            : null,
+                        marked: mark
+                          ? statementsOfMark(machine.layout, mark)
+                          : [],
+                        canMark: (statement) => machine.markOf.has(statement),
+                        onMark: (statement) => {
+                          const id = machine.markOf.get(statement);
+                          if (id) markIt(id);
+                        },
+                      }
+                    : undefined
+                }
               />
             </div>
           ) : null

@@ -23,6 +23,7 @@ import {
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import machinesJson from './engineReadBack.machines.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
@@ -68,4 +69,20 @@ export function castleThreadsReadBack(): ReadBack {
  */
 export function castleRoutinesReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(routinesJson) as JsonValue);
+}
+
+/**
+ * THE CASTLE'S MACHINES, WITH THEIR SHAPE (rpg-project#995). HAND-BUILT
+ * UNTIL rpg-project#994 IS RELEASED: the statements and sentences are the
+ * engine's, recorded the same way from rpg-toolkit `main` bb5806f7 on the
+ * served castle's bytes — the whole "Routines" section (every routine row
+ * cut but `gate-1-policy`'s) and, from "Creatures", each creature's
+ * `creature.routine`, `creature.post` and `creature.blocking` statements.
+ * The shape connections (`starts`, `is`, `final`, `from`, `to`, `on`,
+ * `picks`, `row-of`, `while`) were then added by a script from the castle
+ * file, following rpg-project#994's table, after each statement's own
+ * connections. Re-record it from the released engine once the api pins it.
+ */
+export function castleMachinesReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(machinesJson) as JsonValue);
 }
