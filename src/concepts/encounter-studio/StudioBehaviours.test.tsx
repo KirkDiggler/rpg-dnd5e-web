@@ -198,6 +198,11 @@ describe('StudioBehaviours', () => {
           name: 'State posted (starts here)',
         })
       ).toBeTruthy();
+      expect(
+        within(drawing()).getByRole('button', {
+          name: 'State turned (no way out)',
+        })
+      ).toBeTruthy();
       const list = within(panel()).getByRole('list', { name: 'Behaviours' });
       expect(
         drawing().compareDocumentPosition(list) &
@@ -218,6 +223,12 @@ describe('StudioBehaviours', () => {
       const heard = within(drawing()).getByRole('button', {
         name: 'Step from posted to alert, on heard',
       });
+      // Its sentence is reachable without a click: hover and a screen
+      // reader's description.
+      const sentence =
+        'In the state `posted`, when Guard (gate-1) hears a sound';
+      expect(heard.querySelector('title')!.textContent).toContain(sentence);
+      expect(heard.getAttribute('aria-description')).toContain(sentence);
       fireEvent.click(heard);
       expect(heard.getAttribute('aria-pressed')).toBe('true');
       expect(heard.dataset.selected).toBe('true');

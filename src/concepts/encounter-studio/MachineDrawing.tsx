@@ -117,6 +117,7 @@ function Box({
       data-mark={box.id}
       data-selected={selected || undefined}
       data-final={box.state.final || undefined}
+      data-no-way-out={box.state.noWayOut || undefined}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
@@ -201,6 +202,9 @@ function Piece({
       tabIndex={0}
       aria-pressed={selected}
       aria-label={pieceName(piece)}
+      aria-description={piece.steps
+        .map((step) => step.statement.sentence)
+        .join(' ')}
       {...choose}
     >
       <title>

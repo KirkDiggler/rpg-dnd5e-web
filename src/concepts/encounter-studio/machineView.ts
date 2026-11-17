@@ -87,7 +87,11 @@ export interface MachineState {
   /** The `routine.state` statement that says it. */
   statement: ReadBackStatement;
   initial: boolean;
+  /** The engine says it is terminal (`{state, S, final}`). */
   final: boolean;
+  /** No step leaves it: no wake of this routine has it as `from` and a
+   * `to` other than it. A fact of the drawn graph, apart from `final`. */
+  noWayOut: boolean;
   /** Steps from this state that stay in it, in the engine's order. */
   stays: MachineStep[];
   holds: MachineHold[];
@@ -159,6 +163,7 @@ export function machineOf(
       statement,
       initial: id === initial,
       final: connected(statement, STATE, ROLE_FINAL).includes(id),
+      noWayOut: true,
       stays: [],
       holds: [],
     });
@@ -186,6 +191,7 @@ export function machineOf(
   }
   for (const step of steps)
     if (step.to === null) states.get(step.from)!.stays.push(step);
+    else states.get(step.from)!.noWayOut = false;
 
   // The creatures that run this routine, as their own `creature.routine`
   // statements say (`{routine, id, uses}`); each one's posts and blocking

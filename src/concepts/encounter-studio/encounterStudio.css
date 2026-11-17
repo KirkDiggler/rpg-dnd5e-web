@@ -2091,7 +2091,7 @@
   stroke: var(--wb-border);
   stroke-width: 1.4;
 }
-.es-machine-state[data-final] .es-machine-box {
+.es-machine-state:is([data-final], [data-no-way-out]) .es-machine-box {
   stroke: var(--es-warning-text);
 }
 .es-machine-state:is(:hover, [data-selected]) .es-machine-box {
@@ -2118,10 +2118,10 @@
   font-size: 10px;
   font-family: var(--es-font-mono, monospace);
 }
-.es-machine-pill[data-pill='final'] rect {
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) rect {
   stroke: var(--es-warning-text);
 }
-.es-machine-pill[data-pill='final'] text {
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) text {
   fill: var(--es-warning-text);
 }
 .es-machine-stroke {

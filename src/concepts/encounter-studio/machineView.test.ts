@@ -56,6 +56,22 @@ describe('machineOf', () => {
     expect(view.states.find((s) => s.id === 'cowed')!.final).toBe(false);
   });
 
+  it('a state no step leaves says so, apart from final', () => {
+    const view = gate();
+    // turned: every step from it stays; the castle does not make it final.
+    expect(state('turned').noWayOut).toBe(true);
+    expect(state('turned').final).toBe(false);
+    expect(state('posted').noWayOut).toBe(false);
+    expect(state('cowed').noWayOut).toBe(false);
+    const layout = layoutMachine(view);
+    const pills = (id: string) =>
+      layout.boxes
+        .find((b) => b.state.id === id)!
+        .pills.map((pill) => pill.text);
+    expect(pills('turned')).toContain('no way out');
+    expect(pills('posted')).not.toContain('no way out');
+  });
+
   it('a step that stays in place is not an edge: it is written in its state', () => {
     const view = gate();
     for (const edge of view.edges) {

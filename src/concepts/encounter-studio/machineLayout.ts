@@ -35,6 +35,9 @@ import {
 
 export const STARTS_WORDS = 'starts here';
 export const FINAL_WORDS = 'final';
+export const NO_WAY_OUT_WORDS = 'no way out';
+
+type PillKind = 'starts' | 'final' | 'no-way-out';
 
 const MARGIN = 16;
 const PAD = 12;
@@ -87,7 +90,7 @@ export interface LaidBox {
   rect: Rect;
   row: number;
   title: LaidText;
-  pills: (LaidText & { kind: 'starts' | 'final'; rect: Rect })[];
+  pills: (LaidText & { kind: PillKind; rect: Rect })[];
   lines: LaidLine[];
   /** Every statement the box stands for: the state's, its staying steps'
    * and its holds'. */
@@ -215,7 +218,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
   interface Draft {
     state: MachineState;
     title: string;
-    pills: { text: string; kind: 'starts' | 'final'; w: number }[];
+    pills: { text: string; kind: PillKind; w: number }[];
     lines: { text: string; muted: boolean; statement: ReadBackStatement }[];
     w: number;
     h: number;
@@ -227,6 +230,9 @@ export function layoutMachine(view: MachineView): MachineLayout {
         ? [{ text: STARTS_WORDS, kind: 'starts' as const }]
         : []),
       ...(state.final ? [{ text: FINAL_WORDS, kind: 'final' as const }] : []),
+      ...(state.noWayOut
+        ? [{ text: NO_WAY_OUT_WORDS, kind: 'no-way-out' as const }]
+        : []),
     ].map((pill) => ({ ...pill, w: estimate(pill.text, CHAR.pill) + 14 }));
     const lines = [
       ...state.holds.map((hold) => ({
