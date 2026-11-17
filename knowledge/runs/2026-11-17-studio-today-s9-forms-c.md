@@ -39,6 +39,8 @@ Shapes read from rpg-toolkit `origin/main` [`bb5806f7`](https://github.com/KirkD
 
   — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975)
 
+- After review: the only arrest of a conversation that jails is held (Remove and kind disabled, with the reason as the title); the add control falls back from Jails when nothing arrests; a cells pick ignores off-floor clicks (the map's floor; the engine's launch-only refusal of an off-floor area cell is noted on [rpg-toolkit#2449](https://github.com/KirkDiggler/rpg-toolkit/issues/2449)); Seized in keeps the authored region order; anything the form cannot fully read is shown as written. A new jail's empty words remain a refusal on purpose: the form does not invent the words — [rpg-dnd5e-web#1448 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1448).
+
 ## Found
 
 - **`sceneMove` is a fourth consequence kind.** It is in `OutcomeSpec` but is not one of the slice's words, so an entry of it stays shown as written. — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975)
@@ -46,4 +48,6 @@ Shapes read from rpg-toolkit `origin/main` [`bb5806f7`](https://github.com/KirkD
 
 ## Mistaken
 
+- Done picking cells from Conversations wrote nothing on the real studio: the section unmounted when the pick switched to Build, and its `onDone` held a commit the switch had retired. The round-trip test called `onDone` on a fake session with no fence, so it could not see it. Conversations now stays mounted, hidden, and writes through `useLatest`; a workspace test picks on the real Layout — [rpg-dnd5e-web#1448 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1448).
+- An arrest with no `area` crashed the section; the only arrest could be removed while a jail remained; ticking a region rewrote the list in site order — [rpg-dnd5e-web#1448 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1448).
 - **The wrong first region.** The first expected YAML assumed the castle's first region was `region-courtyard`; it is `room-1-region`. — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975)

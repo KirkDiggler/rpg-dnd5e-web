@@ -30,6 +30,9 @@ export interface RoutePickRequest {
   route: readonly AnswerWaypointShape[];
   /** The answer: the route as picked, or one cell. */
   onDone(route: AnswerWaypointShape[]): void;
+  /** The file path of what the pick is for: landed on and marked when the
+   * studio returns to it. */
+  revealPath?: string;
 }
 
 export interface RoutePicking {
@@ -78,4 +81,19 @@ export function toggledCell(
   return held
     ? cells.filter((c) => !(c.q === cell.q && c.r === cell.r))
     : [...cells, { q: cell.q, r: cell.r }];
+}
+
+/** The cells a `cells` pick holds after one click (rpg-project#975 C
+ * review): a floor cell is added, or taken away when held; a click on a
+ * cell that is not floor changes nothing — the pick is a map tool, and the
+ * map shows its floor. A held cell that is no longer floor can still be
+ * clicked away. */
+export function pickedCells(
+  cells: readonly AnswerWaypointShape[],
+  cell: AnswerCellShape,
+  isFloor: (cell: AnswerCellShape) => boolean
+): AnswerWaypointShape[] {
+  const held = cells.some((c) => c.q === cell.q && c.r === cell.r);
+  if (!held && !isFloor(cell)) return [...cells];
+  return toggledCell(cells, cell);
 }

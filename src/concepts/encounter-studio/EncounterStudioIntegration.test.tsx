@@ -7810,3 +7810,56 @@ describe('the list-and-detail piece takes its height from its container (rpg-pro
     ).not.toBeNull();
   });
 });
+
+describe('a cells pick from Conversations writes through the studio (rpg-project#975 C review)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('Done writes the arrest’s new cells, and the studio returns to Conversations with the arrest marked', async () => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Conversations'));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Pick seized cells on map for front-gate arrested 1',
+      })
+    );
+    // The studio switched to the Layout; the arrest's first cell is clicked
+    // away, then Done.
+    const layout = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    fireEvent.pointerDown(layout, {
+      ...at({ q: -8, r: 13 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done picking cells' }));
+    const arrest = (
+      storage.document().scope.unread!.interactions as Record<
+        string,
+        { outcomes: { arrested: { arrest: { area: { cells: unknown[] } } }[] } }
+      >
+    )['front-gate']!.outcomes.arrested[0]!.arrest;
+    expect(arrest.area.cells).toEqual([
+      { r: 13, q: [[-7, -5]] },
+      { r: 14, q: [[-8, -6]] },
+    ]);
+    expect(
+      // Read without clicking: the helper picks the group first.
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getByRole('tab', { name: 'Conversations' })
+        .getAttribute('aria-selected')
+    ).toBe('true');
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-part')
+      ).toBe('outcomes.arrested[0]')
+    );
+  });
+});

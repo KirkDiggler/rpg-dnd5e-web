@@ -366,17 +366,67 @@ export function withOutcomeAdded(
 }
 
 /** One entry's arrest, or undefined. */
+const only = (value: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
+const strings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+/** One entry's arrest, when it is one the form can show and edit — `cell`
+ * a word, `area` a mapping of `regions` (words) and `cells` (a list), no
+ * other key — else undefined, and the entry is shown as written. No file
+ * crashes the section. */
 export function arrestOf(entry: unknown): ArrestShape | undefined {
-  return outcomeKindOf(entry) === 'arrest'
-    ? ((entry as { arrest: ArrestShape }).arrest as ArrestShape)
-    : undefined;
+  if (outcomeKindOf(entry) !== 'arrest') return undefined;
+  const arrest = (entry as { arrest: Record<string, unknown> }).arrest;
+  const area = arrest.area;
+  if (
+    !only(arrest, ['cell', 'area']) ||
+    typeof arrest.cell !== 'string' ||
+    !mapping(area) ||
+    !only(area, ['regions', 'cells']) ||
+    (area.regions !== undefined && !strings(area.regions)) ||
+    (area.cells !== undefined && !Array.isArray(area.cells))
+  )
+    return undefined;
+  return arrest as unknown as ArrestShape;
 }
 
-/** One entry's jail, or undefined. */
+/** One entry's jail, when the form can show and edit it — `words`,
+ * `rounds` and `escaped` of their kinds, no other key — else undefined. */
 export function jailOf(entry: unknown): JailShape | undefined {
-  return outcomeKindOf(entry) === 'jail'
-    ? ((entry as { jail: JailShape }).jail as JailShape)
-    : undefined;
+  if (outcomeKindOf(entry) !== 'jail') return undefined;
+  const jail = (entry as { jail: Record<string, unknown> }).jail;
+  if (
+    !only(jail, ['words', 'rounds', 'escaped']) ||
+    (jail.words !== undefined && typeof jail.words !== 'string') ||
+    (jail.rounds !== undefined && typeof jail.rounds !== 'number') ||
+    (jail.escaped !== undefined && typeof jail.escaped !== 'string')
+  )
+    return undefined;
+  return jail as unknown as JailShape;
+}
+
+/** One entry's recognition, when the form can show and edit it: the words
+ * it offers (holder `spoken_to`; about `party_in_sight` or `speaker`;
+ * `heard_by` the witnesses or absent). Anything else is shown as written,
+ * never as blank fields. */
+export function editableRecognizeOf(entry: unknown): Recognize | undefined {
+  const r = recognizeOf(entry);
+  if (!r) return undefined;
+  const raw = (entry as { recognize: Record<string, unknown> }).recognize;
+  if (r.holder !== HOLDER_SPOKEN_TO) return undefined;
+  if (r.about !== ABOUT_PARTY_IN_SIGHT && r.about !== ABOUT_SPEAKER)
+    return undefined;
+  if (raw.heard_by !== undefined && raw.heard_by !== HEARD_BY_WITNESSES)
+    return undefined;
+  return r;
+}
+
+/** Whether the conversation jails anybody: some outcome is a jail. */
+export function jails(outcomes: Outcomes): boolean {
+  return Object.values(outcomes).some((list) =>
+    list.some((entry) => outcomeKindOf(entry) === 'jail')
+  );
 }
 
 /** An arrest held in another region. */
@@ -384,24 +434,20 @@ export function withArrestCell(arrest: ArrestShape, cell: string): unknown {
   return { arrest: { ...arrest, cell } };
 }
 
-/** An arrest seizing in one more region, or one fewer, its regions kept in
- * the site's order (any the site does not hold, after). The last place it
- * seizes in is never taken away: an area names its regions or its cells. */
+/** An arrest seizing in one more region — appended to the authored list —
+ * or one fewer, taken out where it stands, so the file changes no more than
+ * the one region. The last place it seizes in is never taken away: an area
+ * names its regions or its cells. */
 export function withArrestRegion(
   arrest: ArrestShape,
   region: string,
-  seized: boolean,
-  siteOrder: readonly string[]
+  seized: boolean
 ): unknown {
   const was = arrest.area.regions ?? [];
-  const set = new Set(was);
-  if (seized) set.add(region);
-  else if (set.size > 1 || (arrest.area.cells?.length ?? 0) > 0)
-    set.delete(region);
-  const regions = [
-    ...siteOrder.filter((id) => set.has(id)),
-    ...was.filter((id) => !siteOrder.includes(id) && set.has(id)),
-  ];
+  let regions = was;
+  if (seized && !was.includes(region)) regions = [...was, region];
+  if (!seized && (was.length > 1 || (arrest.area.cells?.length ?? 0) > 0))
+    regions = was.filter((id) => id !== region);
   const area: ArrestShape['area'] = { ...arrest.area };
   if (regions.length > 0) area.regions = regions;
   else delete area.regions;
