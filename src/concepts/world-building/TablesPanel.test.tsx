@@ -325,21 +325,21 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     });
   });
 
-  it('keeps a `heard` loudness the form does not edit through a kind, span and `not` edit (rpg-project#933)', () => {
+  it('keeps a voice’s `heard` loudness through a `not` edit, and drops it with the voice (rpg-project#933, #975)', () => {
     const last = mount({
       when: { heard: { kind: 'voice', within: 1, loudness: 'shout' } },
       toward: 'sound',
-    });
-    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
-      target: { value: 'clang' },
-    });
-    expect(last()?.when).toEqual({
-      heard: { kind: 'clang', within: 1, loudness: 'shout' },
     });
     fireEvent.click(screen.getByLabelText('Not for time entry'));
     expect(last()?.when).toEqual([
       { not: { heard: { kind: 'voice', within: 1, loudness: 'shout' } } },
     ]);
+    // A loudness is a voice's only: the engine refuses it on another sound,
+    // so the form takes it away with the voice.
+    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
+      target: { value: 'clang' },
+    });
+    expect(last()?.when).toEqual({ heard: { kind: 'clang', within: 1 } });
   });
 
   it('authors a `fact` condition as a free id', () => {
