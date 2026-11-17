@@ -19,6 +19,7 @@ import {
   castleRoutinesReadBack,
 } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import { StudioBehaviours } from './StudioBehaviours';
 import type { StudioReadBack } from './studioPublishing';
 
@@ -278,7 +279,9 @@ describe('StudioBehaviours', () => {
         "In the state `posted`, on Guard (gate-1)'s own time (each round Guard (gate-1) is due, out of a fight), Guard (gate-1) acts from its own `post` rows."
       );
       expect(said).toContain('While its routine is in the state `posted`');
-      // From the read-back's list: cowed's state sentence marks cowed.
+      // From the read-back's list (its Full view): cowed's state sentence
+      // marks cowed.
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Full' }));
       fireEvent.click(
         within(panel()).getByRole('button', {
           name: /^Mark on the drawing: .*in `cowed`$/,
@@ -290,6 +293,7 @@ describe('StudioBehaviours', () => {
           .getAttribute('aria-pressed')
       ).toBe('true');
       expect(posted.getAttribute('aria-pressed')).toBe('false');
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
     });
 
     it('another behaviour draws its own machine, unmarked', () => {

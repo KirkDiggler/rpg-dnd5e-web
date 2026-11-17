@@ -1,7 +1,7 @@
 /**
- * A BEHAVIOUR'S MACHINE FROM THE ENGINE'S SHAPE (rpg-project#995). The
- * fixture is the engine's castle read-back with rpg-project#994's shape
- * connections added by hand; it is re-recorded once that slice is released.
+ * A BEHAVIOUR'S MACHINE FROM THE ENGINE'S SHAPE (rpg-project#995), over
+ * the engine's own castle read-back at encounter v0.220.0, which says the
+ * shape (rpg-project#994).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -70,6 +70,15 @@ describe('machineOf', () => {
         .pills.map((pill) => pill.text);
     expect(pills('turned')).toContain('no way out');
     expect(pills('posted')).not.toContain('no way out');
+  });
+
+  it('a machine of one state does not say its only state has no way out', () => {
+    const view = machineOf(castleMachinesReadBack(), 'hall-1-policy')!;
+    expect(view.states.map((s) => s.id)).toEqual(['ready']);
+    expect(view.states[0]!.noWayOut).toBe(false);
+    expect(
+      layoutMachine(view).boxes[0]!.pills.map((pill) => pill.text)
+    ).toEqual(['starts here']);
   });
 
   it('a step that stays in place is not an edge: it is written in its state', () => {

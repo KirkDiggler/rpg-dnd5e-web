@@ -72,16 +72,15 @@ export function castleRoutinesReadBack(): ReadBack {
 }
 
 /**
- * THE CASTLE'S MACHINES, WITH THEIR SHAPE (rpg-project#995). HAND-BUILT
- * UNTIL rpg-project#994 IS RELEASED: the statements and sentences are the
- * engine's, recorded the same way from rpg-toolkit `main` bb5806f7 on the
- * served castle's bytes — the whole "Routines" section (every routine row
- * cut but `gate-1-policy`'s) and, from "Creatures", each creature's
- * `creature.routine`, `creature.post` and `creature.blocking` statements.
- * The shape connections (`starts`, `is`, `final`, `from`, `to`, `on`,
- * `picks`, `row-of`, `while`) were then added by a script from the castle
- * file, following rpg-project#994's table, after each statement's own
- * connections. Re-record it from the released engine once the api pins it.
+ * THE CASTLE'S MACHINES, WITH THEIR SHAPE (rpg-project#994, #995), recorded
+ * from `rulebooks/dnd5e/encounter` v0.220.0 (the tag rpg-api `dev` pins at
+ * 7a5d8313): `readback.Of` on rpg-api `dev`'s `content/the-mad-king.yaml`,
+ * marshalled with `folded` set to `rb.Folded()`, as the api maps it.
+ * Trimmed to the "Routines" section (every routine row cut but
+ * `gate-1-policy`'s), from "Creatures" each creature's `creature.routine`,
+ * `creature.post` and `creature.blocking` statements, and the folded
+ * "Routines" section. Every kept sentence, connection and entry is the
+ * engine's, unedited.
  */
 export function castleMachinesReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(machinesJson) as JsonValue);

@@ -90,7 +90,8 @@ export interface MachineState {
   /** The engine says it is terminal (`{state, S, final}`). */
   final: boolean;
   /** No step leaves it: no wake of this routine has it as `from` and a
-   * `to` other than it. A fact of the drawn graph, apart from `final`. */
+   * `to` other than it. A fact of the drawn graph, apart from `final`;
+   * never said of a machine's only state, where it tells nothing. */
   noWayOut: boolean;
   /** Steps from this state that stay in it, in the engine's order. */
   stays: MachineStep[];
@@ -192,6 +193,7 @@ export function machineOf(
   for (const step of steps)
     if (step.to === null) states.get(step.from)!.stays.push(step);
     else states.get(step.from)!.noWayOut = false;
+  if (states.size < 2) for (const s of states.values()) s.noWayOut = false;
 
   // The creatures that run this routine, as their own `creature.routine`
   // statements say (`{routine, id, uses}`); each one's posts and blocking

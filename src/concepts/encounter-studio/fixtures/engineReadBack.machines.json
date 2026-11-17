@@ -3364,5 +3364,866 @@
       ]
     }
   ],
-  "not_yet_said": []
+  "not_yet_said": [],
+  "folded": [
+    {
+      "title": "Routines",
+      "items": [
+        {
+          "text": "Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`; recipe `site:behaviors:captain-policy`.",
+          "paths": ["behaviorDefinitions.captain-policy"],
+          "base": "behaviorDefinitions.captain-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.captain-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready",
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on coming to hold a topic about someone (judged or heard), if it holds the topic `admitted` about anyone (it recognises someone as `admitted`) → to `in-hall` (“admitted the party; goes in”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when someone walks into it and its body stops them → acts from its `barred` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed` or `turned`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[5]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[1]",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]",
+                    "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `in-hall`, on its time (out of a fight) → acts from its `in-hall` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.captain-policy.table.",
+              "items": [
+                {
+                  "text": "`approached`: says “You there. Nobody passes this gate without my say. Speak.”",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.approached[0]"
+                  ]
+                },
+                {
+                  "text": "`barred`: says “Not one step further without my say.”",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.barred[0]"
+                  ]
+                },
+                {
+                  "text": "`in-hall`: if it knows of no enemy → walks to q 3, r -9.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.in-hall[0]"
+                  ]
+                },
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "One of the bundle `revenger`'s rows by weight: [if it holds that the deed `attacked` was done to it within the last 2 rounds → attacks whoever attacked it; if it holds that the deed `attacked` was done to it within the last 2 rounds → walks to whoever attacked it].",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows `guards-turned` and it knows of no enemy → walks to the nearest ally of it.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If an enemy is in reach → attacks the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → walks to the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.captain-policy.table.time[3]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `gate-1-policy` — run by Guard (gate-1); starts in `posted`; recipe `dnd5e:machines:gate-1`.",
+          "paths": ["behaviorDefinitions.gate-1-policy"],
+          "base": "behaviorDefinitions.gate-1-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.gate-1-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `posted`, `alert`, `challenged` or `cowed`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[0]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[0]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.cowed",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `posted`, `alert` or `challenged`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[1]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[1]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `posted`, `alert` or `challenged`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[2]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[2]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[2]"
+                  ]
+                },
+                {
+                  "text": "In `posted` or `alert`, when someone walks into it and its body stops them → to `challenged`, acts from its `barred` rows and sets its anchor (“walked into him”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[3]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `posted`, `alert` or `challenged`, on its time (out of a fight) → acts from its `post` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[4]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[5]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[5]"
+                  ]
+                },
+                {
+                  "text": "In `posted`, on hearing a sound, if it happened within 6 cells of it and (NOT (what it heard was a `voice`), or what it heard was a voice at `shout` or louder (a clang, a crash or a boom is at no loudness)) → to `alert` and sets its anchor (“heard something”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]"
+                  ]
+                },
+                {
+                  "text": "In `posted`, `alert`, `challenged`, `cowed` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[6]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[6]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[6]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[2]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.turned.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `alert` or `challenged`, on its time (out of a fight), if at least 3 rounds have passed since it set its anchor → to `posted` and acts from its `post` rows (“nothing came of it”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.alert.transitions[4]",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[4]"
+                  ]
+                },
+                {
+                  "text": "In `challenged`, when someone walks into it and its body stops them → acts from its `challenged` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.challenged.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `cowed`, on its time (out of a fight) → acts from its `cowed` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.cowed.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `turned`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.recipe.states.turned",
+                    "behaviorDefinitions.gate-1-policy.recipe.states.turned.transitions[0]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.gate-1-policy.table.",
+              "items": [
+                {
+                  "text": "`approached`: says “Easy there, friend. What brings you to the gate?”",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.table.approached[0]"
+                  ]
+                },
+                {
+                  "text": "`barred`: says “Whoa there, buddy. Can I help you?”",
+                  "paths": ["behaviorDefinitions.gate-1-policy.table.barred[0]"]
+                },
+                {
+                  "text": "`challenged`: says “I said, can I help you?”",
+                  "paths": [
+                    "behaviorDefinitions.gate-1-policy.table.challenged[0]"
+                  ]
+                },
+                {
+                  "text": "`cowed`: if it knows of no enemy → walks to q -5, r 8.",
+                  "paths": ["behaviorDefinitions.gate-1-policy.table.cowed[0]"]
+                },
+                {
+                  "text": "`post`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it sees an enemy, none in reach and NOT (it knows `alarm-raised`) → shouts “To arms! Intruders at the gate!”, and everyone its words reach learns `alarm-raised`.",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[0]"
+                      ]
+                    },
+                    {
+                      "text": "One of the bundle `dasher`'s rows by weight: [if an enemy is in reach → attacks the enemy; if a walk reaches an enemy → walks to the enemy; if only a run reaches an enemy → walks to the enemy; if not even a run reaches an enemy → runs to the enemy].",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[1]"
+                      ]
+                    },
+                    {
+                      "text": "If it has lost the trail → one of the bundle `pursuer`'s rows by weight (distance = 6, heading = went): [if it remembers an enemy it cannot see → walks to the enemy; if it has lost the trail → searches 6 cells on, heading `went`].",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[2]"
+                      ]
+                    },
+                    {
+                      "text": "One of the bundle `alarm-reactor`'s rows by weight: [if it heard a `clang` within 2 rounds → walks to the sound it heard].",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[3]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy and it heard a `voice` at `shout` or louder within 1 rounds → walks to the sound it heard.",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[4]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy and NOT (it heard a `voice` at `shout` or louder within 1 rounds) → walks to q -3, r 7.",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.post[5]"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it knows `guards-turned` and it knows of no enemy → walks to q 10, r -19.",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach and NOT (it knows `alarm-raised`) → shouts “To arms! Intruders at the gate!”, and everyone its words reach learns `alarm-raised`.",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "One of the bundle `guard-base`'s rows by weight (path = [{\"facing\": \"ne\", \"q\": -5, \"r\": 8, \"wait\": 1}, {\"facing\": \"se\", \"q\": -5, \"r\": 10, \"wait\": 1}, {\"q\": -7, \"r\": 10}]): [one of the bundle `dasher`'s rows by weight: [if an enemy is in reach → attacks the enemy; if a walk reaches an enemy → walks to the enemy; if only a run reaches an enemy → walks to the enemy; if not even a run reaches an enemy → runs to the enemy]; if it has lost the trail → one of the bundle `pursuer`'s rows by weight (distance = 6, heading = went): [if it remembers an enemy it cannot see → walks to the enemy; if it has lost the trail → searches 6 cells on, heading `went`]; one of the bundle `alarm-reactor`'s rows by weight: [if it heard a `clang` within 2 rounds → walks to the sound it heard]; one of the bundle `patrol`'s rows by weight (path = [{\"facing\": \"ne\", \"q\": -5, \"r\": 8, \"wait\": 1}, {\"facing\": \"se\", \"q\": -5, \"r\": 10, \"wait\": 1}, {\"q\": -7, \"r\": 10}]): [if it knows of no enemy → walks to the route q -5, r 8 (waits 1 round, facing 45°) → q -5, r 10 (waits 1 round, facing 135°) → q -7, r 10, then round again]].",
+                      "paths": [
+                        "behaviorDefinitions.gate-1-policy.table.time[2]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `gate-2-policy` — run by Guard (gate-2); starts in `ready`; recipe `site:behaviors:gate-2-policy`.",
+          "paths": ["behaviorDefinitions.gate-2-policy"],
+          "base": "behaviorDefinitions.gate-2-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.gate-2-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready` or `cowed`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[0]",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.cowed",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[2]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, when someone walks into it and its body stops them → acts from its `barred` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed` or `turned`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[4]",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[1]",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.turned",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.turned.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, `cowed` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[5]",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.cowed.transitions[2]",
+                    "behaviorDefinitions.gate-2-policy.recipe.states.turned.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.gate-2-policy.table.",
+              "items": [
+                {
+                  "text": "`approached`: says “Hold up. State your business at the gate.”",
+                  "paths": [
+                    "behaviorDefinitions.gate-2-policy.table.approached[0]"
+                  ]
+                },
+                {
+                  "text": "`barred`: says “Not so fast. Nobody through until the captain says so.”",
+                  "paths": ["behaviorDefinitions.gate-2-policy.table.barred[0]"]
+                },
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it knows `guards-turned` and it knows of no enemy → walks to q 10, r -19.",
+                      "paths": [
+                        "behaviorDefinitions.gate-2-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach and NOT (it knows `alarm-raised`) → shouts “To arms! Intruders at the gate!”, and everyone its words reach learns `alarm-raised`.",
+                      "paths": [
+                        "behaviorDefinitions.gate-2-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "One of the bundle `guard-base`'s rows by weight (path = [{\"facing\": \"nw\", \"q\": -2, \"r\": 8, \"wait\": 1}, {\"facing\": \"sw\", \"q\": -4, \"r\": 10, \"wait\": 1}, {\"q\": -2, \"r\": 10}]): [one of the bundle `dasher`'s rows by weight, its rows as said under the routine `gate-1-policy`; if it has lost the trail → one of the bundle `pursuer`'s rows by weight (distance = 6, heading = went), its rows as said under the routine `gate-1-policy`; one of the bundle `alarm-reactor`'s rows by weight, its rows as said under the routine `gate-1-policy`; one of the bundle `patrol`'s rows by weight (path = [{\"facing\": \"nw\", \"q\": -2, \"r\": 8, \"wait\": 1}, {\"facing\": \"sw\", \"q\": -4, \"r\": 10, \"wait\": 1}, {\"q\": -2, \"r\": 10}]): [if it knows of no enemy → walks to the route q -2, r 8 (waits 1 round, facing 315°) → q -4, r 10 (waits 1 round, facing 225°) → q -2, r 10, then round again]].",
+                      "paths": [
+                        "behaviorDefinitions.gate-2-policy.table.time[2]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `hall-1-policy` — run by Guard (hall-1); starts in `ready`; recipe `site:behaviors:hall-1-policy`.",
+          "paths": ["behaviorDefinitions.hall-1-policy"],
+          "base": "behaviorDefinitions.hall-1-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.hall-1-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.hall-1-policy.recipe.states.ready",
+                    "behaviorDefinitions.hall-1-policy.recipe.states.ready.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.hall-1-policy.recipe.states.ready.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.hall-1-policy.table.",
+              "items": [
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it knows `guards-turned` and it knows of no enemy → walks to q 10, r -19.",
+                      "paths": [
+                        "behaviorDefinitions.hall-1-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If an enemy is in reach → attacks the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.hall-1-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → walks to the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.hall-1-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy → walks to the route q -2, r -12 → q 6, r -12 → q 6, r -15 → q 1, r -15, then round again.",
+                      "paths": [
+                        "behaviorDefinitions.hall-1-policy.table.time[3]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `keep-1-policy` — run by Knight (keep-1); starts in `ready`; recipe `site:behaviors:keep-1-policy`.",
+          "paths": ["behaviorDefinitions.keep-1-policy"],
+          "base": "behaviorDefinitions.keep-1-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.keep-1-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.keep-1-policy.recipe.states.ready",
+                    "behaviorDefinitions.keep-1-policy.recipe.states.ready.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.keep-1-policy.recipe.states.ready.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.keep-1-policy.table.",
+              "items": [
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it holds that the deed `fell` was done to The Mad King (king), on it's side, within the last 3 rounds → moves away from the enemy (weight 3).",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach and NOT (it knows `alarm-raised`) → shouts “Protect the king!”, and everyone its words reach learns `alarm-raised`.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If an enemy is in reach → attacks the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → walks to the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[3]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows `alarm-raised` → walks to q 4, r -18.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[4]"
+                      ]
+                    },
+                    {
+                      "text": "If it heard a `voice` at `shout` or louder within 3 rounds → walks to the sound it heard.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[5]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy → walks to the route q 4, r -19 → q 7, r -19 → q 7, r -21 → q 5, r -21, then round again.",
+                      "paths": [
+                        "behaviorDefinitions.keep-1-policy.table.time[6]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `keep-2-policy` — run by Knight (keep-2); starts in `ready`; recipe `site:behaviors:keep-2-policy`.",
+          "paths": ["behaviorDefinitions.keep-2-policy"],
+          "base": "behaviorDefinitions.keep-2-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.keep-2-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.keep-2-policy.recipe.states.ready",
+                    "behaviorDefinitions.keep-2-policy.recipe.states.ready.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.keep-2-policy.recipe.states.ready.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.keep-2-policy.table.",
+              "items": [
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it holds that the deed `fell` was done to The Mad King (king), on it's side, within the last 3 rounds → moves away from the enemy (weight 3).",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach and NOT (it knows `alarm-raised`) → shouts “Protect the king!”, and everyone its words reach learns `alarm-raised`.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If an enemy is in reach → attacks the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → walks to the enemy.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[3]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows `alarm-raised` → walks to q 4, r -18.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[4]"
+                      ]
+                    },
+                    {
+                      "text": "If it heard a `voice` at `shout` or louder within 3 rounds → walks to the sound it heard.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[5]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy → walks to the route q 13, r -19 → q 16, r -19 → q 16, r -21 → q 14, r -21, then round again.",
+                      "paths": [
+                        "behaviorDefinitions.keep-2-policy.table.time[6]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `reserve-1-policy` — run by Knight (reserve-1); starts in `waiting`; recipe `dnd5e:machines:reserve-1`.",
+          "paths": ["behaviorDefinitions.reserve-1-policy"],
+          "base": "behaviorDefinitions.reserve-1-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.reserve-1-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `waiting`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.waiting",
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.waiting.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `waiting`, on each round of a fight its side is in → to `marching` (“the gate is fighting”).",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.waiting.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `waiting` or `marching`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.waiting.transitions[2]",
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.marching.transitions[3]"
+                  ]
+                },
+                {
+                  "text": "In `marching`, on each round of a fight its side is in → nothing.",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.marching",
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.marching.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `marching`, on each round of world time → to `waiting` (“the fight is over”).",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.marching.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `marching`, on its time (out of a fight) → acts from its `march` rows.",
+                  "paths": [
+                    "behaviorDefinitions.reserve-1-policy.recipe.states.marching.transitions[2]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.reserve-1-policy.table.",
+              "items": [
+                {
+                  "text": "`march`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "One of the bundle `dasher`'s rows by weight, its rows as said under the routine `gate-1-policy`.",
+                      "paths": [
+                        "behaviorDefinitions.reserve-1-policy.table.march[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy → walks to q -2, r 4.",
+                      "paths": [
+                        "behaviorDefinitions.reserve-1-policy.table.march[1]"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "One of the bundle `dasher`'s rows by weight, its rows as said under the routine `gate-1-policy`.",
+                      "paths": [
+                        "behaviorDefinitions.reserve-1-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it has lost the trail → one of the bundle `pursuer`'s rows by weight (distance = 6, heading = went), its rows as said under the routine `gate-1-policy`.",
+                      "paths": [
+                        "behaviorDefinitions.reserve-1-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows of no enemy → walks to q -2, r 4.",
+                      "paths": [
+                        "behaviorDefinitions.reserve-1-policy.table.time[2]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `reserve-2-policy` — run by Knight (reserve-2); starts in `waiting`; recipe `dnd5e:machines:reserve-2`. Its states and rows are word for word those of `reserve-1-policy`.",
+          "paths": [
+            "behaviorDefinitions.reserve-2-policy",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[0]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[1]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[2]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[3]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[0]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[1]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[2]",
+            "behaviorDefinitions.reserve-2-policy.table.march[0]",
+            "behaviorDefinitions.reserve-2-policy.table.march[1]",
+            "behaviorDefinitions.reserve-2-policy.table.time[0]",
+            "behaviorDefinitions.reserve-2-policy.table.time[1]",
+            "behaviorDefinitions.reserve-2-policy.table.time[2]"
+          ]
+        },
+        {
+          "text": "Routine `sergeant-policy` — run by Guard (sergeant); starts in `ready`; recipe `site:behaviors:sergeant-policy`.",
+          "paths": ["behaviorDefinitions.sergeant-policy"],
+          "base": "behaviorDefinitions.sergeant-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.sergeant-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `ready`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.sergeant-policy.recipe.states.ready",
+                    "behaviorDefinitions.sergeant-policy.recipe.states.ready.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `ready`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.sergeant-policy.recipe.states.ready.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions hold is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.sergeant-policy.table.",
+              "items": [
+                {
+                  "text": "`time`:",
+                  "paths": null,
+                  "items": [
+                    {
+                      "text": "If it knows `alarm-raised` and an enemy is in reach → attacks the enemy (weight 4).",
+                      "paths": [
+                        "behaviorDefinitions.sergeant-policy.table.time[0]"
+                      ]
+                    },
+                    {
+                      "text": "If it knows `alarm-raised` and NOT (an enemy is in reach) → walks to the enemy (weight 4).",
+                      "paths": [
+                        "behaviorDefinitions.sergeant-policy.table.time[1]"
+                      ]
+                    },
+                    {
+                      "text": "If it heard a `clang` within 2 rounds → shouts “Steel in the cells! Sound the alarm!”, and everyone its words reach learns `alarm-raised` (weight 3).",
+                      "paths": [
+                        "behaviorDefinitions.sergeant-policy.table.time[2]"
+                      ]
+                    },
+                    {
+                      "text": "If it sees an enemy, none in reach → shouts “Intruders in the cells! Sound the alarm!”, and everyone its words reach learns `alarm-raised` (weight 3).",
+                      "paths": [
+                        "behaviorDefinitions.sergeant-policy.table.time[3]"
+                      ]
+                    },
+                    {
+                      "text": "Holds where it stands.",
+                      "paths": [
+                        "behaviorDefinitions.sergeant-policy.table.time[4]"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Routine `turnkey-policy` — run by Guard (turnkey); starts in `ready`; recipe `site:behaviors:turnkey-policy`. Its states and rows are word for word those of `sergeant-policy`.",
+          "paths": [
+            "behaviorDefinitions.turnkey-policy",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready.transitions[0]",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready.transitions[1]",
+            "behaviorDefinitions.turnkey-policy.table.time[0]",
+            "behaviorDefinitions.turnkey-policy.table.time[1]",
+            "behaviorDefinitions.turnkey-policy.table.time[2]",
+            "behaviorDefinitions.turnkey-policy.table.time[3]",
+            "behaviorDefinitions.turnkey-policy.table.time[4]"
+          ]
+        }
+      ]
+    }
+  ]
 }

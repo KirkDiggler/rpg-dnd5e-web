@@ -12,11 +12,12 @@ Slice [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995) o
 - Two rows: the start and every state that can return to it on top, every other state below in step order, sinks last; so every arrow joins neighbouring rows or runs within one, and no stroke crosses a box — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
 - A shared step is gathered by beat, target and the ids its guard `wakes-on`, and split by row: the top row's states leave by one bracket, a lower-row state by its own arrow, as the agreed mock draws "the garrison turned" — [rpg-project#993](https://github.com/KirkDiggler/rpg-project/issues/993).
 - Arrow and box words are connection ids and role words (`on fact: guards-turned`, `on time: picks post`, `gate-1: holds door gate-wall-door`), never a sentence's quoted reason, because the reason is only in the sentence — [rpg-project#994](https://github.com/KirkDiggler/rpg-project/issues/994).
-- "final" is marked only from the engine's `final` connection; a state with no way out that the file does not call terminal (the castle's `turned`) is placed last but not marked — [rpg-project#994](https://github.com/KirkDiggler/rpg-project/issues/994).
+- "final" is marked only from the engine's `final` connection; "no way out" is read from the graph (no step leaves the state) and said only in a machine of more than one state, so the castle's `turned` carries it and no single-state machine does — [rpg-dnd5e-web#1450](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1450).
 - Marked sentences show as a group at the top of the existing Read back, not a new pane, so the detail stays where it is — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
 
 ## Found
 
+- The released engine (encounter v0.220.0) says the shape exactly as the contract states, so the reader needed no change; its `fact.ask` / `topic.ask` repeats carry `from`, `to` and `on` too, which is why the machine reads only the routine's own kinds under its own path — [rpg-dnd5e-web#1450](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1450).
 - The castle's largest machine (`gate-1-policy`) lays out at 925 × 460 px; every castle machine is at most 1100 px wide with no box or label overlapping — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
 - `world-building/bundles.test.ts` "a bundle that uses itself" overflows the stack on this machine (Node 24) on clean `dev` too, while `dev` CI is green — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
 
