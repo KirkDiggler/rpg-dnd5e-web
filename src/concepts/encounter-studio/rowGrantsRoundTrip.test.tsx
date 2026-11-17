@@ -20,6 +20,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OptionShape } from '../world-building/answerTableShape';
 import {
@@ -62,8 +63,11 @@ function editor(
       : room.propBindings![owner]!.options!;
   const onChange = vi.fn();
   const names: SiteNames = siteNamesOf(result.scope, result.draft.room);
-  render(
-    <SiteNamesContext.Provider value={names}>
+  // The lines held in state, as their owner holds them: an edit is shown,
+  // so the fields a choice opens can be edited next.
+  function Harness() {
+    const [shown, setShown] = useState<readonly OptionShape[]>(options);
+    return (
       <OptionsEditor
         owner={owner}
         at={
@@ -71,13 +75,21 @@ function editor(
             ? `room.room.monsterBindings.${owner}`
             : `room.room.propBindings.${owner}`
         }
-        options={options}
+        options={shown}
         room={room}
         isProp={kind === 'prop'}
         onAdd={vi.fn()}
-        onChange={onChange}
+        onChange={(index, option) => {
+          onChange(index, option);
+          setShown((was) => was.map((o, i) => (i === index ? option : o)));
+        }}
         onRemove={vi.fn()}
       />
+    );
+  }
+  render(
+    <SiteNamesContext.Provider value={names}>
+      <Harness />
     </SiteNamesContext.Provider>
   );
   return {
@@ -189,7 +201,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     expect(
       (
         screen.getByLabelText(
-          `Witnessing carriers hold it too for ${row} entry`
+          `Also held by the conversation’s carriers who witness it, for ${row} entry`
         ) as HTMLInputElement
       ).disabled
     ).toBe(true);
@@ -231,10 +243,28 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
         .value
     ).toBe('speaker');
     const heard = screen.getByLabelText(
-      `Witnessing carriers hold it too for ${label} entry`
+      `Also held by the conversation’s carriers who witness it, for ${label} entry`
     ) as HTMLInputElement;
     expect(heard.disabled).toBe(false);
     expect(heard.checked).toBe(true);
+  });
+
+  it('a new recognition on a line that requires a conversation can be witnessed: friends-inside', () => {
+    const result = read(served);
+    const options = result.draft.room.monsterBindings!['gate-1']!.options!;
+    const at = options.findIndex((o) => o.id === 'friends-inside');
+    const label = `line ${at + 1} of gate-1 success`;
+    const { last } = editor(result, 'gate-1', 'creature');
+    fireEvent.change(grants(label), { target: { value: 'recognize' } });
+    const witnesses = screen.getByLabelText(
+      `Also held by the conversation’s carriers who witness it, for ${label} entry`
+    ) as HTMLInputElement;
+    expect(witnesses.disabled).toBe(false);
+    fireEvent.click(witnesses);
+    const { option } = last();
+    expect(option.success![0]).toMatchObject({
+      recognize: { heard_by: 'carriers_who_witnessed' },
+    });
   });
 
   it('a prop’s line offers no recognition (a prop holds nothing about anybody); its relocate reads as written', () => {
@@ -320,6 +350,21 @@ describe('a loudness, from the form (rpg-project#975 A)', () => {
     );
   });
 
+  it('a line’s first loudness lands right after `say`, not at the end of the line', () => {
+    const result = read(served);
+    const { last } = editor(result, 'scullion', 'creature');
+    fireEvent.change(screen.getByLabelText('Line 1 loudness for scullion'), {
+      target: { value: 'shout' },
+    });
+    const { index, option } = last();
+    expect(saveWith(result, 'scullion', 'creature', index, option)).toBe(
+      served.replace(
+        "            say: There's a coin in it if you know a way out of here.\n            requires:\n              holds: purse\n            success:\n              - say: The grate by the hearth.",
+        "            say: There's a coin in it if you know a way out of here.\n            loudness: shout\n            requires:\n              holds: purse\n            success:\n              - say: The grate by the hearth."
+      )
+    );
+  });
+
   it('a line done has no loudness: something done is seen, not heard', () => {
     const result = read(served);
     editor(result, 'grate', 'prop');
@@ -341,6 +386,31 @@ describe('a loudness, from the form (rpg-project#975 A)', () => {
     const saved = saveWith(result, 'gate-1', 'creature', index, option);
     expect(changedLines(served, saved)).toEqual([
       '                loudness: scream',
+    ]);
+  });
+
+  it('a heard voice’s “at least” offers what the engine means: Any, Speak, Shout, Scream (Whisper is Any)', () => {
+    render(
+      <ul>
+        <AnswerEntryRow
+          trigger="time"
+          entry={{
+            when: { heard: { kind: 'voice', within: 3 } },
+            toward: 'sound',
+          }}
+          onCommit={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      </ul>
+    );
+    const select = screen.getByLabelText(
+      'Heard loudness for time entry'
+    ) as HTMLSelectElement;
+    expect([...select.options].map((o) => [o.value, o.text])).toEqual([
+      ['', 'Any'],
+      ['speak', 'Speak'],
+      ['shout', 'Shout'],
+      ['scream', 'Scream'],
     ]);
   });
 

@@ -41,7 +41,8 @@ function changedLines(a: string, b: string): string[] {
 function editor(
   result: Read,
   owner: string,
-  kind: 'creature' | 'prop' = 'creature'
+  kind: 'creature' | 'prop' = 'creature',
+  scope = result.scope
 ): () => { index: number; option: OptionShape } {
   const room = result.draft.room;
   const initial =
@@ -75,7 +76,7 @@ function editor(
   }
   render(
     <RevealProvider>
-      <SiteNamesContext.Provider value={siteNamesOf(result.scope, room)}>
+      <SiteNamesContext.Provider value={siteNamesOf(scope, room)}>
         <Harness />
       </SiteNamesContext.Provider>
     </RevealProvider>
@@ -336,9 +337,110 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
     });
     expect(
       field<HTMLInputElement>(
-        'Witnessing carriers hold it too for line 1 of scullion success entry'
+        'Also held by the conversation’s carriers who witness it, for line 1 of scullion success entry'
       ).disabled
     ).toBe(false);
+  });
+});
+
+describe('a new requirement starts complete (rpg-project#975 B review)', () => {
+  it('Add a requirement starts on the first fact the file mentions, never an empty one', () => {
+    const result = read(served);
+    const last = editor(result, 'scullion');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Add a requirement to line 1 of scullion',
+      })
+    );
+    const added = (last().option.requires as unknown[])[1] as { fact: string };
+    expect(added.fact).not.toBe('');
+    expect(siteNamesOf(result.scope, result.draft.room).facts).toContain(
+      added.fact
+    );
+    // Choosing "knows a fact" on another kind does the same.
+    fireEvent.change(field('Line 1 requires for scullion'), {
+      target: { value: 'fact' },
+    });
+    expect((last().option.requires as unknown[])[0]).toEqual({
+      fact: siteNamesOf(result.scope, result.draft.room).facts[0],
+    });
+  });
+
+  it('a site with no conversations offers no conversation requirement', () => {
+    const result = read(served);
+    const scope = {
+      ...result.scope,
+      unread: { ...result.scope.unread, interactions: undefined },
+    };
+    editor(result, 'scullion', 'creature', scope);
+    const offered = [
+      ...field<HTMLSelectElement>('Line 1 requires for scullion').options,
+    ];
+    for (const value of ['interaction', 'not-interaction'])
+      expect(offered.find((o) => o.value === value)!.disabled).toBe(true);
+  });
+
+  it('with two conversations, the states and beats offered are the chosen one’s', () => {
+    const result = read(served);
+    const interactions = result.scope.unread!.interactions as Record<
+      string,
+      unknown
+    >;
+    const scope = {
+      ...result.scope,
+      unread: {
+        ...result.scope.unread,
+        interactions: {
+          ...interactions,
+          'side-door': {
+            recipe: {
+              ref: 'site:interactions:side-door',
+              initial: 'quiet',
+              states: {
+                quiet: { transitions: [{ on: 'knocked', to: 'noisy' }] },
+                noisy: { transitions: [{ on: 'hushed', to: 'quiet' }] },
+              },
+            },
+          },
+        },
+      },
+    };
+    editor(result, 'scullion', 'creature', scope);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Add a requirement to line 1 of scullion',
+      })
+    );
+    fireEvent.change(field('Line 1 requires 2 for scullion'), {
+      target: { value: 'interaction' },
+    });
+    fireEvent.change(field('Line 1 requires conversation 2 for scullion'), {
+      target: { value: 'side-door' },
+    });
+    expect(
+      field<HTMLInputElement>(
+        'Line 1 requires side-door in quiet 2 for scullion'
+      ).checked
+    ).toBe(true);
+    expect(
+      screen.queryByLabelText(
+        'Line 1 requires side-door in fresh 2 for scullion'
+      )
+    ).toBeNull();
+    expect(
+      field<HTMLInputElement>(
+        'Line 1 requires side-door in noisy 2 for scullion'
+      ).checked
+    ).toBe(false);
+    fireEvent.change(field('Line 1 advances conversation for scullion'), {
+      target: { value: 'side-door' },
+    });
+    expect(
+      [
+        ...field<HTMLSelectElement>('Line 1 on a win steps for scullion')
+          .options,
+      ].map((o) => o.value)
+    ).toEqual(['knocked', 'hushed']);
   });
 });
 
