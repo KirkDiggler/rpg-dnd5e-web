@@ -14,8 +14,8 @@
  * | `routine.row`                          | `{table, <key>, row-of}`       |
  * | `creature.post`, `creature.blocking`   | `{state, S, while}` per state  |
  *
- * This module reads those connections and the statements' `kind` and
- * `about`, and nothing else: it never reads a sentence or the file to place
+ * This module reads those connections, the statements' `kind`, and the
+ * routine their path is set under, and nothing else: it never reads a sentence or the file to place
  * or connect anything. A read-back without the shape (an older engine), or
  * with a shape that does not hold together (a step from or to a state the
  * routine does not say), gives no machine at all: the studio draws nothing
@@ -30,6 +30,16 @@ const ROUTINE = 'routine';
 const KIND_ROUTINE = 'routine';
 const KIND_STATE = 'routine.state';
 const KIND_WAKE = 'routine.wake';
+const ROUTINE_KINDS = new Set([
+  KIND_ROUTINE,
+  KIND_STATE,
+  KIND_WAKE,
+  'routine.row',
+]);
+const underRoutine = (path: string, routineId: string): boolean => {
+  const at = `behaviorDefinitions.${routineId}`;
+  return path === at || path.startsWith(`${at}.`);
+};
 const KIND_CREATURE_ROUTINE = 'creature.routine';
 const HOLD_KINDS = new Set(['creature.post', 'creature.blocking']);
 const STATE = 'state';
@@ -126,8 +136,13 @@ export function machineOf(
     (g) => g.about?.kind === ROUTINE && g.about.id === routineId
   );
   if (!group) return null;
+  // A state id is scoped by the routine its statement's path names, never
+  // by its subject: the engine repeats a step under a fact or topic hub
+  // (`fact.ask`, `topic.ask`) with its shape connections and the hub as its
+  // subject. Only the routine's own kinds, set under its own definition,
+  // build its machine.
   const own = group.statements.filter(
-    (st) => st.about?.kind === ROUTINE && st.about.id === routineId
+    (st) => ROUTINE_KINDS.has(st.kind) && underRoutine(st.path, routineId)
   );
   const head = own.find((st) => st.kind === KIND_ROUTINE);
   const initial = head ? connected(head, STATE, ROLE_STARTS)[0] : undefined;

@@ -99,6 +99,69 @@ describe('machineOf', () => {
     expect(state('cowed').holds).toEqual([]);
   });
 
+  it('a step that names its own state as `to` stays: written in the box, no arrow', () => {
+    const readBack = castleMachinesReadBack();
+    const plain = readBack.sections
+      .flatMap((s) => s.groups)
+      .flatMap((g) => g.statements)
+      .find(
+        (st) =>
+          st.path ===
+          'behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[4]'
+      )!;
+    plain.connects.push({ ...plain.connects[0]!, id: 'posted', role: 'to' });
+    const view = machineOf(readBack, 'gate-1-policy')!;
+    const step = view.steps.find((st) => st.statement === plain)!;
+    expect(step.to).toBeNull();
+    expect(
+      view.states.find((s) => s.id === 'posted')!.stays.includes(step)
+    ).toBe(true);
+    expect(view.edges.some((edge) => edge.steps.includes(step))).toBe(false);
+  });
+
+  it('a step repeated under a hub is not a step of any machine', () => {
+    // The engine repeats a wake under the fact it reads (`fact.ask`), its
+    // shape connections kept and the fact as its subject; the repeat may
+    // even sit in the routine's group. Neither changes the machine.
+    const readBack = castleMachinesReadBack();
+    const group = readBack.sections
+      .flatMap((s) => s.groups)
+      .find((g) => g.about?.id === 'gate-1-policy')!;
+    const wake = group.statements.find(
+      (st) =>
+        st.path ===
+        'behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]'
+    )!;
+    const repeat = (path: string) => ({
+      ...wake,
+      kind: 'fact.ask',
+      path,
+      about: { ...wake.about!, kind: 'fact', id: 'guards-turned' },
+      connects: [
+        ...wake.connects.filter((c) => c.role !== 'to'),
+        { ...wake.connects[0]!, kind: 'state', id: 'nowhere', role: 'to' },
+      ],
+    });
+    group.statements.push(repeat(wake.path));
+    // A routine.wake set under another routine's definition is not this one's.
+    group.statements.push({
+      ...repeat(
+        'behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]'
+      ),
+      kind: 'routine.wake',
+      about: wake.about,
+    });
+    const view = machineOf(readBack, 'gate-1-policy');
+    expect(view).not.toBeNull();
+    expect(view!.steps.map((st) => st.statement.kind)).not.toContain(
+      'fact.ask'
+    );
+    expect(
+      view!.steps.some((st) => st.statement.path.includes('captain-policy'))
+    ).toBe(false);
+    expect(view!.edges.map((edge) => edge.to)).not.toContain('nowhere');
+  });
+
   it('a read-back without the shape draws nothing', () => {
     // The engine as it is today: the routines with no shape connections.
     expect(machineOf(castleRoutinesReadBack(), 'gate-1-policy')).toBeNull();
