@@ -4,8 +4,8 @@ Slice [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995) o
 
 ## Shipped
 
-- `machineView.ts` reads a routine's machine from the read-back's shape connections alone (`starts`, `is`, `final`, `from`, `to`, `on`, `picks`, `while`) and gives no machine when the shape is missing or does not hold together — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
-- `machineLayout.ts` lays a machine out in two rows with lanes, and `MachineDrawing.tsx` draws it above the Behaviours list; a box or arrow marks and puts its sentences first in the detail pane, and a sentence's "On the drawing" marks its box or arrow — [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995).
+- `machineView.ts` reads a routine's machine from the read-back's shape connections alone (`starts`, `is`, `final`, `from`, `to`, `on`, `picks`, `while`) and gives no machine when the shape is missing or does not hold together — [rpg-dnd5e-web#1450](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1450).
+- `machineLayout.ts` lays a machine out in two rows with lanes, and `MachineDrawing.tsx` draws it above the Behaviours list; a box or arrow marks and puts its sentences first in the detail pane, and a sentence's "On the drawing" marks its box or arrow — [rpg-dnd5e-web#1450](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1450).
 
 ## Decided
 
