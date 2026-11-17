@@ -23,7 +23,8 @@ Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) o
 
 - A recognition's holder is the one word the engine takes (`spoken_to`). It is shown as a disabled field reading "The one spoken to", written by the form, not offered as a choice — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 - A new grant starts from what the site defines: its first topic, record or region. A relocation's words start empty, and the engine's refusal shows at the row until they are written — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
-- A new `loudness` is placed right after `say`, where the castle writes it; an existing one keeps its place — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
+- A new `loudness` is placed right after `say`, where the castle writes it; an existing one keeps its place. A line's `loudness` is now a key the option reads (`OPTION_KEYS`), so the encoder keeps it beside the words rather than carrying it to the end; a test pins the inserted line — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
+- A heard voice's "at least" offers what the engine accepts and means: Any (no loudness), Speak, Shout, Scream. Whisper, the quietest, means the same as Any and is shown only when a file writes it — [rpg-dnd5e-web#1446 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1446).
 
 ## Found
 
@@ -32,4 +33,5 @@ Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) o
 
 ## Mistaken
 
+- The first cut claimed a new line loudness landed after `say`; the decoder rebuilt the option with its read keys first and carried `loudness` to the end, so it landed after `success`. Nothing pinned it until the review's mutant — [rpg-dnd5e-web#1446 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1446).
 - `TablesPanel.test` pinned a heard loudness surviving a change from voice to clang. The engine refuses that file ("write `kind: voice` or omit the loudness"), so the test now asserts that the loudness goes with the voice — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).

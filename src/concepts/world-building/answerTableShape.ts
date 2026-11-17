@@ -1199,6 +1199,8 @@ export const OPTION_KEYS: readonly string[] = Object.freeze([
   // and written where `say` would be.
   'do',
   'seen',
+  // A line's loudness (rpg-project#975 A): read, so it stays with the words.
+  'loudness',
   'check',
   'requires',
   ...OPTION_VERDICTS,
@@ -1321,9 +1323,11 @@ export function validateOptions(
       does && (raw.say === undefined || raw.say === null)
         ? { id }
         : { id, say };
-    // Read keys are never dropped: a `do` or `seen` that is not words is
-    // refused as `say` is, never silently left behind.
-    for (const key of ['do', 'seen'] as const) {
+    // Read keys are never dropped: a `do`, `seen` or `loudness` that is not
+    // words is refused as `say` is, never silently left behind. A loudness is
+    // read here, with the words it is said at (rpg-project#975 A), so the
+    // option keeps it beside them; which word it is, the engine judges.
+    for (const key of ['do', 'seen', 'loudness'] as const) {
       const value = raw[key];
       if (value === undefined || value === null) continue;
       if (typeof value !== 'string') fail(`${at}.${key}`, 'expected a string');
