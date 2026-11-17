@@ -28,6 +28,7 @@ Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) o
 - **Empty "Held from" means the creature's own cell.** An empty pick removes `at` and reads "its own cell", as the decoder says (`HoldsSpec`: "No `at` means the cell the creature is placed at") — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 - **A faction's posts stay file-only.** The decoder allows them, but the studio offers factions no behaviour, and the castle has none — [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975).
 - **What can still be refused after the form.** A cell that is not floor, and a directed post (Entering or Leaving) whose door is away from its cells: that compiles and is refused only at launch, an engine gap filed as [rpg-toolkit#2449](https://github.com/KirkDiggler/rpg-toolkit/issues/2449). The studio does not restate that rule — [rpg-dnd5e-web#1449 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1449).
+- A cells pick from the Build inspector writes through `useLatest`, as a conversation's arrest does (one mechanism), and reopens the inspector however it ends; workspace tests pick on the real Layout (Done writes and reopens; a keyboard Undo mid-pick cancels and reopens) — [rpg-dnd5e-web#1449 review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1449).
 
 ## Found
 
