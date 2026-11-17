@@ -18,6 +18,7 @@ import { regionLabelPoint } from '../world-building/regionLabel';
 import { cellOwners } from '../world-building/roomDraft';
 import { appendWaypoint } from '../world-building/routeEdits';
 import {
+  pickedCells,
   RoutePickContext,
   type RoutePicking,
   type RoutePickRequest,
@@ -778,6 +779,12 @@ function StudioSurface({
     setRoutePick(null);
     if (!pick) return;
     if (commit) pick.request.onDone(waypoints);
+    // Back where it was asked, the thing it was for is landed on and marked
+    // (rpg-project#975 C review).
+    const revealed = pick.request.revealPath
+      ? keyOfPath(pick.request.revealPath, session.document)
+      : null;
+    if (revealed) queueReveal(revealed);
     changeHome('encounter');
     setEncounterSection(pick.section);
   };
@@ -785,6 +792,15 @@ function StudioSurface({
     if (!routePick) return;
     if (routePick.request.mode === 'cell')
       return finishPick(true, [{ q: cell.q, r: cell.r }]);
+    // A set of cells (rpg-project#975 C): a click adds a cell, or takes it
+    // away again.
+    if (routePick.request.mode === 'cells')
+      return setRoutePick({
+        ...routePick,
+        waypoints: pickedCells(routePick.waypoints, cell, (c) =>
+          cellOwners(session.document.draft).has(`${c.q},${c.r}`)
+        ),
+      });
     setRoutePick({
       ...routePick,
       waypoints: appendWaypoint(routePick.waypoints, cell),
@@ -1338,7 +1354,9 @@ function StudioSurface({
               <strong>
                 {routePick.request.mode === 'cell'
                   ? `Picking a cell for ${routePick.request.label} · click the cell to walk to`
-                  : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
+                  : routePick.request.mode === 'cells'
+                    ? `Picking cells for ${routePick.request.label} · click a cell to add or take it away · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'cell' : 'cells'}`
+                    : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
               </strong>
               {routePick.request.mode === 'route' && (
                 <>
@@ -1362,6 +1380,11 @@ function StudioSurface({
                     Done picking route
                   </button>
                 </>
+              )}
+              {routePick.request.mode === 'cells' && (
+                <button type="button" onClick={() => finishPick(true)}>
+                  Done picking cells
+                </button>
               )}
               <button type="button" onClick={() => finishPick(false)}>
                 Cancel picking
@@ -1921,9 +1944,14 @@ function StudioSurface({
                   onOpenIntel={() => setEncounterSection('intel')}
                 />
               )}
-              {home === 'encounter' && encounterSection === 'interactions' && (
-                <StudioInteractions session={session} />
-              )}
+              {/* Conversations stays mounted, hidden, as Bundles does: an
+                  arrest's cells are picked on the map, and Done writes
+                  through the section's newest commit (rpg-project#975 C). */}
+              <RoutePickContext.Provider value={routePicking}>
+                <div hidden={encounterSection !== 'interactions'}>
+                  <StudioInteractions session={session} />
+                </div>
+              </RoutePickContext.Provider>
               {home === 'encounter' && encounterSection === 'behaviours' && (
                 <StudioBehaviours
                   document={session.document}

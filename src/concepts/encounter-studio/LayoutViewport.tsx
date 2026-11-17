@@ -83,14 +83,19 @@ const withinWorld = (point: WorldPoint): boolean =>
 function LayoutRouteOverlay({
   waypoints,
   loop,
+  set = false,
   transform,
 }: {
   waypoints: readonly RoomHexCell[];
   loop: boolean;
+  /** A set of cells, not a route: no legs and no order (rpg-project#975 C). */
+  set?: boolean;
   transform: string | undefined;
 }): React.JSX.Element {
   const centres = waypoints.map(layoutCellCenter);
-  const legs = centres.slice(1).map((to, i) => [centres[i]!, to] as const);
+  const legs = set
+    ? []
+    : centres.slice(1).map((to, i) => [centres[i]!, to] as const);
   const closing =
     loop && centres.length > 2
       ? ([centres[centres.length - 1]!, centres[0]!] as const)
@@ -144,7 +149,7 @@ function LayoutRouteOverlay({
             fill="#1b1300"
             fontWeight="bold"
           >
-            {i + 1}
+            {set ? '' : i + 1}
           </text>
         </g>
       ))}
@@ -1222,7 +1227,9 @@ export function LayoutViewport({
         {routePick
           ? routePick.mode === 'cell'
             ? 'Click the cell to walk to. Escape cancels.'
-            : 'Click cells in walking order; the route loops back to its first waypoint. Escape cancels.'
+            : routePick.mode === 'cells'
+              ? 'Click a cell to add it, or click it again to take it away. Escape cancels.'
+              : 'Click cells in walking order; the route loops back to its first waypoint. Escape cancels.'
           : tool === 'wall'
             ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
             : tool === 'select'
@@ -1392,6 +1399,7 @@ export function LayoutViewport({
         <LayoutRouteOverlay
           waypoints={routePick.waypoints}
           loop={routePick.mode === 'route'}
+          set={routePick.mode === 'cells'}
           transform={worldTransform}
         />
       )}

@@ -2401,6 +2401,29 @@ describe('Layout pick on map (rpg-project#720)', () => {
     ).toEqual(['1', '2', '3']);
   });
 
+  it('draws a set of cells being picked as plain discs: no legs, no order (rpg-project#975 C)', () => {
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        routePick={{
+          mode: 'cells',
+          waypoints: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+          ],
+          onPick: vi.fn(),
+        }}
+      />
+    );
+    const overlay = screen.getByTestId('route-pick-overlay');
+    expect(overlay.querySelectorAll('line')).toHaveLength(0);
+    expect(
+      Array.from(overlay.querySelectorAll('[data-route-waypoint] text')).map(
+        (t) => t.textContent
+      )
+    ).toEqual(['', '']);
+  });
+
   it('no pick, no overlay and no capture', () => {
     const onSelectHex = vi.fn<(cell: RoomHexCell) => void>();
     render(

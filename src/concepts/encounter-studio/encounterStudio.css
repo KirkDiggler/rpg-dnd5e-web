@@ -1927,3 +1927,128 @@
   font-family: var(--es-font-mono, monospace);
   font-size: var(--es-text-help);
 }
+
+/* A CONVERSATION'S OUTCOMES (rpg-project#975 C): one card per outcome, the
+ * same on every kind. A header line — the state it follows as the title,
+ * the kind beside it, Remove at the far right — then the kind's fields, each
+ * label above its control (the studio's panel pattern), controls sized to
+ * their content: Words spans the card, Rounds is short, a recognition's
+ * witnesses sit on their own line, and Seized in is a region list that
+ * wraps in columns with the cell count and Pick on map on one line under
+ * it. The add-an-outcome control is a card of the same fields. */
+.encounter-studio .es-outcome-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-outcome,
+.encounter-studio .es-outcome-add {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-outcome-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.encounter-studio .es-outcome-title {
+  margin: 0;
+  font-size: var(--es-text-value);
+  font-weight: 600;
+  color: var(--wb-text);
+}
+.encounter-studio .es-outcome-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-remove {
+  margin-left: auto;
+}
+.encounter-studio .es-outcome-fields,
+.encounter-studio .es-outcome-add {
+  grid-template-columns: repeat(auto-fill, minmax(12rem, max-content));
+  align-items: start;
+}
+.encounter-studio .es-outcome-fields {
+  display: grid;
+  gap: 0.6rem 1rem;
+}
+.encounter-studio :is(.es-outcome-fields, .es-outcome-add) > label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.encounter-studio :is(.es-outcome-fields, .es-outcome-add) select {
+  width: auto;
+  max-width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-words,
+.encounter-studio .es-outcome-fields > .wb-check,
+.encounter-studio .es-outcome-fields > .es-outcome-seized {
+  grid-column: 1 / -1;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-words textarea {
+  width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-rounds input {
+  width: 5rem;
+}
+.encounter-studio .es-outcome-fields > .es-outcome-escaped input {
+  width: 16rem;
+  max-width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-seized {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.encounter-studio .es-outcome-seized > legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+}
+.encounter-studio .es-outcome-regions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+.encounter-studio .es-outcome-regions > .wb-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-cells {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-outcome-add {
+  align-items: end;
+  margin-top: 0.65rem;
+}
+.encounter-studio .es-outcome-add > .es-outcome-title {
+  grid-column: 1 / -1;
+}
+.encounter-studio .es-outcome-add > button {
+  justify-self: start;
+}

@@ -62,6 +62,18 @@ function insideWords(rest: readonly Segment[], owner: unknown): string[] {
       index += 2;
       continue;
     }
+    // A conversation's outcome (rpg-project#975 C): what follows its
+    // entering a state, then which of them.
+    if (head === 'outcomes' && typeof next === 'string') {
+      words.push(`on entering ${code(next)}`);
+      index += 2;
+      const item = rest[index];
+      if (typeof item === 'number') {
+        if (item > 0) words.push(`outcome ${item + 1}`);
+        index += 1;
+      }
+      continue;
+    }
     if (head === 'openings' && typeof next === 'number') {
       words.push(`opening ${next + 1}`);
       index += 2;

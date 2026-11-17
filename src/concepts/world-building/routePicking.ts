@@ -17,7 +17,9 @@
 import { createContext, useContext, useRef } from 'react';
 import type { AnswerCellShape, AnswerWaypointShape } from './answerTableShape';
 
-export type RoutePickMode = 'cell' | 'route';
+/** A cell (one click answers), a route (clicks in walking order), or a set
+ * of cells (each click adds or takes away one; rpg-project#975 C). */
+export type RoutePickMode = 'cell' | 'route' | 'cells';
 
 export interface RoutePickRequest {
   mode: RoutePickMode;
@@ -28,6 +30,9 @@ export interface RoutePickRequest {
   route: readonly AnswerWaypointShape[];
   /** The answer: the route as picked, or one cell. */
   onDone(route: AnswerWaypointShape[]): void;
+  /** The file path of what the pick is for: landed on and marked when the
+   * studio returns to it. */
+  revealPath?: string;
 }
 
 export interface RoutePicking {
@@ -64,4 +69,31 @@ export function useLatest<Args extends unknown[]>(
   ref.current = fn;
   const stable = useRef((...args: Args) => ref.current(...args));
   return stable.current;
+}
+
+/** A set of cells with one cell added, or taken away when it is already
+ * there (rpg-project#975 C): a click in a `cells` pick. */
+export function toggledCell(
+  cells: readonly AnswerWaypointShape[],
+  cell: AnswerCellShape
+): AnswerWaypointShape[] {
+  const held = cells.some((c) => c.q === cell.q && c.r === cell.r);
+  return held
+    ? cells.filter((c) => !(c.q === cell.q && c.r === cell.r))
+    : [...cells, { q: cell.q, r: cell.r }];
+}
+
+/** The cells a `cells` pick holds after one click (rpg-project#975 C
+ * review): a floor cell is added, or taken away when held; a click on a
+ * cell that is not floor changes nothing — the pick is a map tool, and the
+ * map shows its floor. A held cell that is no longer floor can still be
+ * clicked away. */
+export function pickedCells(
+  cells: readonly AnswerWaypointShape[],
+  cell: AnswerCellShape,
+  isFloor: (cell: AnswerCellShape) => boolean
+): AnswerWaypointShape[] {
+  const held = cells.some((c) => c.q === cell.q && c.r === cell.r);
+  if (!held && !isFloor(cell)) return [...cells];
+  return toggledCell(cells, cell);
 }
