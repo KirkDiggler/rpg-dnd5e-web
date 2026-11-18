@@ -30,13 +30,16 @@
  */
 
 import type { CubeCoord } from '@/components/hex-grid/hexMath';
+import { wallWithCapturedFrameSpans } from '@/concepts/world-building/doorwayPlacement';
 import type { FittedDoorPose } from '@/concepts/world-building/structuralDoorEditing';
 import { wallSolidIntervals } from '@/concepts/world-building/structuralWallGeometry';
-import type {
-  StructuralWallOpening,
-  StructuralWallSurface,
-} from '@/concepts/world-building/structuralWalls';
+import type { StructuralWallSurface } from '@/concepts/world-building/structuralWalls';
 import type { WallFinishOverrides } from '@/concepts/world-building/wallFinishTypes';
+import {
+  copyDoorFramePresentation,
+  copyWallFrameSpan,
+  type DoorFramePresentation,
+} from '@/rendering/doorFramePresentation';
 import { copyMaterialOverrides } from '@/rendering/materialOverrides';
 import { copyWallFaceFinishes } from '@/rendering/wallFaceFinishes';
 import type {
@@ -68,6 +71,7 @@ export interface StructuralDoorRenderUnit {
   /** The opaque appearance content ref; the leaf resolves the catalog asset. */
   readonly assetRef: string;
   readonly pose: FittedDoorPose;
+  readonly framePresentation?: DoorFramePresentation;
 }
 
 export interface StructuralLayoutRender {
@@ -167,7 +171,7 @@ export function structuralWallSurfaceFromAtlas(
     scale,
     false
   );
-  const openings: StructuralWallOpening[] = wall.openings.map(
+  const openings: StructuralWallSurface['openings'] = wall.openings.map(
     (opening, index) => {
       const at = `${path}.openings[${index}]`;
       if (!opening.id) {
@@ -175,7 +179,13 @@ export function structuralWallSurfaceFromAtlas(
           `structural layout: ${at} must carry a nonempty opening id`
         );
       }
+      const frameSpan = copyWallFrameSpan(
+        opening.frameSpan,
+        `${at}.frameSpan`,
+        scale
+      );
       return {
+        ...(frameSpan ? { frameSpan } : {}),
         id: opening.id,
         position: sceneFeet(opening.position, `${at}.position`, scale, false),
         width: sceneFeet(opening.width, `${at}.width`, scale, true),
@@ -188,7 +198,7 @@ export function structuralWallSurfaceFromAtlas(
     wall: { line: { start, end }, openings },
     extent: { start: 0, end: length },
   });
-  return {
+  const surface: CapturedWallSurface = {
     id: wall.id,
     label: wall.ref || wall.id,
     ...(Object.keys(faceFinishes).length ? { faceFinishes } : {}),
@@ -204,6 +214,8 @@ export function structuralWallSurfaceFromAtlas(
     },
     openings,
   };
+  wallWithCapturedFrameSpans(surface);
+  return surface;
 }
 
 /** The runtime door adapter: resolve the visual pose from the record's own
@@ -228,6 +240,15 @@ export function structuralDoorPoseFromAtlas(
       `structural layout: ${path} endpoints must define a nonzero opening width`
     );
   }
+  const frame = copyDoorFramePresentation(
+    door.framePresentation,
+    `${path}.framePresentation`,
+    scale
+  );
+  if (frame && (frame.span.before < width / 2 || frame.span.after < width / 2))
+    throw Error(
+      `${path}.framePresentation.span must enclose the clear opening.`
+    );
   return {
     point: { x: (from.x + to.x) / 2, z: (from.z + to.z) / 2 },
     // Three.js positive-Y rotation sends local +X toward world -Z; the same
@@ -300,6 +321,15 @@ export function structuralLayoutRender(
         id: door.id,
         assetRef: door.ref,
         pose: structuralDoorPoseFromAtlas(door, scale),
+        ...(door.framePresentation
+          ? {
+              framePresentation: copyDoorFramePresentation(
+                door.framePresentation,
+                `door ${door.id}.framePresentation`,
+                scale
+              ),
+            }
+          : {}),
       });
     } catch (error) {
       rendered.diagnostics.push(reasonOf(error));

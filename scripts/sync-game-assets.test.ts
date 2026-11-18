@@ -7,7 +7,6 @@ import {
   mkdtemp,
   readFile,
   rm,
-  stat,
   utimes,
   writeFile,
 } from 'node:fs/promises';
@@ -621,12 +620,14 @@ describe('private game asset sync boundary', () => {
     const fixture = await makeFixture();
     const corruptBytes = 'x'.repeat(fixture.npcStandingBytes.length);
     await put(fixture.npcStandingDestination, corruptBytes);
-    const sourceTimes = await stat(fixture.npcStandingSource);
-    await utimes(
-      fixture.npcStandingDestination,
-      sourceTimes.atime,
-      sourceTimes.mtime
-    );
+    // Stat.mtime rounds this boundary into the next second. Set both files
+    // directly so rsync's size/mtime quick check retains the corrupt bytes
+    // for the independent hash validator, rather than repairing the fixture.
+    const matchingTime = 1_700_000_000.9996;
+    await Promise.all([
+      utimes(fixture.npcStandingSource, matchingTime, matchingTime),
+      utimes(fixture.npcStandingDestination, matchingTime, matchingTime),
+    ]);
     await put(fixture.generatedNpcCatalog, 'previous NPC catalog\n');
 
     await expect(

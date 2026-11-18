@@ -300,6 +300,30 @@ describe('WorldAssetModel provider-baked placement', () => {
 });
 
 describe('WorldAssetModel named roles', () => {
+  it('can hide uncertain moving leaves without removing the fixed surround, then restore known state', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.ref}
+        position={[0, 0, 0]}
+        hideDoorLeaves
+      />
+    );
+    const model = renderer.scene.findByProps({
+      name: 'world-asset-model',
+    }).instance;
+    expect(model.getObjectByName('Frame_Part')!.visible).toBe(true);
+    expect(model.getObjectByName('Leaf_East')!.visible).toBe(false);
+    expect(model.getObjectByName('Gate_Right')!.visible).toBe(false);
+    await renderer.update(
+      <WorldAssetModel assetRef={roleFixtures.ref} position={[0, 0, 0]} open />
+    );
+    expect(
+      renderer.scene
+        .findByProps({ name: 'world-asset-model' })
+        .instance.getObjectByName('Leaf_East')!.visible
+    ).toBe(true);
+    await renderer.unmount();
+  });
   it('exposes one bindable door per door group with its leaf pivot', async () => {
     const onDoorsResolved = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(

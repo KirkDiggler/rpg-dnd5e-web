@@ -24,6 +24,7 @@ export interface WorldPropModelProps {
   rememberedTint?: WorldAssetModelProps['rememberedTint'];
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  wallOpeningFit?: PlainWallFit;
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfacePlans?: WorldAssetModelProps['surfacePlans'];
   surfaceProvider?: WorldAssetModelProps['surfaceProvider'];
@@ -31,6 +32,7 @@ export interface WorldPropModelProps {
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
   open?: boolean;
+  hideDoorLeaves?: boolean;
   /** Fires when a door item is clicked. The caller owns the affordance,
    * because it is the caller that knows who acts and what the door's state
    * is; this leaf only reports that the door was hit. */
@@ -53,10 +55,12 @@ export function WorldPropModel({
   rememberedTint,
   visualLighting,
   plainWallFit,
+  wallOpeningFit,
   surfaceSelections,
   surfacePlans,
   surfaceProvider,
   open,
+  hideDoorLeaves,
   onDoorClick,
   onBoundsMeasured,
   onGeneratedDiagnostic,
@@ -78,6 +82,7 @@ export function WorldPropModel({
       assetRef={entry.ref}
       materialOverrides={materialOverrides}
       plainWallFit={plainWallFit}
+      wallOpeningFit={wallOpeningFit}
       surfaceSelections={surfaceSelections}
       surfacePlans={surfacePlans}
       surfaceProvider={surfaceProvider}
@@ -88,6 +93,7 @@ export function WorldPropModel({
       rotationY={rotationY}
       heightScale={heightScale}
       open={open}
+      hideDoorLeaves={hideDoorLeaves}
       onDoorClick={onDoorClick}
       onDiagnostic={onGeneratedDiagnostic}
       onBoundsMeasured={onBoundsMeasured}

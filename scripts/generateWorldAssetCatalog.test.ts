@@ -136,6 +136,46 @@ afterEach(() => {
 });
 
 describe('world asset catalog generator', () => {
+  const opening = {
+    profile: 'wall-opening-v1',
+    openingId: 'entry',
+    widthMeters: 0.75,
+    frameWidthMeters: 3.75,
+    frameHeightMeters: 3.75,
+    wallDepthMeters: 0.375,
+    leftExtentMeters: 1.875,
+  };
+  it('carries verified wall-opening fit dimensions separately from complete bounds', () => {
+    const fixture = makeFixture();
+    fixture.catalog.assets[0]!.wallOpening = opening;
+    fixture.catalog.assets[0]!.tags = ['wall-opening'];
+    rewriteCatalog(fixture);
+    generateWorldAssetCatalog({
+      providerRoot: fixture.provider,
+      outputPath: fixture.output,
+    });
+    const generated = readFileSync(fixture.output, 'utf8');
+    expect(generated).toContain('wallOpening?:');
+    expect(generated).toContain('widthMeters: 0.75');
+    expect(generated).toContain('frameWidthMeters: 3.75');
+  });
+  it.each([
+    { ...opening, widthMeters: 0 },
+    { ...opening, leftExtentMeters: 0.1 },
+    { ...opening, widthMeters: 10 },
+    { ...opening, guessedHinge: 3 },
+  ])('refuses invalid wall-opening metrics %#', (wallOpening) => {
+    const fixture = makeFixture();
+    fixture.catalog.assets[0]!.wallOpening = wallOpening;
+    fixture.catalog.assets[0]!.tags = ['wall-opening'];
+    rewriteCatalog(fixture);
+    expect(() =>
+      generateWorldAssetCatalog({
+        providerRoot: fixture.provider,
+        outputPath: fixture.output,
+      })
+    ).toThrow(/wallOpening/);
+  });
   const front = {
     id: 'front',
     node: 'WallBody_v1',
