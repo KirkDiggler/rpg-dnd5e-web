@@ -15,12 +15,15 @@ import {
   setDoorBindingState,
   type DoorBindingState,
 } from '../world-building/doorBindingEdits';
+import { DoorOpenedField } from '../world-building/DoorOpenedField';
 import { exitAt, setExitAt } from '../world-building/exitEdits';
-import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
+import { joinName, placesOf } from './placesView';
 import { ReadBack } from './ReadBack';
+import type { RefusalTarget } from './refusalJump';
+import { RevealDiv } from './RevealDiv';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -29,6 +32,10 @@ import {
 import { CastMemberForm } from './StudioCast';
 import { StudioCheckRows } from './StudioCheckRows';
 import { StudioGroundControls } from './StudioGroundControls';
+import {
+  READ_BACK_NOT_CHECKED_SENTENCE,
+  type StudioReadBack,
+} from './studioPublishing';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
 import type {
@@ -42,6 +49,7 @@ import type {
   StudioSelection,
   StudioSocialSection,
 } from './studioSession';
+import type { RevealKey } from './useReveal';
 
 export interface StudioInspectorProps {
   session: EncounterStudioSession;
@@ -52,8 +60,19 @@ export interface StudioInspectorProps {
   /** The armed Wall, Door or Note tool's options; transient, not document. */
   armedTool: ReactNode | null;
   onConfigure(section: StudioSocialSection): void;
-  /** Open the Facts section on one fact, from a read-back ref. */
-  onOpenFact?(fact: string): void;
+  /** Open the Facts section on one fact or topic, from a read-back
+   * connection. */
+  onOpenFact?(fact: string, hub?: string): void;
+  /** What opens the join a way pointer names (rpg-project#973), or null. */
+  wayOpener?(wayId: string): (() => void) | null;
+  /** The engine's read-back (rpg-project#968, R25), from the publishing
+   * hook. Absent, the panel says the server has not checked the draft. */
+  readBack?: StudioReadBack;
+  /** Land on what a read-back connection or path names: the workspace's
+   * refusal jump, so a sentence and a refusal land through one map. */
+  onJump?(target: RefusalTarget, path?: string): void;
+  /** Select the join a door makes (rpg-project#972). */
+  onOpenJoin?(joinId: string): void;
   onMoveCreature(): void;
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
@@ -100,8 +119,54 @@ export function StudioInspector(
           <CopyId id={session.arrange.door.assetRef} label="model" />
         )}
       </div>
-      <InspectorBody {...props} />
+      <InspectorReveal {...props}>
+        <InspectorBody {...props} />
+      </InspectorReveal>
     </section>
+  );
+}
+
+const TEMPLATE_PREFIX = 'dnd5e:monsters:';
+
+/** THE SELECTED THING IS A REVEAL TARGET (rpg-project#983): a jump to a
+ * prop, a door, a region or a cast member lands on its inspector, and one to
+ * a stat block (`templates.<id>`) on its cast member's form. A creature's
+ * form registers itself (`CreatureOrders`), its lines and rows by path. */
+function InspectorReveal({
+  session,
+  inspection,
+  children,
+}: StudioInspectorProps & { children: ReactNode }): React.JSX.Element {
+  const selection = inspection.pick === null ? inspection.selection : null;
+  const arrange = session.arrange;
+  const key: RevealKey | null =
+    selection?.kind === 'prop' || selection?.kind === 'region'
+      ? { kind: selection.kind, id: selection.id }
+      : selection?.kind === 'door' && arrange?.kind === 'door'
+        ? { kind: 'door', id: arrange.door.id }
+        : selection?.kind === 'castMember'
+          ? { kind: 'cast', id: selection.ref }
+          : null;
+  const template =
+    selection?.kind === 'castMember' &&
+    selection.ref.startsWith(TEMPLATE_PREFIX) &&
+    session.document.scope.templates &&
+    Object.hasOwn(
+      session.document.scope.templates,
+      selection.ref.slice(TEMPLATE_PREFIX.length)
+    )
+      ? selection.ref.slice(TEMPLATE_PREFIX.length)
+      : null;
+  return (
+    <RevealDiv revealKey={key ?? undefined} className="es-inspector-reveal">
+      {template ? (
+        <RevealDiv revealKey={{ kind: 'template', id: template }}>
+          {children}
+        </RevealDiv>
+      ) : (
+        children
+      )}
+    </RevealDiv>
   );
 }
 
@@ -289,13 +354,37 @@ function WallView({
 function DoorView({
   session,
   arrange,
+  readBack,
+  onOpenJoin,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element {
+  const doorId = arrange.kind === 'door' ? arrange.door.id : null;
+  const join =
+    doorId && readBack?.readBack
+      ? placesOf(readBack.readBack).joins.find((entry) => entry.door === doorId)
+      : undefined;
+  const regionName = (id: string): string => {
+    const region = session.document.draft.room.regions.find(
+      (entry) => entry.id === id
+    );
+    return region?.name || id;
+  };
   return (
     <>
       {arrange.kind === 'door' && (
         <div className="es-context-panel es-door-view">
+          {join && onOpenJoin && (
+            <p className="es-door-join">
+              <button
+                type="button"
+                className="es-link"
+                onClick={() => onOpenJoin(join.id)}
+              >
+                {joinName(join, regionName)}
+              </button>
+            </p>
+          )}
           <DoorState session={session} doorId={arrange.door.id} />
         </div>
       )}
@@ -327,6 +416,11 @@ function DoorState({
   const hiddenBy = concealmentHiding(session.document.scope, doorId);
   return (
     <StudioSection title="Door" level="section">
+      <DoorOpenedField
+        doorId={doorId}
+        binding={binding}
+        onChange={(next) => session.doors.setBinding(doorId, next)}
+      />
       <label className="es-field">
         <span>State</span>
         <select
@@ -420,27 +514,19 @@ function DoorState({
   );
 }
 
-/** What a read-back ref opens: a definition on the Encounter home, or the
- * placement it names. */
-function readBackRefHandler(
-  session: EncounterStudioSession,
-  onConfigure: StudioInspectorProps['onConfigure'],
-  onOpenFact: StudioInspectorProps['onOpenFact']
-): (target: ReadBackTarget) => void {
-  return (target) => {
-    if (target.kind === 'placement') session.creatures.select(target.id);
-    else if (target.kind === 'table') onConfigure('tables');
-    else if (target.kind === 'faction') onConfigure('factions');
-    else if (target.kind === 'intel') onConfigure('intel');
-    else if (onOpenFact) onOpenFact(target.id);
-    else onConfigure('facts');
-  };
-}
+const NO_READ_BACK: StudioReadBack = {
+  readBack: null,
+  readBackIsCurrent: false,
+  unavailable: READ_BACK_NOT_CHECKED_SENTENCE,
+};
 
 function CreatureView({
   session,
   onConfigure,
   onOpenFact,
+  wayOpener,
+  readBack,
+  onJump,
   onMoveCreature,
   onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
@@ -451,7 +537,10 @@ function CreatureView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'creature', id: arrange.monster.id }}
-          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
+          state={readBack ?? NO_READ_BACK}
+          onJump={onJump}
+          onOpenFact={onOpenFact}
+          wayOpener={wayOpener}
         />
       )}
       <Form
@@ -599,6 +688,9 @@ function PropView({
   session,
   onConfigure,
   onOpenFact,
+  wayOpener,
+  readBack,
+  onJump,
   inspection,
 }: StudioInspectorProps): React.JSX.Element {
   const selection = inspection.selection;
@@ -608,7 +700,10 @@ function PropView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'prop', id: selection.id }}
-          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
+          state={readBack ?? NO_READ_BACK}
+          onJump={onJump}
+          onOpenFact={onOpenFact}
+          wayOpener={wayOpener}
         />
       )}
       <Form session={session} onConfigure={onConfigure} />

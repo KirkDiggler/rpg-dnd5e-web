@@ -36,6 +36,7 @@ import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import { PUBLICATION_STORAGE_KEY } from './publicationMemory';
+import { encounterSection } from './studioTestNavigation';
 
 const sink = vi.hoisted(
   (): FakeAuthoringSink => ({
@@ -777,7 +778,12 @@ describe('S6 Save & Play', () => {
     expect(
       refusals.getByText('mapping values are not allowed here')
     ).toBeTruthy();
-    expect(refusals.getAllByRole('button')).toHaveLength(1);
+    // Each refusal is one jump; its raw path has its own Copy path control.
+    expect(
+      refusals
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') !== 'Copy path')
+    ).toHaveLength(1);
     expect(lobby.createLobby).toHaveLength(0);
     expect(status()).toBe('');
     // The jump selects the creature and opens its inspector.
@@ -788,6 +794,242 @@ describe('S6 Save & Play', () => {
         { level: 2 }
       ).textContent
     ).toBe(name);
+  });
+
+  /** The live validate-only preview answers these refusals (R34). */
+  async function previewRefuses(
+    errors: Array<{ path: string; message: string }>
+  ): Promise<void> {
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    await act(async () => preview.deferred.resolve({ errors } as never));
+  }
+  const SAYS_AND_DOES =
+    'an option is said or done, not both: write `say` or `do`';
+
+  it('a refused creature line shows its refusal in the inspector, reached from the header (R34)', async () => {
+    const document = createCastleS4Document();
+    const id = 'gate-1';
+    const bindings = document.draft.room.monsterBindings!;
+    bindings[id] = {
+      ...bindings[id],
+      options: [{ id: 'hail', say: 'Halt!', do: 'You wave.' }],
+    };
+    mount(document, { characterId: null });
+    await settled();
+    await previewRefuses([
+      {
+        path: `room.room.monsterBindings.${id}.options[0].do`,
+        message: SAYS_AND_DOES,
+      },
+    ]);
+    // Counted in the header without opening Site.
+    expect(screen.queryByRole('region', { name: 'Save and Play' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: '1 refusal' }));
+    const name = documentPlacementNames(document).get(id)!;
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Current refusals' })).getByRole(
+        'button',
+        { name: `${name}: ${SAYS_AND_DOES}` }
+      )
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    expect(inspector.getByRole('heading', { level: 2 }).textContent).toBe(name);
+    // The line itself says the engine's sentence.
+    expect(
+      within(inspector.getByTestId(`option-${id}-0`)).getByRole('alert')
+        .textContent
+    ).toBe(SAYS_AND_DOES);
+  });
+
+  it("a refused key is counted in the header in the server's words and its jump opens Save at the key (R34, R16)", async () => {
+    mount(createCastleS4Document(), { characterId: null });
+    await settled();
+    const validates = () => sink.puts.filter((put) => put.request.validateOnly);
+    await waitFor(() => expect(validates().length).toBeGreaterThan(0), {
+      timeout: 2000,
+    });
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    const before = validates().length;
+    fireEvent.change(keyIn(panel()), { target: { value: 'Bad Key' } });
+    // Close Site: the count is read from the map side.
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    expect(screen.queryByRole('region', { name: 'Save and Play' })).toBeNull();
+    await waitFor(() => expect(validates().length).toBeGreaterThan(before), {
+      timeout: 2000,
+    });
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.reject(
+          new ConnectError('key must match [a-z0-9-]+', Code.InvalidArgument)
+        )
+    );
+    fireEvent.click(await screen.findByRole('button', { name: '1 refusal' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Current refusals' })).getByRole(
+        'button',
+        { name: 'File key: key must match [a-z0-9-]+' }
+      )
+    );
+    // The jump opens Save, where the key field says the same sentence.
+    const save = within(screen.getByRole('region', { name: 'Save and Play' }));
+    expect(save.getByRole('alert').textContent).toBe(
+      'key must match [a-z0-9-]+'
+    );
+    expect(document.activeElement).toBe(keyIn(save));
+    // The focus is the jump's, once: Save opened again later leaves it.
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+    expect(document.activeElement).not.toBe(keyIn(panel()));
+    // Fixing the key clears the count.
+    const fixed = validates().length;
+    fireEvent.change(keyIn(panel()), { target: { value: 'good-key' } });
+    await waitFor(() => expect(validates().length).toBeGreaterThan(fixed), {
+      timeout: 2000,
+    });
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /refusal/ })).toBeNull()
+    );
+  });
+
+  it('the count holds through a check and its list does not reopen on its own (R34)', async () => {
+    mount(createCastleS4Document(), { characterId: null });
+    await settled();
+    await previewRefuses([{ path: 'line 3', message: 'refused once' }]);
+    const count = () =>
+      screen.queryByRole('button', { name: /^\d+ refusals?$/ });
+    fireEvent.click(count()!);
+    expect(
+      screen.getByRole('group', { name: 'Current refusals' })
+    ).toBeTruthy();
+    const validates = () => sink.puts.filter((put) => put.request.validateOnly);
+    const recheck = async (key: string): Promise<void> => {
+      const before = validates().length;
+      fireEvent.change(keyIn(panel()), { target: { value: key } });
+      fireEvent.click(screen.getByRole('button', { name: 'Site' }));
+      await waitFor(() => expect(validates().length).toBeGreaterThan(before), {
+        timeout: 2000,
+      });
+    };
+    // While the next check is out, the last settled count stays.
+    await recheck('other-key');
+    expect(count()?.textContent).toBe('1 refusal');
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    await waitFor(() => expect(count()).toBeNull());
+    expect(
+      screen.queryByRole('group', { name: 'Current refusals' })
+    ).toBeNull();
+    // Refused again: counted, but the list stays closed until asked.
+    await recheck('third-key');
+    await act(async () =>
+      validates()
+        .at(-1)!
+        .deferred.resolve({
+          errors: [{ path: 'line 4', message: 'refused twice' }],
+        } as never)
+    );
+    await waitFor(() => expect(count()?.textContent).toBe('1 refusal'));
+    expect(count()!.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('group', { name: 'Current refusals' })
+    ).toBeNull();
+  });
+
+  it('a refused faction row and faction line show their own refusal on Factions (R34)', async () => {
+    const document = createCastleS4Document();
+    document.scope.factions = [
+      ...(document.scope.factions ?? []),
+      {
+        id: 'refused-watch',
+        on: { time: [{ hold: {} }] },
+        options: [{ id: 'hail', say: 'Halt!' }],
+      },
+    ];
+    const index = document.scope.factions.length - 1;
+    mount(document, { characterId: null });
+    await settled();
+    await previewRefuses([
+      {
+        path: `factions[${index}].on.time[0].hold`,
+        message: 'a hold row is refused here',
+      },
+      {
+        path: `factions[${index}].options[0].say`,
+        message: 'a faction line is refused here',
+      },
+      {
+        path: `factions[${index}].mind`,
+        message: 'the faction itself is refused here',
+      },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
+    // Factions are in Sides, under People (rpg-project#970).
+    fireEvent.click(encounterSection('Sides'));
+    const faction = screen.getByTestId('faction-refused-watch');
+    // A faction holding a refusal opens on it.
+    expect((faction as HTMLDetailsElement).open).toBe(true);
+    const lines = within(faction)
+      .getAllByTestId('row-refusal')
+      .map((line) => line.textContent);
+    // What the faction opened for is said at its own head, then each line's
+    // own. Its `on` table is retired (rpg-project#970): no editor shows its
+    // rows, so the hold row's refusal is counted in the header, and the form
+    // says the faction still carries `on`.
+    expect(lines).toEqual([
+      'the faction itself is refused here',
+      'a faction line is refused here',
+    ]);
+    expect(
+      within(faction).getByTestId('faction-retired-keys').textContent
+    ).toBe(
+      'This faction still carries `on`, which the engine no longer reads; it refuses the file until it is removed.'
+    );
+    expect(
+      within(within(faction).getByTestId('option-refused-watch-0')).getByTestId(
+        'row-refusal'
+      ).textContent
+    ).toBe('a faction line is refused here');
+  });
+
+  it('resizing the inspector leaves the draft and its file byte for byte (rpg-project#979)', async () => {
+    const { storage } = mount(createCastleS4Document(), { characterId: null });
+    await settled();
+    const draftBytes = () => storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const before = draftBytes();
+    const key = defaultDraftKey(storage.document());
+    const fileBefore = exportDraftYaml(storage.document(), key);
+    const handle = screen.getByRole('separator', { name: 'Resize inspector' });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    fireEvent.keyDown(handle, { key: 'End' });
+    fireEvent.pointerDown(handle, { clientX: 600, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 650, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 650, pointerId: 1 });
+    expect(draftBytes()).toBe(before);
+    expect(exportDraftYaml(storage.document(), key)).toBe(fileBefore);
+    // The width lives under its own key, never in the draft.
+    expect(
+      storage.bytes.get('rpg.concepts.encounter-studio.inspector-width.v1')
+    ).toBeDefined();
   });
 
   it("the live preview's refusals jump too", async () => {
@@ -823,6 +1065,74 @@ describe('S6 Save & Play', () => {
         { level: 2 }
       ).textContent
     ).toBe(`Hex ${cell.q}, ${cell.r}`);
+  });
+
+  it('a refusal on a faction, a record, a secret or an ending lands in its ruled section (rpg-project#970)', async () => {
+    const document = createCastleS4Document();
+    document.scope.endings = [
+      ...(document.scope.endings ?? []),
+      {
+        id: 'walked-out',
+        when: { left: document.scope.exits![0]!.id },
+        outcome: 'success',
+      },
+    ];
+    mount(document, { characterId: null });
+    await settled();
+    siteOperation('save');
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    const faction = document.scope.factions![0]!.id;
+    const record = document.scope.intel![0]!.id;
+    const secret = Object.keys(document.scope.concealments ?? {})[0]!;
+    const ending = document.scope.endings.length - 1;
+    await act(async () =>
+      preview.deferred.resolve({
+        errors: [
+          { path: 'factions[0].mind', message: 'faction refused' },
+          { path: 'intel[0].reveals', message: 'record refused' },
+          { path: `concealments.${secret}.checks`, message: 'secret refused' },
+          { path: `endings[${ending}].when`, message: 'ending refused' },
+        ],
+      } as never)
+    );
+    const landsIn = async (
+      name: string,
+      group: string,
+      section: string
+    ): Promise<void> => {
+      // Each jump closes Site; the refusal list is opened again for the next.
+      siteOperation('save');
+      fireEvent.click(
+        await within(
+          await screen.findByRole('group', { name: 'Server refusals' })
+        ).findByRole('button', { name })
+      );
+      expect(
+        within(screen.getByRole('tablist', { name: 'Encounter groups' }))
+          .getByRole('tab', { name: group })
+          .getAttribute('aria-selected')
+      ).toBe('true');
+      expect(
+        within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+          .getByRole('tab', { name: section })
+          .getAttribute('aria-selected')
+      ).toBe('true');
+    };
+    await landsIn(`Sides · ${faction}: faction refused`, 'People', 'Sides');
+    await landsIn(
+      `Records · ${record}: record refused`,
+      'What is known',
+      'Records'
+    );
+    await landsIn(`Secrets · ${secret}: secret refused`, 'Places', 'Secrets');
+    await landsIn('Ending walked-out: ending refused', 'Places', 'Ways out');
   });
 
   it('transport failure shows "Save failed" and the draft is unchanged', async () => {
@@ -1238,5 +1548,53 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     expect(sink.gets).toHaveLength(0);
     expect(savePuts()[0]!.request.key).toBe('the-cells');
+  });
+});
+
+describe('a refusal on a creature’s line lands on the line (rpg-project#983)', () => {
+  it('the jump selects the creature and reveals the refused line in its form', async () => {
+    const document = createCastleS4Document();
+    const bindings = document.draft.room.monsterBindings!;
+    bindings['gate-1'] = {
+      ...bindings['gate-1'],
+      options: [
+        { id: 'hail', say: 'Halt!' },
+        { id: 'wave', say: 'Wave.', do: 'You wave.' },
+      ],
+    };
+    mount(document, { characterId: null });
+    await settled();
+    siteOperation('save');
+    await waitFor(
+      () =>
+        expect(
+          sink.puts.filter((put) => put.request.validateOnly).length
+        ).toBeGreaterThan(0),
+      { timeout: 2000 }
+    );
+    const preview = sink.puts.filter((put) => put.request.validateOnly).at(-1)!;
+    await act(async () =>
+      preview.deferred.resolve({
+        errors: [
+          {
+            path: 'room.room.monsterBindings.gate-1.options[1].do',
+            message: 'said or done, not both',
+          },
+        ],
+      } as never)
+    );
+    const refusals = within(
+      await screen.findByRole('group', { name: 'Server refusals' })
+    );
+    fireEvent.click(
+      refusals.getByRole('button', { name: /said or done, not both$/ })
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('option-gate-1-1').hasAttribute('data-revealed')
+        ).toBe(true),
+      { timeout: 2000 }
+    );
   });
 });

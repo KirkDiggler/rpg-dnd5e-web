@@ -97,6 +97,26 @@ describe('spliceYaml writes back what it read (rpg-project#857)', () => {
     );
   });
 
+  it('a key inserted before the first key of a sequence item goes on the dash line (rpg-project#958)', () => {
+    const source = `rows:
+  # the passage
+  - relocate:
+      to: region-cells
+      rounds: 1
+  - say: hi
+`;
+    const out = splice(source, [], (v: never) => {
+      const rows = (v as { rows: Record<string, unknown>[] }).rows;
+      rows[0] = { say: 'Down you go.', ...rows[0] };
+    });
+    expect(out).toBe(
+      source.replace(
+        '  - relocate:\n',
+        '  - say: Down you go.\n    relocate:\n'
+      )
+    );
+  });
+
   it('removes a key with its lines, and an item from a flow map', () => {
     const out = splice(castle, ['room.gate-1.future'], (v: never) => {
       const posted = (

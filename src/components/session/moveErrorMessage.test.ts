@@ -9,7 +9,7 @@ describe('formatMoveError', () => {
     expect(formatMoveError(err)).toBe('Not your turn — movement is locked.');
   });
 
-  it('does NOT treat every FailedPrecondition as the turn lock -- sibling sentinels pass their own message through unchanged', () => {
+  it('does NOT treat every FailedPrecondition as the turn lock -- sibling refusals read as the server wrote them (rpg-project#925)', () => {
     // errors.go's FailedPrecondition bucket also covers ErrNotInFight,
     // ErrClosed, ErrDowned, ErrCannotAfford, etc. -- only the exact
     // sentinel text should trigger a rewrite (Copilot review risk: a
@@ -18,19 +18,19 @@ describe('formatMoveError', () => {
       'member is not in a fight',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(notInFight)).toBe(notInFight.message);
+    expect(formatMoveError(notInFight)).toBe(notInFight.rawMessage);
 
     const closed = new ConnectError(
       'encounter closed',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(closed)).toBe(closed.message);
+    expect(formatMoveError(closed)).toBe(closed.rawMessage);
 
     const downed = new ConnectError(
       'member is downed',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(downed)).toBe(downed.message);
+    expect(formatMoveError(downed)).toBe(downed.rawMessage);
 
     // ErrCannotAfford's own movement text (toolkit#1169's Move.go) already
     // reads player-friendly unmodified -- must NOT be caught by the
@@ -39,15 +39,27 @@ describe('formatMoveError', () => {
       'movement: 20 ft needed, 15 ft left',
       Code.FailedPrecondition
     );
-    expect(formatMoveError(cannotAfford)).toBe(cannotAfford.message);
+    expect(formatMoveError(cannotAfford)).toBe(cannotAfford.rawMessage);
   });
 
-  it('passes through a non-FailedPrecondition ConnectError unchanged', () => {
+  it('passes through a non-FailedPrecondition ConnectError as its raw text, never the "[code] " prefix', () => {
     const err = new ConnectError(
       'no doorway joins those cells',
       Code.InvalidArgument
     );
-    expect(formatMoveError(err)).toBe(err.message);
+    expect(formatMoveError(err)).toBe('no doorway joins those cells');
+  });
+
+  it('reads a session refusal sentence exactly as written (rpg-project#925)', () => {
+    for (const sentence of [
+      'Guard bars the way',
+      'move: member is in a fight',
+      'The guards hold you; you cannot walk away.',
+    ]) {
+      expect(
+        formatMoveError(new ConnectError(sentence, Code.FailedPrecondition))
+      ).toBe(sentence);
+    }
   });
 
   it('passes through a plain Error unchanged (existing useSessionWalk contract, mock RPC rejections in tests)', () => {

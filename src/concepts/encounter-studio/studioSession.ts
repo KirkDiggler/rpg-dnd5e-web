@@ -140,7 +140,7 @@ export type StudioSocialSection =
   | 'intel'
   | 'factions'
   | 'dispositions'
-  | 'tables'
+  | 'behaviours'
   | 'facts';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
 export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label' | 'door';
@@ -205,7 +205,7 @@ export interface LayoutLabelEditing {
 /** The Layout's half of a row's pick on map: what to draw and where a
  * clicked cell goes. */
 export interface LayoutRoutePick {
-  mode: 'cell' | 'route';
+  mode: 'cell' | 'route' | 'cells';
   /** The waypoints picked so far, in walking order. */
   waypoints: readonly RoomHexCell[];
   onPick(cell: RoomHexCell): void;
@@ -258,6 +258,10 @@ export interface LayoutViewportProps {
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
   /** The root `exits`, drawn with the placed nouns (rpg-project#578). */
   exits?: readonly import('../world-building/siteScope').SiteExit[];
+  /** The places mode (rpg-project#972): the joins the engine says, drawn
+   * over the regions, the placed nouns dimmed. Absent is the ordinary
+   * Layout. */
+  places?: import('./PlacesOverlay').LayoutPlaces | null;
   /** The armed concealment's cells, hatched (rpg-project#578). */
   concealedCells?: readonly RoomHexCell[];
   /** A request to frame these world bounds: the viewport fits them to its
@@ -345,6 +349,15 @@ export interface EncounterStudioSession {
    * undoable transaction; an empty map removes the key. Refused, with the
    * notice naming why, for an interaction not authored. */
   commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
+  /** One behaviour definition (rpg-project#996): `edit` runs on the
+   * document's definition as it is now, and the result is set whole as one
+   * undoable transaction (`machineEdit.setBehaviorDefinition`). Refused,
+   * with the notice naming why, for a behaviour the file does not author or
+   * an edit that throws (a state no longer declared, a name taken). */
+  commitBehaviorDefinition(
+    id: string,
+    edit: (definition: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

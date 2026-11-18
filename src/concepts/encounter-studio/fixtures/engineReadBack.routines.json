@@ -1,0 +1,554 @@
+{
+  "key": "the-mad-king",
+  "name": "The Mad King’s Castle",
+  "sections": [
+    {
+      "title": "Routines",
+      "groups": [
+        {
+          "title": "Routine `captain-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "captain-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "The routine `captain-policy` is run by Guard Captain (captain); it starts in the state `ready`; its recipe is `site:behaviors:captain-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.captain-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `ready`, Guard Captain (captain) listens for 7 beats.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `ready`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Routine `gate-1-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "gate-1-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "gate-1-policy"
+              },
+              "sentence": "The routine `gate-1-policy` is run by Guard (gate-1); it starts in the state `posted`; its recipe is `dnd5e:machines:gate-1`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.gate-1-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "gate-1-policy"
+              },
+              "sentence": "In the state `posted`, Guard (gate-1) listens for 7 beats.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.posted"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "gate-1-policy"
+              },
+              "sentence": "In the state `posted`, when Guard (gate-1) learns a fact, if Guard (gate-1) knows the fact `guards-turned`, Guard (gate-1) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Routine `gate-2-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "gate-2-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "gate-2-policy"
+              },
+              "sentence": "The routine `gate-2-policy` is run by Guard (gate-2); it starts in the state `ready`; its recipe is `site:behaviors:gate-2-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.gate-2-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "gate-2-policy"
+              },
+              "sentence": "In the state `ready`, Guard (gate-2) listens for 6 beats.",
+              "path": "behaviorDefinitions.gate-2-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "gate-2-policy"
+              },
+              "sentence": "In the state `ready`, when Guard (gate-2) learns a fact, if Guard (gate-2) knows the fact `guards-turned`, Guard (gate-2) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.gate-2-policy.recipe.states.ready.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Routine `hall-1-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "hall-1-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "hall-1-policy"
+              },
+              "sentence": "The routine `hall-1-policy` is run by Guard (hall-1); it starts in the state `ready`; its recipe is `site:behaviors:hall-1-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.hall-1-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "hall-1",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "hall-1-policy"
+              },
+              "sentence": "In the state `ready`, Guard (hall-1) listens for 2 beats.",
+              "path": "behaviorDefinitions.hall-1-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "hall-1-policy"
+              },
+              "sentence": "In the state `ready`, on Guard (hall-1)'s own time (each round Guard (hall-1) is due, out of a fight), Guard (hall-1) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.hall-1-policy.recipe.states.ready.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `keep-1-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "keep-1-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "keep-1-policy"
+              },
+              "sentence": "The routine `keep-1-policy` is run by Knight (keep-1); it starts in the state `ready`; its recipe is `site:behaviors:keep-1-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.keep-1-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "keep-1",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "keep-1-policy"
+              },
+              "sentence": "In the state `ready`, Knight (keep-1) listens for 2 beats.",
+              "path": "behaviorDefinitions.keep-1-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "keep-1-policy"
+              },
+              "sentence": "In the state `ready`, on Knight (keep-1)'s own time (each round Knight (keep-1) is due, out of a fight), Knight (keep-1) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.keep-1-policy.recipe.states.ready.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `keep-2-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "keep-2-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "keep-2-policy"
+              },
+              "sentence": "The routine `keep-2-policy` is run by Knight (keep-2); it starts in the state `ready`; its recipe is `site:behaviors:keep-2-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.keep-2-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "keep-2",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "keep-2-policy"
+              },
+              "sentence": "In the state `ready`, Knight (keep-2) listens for 2 beats.",
+              "path": "behaviorDefinitions.keep-2-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "keep-2-policy"
+              },
+              "sentence": "In the state `ready`, on Knight (keep-2)'s own time (each round Knight (keep-2) is due, out of a fight), Knight (keep-2) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.keep-2-policy.recipe.states.ready.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `reserve-1-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "reserve-1-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-1-policy"
+              },
+              "sentence": "The routine `reserve-1-policy` is run by Knight (reserve-1); it starts in the state `waiting`; its recipe is `dnd5e:machines:reserve-1`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.reserve-1-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "reserve-1",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-1-policy"
+              },
+              "sentence": "In the state `waiting`, Knight (reserve-1) listens for 3 beats.",
+              "path": "behaviorDefinitions.reserve-1-policy.recipe.states.waiting"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-1-policy"
+              },
+              "sentence": "In the state `waiting`, on Knight (reserve-1)'s own time (each round Knight (reserve-1) is due, out of a fight), Knight (reserve-1) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.reserve-1-policy.recipe.states.waiting.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `reserve-2-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "reserve-2-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-2-policy"
+              },
+              "sentence": "The routine `reserve-2-policy` is run by Knight (reserve-2); it starts in the state `waiting`; its recipe is `dnd5e:machines:reserve-2`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.reserve-2-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "reserve-2",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-2-policy"
+              },
+              "sentence": "In the state `waiting`, Knight (reserve-2) listens for 3 beats.",
+              "path": "behaviorDefinitions.reserve-2-policy.recipe.states.waiting"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "reserve-2-policy"
+              },
+              "sentence": "In the state `waiting`, on Knight (reserve-2)'s own time (each round Knight (reserve-2) is due, out of a fight), Knight (reserve-2) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `sergeant-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "sergeant-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "sergeant-policy"
+              },
+              "sentence": "The routine `sergeant-policy` is run by Guard (sergeant); it starts in the state `ready`; its recipe is `site:behaviors:sergeant-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.sergeant-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "sergeant",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "sergeant-policy"
+              },
+              "sentence": "In the state `ready`, Guard (sergeant) listens for 2 beats.",
+              "path": "behaviorDefinitions.sergeant-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "sergeant-policy"
+              },
+              "sentence": "In the state `ready`, on Guard (sergeant)'s own time (each round Guard (sergeant) is due, out of a fight), Guard (sergeant) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.sergeant-policy.recipe.states.ready.transitions[0]"
+            }
+          ]
+        },
+        {
+          "title": "Routine `turnkey-policy`",
+          "about": {
+            "kind": "routine",
+            "id": "turnkey-policy"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "turnkey-policy"
+              },
+              "sentence": "The routine `turnkey-policy` is run by Guard (turnkey); it starts in the state `ready`; its recipe is `site:behaviors:turnkey-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "path": "behaviorDefinitions.turnkey-policy",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "turnkey",
+                  "role": "runs"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "turnkey-policy"
+              },
+              "sentence": "In the state `ready`, Guard (turnkey) listens for 2 beats.",
+              "path": "behaviorDefinitions.turnkey-policy.recipe.states.ready"
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "turnkey-policy"
+              },
+              "sentence": "In the state `ready`, on Guard (turnkey)'s own time (each round Guard (turnkey) is due, out of a fight), Guard (turnkey) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.turnkey-policy.recipe.states.ready.transitions[0]"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "not_yet_said": [],
+  "folded": [
+    {
+      "title": "Routines",
+      "items": [
+        {
+          "text": "Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`; recipe `site:behaviors:captain-policy`.",
+          "paths": ["behaviorDefinitions.captain-policy"],
+          "base": "behaviorDefinitions.captain-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `gate-1-policy` — run by Guard (gate-1); starts in `posted`; recipe `dnd5e:machines:gate-1`.",
+          "paths": ["behaviorDefinitions.gate-1-policy"],
+          "base": "behaviorDefinitions.gate-1-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `gate-2-policy` — run by Guard (gate-2); starts in `ready`; recipe `site:behaviors:gate-2-policy`.",
+          "paths": ["behaviorDefinitions.gate-2-policy"],
+          "base": "behaviorDefinitions.gate-2-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `hall-1-policy` — run by Guard (hall-1); starts in `ready`; recipe `site:behaviors:hall-1-policy`.",
+          "paths": ["behaviorDefinitions.hall-1-policy"],
+          "base": "behaviorDefinitions.hall-1-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `keep-1-policy` — run by Knight (keep-1); starts in `ready`; recipe `site:behaviors:keep-1-policy`.",
+          "paths": ["behaviorDefinitions.keep-1-policy"],
+          "base": "behaviorDefinitions.keep-1-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `keep-2-policy` — run by Knight (keep-2); starts in `ready`; recipe `site:behaviors:keep-2-policy`.",
+          "paths": ["behaviorDefinitions.keep-2-policy"],
+          "base": "behaviorDefinitions.keep-2-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `reserve-1-policy` — run by Knight (reserve-1); starts in `waiting`; recipe `dnd5e:machines:reserve-1`.",
+          "paths": ["behaviorDefinitions.reserve-1-policy"],
+          "base": "behaviorDefinitions.reserve-1-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `reserve-2-policy` — run by Knight (reserve-2); starts in `waiting`; recipe `dnd5e:machines:reserve-2`. Its states and rows are word for word those of `reserve-1-policy`.",
+          "paths": [
+            "behaviorDefinitions.reserve-2-policy",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[0]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[1]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.waiting.transitions[2]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[3]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[0]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[1]",
+            "behaviorDefinitions.reserve-2-policy.recipe.states.marching.transitions[2]",
+            "behaviorDefinitions.reserve-2-policy.table.march[0]",
+            "behaviorDefinitions.reserve-2-policy.table.march[1]",
+            "behaviorDefinitions.reserve-2-policy.table.time[0]",
+            "behaviorDefinitions.reserve-2-policy.table.time[1]",
+            "behaviorDefinitions.reserve-2-policy.table.time[2]"
+          ],
+          "items": []
+        },
+        {
+          "text": "Routine `sergeant-policy` — run by Guard (sergeant); starts in `ready`; recipe `site:behaviors:sergeant-policy`.",
+          "paths": ["behaviorDefinitions.sergeant-policy"],
+          "base": "behaviorDefinitions.sergeant-policy",
+          "items": []
+        },
+        {
+          "text": "Routine `turnkey-policy` — run by Guard (turnkey); starts in `ready`; recipe `site:behaviors:turnkey-policy`. Its states and rows are word for word those of `sergeant-policy`.",
+          "paths": [
+            "behaviorDefinitions.turnkey-policy",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready.transitions[0]",
+            "behaviorDefinitions.turnkey-policy.recipe.states.ready.transitions[1]",
+            "behaviorDefinitions.turnkey-policy.table.time[0]",
+            "behaviorDefinitions.turnkey-policy.table.time[1]",
+            "behaviorDefinitions.turnkey-policy.table.time[2]",
+            "behaviorDefinitions.turnkey-policy.table.time[3]",
+            "behaviorDefinitions.turnkey-policy.table.time[4]"
+          ],
+          "items": []
+        }
+      ]
+    }
+  ]
+}

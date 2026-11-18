@@ -9,17 +9,14 @@ import { describe, expect, it } from 'vitest';
 import { validateAnswerTable } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import {
-  addSiteAnswerEntry,
   addSiteDisposition,
   addSiteFaction,
   addSiteTable,
   addSiteTableAnswerEntry,
   defaultAnswerEntry,
   entryWord,
-  patchSiteAnswerEntry,
   patchSiteFaction,
   patchSiteTableAnswerEntry,
-  removeSiteAnswerEntry,
   removeSiteDisposition,
   removeSiteFaction,
   removeSiteTable,
@@ -110,34 +107,6 @@ describe('site policy edits — mechanics', () => {
     );
     expect(withUntil.dispositions?.[0]?.until).toEqual({ round: 2 });
     expect(removeSiteDisposition(added, 0).dispositions).toEqual([]);
-  });
-
-  it('adds, patches and removes an answer entry on a trigger', () => {
-    // A faction that carries no table yet, so the trigger is the new entry's
-    // alone — `time`, the one key the engine reads (rpg-project#569 R2).
-    const bare = { factions: [{ id: 'goblins' }] };
-    const withEntry = addSiteAnswerEntry(bare, 'goblins', 'time');
-    const entries = withEntry.factions?.[0]?.on?.time;
-    expect(entries).toHaveLength(1);
-    // A new entry is a document the decoder reads: the default word carries
-    // nothing, so it needs no id.
-    expect(() =>
-      validateAnswerTable(withEntry.factions?.[0]?.on, 'Site faction on')
-    ).not.toThrow();
-
-    const patched = patchSiteAnswerEntry(withEntry, 'goblins', 'time', 0, {
-      weight: 5,
-      say: 'Fine.',
-      hold: {},
-    });
-    expect(patched.factions?.[0]?.on?.time?.[0]).toEqual({
-      weight: 5,
-      say: 'Fine.',
-      hold: {},
-    });
-
-    const removed = removeSiteAnswerEntry(patched, 'goblins', 'time', 0);
-    expect(removed.factions?.[0]?.on?.time).toBeUndefined();
   });
 
   it('reads the one word off an entry and replaces it with its own shape', () => {

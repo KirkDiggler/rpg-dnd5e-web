@@ -684,6 +684,126 @@ button.wb-tree-row[aria-pressed='true'] {
   margin-top: 0.25rem;
 }
 
+/* A row's loudness and its grant (rpg-project#975 A): the loudness sits
+ * with the row's words; the grant is its own band under them, its fields in
+ * the same wrapping row as the row's other controls. */
+.wb-entry-loudness {
+  flex: 0 0 7rem;
+}
+
+.wb-entry-grant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--wb-border);
+}
+
+.wb-entry-grant > label {
+  flex: 0 0 9rem;
+}
+
+.wb-entry-grant-fields {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wb-entry-grant-fields > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-entry-grant-fields > .wb-check {
+  flex: 1 1 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* A LINE'S WIRING (rpg-project#975 B): its requirements as a list, each a
+ * row of its own fields, and the conversation it advances. */
+.wb-requirements,
+.wb-advance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.wb-requirements > span {
+  flex: 1 1 100%;
+}
+
+.wb-requirement-list {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-requirement {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+
+.wb-requirement > label,
+.wb-advance > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-requirement-states {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.wb-requirement-states > legend {
+  float: left;
+  margin-right: 0.5rem;
+}
+
+/* THE RELOCATION (R33): one piece wherever a relocation is written. */
+.wb-relocation {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wb-relocation > label {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-relocation-words {
+  flex: 2 1 16rem;
+}
+
+.wb-relocation > .wb-relocation-rounds {
+  flex: 0 0 5rem;
+}
+
 .wb-policy-trigger-block {
   margin-top: 0.4rem;
 }
@@ -1629,4 +1749,97 @@ button.wb-tree-row[aria-pressed='true'] {
   gap: 0.3rem;
   width: 100%;
   padding-top: 0.35rem;
+}
+
+/* A CREATURE'S POSTS (rpg-project#975 D): one card per post, laid out
+ * like a conversation's outcome. A header line — "Post in `alert`" as the
+ * title, Remove at the far right — then the post's fields, each label above
+ * its control: Door, Against, Held from (the cell count and Pick on map on
+ * one line), and the pass's own fields on a full-width line. */
+.wb-state-post {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+}
+
+.wb-post-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.wb-post-head > h5 {
+  margin: 0;
+}
+
+.wb-post-head > button {
+  margin-left: auto;
+}
+
+.wb-post-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, max-content));
+  align-items: start;
+  gap: 0.6rem 1rem;
+}
+
+.wb-post-field label,
+.wb-post-held {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.wb-post-field select {
+  width: auto;
+  max-width: 100%;
+}
+
+.wb-post-label {
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+}
+
+.wb-post-held-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wb-post-pass {
+  grid-column: 1 / -1;
+}
+
+.wb-post-pass > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem 1rem;
+}
+
+.wb-post-pass label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.wb-post-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.wb-post-add > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }

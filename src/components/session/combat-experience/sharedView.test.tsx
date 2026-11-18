@@ -111,11 +111,12 @@ describe('shown like own', () => {
     [bea]
   );
 
-  it('a friend’s caught words toast as the viewer’s own would, marked in the log row and the toast', () => {
+  it('a friend’s caught words toast as the viewer’s own would, marked in the tag, not the sentence', () => {
     const [row] = buildActStory([fact(shout)], context);
     expect(row!.headline).toBe('Gate guard shouts: “Halt!”');
-    expect(row!.detail).toBe('through Bea');
-    expect(row!.toastText).toBe('Gate guard shouts: “Halt!” — through Bea');
+    expect(row!.eyebrow).toBe('Speech · through Bea');
+    expect(row!.detail).toBe('');
+    expect(row!.toastText).toBe('Gate guard shouts: “Halt!”');
     expect(row!.toastRule?.case).toBe('heard-speech');
   });
 
@@ -134,9 +135,7 @@ describe('shown like own', () => {
       [bea, rin]
     );
     const [row] = buildActStory([fact(checked)], context);
-    expect(row!.detail).toBe(
-      '1 room away · someone rolled 15 · through Bea and Rin'
-    );
+    expect(row!.detail).toBe('1 room away · someone rolled 15');
     expect(row!.toastRule?.case).toBe('heard-speech');
   });
 
@@ -177,10 +176,13 @@ describe('shown like own', () => {
     const [row] = buildActStory([fact(found)], context);
     expect(row!.headline).toBe('Bea finds hidden door');
     expect(row!.detail).toBe('');
+    // The tag carries every friend, even the one the sentence names.
+    expect(row!.eyebrow).toBe('Found · through Bea');
     expect(row!.toastRule).toBeUndefined();
-    // A friend named in via but not as the observer still carries the mark.
     const both = withVia(found, [bea, rin]);
-    expect(buildActStory([fact(both)], context)[0]!.detail).toBe('through Rin');
+    expect(buildActStory([fact(both)], context)[0]!.eyebrow).toBe(
+      'Found · through Bea and Rin'
+    );
   });
 
   it('the viewer is never said to have perceived what came through a friend', () => {
@@ -331,7 +333,8 @@ describe('a move that came through a friend (rpg-project#935)', () => {
   it('logs with the mark, on its own row, and toasts nothing', () => {
     const story = buildActStory([fact(viaMove)], context);
     expect(story[0]!.headline).toBe('Bea moves');
-    expect(story[0]!.detail).toMatch(/· through Rin$/);
+    expect(story[0]!.eyebrow).toBe('Move · through Rin');
+    expect(story[0]!.detail).not.toMatch(/through/);
     expect(story[0]!.toastRule).toBeUndefined();
     expect(foldLogRows(story).map((row) => row.kind)).toEqual(['entry']);
   });

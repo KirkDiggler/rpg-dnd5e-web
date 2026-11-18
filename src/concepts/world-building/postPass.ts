@@ -99,3 +99,55 @@ export function setBindingPostPass(
     posts: { ...posts, [state]: post },
   } as RoomMonsterBinding);
 }
+
+/** A post as the form edits it (`dungeonspec` `HoldsSpec`): the door it
+ * holds, the cells it holds it from (none: the creature's own cell), the
+ * way it holds it (absent: both ways), and its pass. */
+export interface PostShape {
+  door: string;
+  at?: { q: number; r: number }[];
+  against?: string;
+  pass?: unknown;
+}
+
+/** The ways a post holds its door; absent is both. */
+export const POST_AGAINST = ['entering', 'leaving'] as const;
+
+/** The binding with one state's post set — or removed for undefined, and
+ * `posts` itself when it empties. Every other key is kept. */
+export function setBindingPost(
+  binding: RoomMonsterBinding | undefined,
+  state: string,
+  post: Record<string, unknown> | undefined
+): RoomMonsterBinding | undefined {
+  const raw = (binding as Record<string, unknown> | undefined)?.posts;
+  const posts: Record<string, unknown> = mapping(raw) ? { ...raw } : {};
+  if (post === undefined) delete posts[state];
+  else posts[state] = post;
+  const next = { ...(binding ?? {}) } as Record<string, unknown>;
+  if (Object.keys(posts).length === 0) delete next.posts;
+  else next.posts = posts;
+  return normalizeBinding(next as RoomMonsterBinding);
+}
+
+/** A post with one field changed: the door; the way ('' for both, written
+ * as nothing); the cells (none for the creature's own cell). Every other
+ * key is kept in its place. */
+export function withPost(
+  post: Record<string, unknown>,
+  patch: {
+    door?: string;
+    against?: string;
+    at?: readonly { q: number; r: number }[];
+  }
+): Record<string, unknown> {
+  const next = { ...post };
+  if (patch.door !== undefined) next.door = patch.door;
+  if (patch.against === '') delete next.against;
+  else if (patch.against !== undefined) next.against = patch.against;
+  if (patch.at !== undefined) {
+    if (patch.at.length === 0) delete next.at;
+    else next.at = patch.at.map((cell) => ({ q: cell.q, r: cell.r }));
+  }
+  return next;
+}

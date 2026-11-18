@@ -65,16 +65,22 @@ export function keyRefusalOf(publishing: StudioPublishing): string | null {
       );
     return match ? match[1]! : null;
   };
-  const field = [...publishing.preview.errors, ...publishing.saver.errors].find(
-    (error) => error.path === '' && /^key\b/.test(error.message)
-  );
+  const { saver, preview, yaml } = publishing;
+  // ONLY THE CURRENT BYTES' (R34): a save is current while it submitted
+  // exactly these bytes (the key is in them), a check while bytes exist.
+  const saverCurrent = saver.submittedYaml === yaml;
+  const previewCurrent = yaml !== null;
+  const field = [
+    ...(previewCurrent ? preview.errors : []),
+    ...(saverCurrent ? saver.errors : []),
+  ].find((error) => error.path === '' && /^key\b/.test(error.message));
   return (
     fromTransport(publishing.error) ??
-    (publishing.saver.status === 'error'
-      ? fromTransport(publishing.saver.message)
+    (saverCurrent && saver.status === 'error'
+      ? fromTransport(saver.message)
       : null) ??
-    (publishing.preview.status === 'unreachable'
-      ? fromTransport(publishing.preview.message)
+    (previewCurrent && preview.status === 'unreachable'
+      ? fromTransport(preview.message)
       : null) ??
     field?.message ??
     null
@@ -92,7 +98,7 @@ export function currentRefusals(
   const errors =
     saver.status === 'invalid' && saver.submittedYaml === yaml
       ? saver.errors
-      : gate === 'live' && preview.status === 'errors'
+      : gate === 'live' && yaml !== null && preview.status === 'errors'
         ? preview.errors
         : [];
   return errors.filter(
@@ -136,4 +142,51 @@ export function publishStatusText(
     }
   const saved = savedCurrent(publishing, roomId);
   return saved ? `Saved as ${saved}` : '';
+}
+
+/** The engine's read-back as the inspector shows it (rpg-project#968, R25):
+ * the sentences of the last draft that compiled, whether they describe the
+ * current bytes, and, while there are none, why. */
+export interface StudioReadBack {
+  readBack: StudioPublishing['readBack'];
+  readBackIsCurrent: boolean;
+  /** Why no read-back is available; null while one is. */
+  unavailable: string | null;
+}
+
+export const READ_BACK_NOT_CHECKED_SENTENCE =
+  'The server has not checked this draft yet.';
+export const READ_BACK_NOT_COMPILED_SENTENCE =
+  'The draft has not compiled yet; its refusals say why.';
+export const READ_BACK_NOT_SENT_SENTENCE =
+  'The server compiled the draft and sent no read-back.';
+export const READ_BACK_NO_FILE_SENTENCE =
+  'The draft cannot be written as a file yet.';
+
+export function studioReadBackOf(
+  publishing: Pick<
+    StudioPublishing,
+    'readBack' | 'readBackIsCurrent' | 'preview' | 'yaml'
+  >,
+  gate: AuthoringGateState
+): StudioReadBack {
+  const { readBack, readBackIsCurrent, preview, yaml } = publishing;
+  // The gate first: with authoring off the server checks nothing, so the
+  // last sentences are not kept beside a reason they cannot answer.
+  const server = serverUnavailableReason(gate);
+  if (server !== null)
+    return { readBack: null, readBackIsCurrent: false, unavailable: server };
+  if (readBack !== null)
+    return { readBack, readBackIsCurrent, unavailable: null };
+  const unavailable =
+    yaml === null
+      ? READ_BACK_NO_FILE_SENTENCE
+      : preview.status === 'errors'
+        ? READ_BACK_NOT_COMPILED_SENTENCE
+        : preview.status === 'compiled'
+          ? READ_BACK_NOT_SENT_SENTENCE
+          : preview.status === 'unreachable'
+            ? UNREACHABLE_SENTENCE
+            : READ_BACK_NOT_CHECKED_SENTENCE;
+  return { readBack: null, readBackIsCurrent: false, unavailable };
 }

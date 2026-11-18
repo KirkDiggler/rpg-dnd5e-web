@@ -23,6 +23,7 @@ import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRest } from '@/api/useSessionRest';
 import type { SpeakTarget } from '@/api/useSessionSpeak';
+import { useSessionStatus } from '@/api/useSessionStatus';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
@@ -65,12 +66,7 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import {
-  coordToKey,
-  type CubeCoord,
-  cubeToWorld,
-  HEX_SIZE,
-} from '../hex-grid/hexMath';
+import { type CubeCoord, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -83,6 +79,10 @@ import {
   buildAtlasPathIndex,
   INTERACTION_REACH,
 } from './atlasPath';
+import {
+  atlasPropAt as atlasPropAtOf,
+  atlasPropCell as atlasPropCellOf,
+} from './atlasPropAt';
 import { regionAt } from './atlasRegion';
 import {
   applyCellKnowledge,
@@ -106,6 +106,7 @@ import {
   reactionWindowDeclaration,
   reactionWindowMover,
 } from './combat-experience/reactionWindow';
+import { walkOffFor } from './combat-experience/relocateCut';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useDesktopHotbarFrame } from './combat-experience/useDesktopHotbarFrame';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
@@ -839,7 +840,19 @@ function SessionEncounterScope({
     () => hailTurnFocus(combat.hailFocus, otherMembers),
     [combat.hailFocus, otherMembers]
   );
-  const cameraPresentationFocus = hailCamera ?? monsterCamera.focus;
+  // THE CUT'S CAMERA (rpg-project#925): once the view is dark, the camera
+  // goes to where the character was set down, through the same keyed focus,
+  // so the fade-in opens on them wherever the cells are.
+  const relocateCamera = useMemo(() => {
+    const cut = combat.relocateCut;
+    if (!cut?.to || cut.phase === 'out') return null;
+    return {
+      key: `relocate\u0000${cut.key}`,
+      position: positionToCube(cut.to),
+    };
+  }, [combat.relocateCut]);
+  const cameraPresentationFocus =
+    relocateCamera ?? hailCamera ?? monsterCamera.focus;
   // THE DIAL (rpg-project#872 D2), remembered per browser. Off, no offers
   // reach the map and a creature click behaves exactly as before.
   const clickToActOn = useDialValues()[CLICK_TO_ACT_DIAL] === 'on';
@@ -932,7 +945,7 @@ function SessionEncounterScope({
     combat.presentationState.armedDeclarationId !== null &&
     !combat.presentationState.movementSelected;
   const handleGroundClick = useCallback(
-    (coord: CubeCoord) => {
+    (coord: CubeCoord, prop?: string) => {
       if (combat.cellCastArmed) {
         // The exact conversion a walk's path cells go through — one
         // coordinate space, one converter, no second opinion about which of
@@ -944,10 +957,19 @@ function SessionEncounterScope({
         (experienceClock === ClockKind.WORLD && !worldOfferArmed) ||
         (experienceClock === ClockKind.TURN && combat.movementEnabled)
       ) {
-        walkTo(coord);
+        // A PROP'S CLICK STAYS THE WALK IT ALWAYS WAS (rpg-project#959): the
+        // same cell, the same path. It only carries the prop, so its menu
+        // opens on arrival when the fresh offer lists anything for it.
+        if (prop) {
+          const outcome = combat.propMenuOnArrival(prop);
+          if (!walkToCell(coord, outcome)) outcome.refused();
+        } else {
+          combat.cancelPropArrival();
+          walkTo(coord);
+        }
       }
     },
-    [combat, experienceClock, walkTo, worldOfferArmed]
+    [combat, experienceClock, walkTo, walkToCell, worldOfferArmed]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -978,25 +1000,17 @@ function SessionEncounterScope({
         : atlasPropCell(target.value);
     return cell ? approach(cell, INTERACTION_REACH, outcome) : false;
   };
-  const atlasPropCell = (prop: string): CubeCoord | undefined => {
-    const at = atlas?.props.find((candidate) => candidate.id === prop)?.at;
-    return at ? positionToCube(at) : undefined;
-  };
+  const atlasPropCell = (prop: string): CubeCoord | undefined =>
+    atlasPropCellOf(atlas, prop);
   // A floor click on a prop's cell, while Speak offers an approach, is a
   // click on that prop (a prop has no mesh handler of its own). ANY prop
   // with an id counts, a passable floor prop such as a rug included, so with
   // Speak armed a click on a rug's cell approaches the rug rather than
-  // walking onto it; two props on one cell resolve to the first in atlas
-  // order. A creature on the cell wins: its click never reaches the floor.
-  const atlasPropAt = (coord: CubeCoord): string | undefined => {
-    const key = coordToKey(coord);
-    return atlas?.props.find(
-      (prop) =>
-        prop.id.length > 0 &&
-        prop.at &&
-        coordToKey(positionToCube(prop.at)) === key
-    )?.id;
-  };
+  // walking onto it. Cell scenery and placed footprints both count
+  // (`atlasPropAt`). A creature on the cell wins: its click never reaches
+  // the floor.
+  const atlasPropAt = (coord: CubeCoord): string | undefined =>
+    atlasPropAtOf(atlas, coord);
 
   const localWorldDieOpenDoors = useMemo(
     () =>
@@ -1456,6 +1470,8 @@ function SessionEncounterScope({
   // act revokes action authority, patches knowledge, and schedules the reads
   // its family changed (`actRefreshKeys.ts`, paired with the v1 table it
   // replaces). A same-id run arrives whole and is funnelled in one pass.
+  // The run's sharing dial (rpg-project#935), read once per session.
+  const { partySharing } = useSessionStatus(sessionId);
   const { acceptStreamActs, invalidateAuthority } = combat;
   const { acceptActs: acceptTurnOrderActs, reset: resetTurnOrder } = turnOrder;
   const handleSessionActs = useCallback(
@@ -2098,6 +2114,8 @@ function SessionEncounterScope({
             />
           )}
           <CombatExperience
+            relocateCut={combat.relocateCut}
+            partySharing={partySharing}
             portraits={{
               scopeKey:
                 playerId && sessionId && member
@@ -2281,20 +2299,38 @@ function SessionEncounterScope({
                     onHexClick={
                       runEnded === null
                         ? (coord: CubeCoord) => {
-                            const prop = onApproachClick
-                              ? atlasPropAt(coord)
-                              : undefined;
-                            if (prop) {
-                              onApproachClick!({ case: 'propId', value: prop });
+                            const prop = atlasPropAt(coord);
+                            if (prop && onApproachClick) {
+                              onApproachClick({ case: 'propId', value: prop });
                               return;
                             }
-                            handleGroundClick(coord);
+                            // CLICK A THING (rpg-project#959): with nothing
+                            // armed, a prop the offer lists opens its menu.
+                            if (
+                              prop &&
+                              !combat.cellCastArmed &&
+                              combat.onPropClick(prop)
+                            )
+                              return;
+                            handleGroundClick(coord, prop);
                           }
                         : undefined
                     }
                     onCancelSelection={combat.onCancelSelection}
                     onEntityClick={
                       runEnded === null ? onTargetClick : undefined
+                    }
+                    onPropUnderFigure={
+                      runEnded === null
+                        ? (cell: CubeCoord) => {
+                            const prop = atlasPropAt(cell);
+                            return (
+                              prop !== undefined &&
+                              !combat.cellCastArmed &&
+                              combat.onPropClick(prop)
+                            );
+                          }
+                        : undefined
                     }
                     onApproachClick={
                       runEnded === null && onApproachClick
@@ -2362,6 +2398,7 @@ function SessionEncounterScope({
                     )}
                     fitRequest={atlas?.regions.length ?? 0}
                     speech={speech}
+                    selfWalkOff={walkOffFor(combat.relocateCut)}
                     voices={voices}
                     presentationLayer={
                       <>
@@ -2382,6 +2419,7 @@ function SessionEncounterScope({
             onChooseSpeakTarget={combat.onChooseSpeakTarget}
             onApproachTarget={combat.onApproachTarget}
             onSpeakOption={combat.onSpeakOption}
+            onInteractOption={combat.onInteractOption}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
             // The log's own mode switch is deliberately NOT gated on the run

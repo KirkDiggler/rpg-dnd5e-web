@@ -545,10 +545,16 @@ function validateAnswerEntry(
   if (words.length > ANSWER_ENTRY_RULES.maximumWords)
     fail(path, entryDoesOneThingRefusal(words));
 
-  // The rule is READ from the declaration, not restated here.
+  // The rule is READ from the declaration, not restated here. A word this
+  // build does not read (`tells`, `relocate`, rpg-project#958) is a word the
+  // engine judges, carried below; an entry holding one is not empty here.
+  const carriedWords = Object.keys(value).filter(
+    (key) => !ENTRY_KEYS.includes(key) && value[key] !== undefined
+  );
   if (
     ANSWER_ENTRY_RULES.wordRequiredUnlessSaid &&
     words.length === 0 &&
+    carriedWords.length === 0 &&
     entry.say === undefined
   )
     fail(path, EMPTY_ENTRY_REFUSAL);
@@ -1156,7 +1162,17 @@ export type OptionRequiresShape = OptionRequires;
  * grammar under the verdict's key. */
 export interface OptionShape {
   id: string;
-  say: string;
+  /** What the character says. ABSENT on an option that DOES instead
+   * (`do:`, rpg-project#959): an option says or does, never both. */
+  say?: string;
+  /** What the doer is told they do (rpg-project#959): seen, not heard, on a
+   * prop's option in place of `say`. CARRIED as written, like `loudness`: the
+   * studio reads it to show the option as something done, and the engine
+   * judges it. */
+  do?: string;
+  /** What a witness shown the thing is told (rpg-project#959), third person.
+   * Carried as `do` is. */
+  seen?: string;
   /** `loudness: whisper | speak | shout | scream` (rpg-project#933),
    * speak when absent. CARRIED, not read: the decoder copies it untouched
    * (`carryUnknownKeys`), so the file's bytes round-trip; the read-back says
@@ -1179,6 +1195,12 @@ export type OptionVerdict = (typeof OPTION_VERDICTS)[number];
 export const OPTION_KEYS: readonly string[] = Object.freeze([
   'id',
   'say',
+  // An option that does (rpg-project#959): read so a deed is drawn as done,
+  // and written where `say` would be.
+  'do',
+  'seen',
+  // A line's loudness (rpg-project#975 A): read, so it stays with the words.
+  'loudness',
   'check',
   'requires',
   ...OPTION_VERDICTS,
@@ -1291,9 +1313,26 @@ export function validateOptions(
     )
       fail(`${at}.say`, 'expected a string');
     const say = typeof raw.say === 'string' ? raw.say : '';
-    if (say === '') fail(`${at}.say`, OPTION_NO_SAY_REFUSAL);
+    // AN OPTION SAYS OR DOES (rpg-project#959). One that does carries `do:`
+    // in place of `say:`; whether it may (a prop's, never both, no loudness)
+    // is the engine's to judge, so nothing more is refused here.
+    const does = typeof raw.do === 'string' && raw.do !== '';
+    if (say === '' && !does) fail(`${at}.say`, OPTION_NO_SAY_REFUSAL);
 
-    const option: OptionShape = { id, say };
+    const option: OptionShape =
+      does && (raw.say === undefined || raw.say === null)
+        ? { id }
+        : { id, say };
+    // Read keys are never dropped: a `do`, `seen` or `loudness` that is not
+    // words is refused as `say` is, never silently left behind. A loudness is
+    // read here, with the words it is said at (rpg-project#975 A), so the
+    // option keeps it beside them; which word it is, the engine judges.
+    for (const key of ['do', 'seen', 'loudness'] as const) {
+      const value = raw[key];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== 'string') fail(`${at}.${key}`, 'expected a string');
+      option[key] = value;
+    }
     if (Object.hasOwn(raw, 'check'))
       option.check = validateApproaches(raw.check, `${at}.check`);
     else if (raw.failure !== undefined && raw.failure !== null)

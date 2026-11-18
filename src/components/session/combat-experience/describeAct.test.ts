@@ -10,6 +10,7 @@ import {
   InfluenceKind,
   Loudness,
   PartyKind,
+  RelocateEnd,
   RollSchema,
   Sense,
   StateKind,
@@ -191,6 +192,36 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
     ),
     'Gate Guard bars the way',
   ],
+  relocate: [
+    act(Family.ACT, {
+      case: 'relocate',
+      value: {
+        mover: gate,
+        from: { x: 1, y: 1 },
+        cause: 'dnd5e:consequences:arrest',
+        end: RelocateEnd.LEFT,
+      },
+    }),
+    'Gate Guard is led away under arrest.',
+  ],
+  interact: [
+    act(Family.ACT, {
+      case: 'interact',
+      value: {
+        actor: gate,
+        prop: { kind: PartyKind.PROP, id: 'grate' },
+        words: 'lifts the grate and climbs in.',
+      },
+    }),
+    'Gate Guard: lifts the grate and climbs in.',
+  ],
+  arrest: [
+    act(Family.STATE, {
+      case: 'arrest',
+      value: { interaction: 'front-gate', taken: [alice], cell: 'cells' },
+    }),
+    'You are under arrest.',
+  ],
   speech: [
     act(
       Family.ACT,
@@ -206,7 +237,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       },
       'speak'
     ),
-    'Alice says: “Evening.”',
+    'You say: “Evening.”',
   ],
   state: [
     act(Family.STATE, {
@@ -224,7 +255,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
         heard: { kind: 'footsteps', hops: 2 },
       },
     }),
-    'Alice hears footsteps',
+    'You hear footsteps',
   ],
   clock: [
     act(Family.CLOCK, {

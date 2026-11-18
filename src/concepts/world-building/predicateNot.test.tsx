@@ -10,14 +10,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import { createCastleReadBackDocument } from '../encounter-studio/fixtures/castleReadBack';
 import { validateOptions, type OptionShape } from './answerTableShape';
-import { factIndexOf } from './factIndex';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { PredicateEditor } from './PredicateEditor';
 import {
   NOT_HOLDS_FROM_THE_START_REFUSAL,
   NOT_OF_NOT_REFUSAL,
   OPTION_REQUIRES_FORMS,
-  requiresChoice,
   requiresFacts,
   requiresGate,
   requiresSentence,
@@ -25,7 +23,6 @@ import {
   type OptionRequires,
 } from './predicateNot';
 import { predicateSentence } from './predicateSentence';
-import { readBackOf } from './readBack';
 import type { RoomMonsterBinding } from './roomDraft';
 import { CreatureOrders } from './SitePolicies';
 import { validatePredicate, type SiteScope } from './siteScope';
@@ -134,30 +131,7 @@ describe('the not predicate is read and written', () => {
   });
 });
 
-describe('the Read back says “unless …”', () => {
-  it('the cook’s theft and gossip read as withheld from whoever knows caught-in-kitchen', () => {
-    const document = castleWithTheTheft();
-    const spoken = readBackOf(document, { kind: 'creature', id: 'cook' }).find(
-      (p) => p.heading === 'spoken-to'
-    )!;
-    const items = spoken.items!.map((item) => item.text);
-    expect(items[0]).toBe(
-      '“(lift a pie from the sill)” Offered unless the speaker knows caught-in-kitchen. Sleight of hand DC 13. Success: “The cook never looks round.” Failure: “Thief!”, and the speaker learns caught-in-kitchen.'
-    );
-    expect(items[1]).toContain(
-      'Offered unless the speaker knows caught-in-kitchen.'
-    );
-    expect(items[2]).toContain('Offered to a speaker who knows feast-tonight.');
-  });
-
-  it('the fact index counts the not requires as a read of the fact', () => {
-    const row = factIndexOf(castleWithTheTheft()).find(
-      (r) => r.fact === 'caught-in-kitchen'
-    );
-    expect(row).toBeDefined();
-    expect(JSON.stringify(row)).toContain('requires');
-  });
-
+describe('a not predicate is read as “unless …”', () => {
   it('a not predicate reads as the inner one turned over', () => {
     const names = new Map([['goblin-1', 'the goblin']]);
     expect(predicateSentence({ not: goblinsNeutral }, { names })).toBe(
@@ -317,9 +291,9 @@ describe('the requires picker offers “unless”', () => {
 });
 
 /** The entrance remembers (rpg-project#922): a `requires` list and an
- * interaction read are shown, carried, and said — not edited — by the
- * picker, the readout and the Read back. */
-describe('a requires list and an interaction read are shown and carried', () => {
+ * interaction read are carried and said by the readout and the Read back,
+ * and edited by the picker as a list (rpg-project#975 B). */
+describe('a requires list and an interaction read are edited and carried', () => {
   const fixture = decodeWorldBuilderV4Site();
   const scope: SiteScope = {
     factions: fixture.factions,
@@ -340,11 +314,6 @@ describe('a requires list and an interaction read are shown and carried', () => 
   };
 
   it('the helpers read every requirement, in order', () => {
-    expect(requiresChoice(requires)).toBe('listed');
-    expect(
-      requiresChoice({ not: { interaction: { id: 'front-gate', in: ['x'] } } })
-    ).toBe('listed');
-    expect(requiresChoice({ fact: 'f' })).toBe('fact');
     expect(requiresFacts(requires)).toEqual(['feast-tonight']);
     expect(requiresGate(requires)).toBe(
       ' · requires fact feast-tonight · requires front-gate in fresh|warned-guest'
@@ -354,7 +323,7 @@ describe('a requires list and an interaction read are shown and carried', () => 
     );
   });
 
-  it('the picker shows the list read-only, and a say edit keeps it', () => {
+  it('the list is edited as a list (rpg-project#975 B), and a say edit keeps it', () => {
     let latest: RoomMonsterBinding | undefined;
     function Creature() {
       const [binding, setBinding] = useState<RoomMonsterBinding | undefined>({
@@ -374,11 +343,20 @@ describe('a requires list and an interaction read are shown and carried', () => 
       );
     }
     render(<Creature />);
-    expect(screen.queryByLabelText('Line 1 requires for goblin-1')).toBeNull();
     expect(
-      screen.getByTestId('option-requires-listed-line 1 of goblin-1')
-        .textContent
-    ).toContain('requires front-gate in fresh|warned-guest');
+      (
+        screen.getByLabelText(
+          'Line 1 requires for goblin-1'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('fact');
+    expect(
+      (
+        screen.getByLabelText(
+          'Line 1 requires 2 for goblin-1'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('interaction');
     fireEvent.change(screen.getByLabelText('Line 1 for goblin-1'), {
       target: { value: 'We play tonight.' },
     });

@@ -267,8 +267,9 @@ export function useSessionWalk(
           const turnRefusal = isNotYourTurnError(err);
           setNotYourTurn(turnRefusal);
           if (isStaleDeclarationRefusal(err)) {
-            // Selector-bearing Move refusals share the same recovery surface as
-            // Attack and EndTurn. Raw refusal text never becomes presentation.
+            // A stale Move declaration (ABORTED, rpg-api#1238) shares the
+            // recovery surface of every act verb. A refusal with a sentence
+            // (FAILED_PRECONDITION) falls through and reads as written.
             setMoveError(null);
             onStaleDeclarationRefusal?.(declarationId);
           } else {

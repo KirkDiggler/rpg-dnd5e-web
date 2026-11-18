@@ -35,7 +35,7 @@ import {
   ObstacleType,
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
@@ -67,6 +67,7 @@ import {
   offHandSocketForRigFamily,
   type OffHandPresentation,
 } from './offHandEquipment';
+import { driftAt, type PresentationDrift } from './presentationDrift';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
 import {
@@ -88,6 +89,13 @@ export interface HexEntityProps {
   type: 'player' | 'monster' | 'obstacle' | 'npc';
   hexSize: number;
   isSelected?: boolean;
+  /**
+   * A walk for show (rpg-project#925): the figure plays its walk and is drawn
+   * offset toward a point, eased, inside its own group. Never a move: the
+   * `position` this entity is placed at is untouched, and with no drift the
+   * offset is zero at once.
+   */
+  presentationDrift?: PresentationDrift;
   /** Opt-in offered-member selection display; follows this entity's moving group. */
   targetMarker?: EntityTargetMarkerState;
   /** A line this creature is saying right now, drawn above it as speech
@@ -435,6 +443,7 @@ export function HexEntity({
   onMovementPresentationComplete,
   deferPositionReconciliation = false,
   seenFacingDegrees,
+  presentationDrift,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
@@ -450,6 +459,27 @@ export function HexEntity({
   // group's rotation.y while useHexMovePath drives its position, so the ref
   // has to live here rather than inside either hook.
   const movingGroupRef = useRef<THREE.Group>(null);
+  // THE WALK-OFF'S OFFSET (rpg-project#925): drawn in a group inside the
+  // moving group, so the moving group's position — the snapshots' — is never
+  // touched. A new drift key restarts it; no drift puts it back at zero.
+  const driftGroupRef = useRef<THREE.Group>(null);
+  const driftStart = useRef<{ key: string; at: number } | null>(null);
+  useFrame(({ clock }) => {
+    const group = driftGroupRef.current;
+    if (!group) return;
+    if (!presentationDrift) {
+      driftStart.current = null;
+      if (group.position.x !== 0 || group.position.z !== 0)
+        group.position.set(0, 0, 0);
+      return;
+    }
+    const now = clock.getElapsedTime() * 1000;
+    if (driftStart.current?.key !== presentationDrift.key)
+      driftStart.current = { key: presentationDrift.key, at: now };
+    const offset = driftAt(presentationDrift, now - driftStart.current.at);
+    group.position.set(offset.x, 0, offset.z);
+  });
+  const drifting = Boolean(presentationDrift);
   // rpg-dnd5e-web#590: heading lives here, not in the movement hook, so a
   // future attack-facing source is another `requestHeading` caller rather than
   // a refactor. Seeded with the wire's facing when this viewer's Seen states
@@ -833,7 +863,10 @@ export function HexEntity({
             onLeave={() => onPointerOutProp?.()}
           />
         )}
-        {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
+        {/* The body walks off inside its own group (rpg-project#925); the
+            speech and the target marker stay on the moving group. */}
+        <group ref={driftGroupRef}>
+          {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
             THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not
             the pose the idle/walk clip actually renders — the animation
             sways the visible body away from that invisible volume, so a
@@ -858,105 +891,105 @@ export function HexEntity({
             raycast already tracks their real pose correctly) and are left
             raycast-enabled, so this proxy only ADDS coverage there, never
             removes any. */}
-        <mesh geometry={geometry} position={[0, ENTITY_HEIGHT / 2, 0]}>
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-        {/* Dead/downed entities rendered with tilt when using the
+          <mesh geometry={geometry} position={[0, ENTITY_HEIGHT / 2, 0]}>
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+          {/* Dead/downed entities rendered with tilt when using the
             MediumHumanoid fallback (no separate collapsed pose asset); a
             resolved GLB's own downed/dead variant is already posed for it,
             so no extra tilt there — true for both the player class model
             and the monster npc model (rpg-dnd5e-web#559 generalized this
             from a player-only check). Ghost entities rendered with ghost
             shader/opacity either way. */}
-        <group
-          rotation={
-            shouldTiltDeadOrDowned(
-              isDead,
-              isDowned,
-              !!effectiveModelUrl || hasExplicitAppearance
-            )
-              ? [0, 0, Math.PI / 3]
-              : [0, 0, 0]
-          }
-        >
-          <Suspense
-            fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+          <group
+            rotation={
+              shouldTiltDeadOrDowned(
+                isDead,
+                isDowned,
+                !!effectiveModelUrl || hasExplicitAppearance
+              )
+                ? [0, 0, Math.PI / 3]
+                : [0, 0, 0]
+            }
           >
-            {hidesBodyWhenDowned ? null : activityUnavailable ? (
-              modelFallback
-            ) : effectiveModelUrl ? (
-              <ErrorBoundary
-                key={`${effectiveModelUrl}|${activityProfile?.id ?? ''}`}
-                fallback={modelFallback}
-                onError={() => {
-                  if (activityProfile) {
-                    setFailedActivityScope(activityScope);
-                    return;
-                  }
-                  setFailedEntityModelUrls((failed) => {
-                    const next = new Set(failed);
-                    next.add(effectiveModelUrl);
-                    return next;
-                  });
-                }}
-              >
-                <ActivityCharacterModel
-                  url={effectiveModelUrl}
-                  profile={activityProfile}
-                  defaultActivityRef={defaultActivityRef}
-                  activityCue={remembered || isDead ? undefined : activityCue}
-                  onActivityCueConsumed={(id) =>
-                    onActivityCueConsumed?.(entityId, id)
-                  }
-                  moveSeq={moveSeq}
-                  presentationSpeed={presentationSpeed}
-                  transitionSpeed={transitionSpeed}
-                  onWalkingReadiness={(value) => {
-                    if (currentActivityScope.current === activityScope)
-                      walkingReadiness.current = {
-                        ...value,
-                        scope: activityScope,
-                      };
+            <Suspense
+              fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+            >
+              {hidesBodyWhenDowned ? null : activityUnavailable ? (
+                modelFallback
+              ) : effectiveModelUrl ? (
+                <ErrorBoundary
+                  key={`${effectiveModelUrl}|${activityProfile?.id ?? ''}`}
+                  fallback={modelFallback}
+                  onError={() => {
+                    if (activityProfile) {
+                      setFailedActivityScope(activityScope);
+                      return;
+                    }
+                    setFailedEntityModelUrls((failed) => {
+                      const next = new Set(failed);
+                      next.add(effectiveModelUrl);
+                      return next;
+                    });
                   }}
-                  isSelected={!isDead && selected}
-                  isGhost={isGhost}
-                  remembered={remembered}
-                  facingRotation={modelForwardOffset}
-                  isMoving={
-                    !isDead &&
-                    !isGhost &&
-                    !remembered &&
-                    isMoving &&
-                    moveKind !== 'displaced'
-                  }
-                  isDisplaced={
-                    !isDead &&
-                    !isGhost &&
-                    !remembered &&
-                    isMoving &&
-                    moveKind === 'displaced'
-                  }
-                  isDownedVariant={isDownedModelVariant}
-                  mainHandPresentation={
-                    type === 'player'
-                      ? mainHandPresentation
-                      : npcMainHand?.presentation
-                  }
-                  mainHandSocketOverride={
-                    type === 'player' ? mainHandSocketOverride : undefined
-                  }
-                  offHandPresentation={
-                    type === 'player' ? offHandPresentation : undefined
-                  }
-                  offHandSocketOverride={offHandSocketOverride}
-                  accessories={hairPresentation?.accessories}
-                  outfit={outfitPresentation}
-                />
-              </ErrorBoundary>
-            ) : (
-              modelFallback
-            )}
-          </Suspense>
+                >
+                  <ActivityCharacterModel
+                    url={effectiveModelUrl}
+                    profile={activityProfile}
+                    defaultActivityRef={defaultActivityRef}
+                    activityCue={remembered || isDead ? undefined : activityCue}
+                    onActivityCueConsumed={(id) =>
+                      onActivityCueConsumed?.(entityId, id)
+                    }
+                    moveSeq={moveSeq}
+                    presentationSpeed={presentationSpeed}
+                    transitionSpeed={transitionSpeed}
+                    onWalkingReadiness={(value) => {
+                      if (currentActivityScope.current === activityScope)
+                        walkingReadiness.current = {
+                          ...value,
+                          scope: activityScope,
+                        };
+                    }}
+                    isSelected={!isDead && selected}
+                    isGhost={isGhost}
+                    remembered={remembered}
+                    facingRotation={modelForwardOffset}
+                    isMoving={
+                      !isDead &&
+                      !isGhost &&
+                      !remembered &&
+                      ((isMoving && moveKind !== 'displaced') || drifting)
+                    }
+                    isDisplaced={
+                      !isDead &&
+                      !isGhost &&
+                      !remembered &&
+                      isMoving &&
+                      moveKind === 'displaced'
+                    }
+                    isDownedVariant={isDownedModelVariant}
+                    mainHandPresentation={
+                      type === 'player'
+                        ? mainHandPresentation
+                        : npcMainHand?.presentation
+                    }
+                    mainHandSocketOverride={
+                      type === 'player' ? mainHandSocketOverride : undefined
+                    }
+                    offHandPresentation={
+                      type === 'player' ? offHandPresentation : undefined
+                    }
+                    offHandSocketOverride={offHandSocketOverride}
+                    accessories={hairPresentation?.accessories}
+                    outfit={outfitPresentation}
+                  />
+                </ErrorBoundary>
+              ) : (
+                modelFallback
+              )}
+            </Suspense>
+          </group>
         </group>
       </group>
     );

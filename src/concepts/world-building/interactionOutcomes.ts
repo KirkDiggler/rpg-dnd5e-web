@@ -1,3 +1,5 @@
+import { toRows } from './regionRuns';
+import type { RoomCellRow, RoomHexCell } from './roomDraft';
 import type { SiteScope } from './siteScope';
 
 /**
@@ -33,29 +35,6 @@ export const ABOUT_SPEAKER = 'speaker';
 /** `heard_by`'s one word: the interaction's other carriers who witnessed it. */
 export const HEARD_BY_WITNESSES = 'carriers_who_witnessed';
 
-const HOLDER_WORDS: Record<string, string> = {
-  [HOLDER_SPOKEN_TO]: 'the creature the line was said to',
-};
-const ABOUT_WORDS: Record<string, string> = {
-  [ABOUT_PARTY_IN_SIGHT]: 'the speaker’s party he sees',
-  [ABOUT_SPEAKER]: 'the speaker',
-};
-
-/** A recognize's holder in plain words; a word this build does not know, as
- * written. */
-export function holderWords(holder: string): string {
-  return HOLDER_WORDS[holder] ?? holder;
-}
-
-/** A recognize's subjects in plain words; a word this build does not know,
- * as written. */
-export function aboutWords(about: string): string {
-  return ABOUT_WORDS[about] ?? about;
-}
-
-/** The suffix a heard recognize adds: the witnesses recognise too. */
-export const HEARD_WORDS = ', and every other carrier who saw it said does too';
-
 /** A state's consequences, as written. */
 export type Outcomes = Record<string, unknown[]>;
 
@@ -73,6 +52,34 @@ const mapping = (value: unknown): value is Record<string, unknown> =>
 function interactionsOf(scope: Readonly<SiteScope>): Record<string, unknown> {
   const interactions = scope.unread?.interactions;
   return mapping(interactions) ? interactions : {};
+}
+
+/** The ids of the site's root interactions (Conversations), in the file's
+ * order. */
+export function interactionIds(scope: Readonly<SiteScope>): string[] {
+  return Object.keys(interactionsOf(scope));
+}
+
+/** The beats the interaction's recipe listens for — every transition's
+ * `on`, in the file's order, each once (rpg-project#975 B): what a line's
+ * `advance` may step it on. */
+export function recipeBeats(scope: Readonly<SiteScope>, id: string): string[] {
+  const interaction = interactionsOf(scope)[id];
+  if (!mapping(interaction) || !mapping(interaction.recipe)) return [];
+  const states = interaction.recipe.states;
+  if (!mapping(states)) return [];
+  const beats: string[] = [];
+  for (const state of Object.values(states)) {
+    if (!mapping(state) || !Array.isArray(state.transitions)) continue;
+    for (const transition of state.transitions)
+      if (
+        mapping(transition) &&
+        typeof transition.on === 'string' &&
+        !beats.includes(transition.on)
+      )
+        beats.push(transition.on);
+  }
+  return beats;
 }
 
 /** The states the interaction's recipe declares, in the file's order. */
@@ -153,6 +160,17 @@ export function withTopic(
   return editEntry(outcomes, state, index, (r) => ({ ...r, topic }));
 }
 
+/** The outcomes with one recognize about the party in sight, or the
+ * speaker alone. */
+export function withAbout(
+  outcomes: Outcomes,
+  state: string,
+  index: number,
+  about: string
+): Outcomes {
+  return editEntry(outcomes, state, index, (r) => ({ ...r, about }));
+}
+
 /** The outcomes with one recognize heard by the witnessing carriers, or by
  * nobody else. */
 export function withHeard(
@@ -227,4 +245,239 @@ export function setInteractionOutcomes(
       interactions: { ...interactions, [id]: next },
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// ONE OUTCOME IS ONE KIND (rpg-project#975 C): a recognition, an arrest or a
+// jail (`dungeonspec` `OutcomeSpec`, `ArrestSpec`, `JailSpec`; judged by
+// `interactions.go` `outcomesOf`, `arrestOf` and the engine's
+// `validateOutcomes`):
+//
+//   - recognize: { topic, holder, about, heard_by? }
+//   - arrest: { cell: <region>, area: { regions?: [<region>], cells?: [rows] } }
+//     — the area names its regions or its cells;
+//   - jail: { words, rounds?, escaped?: <fact> } — only in a conversation
+//     that arrests: a jail takes the taken of its own arrest.
+// ---------------------------------------------------------------------------
+
+export const OUTCOME_KINDS = ['recognize', 'arrest', 'jail'] as const;
+export type OutcomeKind = (typeof OUTCOME_KINDS)[number];
+
+export interface ArrestShape {
+  cell: string;
+  area: { regions?: string[]; cells?: RoomCellRow[] };
+}
+
+export interface JailShape {
+  words: string;
+  rounds?: number;
+  escaped?: string;
+}
+
+/** The one kind an entry is, or undefined for any other shape (another
+ * kind, two kinds, an entry that is not a mapping). */
+export function outcomeKindOf(entry: unknown): OutcomeKind | undefined {
+  if (!mapping(entry)) return undefined;
+  const keys = Object.keys(entry);
+  if (keys.length !== 1) return undefined;
+  const kind = keys[0] as OutcomeKind;
+  return OUTCOME_KINDS.includes(kind) && mapping(entry[kind])
+    ? kind
+    : undefined;
+}
+
+/** Whether the conversation arrests anybody — some outcome is an arrest —
+ * leaving one entry out (the one being changed). */
+export function arrests(
+  outcomes: Outcomes,
+  except?: { state: string; index: number }
+): boolean {
+  return Object.entries(outcomes).some(([state, list]) =>
+    list.some(
+      (entry, index) =>
+        !(except && except.state === state && except.index === index) &&
+        outcomeKindOf(entry) === 'arrest'
+    )
+  );
+}
+
+/** A new outcome of one kind, started from what the site defines: a
+ * recognition of its first topic about the party in sight, witnessed; an
+ * arrest held in and seized in its first region; a jail with words to
+ * write. */
+export function newOutcome(
+  kind: OutcomeKind,
+  names: { topics: readonly string[]; regions: readonly { id: string }[] }
+): Record<string, unknown> {
+  switch (kind) {
+    case 'recognize':
+      return {
+        recognize: {
+          topic: names.topics[0] ?? '',
+          holder: HOLDER_SPOKEN_TO,
+          about: ABOUT_PARTY_IN_SIGHT,
+          heard_by: HEARD_BY_WITNESSES,
+        },
+      };
+    case 'arrest': {
+      const region = names.regions[0]?.id ?? '';
+      return { arrest: { cell: region, area: { regions: [region] } } };
+    }
+    case 'jail':
+      return { jail: { words: '' } };
+  }
+}
+
+/** The outcomes with one entry replaced. */
+export function withEntry(
+  outcomes: Outcomes,
+  state: string,
+  index: number,
+  entry: unknown
+): Outcomes {
+  const list = [...(outcomes[state] ?? [])];
+  list[index] = entry;
+  return { ...outcomes, [state]: list };
+}
+
+/** The outcomes with an entry added on entering a state. A state not yet
+ * written takes its place in the recipe's order. */
+export function withOutcomeAdded(
+  outcomes: Outcomes,
+  state: string,
+  entry: unknown,
+  recipeOrder: readonly string[]
+): Outcomes {
+  if (outcomes[state] !== undefined)
+    return { ...outcomes, [state]: [...outcomes[state]!, entry] };
+  const at = recipeOrder.indexOf(state);
+  const next: Outcomes = {};
+  let placed = false;
+  for (const [key, list] of Object.entries(outcomes)) {
+    const later = recipeOrder.indexOf(key);
+    if (!placed && at >= 0 && later > at) {
+      next[state] = [entry];
+      placed = true;
+    }
+    next[key] = list;
+  }
+  if (!placed) next[state] = [entry];
+  return next;
+}
+
+/** One entry's arrest, or undefined. */
+const only = (value: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
+const strings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+/** One entry's arrest, when it is one the form can show and edit — `cell`
+ * a word, `area` a mapping of `regions` (words) and `cells` (a list), no
+ * other key — else undefined, and the entry is shown as written. No file
+ * crashes the section. */
+export function arrestOf(entry: unknown): ArrestShape | undefined {
+  if (outcomeKindOf(entry) !== 'arrest') return undefined;
+  const arrest = (entry as { arrest: Record<string, unknown> }).arrest;
+  const area = arrest.area;
+  if (
+    !only(arrest, ['cell', 'area']) ||
+    typeof arrest.cell !== 'string' ||
+    !mapping(area) ||
+    !only(area, ['regions', 'cells']) ||
+    (area.regions !== undefined && !strings(area.regions)) ||
+    (area.cells !== undefined && !Array.isArray(area.cells))
+  )
+    return undefined;
+  return arrest as unknown as ArrestShape;
+}
+
+/** One entry's jail, when the form can show and edit it — `words`,
+ * `rounds` and `escaped` of their kinds, no other key — else undefined. */
+export function jailOf(entry: unknown): JailShape | undefined {
+  if (outcomeKindOf(entry) !== 'jail') return undefined;
+  const jail = (entry as { jail: Record<string, unknown> }).jail;
+  if (
+    !only(jail, ['words', 'rounds', 'escaped']) ||
+    (jail.words !== undefined && typeof jail.words !== 'string') ||
+    (jail.rounds !== undefined && typeof jail.rounds !== 'number') ||
+    (jail.escaped !== undefined && typeof jail.escaped !== 'string')
+  )
+    return undefined;
+  return jail as unknown as JailShape;
+}
+
+/** One entry's recognition, when the form can show and edit it: the words
+ * it offers (holder `spoken_to`; about `party_in_sight` or `speaker`;
+ * `heard_by` the witnesses or absent). Anything else is shown as written,
+ * never as blank fields. */
+export function editableRecognizeOf(entry: unknown): Recognize | undefined {
+  const r = recognizeOf(entry);
+  if (!r) return undefined;
+  const raw = (entry as { recognize: Record<string, unknown> }).recognize;
+  if (r.holder !== HOLDER_SPOKEN_TO) return undefined;
+  if (r.about !== ABOUT_PARTY_IN_SIGHT && r.about !== ABOUT_SPEAKER)
+    return undefined;
+  if (raw.heard_by !== undefined && raw.heard_by !== HEARD_BY_WITNESSES)
+    return undefined;
+  return r;
+}
+
+/** Whether the conversation jails anybody: some outcome is a jail. */
+export function jails(outcomes: Outcomes): boolean {
+  return Object.values(outcomes).some((list) =>
+    list.some((entry) => outcomeKindOf(entry) === 'jail')
+  );
+}
+
+/** An arrest held in another region. */
+export function withArrestCell(arrest: ArrestShape, cell: string): unknown {
+  return { arrest: { ...arrest, cell } };
+}
+
+/** An arrest seizing in one more region — appended to the authored list —
+ * or one fewer, taken out where it stands, so the file changes no more than
+ * the one region. The last place it seizes in is never taken away: an area
+ * names its regions or its cells. */
+export function withArrestRegion(
+  arrest: ArrestShape,
+  region: string,
+  seized: boolean
+): unknown {
+  const was = arrest.area.regions ?? [];
+  let regions = was;
+  if (seized && !was.includes(region)) regions = [...was, region];
+  if (!seized && (was.length > 1 || (arrest.area.cells?.length ?? 0) > 0))
+    regions = was.filter((id) => id !== region);
+  const area: ArrestShape['area'] = { ...arrest.area };
+  if (regions.length > 0) area.regions = regions;
+  else delete area.regions;
+  return { arrest: { ...arrest, area } };
+}
+
+/** An arrest seizing these cells, as row runs; none removes them — unless
+ * the area would then name nothing, when the arrest is kept as it was. */
+export function withArrestCells(
+  arrest: ArrestShape,
+  cells: readonly RoomHexCell[]
+): unknown {
+  const area: ArrestShape['area'] = { ...arrest.area };
+  if (cells.length > 0) area.cells = toRows(cells);
+  else if ((area.regions?.length ?? 0) > 0) delete area.cells;
+  else return { arrest };
+  return { arrest: { ...arrest, area } };
+}
+
+/** A jail with one field changed: words; rounds (null for none); the fact
+ * taught on an escape ('' for none). Written in the engine's order. */
+export function withJail(
+  jail: JailShape,
+  patch: { words?: string; rounds?: number | null; escaped?: string }
+): unknown {
+  const next: JailShape = { ...jail };
+  if (patch.words !== undefined) next.words = patch.words;
+  if (patch.rounds === null) delete next.rounds;
+  else if (patch.rounds !== undefined) next.rounds = patch.rounds;
+  if (patch.escaped === '') delete next.escaped;
+  else if (patch.escaped !== undefined) next.escaped = patch.escaped;
+  return { jail: next };
 }

@@ -8,6 +8,7 @@ import type { GroundCatalog } from '@/rendering/groundCatalog';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import { PutDungeonResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   act,
   cleanup,
@@ -104,16 +105,24 @@ import {
 } from './fixtures/castleKeep';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createCastleS4Document } from './fixtures/castleS4';
+import { expectedCastleWayTable } from './fixtures/castleWayTable';
 import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
 } from './fixtures/castleWorkspace';
+import {
+  castleEngineReadBack,
+  castlePlacesReadBack,
+  castleRoutinesReadBack,
+  castleThreadsReadBack,
+} from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
   LIGHTING_REGIONS,
 } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import servedCastleYaml from './fixtures/the-mad-king-served.yaml?raw';
 import statesCastleYaml from './fixtures/the-mad-king-states.yaml?raw';
 import referenceCastleYaml from './fixtures/the-mad-king.yaml?raw';
 import {
@@ -125,9 +134,11 @@ import {
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
-import { studioButton } from './studioTestNavigation';
+import { encounterSection, studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
+import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
 
 const groundPreview = vi.hoisted(() => ({
   catalog: null as GroundCatalog | null,
@@ -562,7 +573,8 @@ it('authors social definitions in Encounter and attaches records to selected cre
   const factionId = nextFactionId(original.scope);
   const mounted = mount(storage);
   fireEvent.click(button('Encounter'));
-  fireEvent.click(screen.getByRole('button', { name: 'Intel' }));
+  // Intel is Records, under What is known (rpg-project#970).
+  fireEvent.click(encounterSection('Records'));
   fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
   fireEvent.click(screen.getByLabelText(`Intel ${recordId}`));
   fireEvent.change(
@@ -585,7 +597,8 @@ it('authors social definitions in Encounter and attaches records to selected cre
     reveals: { fact: 'orders-authentic' },
   });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Factions' }));
+  // Factions and Dispositions are one section, Sides (rpg-project#970).
+  fireEvent.click(encounterSection('Sides'));
   fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
   fireEvent.click(screen.getByLabelText(`Faction ${factionId}`));
   const factionInput = screen.getByLabelText(`Faction id for ${factionId}`);
@@ -600,7 +613,6 @@ it('authors social definitions in Encounter and attaches records to selected cre
   ).not.toBeNull();
   fireEvent.change(mind, { target: { value: 'goblin-1' } });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Dispositions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
   const newPair = screen
     .getAllByTestId('disposition-goblins-party')
@@ -645,11 +657,9 @@ it('authors social definitions in Encounter and attaches records to selected cre
   expect(
     screen.getByRole('region', { name: 'Authored dispositions' }).textContent
   ).toContain('orders-authentic');
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Edit intel definitions' })
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
   expect(
-    screen.getByRole('region', { name: 'Intel definitions' })
+    screen.getByRole('region', { name: 'Records definitions' })
   ).toBeTruthy();
   expect(
     screen.getByTestId('intel-held-by-orders-letter').textContent
@@ -673,9 +683,7 @@ it('authors social definitions in Encounter and attaches records to selected cre
   fireEvent.click(button('Redo'));
   expect(storage.document()).toEqual(attached);
   act(() => viewport().onSelect(['table']));
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Edit intel definitions' })
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
   expect(
     screen.getByTestId('intel-held-by-orders-letter').textContent
   ).toContain('table');
@@ -1627,48 +1635,6 @@ describe('Studio authoring homes through the real owner', () => {
 });
 
 describe('Studio configuration tables through the real owner', () => {
-  it('authors multiple rows, preserves unrelated data, shares Undo/Redo and reloads in either view', () => {
-    const doc = seed();
-    delete doc.scope.tables;
-    const storage = new MemoryStorage(doc);
-    const mounted = mount(storage);
-    const baseline = storage.document();
-    fireEvent.click(button('Tables'));
-    fireEvent.click(button('Add table'));
-    expect(storage.document().scope.tables).toEqual({ 'table-1': {} });
-    fireEvent.click(screen.getByLabelText('Table table-1'));
-    fireEvent.change(screen.getByLabelText('Table id for table-1'), {
-      target: { value: 'patrol' },
-    });
-    fireEvent.click(button('Apply table name'));
-    fireEvent.click(screen.getByLabelText('Table patrol'));
-    fireEvent.click(button('Add entry on time to patrol'));
-    fireEvent.click(button('Add entry on time to patrol'));
-    expect(storage.document().scope.tables?.patrol.time).toHaveLength(2);
-    const declared = storage.document();
-    expect(declared.draft).toEqual(baseline.draft);
-    expect({ ...declared.scope, tables: undefined }).toEqual({
-      ...baseline.scope,
-      tables: undefined,
-    });
-    fireEvent.click(button('Undo'));
-    expect(storage.document().scope.tables?.patrol.time).toHaveLength(1);
-    fireEvent.click(button('Redo'));
-    expect(storage.document()).toEqual(declared);
-    fireEvent.click(button('Build'));
-    switchTo('3D');
-    fireEvent.click(button('Encounter'));
-    expect(
-      screen.getByRole('region', { name: 'Encounter configuration' })
-    ).toBeTruthy();
-    expect(storage.document()).toEqual(declared);
-    mounted.unmount();
-    mount(storage);
-    fireEvent.click(button('Tables'));
-    expect(screen.getByLabelText('Table patrol')).toBeTruthy();
-    expect(storage.document()).toEqual(declared);
-  });
-
   it('table intents preserve absence on no-op and reject a captured stale snapshot', () => {
     const doc = seed();
     delete doc.scope.tables;
@@ -5205,11 +5171,7 @@ describe('S0 one selection across the homes', () => {
     );
   const openCast = (): void => {
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Cast' })
-    );
+    fireEvent.click(encounterSection('Cast'));
   };
 
   it("a placement selected on its cast member's form is the map selection with the inspector open", async () => {
@@ -5260,42 +5222,108 @@ describe('S0 one selection across the homes', () => {
     ).toBeTruthy();
   });
 
-  it('the home lists Cast, Tables, Bundles, Factions, Dispositions, Intel and Facts, and no Creatures or Stat blocks', async () => {
+  it('the Encounter side is people and places: four groups, opening on People → Cast, and no Tables, Scenarios, Creatures or Stat blocks (rpg-project#970)', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    expect(
-      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
-        .getAllByRole('button')
-        .map((node) => node.textContent)
-    ).toEqual([
-      'Cast',
-      'Party',
-      'Tables',
-      'Bundles',
-      'Factions',
-      'Dispositions',
-      'Intel',
-      'Endings',
-      'Concealments',
-      'Interactions',
-      'Scenarios',
-      'Facts',
+    const groups = within(
+      screen.getByRole('tablist', { name: 'Encounter groups' })
+    );
+    const sections = () =>
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getAllByRole('tab')
+        .map((node) => node.textContent);
+    expect(groups.getAllByRole('tab').map((node) => node.textContent)).toEqual([
+      'People',
+      'Places',
+      'What is known',
+      'Pieces',
     ]);
+    expect(
+      groups.getByRole('tab', { name: 'People' }).getAttribute('aria-selected')
+    ).toBe('true');
+    expect(sections()).toEqual(['Cast', 'Sides', 'Party', 'Conversations']);
+    expect(
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getByRole('tab', { name: 'Cast' })
+        .getAttribute('aria-selected')
+    ).toBe('true');
+    fireEvent.click(groups.getByRole('tab', { name: 'Places' }));
+    expect(sections()).toEqual(['Secrets', 'Ways out']);
+    fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
+    expect(sections()).toEqual(['Records', 'Threads']);
+    fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
+    expect(sections()).toEqual(['Behaviours', 'Bundles']);
+    expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
+    fireEvent.click(groups.getByRole('tab', { name: 'People' }));
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+
+  it('the two bars are tab bars: arrows, Home and End move and select; the panel is labelled by its tab (rpg-project#982)', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    const groups = within(
+      screen.getByRole('tablist', { name: 'Encounter groups' })
+    );
+    const tools = () =>
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }));
+    const selected = (bar: ReturnType<typeof within>): string[] =>
+      bar
+        .getAllByRole('tab')
+        .filter(
+          (tab: HTMLElement) => tab.getAttribute('aria-selected') === 'true'
+        )
+        .map((tab: HTMLElement) => tab.textContent ?? '');
+    // Roving tabindex: only the selected tab is in the Tab order.
+    expect(
+      groups.getAllByRole('tab').map((tab) => tab.getAttribute('tabindex'))
+    ).toEqual(['0', '-1', '-1', '-1']);
+    const people = groups.getByRole('tab', { name: 'People' });
+    people.focus();
+    fireEvent.keyDown(people, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['Places']);
+    expect(document.activeElement).toBe(
+      groups.getByRole('tab', { name: 'Places' })
+    );
+    expect(selected(tools())).toEqual(['Secrets']);
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(selected(groups)).toEqual(['People']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    expect(selected(groups)).toEqual(['Pieces']);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    expect(selected(groups)).toEqual(['People']);
+    const cast = tools().getByRole('tab', { name: 'Cast' });
+    cast.focus();
+    fireEvent.keyDown(cast, { key: 'ArrowRight' });
+    expect(selected(tools())).toEqual(['Sides']);
+    // Each bar names the panel it controls, and the panel is labelled by
+    // the selected tab.
+    const sides = tools().getByRole('tab', { name: 'Sides' });
+    const panel = document.getElementById(
+      sides.getAttribute('aria-controls')!
+    )!;
+    expect(panel.getAttribute('role')).toBe('tabpanel');
+    expect(panel.getAttribute('aria-labelledby')).toBe(sides.id);
+    expect(within(panel).getByRole('region', { name: 'Sides' })).toBeTruthy();
+    const peopleTab = groups.getByRole('tab', { name: 'People' });
+    expect(
+      document
+        .getElementById(peopleTab.getAttribute('aria-controls')!)!
+        .getAttribute('aria-labelledby')
+    ).toBe(peopleTab.id);
   });
 
   it('the Party dial moves the real owner’s sharing (rpg-project#935)', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Party' })
-    );
+    fireEvent.click(encounterSection('Party'));
     const readBack = () =>
       screen.getByLabelText('Party sharing read back').textContent;
     expect(readBack()).toBe(
@@ -5311,64 +5339,209 @@ describe('S0 one selection across the homes', () => {
   });
 });
 
-describe('S2 the fact index through the real owner', () => {
-  it('clicking a writer in Facts selects the cook in the inspector', async () => {
-    mount(new MemoryStorage(createCastleReadBackDocument()));
-    await settled();
-    fireEvent.click(button('Encounter'));
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Facts' })
+describe('threads through the real owner (rpg-project#973)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openThreads = async (): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
     );
-    const facts = screen.getByRole('region', { name: 'Facts' });
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Threads'));
+  };
+  const hub = (id: string): HTMLElement =>
+    within(screen.getByRole('region', { name: 'Threads' })).getByRole(
+      'button',
+      { name: new RegExp(`^${id}\\b`) }
+    );
+
+  it('a thread’s entry jumps by its path to the creature that teaches it', async () => {
+    await openThreads();
+    fireEvent.click(await waitFor(() => hub('feast-tonight')));
+    const thread = within(
+      screen.getByRole('region', { name: 'Threads' })
+    ).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
     fireEvent.click(
-      within(
-        facts.querySelector('[data-fact="feast-tonight"]') as HTMLElement
-      ).getByRole('button', { name: 'cook: gossip' })
+      within(thread).getAllByRole('button', {
+        name: /^Open cook · /,
+      })[0]!
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { level: 2 }
+      ).textContent
+    ).toBe('Commoner');
+  });
+
+  it('a fact connection in the Read back opens that fact’s thread', async () => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    readBack.sections.push(...castleThreadsReadBack().sections);
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
     );
     const inspector = screen.getByRole('region', { name: 'Inspector' });
-    expect(
-      within(inspector).getByRole('region', { name: 'Read back' }).textContent
-    ).toContain('cook, a Commoner of the kitchen, and the kitchen’s mind.');
-  });
-});
-
-describe('S4 the hidden nouns through the real owner', () => {
-  const section = (name: string): void => {
     fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
+      (
+        await within(inspector).findAllByRole('button', {
+          name: 'Open fact guards-turned',
+        })
+      )[0]!
     );
-  };
+    const threads = screen.getByRole('region', { name: 'Threads' });
+    expect(
+      within(threads)
+        .getByRole('button', { name: /^guards-turned\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      within(threads).getByRole('region', { name: 'Read back' }).textContent
+    ).toContain('Fact `guards-turned`');
+  });
 
-  it('the fact index opens the ending it names', async () => {
-    const document = createCastleReadBackDocument();
-    document.scope.endings = [
-      { id: 'king-deposed', when: { fact: 'king-deposed' } },
-    ];
-    mount(new MemoryStorage(document));
+  it('the secret passage reads as one chain, by clicks, in the default Folded view (rpg-project#960)', async () => {
+    gate.state = 'live';
+    // The engine's real fold, as the api sends it; the joins are the places
+    // fixture's (same castle, same ids).
+    const readBack = castleThreadsReadBack();
+    readBack.sections.unshift(...castlePlacesReadBack().sections);
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
     await settled();
-    fireEvent.click(button('Encounter'));
-    section('Facts');
-    const facts = screen.getByRole('region', { name: 'Facts' });
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    const inspector = () =>
+      within(screen.getByRole('region', { name: 'Inspector' }));
+    const threads = () =>
+      within(screen.getByRole('region', { name: 'Threads' }));
+    const thread = () =>
+      within(threads().getByRole('region', { name: 'Read back' }));
+    /** Open a folded entry through the disclosure the panel owns, and say
+     * it is open before reading what it shows. */
+    const open = (
+      scope: ReturnType<typeof within>,
+      entry: RegExp
+    ): HTMLElement => {
+      const disclosure = scope.getByRole('button', { name: entry });
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(disclosure);
+      expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+      return disclosure.closest('li') as HTMLElement;
+    };
+    // 1. The scullion's line tells the record.
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="scullion"] circle')!,
+      { button: 0 }
+    );
+    await waitFor(() =>
+      expect(
+        inspector()
+          .getByRole('button', { name: 'Folded' })
+          .getAttribute('aria-pressed')
+      ).toBe('true')
+    );
+    const said = open(inspector(), /^Full sentences: When said: the commoner/);
     fireEvent.click(
-      within(
-        facts.querySelector('[data-fact="king-deposed"]') as HTMLElement
-      ).getByRole('button', { name: 'ending king-deposed' })
+      within(said).getByRole('button', { name: 'Open record kitchen-way' })
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-way\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 2. The record reveals the secret; its own thread repeats nothing.
+    expect(
+      thread().queryByRole('list', { name: 'Said in full only' })
+    ).toBeNull();
+    const record = open(thread(), /^Full sentences: Record `kitchen-way`/);
+    fireEvent.click(
+      within(record).getByRole('button', {
+        name: 'Open concealment kitchen-passage',
+      })
+    );
+    expect(
+      threads()
+        .getByRole('button', { name: /^kitchen-passage\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // 3. The ways that need the secret open the passage joins it bars.
+    const needed = open(thread(), /^Full sentences: Needed by:/);
+    fireEvent.click(
+      within(needed).getByRole('button', {
+        name: 'Open way way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel',
+      })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Join'
+    );
+    expect(
+      screen.getByRole('region', { name: 'Inspector' }).textContent
+    ).toContain('is a passage to Chapel (region-chapel)');
+    // 4. Back to the secret: it hides the grate.
+    fireEvent.click(button('Encounter'));
+    const secret = open(thread(), /^Full sentences: Secret `kitchen-passage`/);
+    fireEvent.click(
+      within(secret).getByRole('button', { name: 'Open prop grate' })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Grate by the Hearth'
+    );
+  });
+
+  it('a thread’s entry opens the ending that asks it', async () => {
+    await openThreads();
+    fireEvent.click(await waitFor(() => hub('throne-taken')));
+    const thread = within(
+      screen.getByRole('region', { name: 'Threads' })
+    ).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    fireEvent.click(
+      within(thread).getByRole('button', {
+        name: /^Open ending `king-deposed`/,
+      })
     );
     const endings = within(screen.getByRole('region', { name: 'Endings' }));
     expect(
       (endings.getByLabelText('Ending id') as HTMLInputElement).value
     ).toBe('king-deposed');
   });
+});
+
+describe('S4 the hidden nouns through the real owner', () => {
+  const section = (name: string): void => {
+    fireEvent.click(encounterSection(name));
+  };
 
   it('an ending added on the home is one history entry', async () => {
     mount(new MemoryStorage(createCastleReadBackDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Endings');
+    section('Ways out');
     const endings = () =>
       within(screen.getByRole('region', { name: 'Endings' }));
     fireEvent.click(endings().getByRole('button', { name: 'Add ending' }));
@@ -5394,11 +5567,7 @@ describe('S4 the hidden nouns through the real owner', () => {
 
 describe('S4 concealments through the real owner', () => {
   const section = (name: string): void => {
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
-    );
+    fireEvent.click(encounterSection(name));
   };
   const withStash = (): RoomDraftDocument => {
     const document = createPopulatedStudioDocument();
@@ -5421,7 +5590,7 @@ describe('S4 concealments through the real owner', () => {
     )!;
     expect(cell).toBeTruthy();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'stash' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Add members on the map' })
@@ -5455,7 +5624,7 @@ describe('S4 concealments through the real owner', () => {
     mount(storage);
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'stash' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Add members on the map' })
@@ -5485,7 +5654,7 @@ describe('S4 concealments through the real owner', () => {
       'lifetime is not read by the engine; removed from studio-secret, attempts keep max and reset_hexes'
     );
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     expect(
       (
         screen.getByLabelText(
@@ -5510,7 +5679,7 @@ describe('S4 concealments through the real owner', () => {
     mount(storage);
     await settled();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'Remove concealment' }));
     expect(storage.document().scope.concealments).toBeUndefined();
     fireEvent.click(button('Build'));
@@ -5989,11 +6158,7 @@ describe('S4 scenario bindings follow the exit, not a namesake (rpg-project#578 
 
 describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', () => {
   const section = (name: string): void => {
-    fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name })
-    );
+    fireEvent.click(encounterSection(name));
   };
 
   it('opens with the refusal on the form and cannot be saved until a member is picked', async () => {
@@ -6014,7 +6179,7 @@ describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', 
     ).toBeTruthy();
     expect(screen.queryByText(/Room draft load failed/)).toBeNull();
     fireEvent.click(button('Encounter'));
-    section('Concealments');
+    section('Secrets');
     fireEvent.click(screen.getByRole('button', { name: 'empty' }));
     const form = within(
       screen.getByRole('group', { name: 'Concealment empty' })
@@ -6120,6 +6285,16 @@ describe('S1 the cast through the real owner', () => {
       inspector().getByRole('button', { name: 'Open cast member Guard' })
     );
     expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+    // It is a jump like any other (rpg-project#983): the member's form in
+    // the inspector is landed on and marked.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('region', { name: 'Inspector' })
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-key')
+      ).toMatch(/^(cast|template):/)
+    );
   });
 
   it("deleting the selected member's template falls back to nothing", async () => {
@@ -6673,9 +6848,9 @@ describe('S3 the overview through the real owner', () => {
     fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
       button: 0,
     });
-    expect(
-      inspector().getByRole('region', { name: 'Read back' }).textContent
-    ).toContain('cook, a Commoner of the kitchen');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'cook'
+    );
     fireEvent.pointerDown(glyph('[data-placed-prop="altar"]'), { button: 0 });
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
@@ -7051,25 +7226,53 @@ describe('S3 the overview through the real owner', () => {
     expect(ids.length).toBeGreaterThan(0);
   });
 
-  it('a prop writer in Facts selects the prop from Layout', async () => {
-    mount(new MemoryStorage(createCastleReadBackDocument()));
+  it('a thread entry set on a prop selects the prop from Layout', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
     await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
     expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Threads'));
+    const threads = screen.getByRole('region', { name: 'Threads' });
     fireEvent.click(
-      within(
-        screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Facts' })
+      within(threads).getByRole('button', { name: /^king-is-cultist\b/ })
     );
-    const facts = screen.getByRole('region', { name: 'Facts' });
-    const row = facts.querySelector(
-      '[data-fact="king-is-cultist"]'
-    ) as HTMLElement;
-    fireEvent.click(within(row).getAllByRole('button')[0]);
+    const thread = within(threads).getByRole('region', { name: 'Read back' });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Full' }));
+    fireEvent.click(
+      within(thread).getAllByRole('button', {
+        name: /^Open altar · /,
+      })[0]!
+    );
     expect(pressed('Build')).toBe('true');
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
     );
+    // The jump lands in the prop's inspector (rpg-project#983): the place
+    // its path names, or the prop itself, is marked.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('region', { name: 'Inspector' })
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-key')
+      ).toBe('prop:altar')
+    );
+    // The prop's inspector itself is registered, so a jump with no place
+    // inside the prop lands on it too.
+    expect(
+      screen
+        .getByRole('region', { name: 'Inspector' })
+        .querySelector('.es-inspector-reveal')
+        ?.getAttribute('data-reveal-key')
+    ).toBe('prop:altar');
+    localStorage.clear();
   });
 
   it("the group view's Select member selects the member from Layout", async () => {
@@ -7228,51 +7431,6 @@ describe('Save and Play through the real owner (S6)', () => {
   });
 });
 
-it('the castle’s gate tables read as use: lines that resolve in the studio (rpg-project#670)', async () => {
-  const read = readDraftYaml(referenceCastleYaml);
-  if (!read.ok) throw new Error(read.refusal);
-  // THE STUDIO'S OWN TREE, not a panel mounted alone: the first build drew
-  // the lines and said "names no bundle" beside each, because the studio
-  // renders outside the document root the bundles were provided at.
-  const original = createEmptyCastDocument();
-  original.scope.bundles = read.scope.bundles;
-  original.scope.tables = { 'gate-patrol': read.scope.tables!['gate-patrol'] };
-  mount(new MemoryStorage(original));
-  await settled();
-  fireEvent.click(button('Encounter'));
-  fireEvent.click(button('Tables'));
-  const tables = screen.getByRole('list', { name: 'Site tables' });
-  const lines = Array.from(
-    tables.querySelectorAll('li.wb-entry-use .wb-entry-summary')
-  ).map((node) => node.textContent);
-  expect(lines).toEqual([
-    // ONE LINE, `guard-base`, a bundle of the dasher, the pursuer, the alarm
-    // and the patrol; the route given to it is its waypoints as chips
-    // (rpg-project#720).
-    'guard-base · with path 1{q: -5, r: 8} waits 1, faces ne2{q: -5, r: 10} waits 1, faces se3{q: -7, r: 10}',
-  ]);
-  expect(within(tables).queryByRole('alert')).toBeNull();
-  fireEvent.click(
-    within(tables).getByRole('button', {
-      name: /Show the rows of .* entry guard-base/,
-    })
-  );
-  expect(
-    within(within(tables).getByLabelText('guard-base rows'))
-      .getAllByRole('listitem')
-      .map((node) => node.textContent)
-  ).toEqual([
-    'dasher',
-    'pursuer · when enemy lost',
-    'alarm-reactor',
-    'patrol · with path a route of 3 waypoints',
-  ]);
-});
-
-// The benchmark harness's stroke marks (rpg-project#750, B11): only a stroke
-// that changes the document marks its commit and, a frame after the grid's
-// commit, its paint. A no-op stroke marks neither, and leaves nothing armed
-// for the next unrelated edit to fire.
 describe('stroke perf marks', () => {
   const url = window.location.href;
   afterEach(() => {
@@ -7328,5 +7486,525 @@ describe('stroke perf marks', () => {
       now.mockRestore();
       spy.mockRestore();
     }
+  });
+});
+
+describe('the inspector speaks the engine’s sentences (rpg-project#968)', () => {
+  it('selecting the captain shows his routine from the check’s read-back', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castleEngineReadBack() })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+    const readBack = within(
+      screen.getByRole('region', { name: 'Inspector' })
+    ).getByRole('region', { name: 'Read back' });
+    // Folded by default (rpg-project#978): his routine and its states, in
+    // the engine's folded entries.
+    await waitFor(() =>
+      expect(readBack.textContent).toContain(
+        'Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`'
+      )
+    );
+    expect(readBack.textContent).toContain(
+      'In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).'
+    );
+    // Full is today's view, word for word.
+    fireEvent.click(within(readBack).getByRole('button', { name: 'Full' }));
+    expect(readBack.textContent).toContain(
+      'In the state `ready`, Guard Captain (captain) listens for 7 beats.'
+    );
+    expect(readBack.textContent).toContain(
+      'Guard Captain (captain) runs the routine `captain-policy`'
+    );
+    // The choice is remembered per viewer; later tests start Folded.
+    localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
+  });
+});
+
+describe('the places view through the real owner (rpg-project#972)', () => {
+  afterEach(() => localStorage.removeItem(PLACES_VIEW_STORAGE_KEY));
+  let latestStorage: MemoryStorage | null = null;
+
+  const mountCastle = async (): Promise<void> => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    latestStorage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(latestStorage);
+    await settled();
+  };
+
+  it('Places draws and lists the twelve joins; the gate opens its ways; a carrier selects its creature', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const list = await screen.findByRole('list', { name: 'Join list' });
+    await waitFor(() =>
+      expect(within(list).getAllByRole('button')).toHaveLength(12)
+    );
+    const surface = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    expect(surface.querySelectorAll('[data-join-id]')).toHaveLength(12);
+    const gateName =
+      'Join: Courtyard and Gatehouse, by the door gate-wall-door, held';
+    expect(
+      within(surface).getByRole('button', { name: gateName })
+    ).toBeTruthy();
+    fireEvent.click(within(list).getByRole('button', { name: gateName }));
+    const inspector = screen.getByRole('region', { name: 'Inspector' });
+    const holders = within(inspector).getByRole('region', {
+      name: 'To pass the holders, any of:',
+    });
+    const turn = within(holders)
+      .getAllByRole('listitem')
+      .find((way) =>
+        way.querySelector('p')?.textContent?.startsWith('The line `turn`')
+      )!;
+    fireEvent.click(
+      within(turn).getByRole('button', { name: 'Open creature captain' })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { level: 2 }
+      ).textContent
+    ).toBe('Guard Captain');
+  });
+
+  it('a lock way jumps to its door, and the door names its join', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const kitchen =
+      'Join: Great hall and Kitchen, by the door kitchen-wall-door, locked';
+    fireEvent.click(
+      within(await screen.findByRole('list', { name: 'Join list' })).getByRole(
+        'button',
+        { name: kitchen }
+      )
+    );
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByRole(
+        'button',
+        { name: 'Open door kitchen-wall-door' }
+      )[0]!
+    );
+    const doorInspector = screen.getByRole('region', { name: 'Inspector' });
+    fireEvent.click(
+      within(doorInspector).getByRole('button', { name: kitchen })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'region',
+        { name: 'To pass the lock, any of:' }
+      )
+    ).toBeTruthy();
+  });
+
+  it('Ways by method counts the castle’s ways, highlights a method’s joins, and lists the ways into the Cells (rpg-project#974)', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: castlePlacesReadBack() })
+    );
+    await mountCastle();
+    const storage = latestStorage!;
+    const draftBefore = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.click(button('Places'));
+    const list = await screen.findByRole('list', { name: 'Join list' });
+    await waitFor(() =>
+      expect(within(list).getAllByRole('button')).toHaveLength(12)
+    );
+    const count = screen.getByRole('group', { name: 'Ways by method' });
+    // One item per method: its name, then "N ways · DC a–b".
+    const table = within(count).getByRole('list', { name: 'Ways by method' });
+    const rows = within(table)
+      .getAllByRole('listitem')
+      .map((item) => [
+        within(item).getByRole('button').textContent,
+        item.querySelector('.es-way-count-figures')?.textContent,
+      ]);
+    // Computed from the fixture's connections, not from the module.
+    const expected = expectedCastleWayTable();
+    expect(within(count).getByText('23 ways')).toBeTruthy();
+    expect(
+      within(table).getByText('6 open · 4 need something first')
+    ).toBeTruthy();
+    // One row hook per join.
+    expect(
+      document.querySelectorAll(
+        '[data-join-row="door:region-barracks:region-cells:cells-wall-door"]'
+      )
+    ).toHaveLength(1);
+    expect(rows).toHaveLength(expected.size);
+    for (const [method, cells] of [
+      ['ability:dex', ['Dexterity', '2 ways · DC 13']],
+      ['skill:performance', ['Performance', '1 way · DC 13']],
+      ['fight', ['the fight', '1 way']],
+    ] as const) {
+      expect(expected.get(method)!.ways).toBe(Number(cells[1][0]));
+      expect(rows).toContainEqual(cells);
+    }
+    expect(rows.some((cells) => /thieves/.test(cells[0] ?? ''))).toBe(false);
+    // A method row highlights the joins its ways use; again clears.
+    const dex = within(table).getByRole('button', { name: 'Dexterity' });
+    fireEvent.click(dex);
+    expect(dex.getAttribute('aria-pressed')).toBe('true');
+    const marked = () =>
+      within(list)
+        .getAllByRole('button')
+        .filter((row) => row.hasAttribute('data-uses-method'))
+        .map((row) => row.getAttribute('data-join-row'));
+    expect(marked().sort()).toEqual(
+      [
+        'door:region-barracks:region-cells:cells-wall-door',
+        'door:region-great-hall:region-kitchen:kitchen-wall-door',
+      ].sort()
+    );
+    const surface = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    expect(surface.querySelectorAll('[data-uses-method]')).toHaveLength(2);
+    fireEvent.click(dex);
+    expect(marked()).toEqual([]);
+    // The Cells: the ways into it.
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Room list' })).getByRole(
+        'button',
+        { name: /^Room Cells,/ }
+      )
+    );
+    const into = within(
+      screen.getByRole('region', { name: 'Ways into Cells' })
+    );
+    expect(
+      into
+        .getAllByRole('button')
+        .map((join) => join.getAttribute('data-way-into'))
+        .sort()
+    ).toEqual(
+      [
+        'door:region-barracks:region-cells:cells-wall-door',
+        'passage:region-kitchen:region-cells:prop-grate',
+        'passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate',
+      ].sort()
+    );
+    expect(into.getByText(/said to: gate-1, gate-2, captain/)).toBeTruthy();
+    // Counting writes nothing to the draft.
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(draftBefore);
+  });
+
+  it('with no read-back the places mode says the engine has not said the places', async () => {
+    await mountCastle();
+    fireEvent.click(button('Places'));
+    expect(
+      within(screen.getByRole('region', { name: 'Joins' })).getByRole('status')
+        .textContent
+    ).toMatch(/^The engine has not said the places yet\./);
+  });
+});
+
+describe('read-back jumps land in the ruled sections (rpg-project#970)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openCaptain = async (): Promise<void> => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    // The captain's own read-back with the whole Routines section in place
+    // of its one routine.
+    readBack.sections = readBack.sections.filter(
+      (section) => section.title !== 'Routines'
+    );
+    readBack.sections.push(
+      ...castleRoutinesReadBack().sections,
+      ...castleThreadsReadBack().sections
+    );
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+  };
+  const pressed = (bar: string, name: string): string | null =>
+    within(screen.getByRole('tablist', { name: bar }))
+      .getByRole('tab', { name })
+      .getAttribute('aria-selected');
+
+  it('a routine opens Behaviours on it; a conversation opens Conversations', async () => {
+    await openCaptain();
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    fireEvent.click(
+      (
+        await inspector.findAllByRole('button', {
+          name: 'Open routine captain-policy',
+        })
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'Pieces')).toBe('true');
+    expect(pressed('Encounter tools', 'Behaviours')).toBe('true');
+    const behaviours = screen.getByRole('region', { name: 'Behaviours' });
+    expect(
+      within(behaviours)
+        .getByRole('button', { name: /^captain-policy\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    // Back to the captain: his line's conversation opens Conversations.
+    fireEvent.click(button('Build'));
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByRole(
+        'button',
+        { name: 'Open conversation front-gate' }
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'People')).toBe('true');
+    expect(pressed('Encounter tools', 'Conversations')).toBe('true');
+  });
+
+  it('a record thread’s Edit in Intel opens Records', async () => {
+    await openCaptain();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Threads'));
+    const threads = screen.getByRole('region', { name: 'Threads' });
+    fireEvent.click(
+      within(threads).getByRole('button', { name: /^kitchen-way\b/ })
+    );
+    fireEvent.click(
+      within(threads).getByRole('button', { name: 'Edit in Intel' })
+    );
+    expect(pressed('Encounter groups', 'What is known')).toBe('true');
+    expect(pressed('Encounter tools', 'Records')).toBe('true');
+  });
+});
+
+describe('jumps land on the item and mark it (rpg-project#983)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openCaptain = async (): Promise<void> => {
+    gate.state = 'live';
+    const readBack = castleEngineReadBack();
+    readBack.folded = [];
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack })
+    );
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="captain"] circle')!,
+      { button: 0 }
+    );
+  };
+
+  it('a read-back statement’s place, in words, reveals the row it names in the creature’s form', async () => {
+    await openCaptain();
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    const place = (
+      await inspector.findAllByRole('button', {
+        name: 'Open captain · line `stand-aside` · on a miss',
+      })
+    )[0]!;
+    // The raw path is one hover away.
+    expect(place.getAttribute('title')).toBe(
+      'room.room.monsterBindings.captain.options[4].failure[0]'
+    );
+    // …and one key away: a Copy path control beside the place.
+    expect(
+      place
+        .parentElement!.querySelector('[aria-label="Copy path"]')!
+        .getAttribute('title')
+    ).toBe('room.room.monsterBindings.captain.options[4].failure[0]');
+    fireEvent.click(place);
+    const row = screen
+      .getByTestId('option-captain-4-failure')
+      .querySelector('[data-reveal-part="options[4].failure[0]"]')!;
+    await waitFor(() => expect(row.hasAttribute('data-revealed')).toBe(true));
+  });
+
+  it('a faction named in a sentence opens Sides with that faction revealed', async () => {
+    await openCaptain();
+    fireEvent.click(
+      (
+        await within(
+          screen.getByRole('region', { name: 'Inspector' })
+        ).findAllByRole('button', { name: 'Open faction garrison' })
+      )[0]!
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('faction-garrison').hasAttribute('data-revealed')
+      ).toBe(true)
+    );
+  });
+});
+
+describe('the list-and-detail piece takes its height from its container (rpg-project#984)', () => {
+  // jsdom cannot measure, so this pins the chain the CSS hangs its
+  // `flex: 1; min-height: 0` on: home → group → panel → section → piece.
+  // On the stack, the Encounter home's scrollHeight equals its clientHeight
+  // on these four screens; only the two panes scroll.
+  it('a list-and-detail screen fills the panel; a long form scrolls in it as one pane', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    const panel = (): HTMLElement =>
+      document.querySelector<HTMLElement>('.es-encounter-panel')!;
+    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours']) {
+      fireEvent.click(encounterSection(name));
+      expect(panel().getAttribute('data-layout')).toBe('list-detail');
+      expect(
+        panel().querySelector(':scope > * > .es-list-detail')
+      ).not.toBeNull();
+    }
+    for (const name of ['Records', 'Sides', 'Bundles', 'Conversations']) {
+      fireEvent.click(encounterSection(name));
+      expect(panel().hasAttribute('data-layout')).toBe(false);
+    }
+    expect(
+      document.querySelector('.es-encounter-home > .es-encounter-group')
+    ).not.toBeNull();
+  });
+});
+
+describe('a cells pick from Conversations writes through the studio (rpg-project#975 C review)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('Done writes the arrest’s new cells, and the studio returns to Conversations with the arrest marked', async () => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Conversations'));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Pick seized cells on map for front-gate arrested 1',
+      })
+    );
+    // The studio switched to the Layout; the arrest's first cell is clicked
+    // away, then Done.
+    const layout = screen.getByRole('application', {
+      name: 'Layout floor surface',
+    });
+    fireEvent.pointerDown(layout, {
+      ...at({ q: -8, r: 13 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done picking cells' }));
+    const arrest = (
+      storage.document().scope.unread!.interactions as Record<
+        string,
+        { outcomes: { arrested: { arrest: { area: { cells: unknown[] } } }[] } }
+      >
+    )['front-gate']!.outcomes.arrested[0]!.arrest;
+    expect(arrest.area.cells).toEqual([
+      { r: 13, q: [[-7, -5]] },
+      { r: 14, q: [[-8, -6]] },
+    ]);
+    expect(
+      // Read without clicking: the helper picks the group first.
+      within(screen.getByRole('tablist', { name: 'Encounter tools' }))
+        .getByRole('tab', { name: 'Conversations' })
+        .getAttribute('aria-selected')
+    ).toBe('true');
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-revealed="true"]')
+          ?.getAttribute('data-reveal-part')
+      ).toBe('outcomes.arrested[0]')
+    );
+  });
+});
+
+describe('a cells pick from the Build inspector returns to it (rpg-project#975 D review)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openGate1 = async (): Promise<MemoryStorage> => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="gate-1"] circle')!,
+      { button: 0 }
+    );
+    return storage;
+  };
+  const pickButton = () =>
+    screen.getByRole('button', {
+      name: 'Pick held cells on map for gate-1 posted',
+    });
+
+  it('Done writes the post’s cells and reopens the inspector', async () => {
+    const storage = await openGate1();
+    fireEvent.click(pickButton());
+    expect(screen.queryByRole('region', { name: 'Inspector' })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole('application', { name: 'Layout floor surface' }),
+      { ...at({ q: -4, r: 7 }), pointerId: 7, button: 0 }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done picking cells' }));
+    expect(
+      (
+        storage.document().draft.room.monsterBindings!['gate-1'] as {
+          posts: { posted: { at: unknown[] } };
+        }
+      ).posts.posted.at
+    ).toEqual([{ q: -3, r: 7 }]);
+    expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+  });
+
+  it('an Undo mid-pick cancels it and reopens the inspector', async () => {
+    await openGate1();
+    // An edit to undo, then the pick.
+    fireEvent.change(screen.getByLabelText('Against for gate-1 posted'), {
+      target: { value: 'leaving' },
+    });
+    fireEvent.click(pickButton());
+    expect(screen.queryByRole('region', { name: 'Inspector' })).toBeNull();
+    // A keyboard Undo: the document under the pick changes.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.queryByRole('button', { name: 'Done picking cells' })
+    ).toBeNull();
+    expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
   });
 });

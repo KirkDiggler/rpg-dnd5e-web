@@ -1,3 +1,10 @@
+/* The warning colours, on the root: `.es-warning` is also rendered outside
+ * the studio (World Builder's creature orders), so the tokens reach both. */
+:root {
+  --es-warning-text: #ffe2a6;
+  --es-warning-bg: #332b20;
+}
+
 .encounter-studio {
   --wb-bg: #101923;
   --wb-panel: #15222c;
@@ -99,8 +106,8 @@
 }
 .es-warning {
   margin: 0;
-  color: #ffe2a6;
-  background: #332b20;
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
 }
 .es-warning > span:first-child {
   flex: 1;
@@ -200,7 +207,7 @@
 .es-dimensions [role='alert'],
 .es-label-controls [role='alert'] {
   width: 100%;
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 .es-map-labels text:focus-visible {
   outline: none;
@@ -396,7 +403,7 @@
   font-variant-numeric: tabular-nums;
 }
 .es-arrange [role='alert'] {
-  color: #ffe2a6;
+  color: var(--es-warning-text);
 }
 
 .es-wall-finish {
@@ -446,6 +453,7 @@
 
 /* One options slot. Hiding a section never removes its form from the tree. */
 .es-sidebar {
+  position: relative;
   pointer-events: auto;
   align-self: flex-end;
   width: 100%;
@@ -461,7 +469,46 @@
   box-sizing: border-box;
 }
 .es-sidebar-compact {
-  width: min(24rem, 100%);
+  width: min(var(--es-inspector-width, 24rem), 100%);
+}
+/* THE INSPECTOR'S WIDTH (rpg-project#979). The root carries
+ * `--es-inspector-width` (the viewer's, clamped so the map keeps its floor)
+ * and `data-inspector`: DOCKED where the default inspector and the map's floor
+ * fit side by side (inspectorWidth.ts), and then the map stops at the
+ * inspector's edge, so the map and the 3D scene tree take the rest
+ * (rpg-dnd5e-web#1278), and the inspector fills the work area's height so no
+ * empty band is left under a short panel; OVERLAY narrower, as before. */
+.encounter-studio[data-inspector] .es-context-layer {
+  width: min(var(--es-inspector-width), calc(100% - 1.5rem));
+}
+.encounter-studio[data-inspector='docked'] .es-map-workspace {
+  right: calc(var(--es-inspector-width) + 1.5rem);
+}
+.encounter-studio[data-inspector='docked'] .es-context-layer {
+  height: calc(var(--es-work-height, calc(100dvh - 9rem)) - 1rem);
+  max-height: none;
+}
+.encounter-studio[data-inspector='docked'] .es-sidebar {
+  height: 100%;
+  max-height: none;
+}
+/* The handle on the inspector's inner edge: quiet at rest, the accent when
+ * pointed at or focused. */
+.es-inspector-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  border-left: 2px solid transparent;
+}
+.es-inspector-resize:hover,
+.es-inspector-resize:focus-visible {
+  border-left-color: var(--wb-accent);
+  outline: none;
 }
 .es-sidebar [hidden],
 .es-sidebar[hidden] {
@@ -529,13 +576,64 @@
   position: absolute;
   inset: 0;
   padding: 1.25rem;
-  overflow: auto;
   background: var(--wb-bg);
+  /* THE HEIGHT CHAIN (rpg-project#984): the home is a flex column under the
+   * header; the tab bars take what they need and the section's panel takes
+   * the rest (`flex: 1; min-height: 0`). A list-and-detail screen fills the
+   * panel and only its two panes scroll; any other screen scrolls as one
+   * pane inside the panel. No height here is a guess at the viewport. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.es-encounter-home[hidden] {
+  display: none;
 }
 .es-encounter-home > * {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 72rem;
   margin-left: auto;
   margin-right: auto;
+}
+.es-encounter-home > .es-encounter-nav {
+  flex: none;
+}
+.es-encounter-home > .es-encounter-group {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.es-encounter-group > .es-tabbar {
+  flex: none;
+}
+.es-encounter-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.es-encounter-panel[data-layout='list-detail'] {
+  display: flex;
+  flex-direction: column;
+}
+.es-encounter-panel[data-layout='list-detail'] > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.es-encounter-panel[data-layout='list-detail'] > * > * {
+  flex: none;
+}
+.es-encounter-panel[data-layout='list-detail'] > * > .es-list-detail {
+  flex: 1 1 auto;
+}
+.es-encounter-panel[data-layout='list-detail']
+  > *
+  > .es-list-detail[data-stacked] {
+  flex: none;
 }
 .es-creature-palette,
 .es-creature-palette section,
@@ -562,24 +660,8 @@
   width: 100%;
   min-width: 0;
 }
-.es-cast-workspace {
-  display: grid;
-  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-.es-cast-members {
-  position: sticky;
-  top: 0;
-}
-.es-cast-members button {
-  width: 100%;
-  text-align: left;
-}
 .es-cast-editor {
   min-width: 0;
-  border-left: 1px solid #465366;
-  padding-left: 1rem;
 }
 .es-cast-look-summary {
   border: 1px solid #465366;
@@ -593,19 +675,6 @@
 .es-cast-look-summary .es-look-grid {
   max-height: 24rem;
   overflow-y: auto;
-}
-@media (max-width: 700px) {
-  .es-cast-workspace {
-    grid-template-columns: 1fr;
-  }
-  .es-cast-members {
-    position: static;
-  }
-  .es-cast-editor {
-    border-left: 0;
-    border-top: 1px solid #465366;
-    padding: 0.75rem 0 0;
-  }
 }
 
 .es-creature-panel {
@@ -1056,24 +1125,78 @@
 .encounter-studio :is(.wb-option, .wb-option-check, .wb-policy-trigger) {
   overflow-wrap: anywhere;
 }
-/* The read-back prose (rpg-project#576): it reads as text, wraps by word,
- * and its refs are inline links. */
-.encounter-studio .es-readback-paragraph p,
-.encounter-studio .es-readback-paragraph li {
+/* The engine's read-back (rpg-project#968, R25): one disclosure per engine
+ * group, its title the summary; each statement wraps by word, never
+ * truncated, with its jumps on a line beneath it. */
+.encounter-studio .es-readback-group {
+  border-top: 1px solid var(--wb-border);
+  padding: 0.25rem 0;
+}
+.encounter-studio .es-readback-group > summary {
+  cursor: pointer;
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  overflow-wrap: anywhere;
+}
+.encounter-studio .es-readback-statements {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-readback-statement {
+  margin-bottom: 0.4rem;
+}
+.encounter-studio .es-readback-statement p {
+  margin: 0;
   line-height: 1.45;
   overflow-wrap: break-word;
 }
-.encounter-studio .es-readback-paragraph ul {
-  margin: 0.25rem 0 0.5rem;
-  padding-left: 1.1rem;
+.encounter-studio .es-readback-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  font-size: var(--es-text-help);
 }
 .encounter-studio .es-readback-ref {
   display: inline;
   padding: 0;
   font: inherit;
+  overflow-wrap: anywhere;
 }
-.encounter-studio .es-readback-law {
-  cursor: help;
+.encounter-studio .es-readback-views {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.encounter-studio .es-readback-views button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent);
+}
+.encounter-studio .es-readback-folded,
+.encounter-studio .es-readback-entry > ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-readback-entry {
+  margin-bottom: 0.4rem;
+}
+.encounter-studio .es-readback-entry > p {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.encounter-studio .es-readback-open {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-readback-unreached {
+  border-top: 1px solid var(--wb-border);
+  padding-top: 0.25rem;
+}
+.encounter-studio .es-readback-unsaid code,
+.encounter-studio .es-readback-path code {
+  overflow-wrap: anywhere;
 }
 .encounter-studio .es-fact-mark {
   color: var(--wb-warning, #e7b45a);
@@ -1322,6 +1445,25 @@
 .encounter-studio .es-refusals small {
   opacity: 0.7;
 }
+/* A refusal is seen from anywhere (R34): the header's count is absent at
+ * zero and, when present, carries the warning band's colours so it cannot be
+ * read as a healthy draft. Its list opens under the header like the Site
+ * panel. */
+.encounter-studio .es-refusal-count {
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
+  border-color: var(--es-warning-text);
+  font-weight: var(--es-weight-label);
+}
+.encounter-studio .es-refusals-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-panel);
+}
 .encounter-studio .es-publish-status:empty {
   display: none;
 }
@@ -1349,4 +1491,849 @@
 }
 .encounter-studio .es-open-list p {
   margin: 0.15rem 0 0;
+}
+
+/* The places mode (rpg-project#972): a floor-plan blockout. Regions stay as
+ * they are, placed nouns dim, and each join the engine says is a mark —
+ * a shape per bar, never colour alone — or a one-way dashed arrow for a
+ * passage. */
+.encounter-studio-layout[data-places]
+  :is(.es-layout-placed, .es-layout-placed-names) {
+  opacity: 0.35;
+}
+.es-places-join {
+  cursor: pointer;
+  pointer-events: visiblePainted;
+}
+/* Keyboard focus is its own ring, apart from the selected state's heavier
+ * stroke, so a focused mark is seen whether or not it is selected. */
+.es-places-join:focus {
+  outline: none;
+}
+.es-places-join:focus-visible {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: 4px;
+}
+.es-places-mark {
+  fill: var(--wb-panel);
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+}
+.es-places-mark-hidden {
+  stroke-dasharray: 3 2;
+}
+.es-places-join:is(:hover, [data-selected]) .es-places-mark,
+.es-places-join:is(:hover, [data-selected]) .es-places-passage {
+  stroke: var(--wb-text);
+  stroke-width: 3;
+}
+.es-places-passage {
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: none;
+}
+.es-places-passage-hit {
+  stroke: transparent;
+  stroke-width: 14;
+}
+.es-places-arrowhead {
+  fill: var(--wb-accent);
+}
+.es-places-unjoined {
+  fill: var(--wb-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.es-places-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid var(--wb-border);
+  padding-top: 0.5rem;
+}
+.es-places-list h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.es-places-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.es-places-list button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.es-places-list button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+}
+/* WAYS BY METHOD (rpg-project#974): a method row marks the joins whose ways
+ * use it, by shape (a dashed outline, a heavier dashed mark), not colour
+ * alone. */
+.es-places-list button[data-uses-method] {
+  outline: 2px dashed var(--wb-text);
+  outline-offset: -4px;
+}
+.es-places-join[data-uses-method] .es-places-mark,
+.es-places-join[data-uses-method] .es-places-passage {
+  stroke: var(--wb-text);
+  stroke-width: 4;
+  stroke-dasharray: 2 2;
+}
+.es-way-count summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.es-way-count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+/* Two lines in the narrow left column: the method's name, never broken
+ * mid-word, then its count and difficulty. */
+.es-way-count-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  font-size: var(--es-text-help);
+}
+.es-places-list .es-way-count-list button {
+  width: auto;
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.es-way-count-figures {
+  padding-left: 0.35rem;
+}
+.es-way-count-sub {
+  padding-left: 0.85rem;
+  color: var(--wb-muted);
+}
+.es-ways-into h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+.es-ways-into ul ul {
+  padding-left: 0.9rem;
+  font-size: 0.78rem;
+  color: var(--wb-muted);
+}
+.encounter-studio .es-join-ways {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-join-way {
+  margin-bottom: 0.5rem;
+}
+.encounter-studio .es-join-way > p,
+.encounter-studio .es-join-sentence {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.encounter-studio .es-way-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.2rem 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-way-methods > li {
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  font-size: var(--es-text-help);
+}
+
+/* Threads (rpg-project#973): a hub's id in code style. */
+.es-threads-id {
+  font-family: var(--es-font-mono, monospace);
+}
+
+/* THE ENCOUNTER SIDE'S NAVIGATION (rpg-project#982). The header's Build /
+ * Encounter switch is the top level; under it, two tab bars on one surface:
+ * the groups (primary) on the panel colour, the chosen group's sections
+ * (secondary) on the raised colour, and the section's panel meeting the
+ * secondary bar with no gap. The chosen tab is marked by an underline and
+ * weight, never colour alone; the chosen group's tab takes the secondary
+ * bar's surface so its indicator leads into the bar below. */
+.es-encounter-home > .es-encounter-nav {
+  margin-top: -1.25rem;
+}
+.es-encounter-nav {
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+}
+.es-encounter-group {
+  border: 1px solid var(--wb-border);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  background: var(--wb-bg);
+}
+.es-tabbar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.encounter-studio .es-tabbar > [role='tab'] {
+  flex: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--wb-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.encounter-studio .es-tabbar > [role='tab']:hover:not(:disabled) {
+  color: var(--wb-text);
+}
+.encounter-studio .es-tabbar > [role='tab']:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -2px;
+}
+.encounter-studio .es-tabbar-primary > [role='tab'] {
+  padding: 0.65rem 1.1rem 0.55rem;
+  font-size: var(--es-text-section, 1rem);
+  font-weight: var(--es-weight-label);
+  border-bottom: 3px solid transparent;
+}
+.encounter-studio .es-tabbar-primary > [role='tab'][aria-selected='true'] {
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  font-weight: 700;
+  border-bottom-color: var(--wb-accent);
+}
+.es-tabbar-secondary {
+  background: var(--wb-raised);
+  border-bottom: 1px solid var(--wb-border);
+  padding: 0 0.5rem;
+}
+.encounter-studio .es-tabbar-secondary > [role='tab'] {
+  padding: 0.45rem 0.85rem 0.4rem;
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  border-bottom: 2px solid transparent;
+}
+.encounter-studio .es-tabbar-secondary > [role='tab'][aria-selected='true'] {
+  color: var(--wb-text);
+  font-weight: 600;
+  border-bottom-color: var(--wb-accent);
+}
+.es-encounter-panel {
+  padding: 1rem;
+}
+
+/* WHERE A JUMP LANDED (rpg-project#983): the revealed item — the whole
+ * row block — is outlined and tinted until the author's next jump or a
+ * click or key elsewhere. The outline sits inside the item so a scroll
+ * container's edge never clips it, and it is static; only the entrance
+ * pulse moves, and reduced motion drops it. */
+.encounter-studio {
+  --es-revealed-ring: var(--wb-accent);
+  --es-revealed-tint: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  --es-revealed-pulse: color-mix(in srgb, var(--wb-accent) 45%, transparent);
+}
+.encounter-studio [data-revealed='true'] {
+  outline: 2px solid var(--es-revealed-ring);
+  outline-offset: -2px;
+  border-radius: 4px;
+  background-color: var(--es-revealed-tint);
+  box-shadow: 0 0 0 3px var(--es-revealed-tint);
+  animation: es-revealed-in 0.9s ease-out;
+}
+/* A revealed item takes focus itself (rpg-project#983): its focus
+ * treatment is the mark, not a second ring. */
+.encounter-studio [data-revealed='true']:focus,
+.encounter-studio [data-revealed='true']:focus-visible {
+  outline: 2px solid var(--es-revealed-ring);
+  outline-offset: -2px;
+}
+@keyframes es-revealed-in {
+  0% {
+    box-shadow: 0 0 0 0 var(--es-revealed-pulse);
+    background-color: var(--es-revealed-pulse);
+  }
+  100% {
+    box-shadow: 0 0 0 3px var(--es-revealed-tint);
+    background-color: var(--es-revealed-tint);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .encounter-studio [data-revealed='true'] {
+    animation: none;
+  }
+}
+.encounter-studio .es-readback-path {
+  font-size: var(--es-text-help);
+  color: var(--wb-muted);
+}
+
+/* ONE LIST-AND-DETAIL PIECE (rpg-project#984): two panes within the
+ * workspace's height, each scrolling on its own; compact rows (a name, one
+ * line of summary, small links); stacked below 52rem, detail after list. */
+.es-list-detail {
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
+  gap: 0;
+  /* The height is its container's (see the chain on .es-encounter-home);
+   * a floor keeps both panes usable when the window is very short. */
+  min-height: 10rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-bg);
+}
+.es-ld-list-pane {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--wb-border);
+  background: var(--wb-panel);
+  padding: 0.35rem 0;
+}
+.es-ld-detail-pane {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+}
+.es-ld-detail-pane:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -2px;
+}
+.es-ld-group > h3 {
+  margin: 0.5rem 0.75rem 0.25rem;
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  color: var(--wb-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.es-ld-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.es-ld-row {
+  border-left: 3px solid transparent;
+}
+.es-ld-row[data-selected] {
+  border-left-color: var(--wb-accent);
+  background: var(--wb-raised);
+}
+.encounter-studio .es-ld-choose {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.encounter-studio .es-ld-choose[aria-pressed='true'] {
+  background: transparent;
+  font-weight: 600;
+}
+.es-ld-name {
+  color: var(--wb-text);
+}
+.es-ld-summary {
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.es-ld-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  padding: 0 0.75rem 0.35rem;
+  font-size: var(--es-text-help);
+}
+.es-list-detail[data-stacked] {
+  grid-template-columns: 1fr;
+  height: auto;
+}
+.es-list-detail[data-stacked] .es-ld-list-pane {
+  max-height: 50vh;
+  border-right: 0;
+  border-bottom: 1px solid var(--wb-border);
+}
+/* A PLACE'S RAW PATH (rpg-project#983): a small icon button beside the
+ * place's words; "Copied" after it, or the path in a small popover to copy
+ * by hand where the clipboard cannot be written. */
+.es-copy-path {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.2rem;
+  vertical-align: baseline;
+}
+.encounter-studio .es-copy-path-button {
+  padding: 0 0.3rem;
+  min-height: 0;
+  line-height: 1.4;
+  font-size: var(--es-text-help);
+  color: var(--wb-muted);
+  background: transparent;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+.encounter-studio .es-copy-path-button:hover,
+.encounter-studio .es-copy-path-button:focus-visible {
+  color: var(--wb-text);
+  border-color: var(--wb-accent);
+}
+/* Quiet beside a focusable place (rpg-project#983): ONE rule hides the
+ * control, and only while its group is neither hovered nor holding focus
+ * (`:focus-within`, or `data-active`, which the group sets from JS while it
+ * has focus) and the control says nothing. There is no competing "show"
+ * rule to lose on specificity, and no transition: shown is opacity 1. */
+.encounter-studio
+  .es-copy-group:not(:hover):not(:focus-within):not([data-active])
+  .es-copy-path[data-state='idle']
+  .es-copy-path-button {
+  opacity: 0;
+}
+.es-copy-path-said {
+  font-size: var(--es-text-help);
+  color: var(--wb-accent);
+}
+.es-copy-path-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  padding: 0.25rem;
+  background: var(--wb-raised);
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+}
+.es-copy-path-popover input {
+  font-family: var(--es-font-mono, monospace);
+  font-size: var(--es-text-help);
+}
+
+/* A CONVERSATION'S OUTCOMES (rpg-project#975 C): one card per outcome, the
+ * same on every kind. A header line — the state it follows as the title,
+ * the kind beside it, Remove at the far right — then the kind's fields, each
+ * label above its control (the studio's panel pattern), controls sized to
+ * their content: Words spans the card, Rounds is short, a recognition's
+ * witnesses sit on their own line, and Seized in is a region list that
+ * wraps in columns with the cell count and Pick on map on one line under
+ * it. The add-an-outcome control is a card of the same fields. */
+.encounter-studio .es-outcome-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-outcome,
+.encounter-studio .es-outcome-add {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-outcome-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.encounter-studio .es-outcome-title {
+  margin: 0;
+  font-size: var(--es-text-value);
+  font-weight: 600;
+  color: var(--wb-text);
+}
+.encounter-studio .es-outcome-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-remove {
+  margin-left: auto;
+}
+.encounter-studio .es-outcome-fields,
+.encounter-studio .es-outcome-add {
+  grid-template-columns: repeat(auto-fill, minmax(12rem, max-content));
+  align-items: start;
+}
+.encounter-studio .es-outcome-fields {
+  display: grid;
+  gap: 0.6rem 1rem;
+}
+.encounter-studio :is(.es-outcome-fields, .es-outcome-add) > label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.encounter-studio :is(.es-outcome-fields, .es-outcome-add) select {
+  width: auto;
+  max-width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-words,
+.encounter-studio .es-outcome-fields > .wb-check,
+.encounter-studio .es-outcome-fields > .es-outcome-seized {
+  grid-column: 1 / -1;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-words textarea {
+  width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-relocation-rounds input {
+  width: 5rem;
+}
+.encounter-studio .es-outcome-fields > .es-outcome-escaped input {
+  width: 16rem;
+  max-width: 100%;
+}
+.encounter-studio .es-outcome-fields > .wb-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-seized {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.encounter-studio .es-outcome-seized > legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+}
+.encounter-studio .es-outcome-regions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+.encounter-studio .es-outcome-regions > .wb-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.encounter-studio .es-outcome-cells {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-outcome-add {
+  align-items: end;
+  margin-top: 0.65rem;
+}
+.encounter-studio .es-outcome-add > .es-outcome-title {
+  grid-column: 1 / -1;
+}
+.encounter-studio .es-outcome-add > button {
+  justify-self: start;
+}
+
+/* A BEHAVIOUR'S MACHINE (rpg-project#995): boxes and arrows on the panel
+ * colour, in the places marks' look. The chosen mark is drawn heavier in
+ * the text colour; keyboard focus is its own dashed ring. The frame
+ * scrolls sideways when the drawing is wider than the room. */
+.es-machine {
+  flex: none;
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-bg);
+}
+.es-machine-svg {
+  display: block;
+  font:
+    12px system-ui,
+    sans-serif;
+}
+.es-machine-state,
+.es-machine-step {
+  cursor: pointer;
+}
+.es-machine-state:focus,
+.es-machine-step:focus {
+  outline: none;
+}
+.es-machine-state:focus-visible .es-machine-box {
+  stroke: var(--wb-text);
+  stroke-dasharray: 4 3;
+}
+.es-machine-step:focus-visible .es-machine-label {
+  text-decoration: underline dashed;
+}
+.es-machine-box {
+  fill: var(--wb-panel);
+  stroke: var(--wb-border);
+  stroke-width: 1.4;
+}
+.es-machine-state:is([data-final], [data-no-way-out]) .es-machine-box {
+  stroke: var(--es-warning-text);
+}
+.es-machine-state:is(:hover, [data-selected]) .es-machine-box {
+  stroke: var(--wb-accent);
+  stroke-width: 2.5;
+}
+.es-machine-title {
+  fill: var(--wb-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.es-machine-line {
+  fill: var(--wb-text);
+}
+.es-machine-line[data-muted] {
+  fill: var(--wb-muted);
+}
+.es-machine-pill rect {
+  fill: var(--wb-bg);
+  stroke: var(--wb-accent);
+}
+.es-machine-pill text {
+  fill: var(--wb-accent);
+  font-size: 10px;
+  font-family: var(--es-font-mono, monospace);
+}
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) rect {
+  stroke: var(--es-warning-text);
+}
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) text {
+  fill: var(--es-warning-text);
+}
+.es-machine-stroke {
+  fill: none;
+  stroke: var(--wb-muted);
+  stroke-width: 1.3;
+}
+.es-machine-bracket {
+  stroke-dasharray: 4 3;
+}
+.es-machine-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+}
+.es-machine-arrowhead {
+  fill: var(--wb-muted);
+}
+/* A halo in the background colour keeps a label readable where a stroke
+ * crosses it. */
+.es-machine-label,
+.es-machine-caption {
+  paint-order: stroke;
+  stroke: var(--wb-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.es-machine-label {
+  fill: var(--wb-text);
+}
+.es-machine-caption {
+  fill: var(--wb-muted);
+  font-size: 11px;
+}
+.es-machine-step:is(:hover, [data-selected]) .es-machine-stroke {
+  stroke: var(--wb-accent);
+  stroke-width: 2.2;
+}
+.es-machine-step:is(:hover, [data-selected]) .es-machine-label {
+  fill: var(--wb-accent);
+}
+.es-readback-marked {
+  border-left: 3px solid var(--wb-accent);
+  padding-left: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.encounter-studio .es-readback-statement[data-marked] {
+  background: var(--es-revealed-tint, transparent);
+}
+
+/* SET A MACHINE (rpg-project#996): a marked state's Read back / Edit tabs,
+ * its steps as rows of controls, and the List pop-up. Plain on purpose: the
+ * first way to set a machine, to be iterated on. */
+.es-machine-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.es-machine-tabs [aria-selected='true'] {
+  background: var(--wb-raised);
+  font-weight: 600;
+}
+.es-machine-steps {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+}
+.es-machine-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem;
+}
+.es-machine-step label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+/* Under the steps: Add a step alone; then one line of New state, its name
+ * taking the width, Add a state; then Make a list, set apart. The same
+ * New … line is the List pop-up's footer. No control's own words wrap. */
+.es-machine-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.es-machine-actions > .es-machine-add-step {
+  justify-self: start;
+  white-space: nowrap;
+}
+.es-machine-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.es-machine-new > label,
+.es-machine-new > button {
+  flex: none;
+  white-space: nowrap;
+}
+.es-machine-new > input {
+  flex: 1 1 10rem;
+  width: auto;
+  min-width: 0;
+}
+.es-machine-new > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.es-machine-lists {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--wb-border);
+}
+.es-machine-lists > button {
+  white-space: nowrap;
+}
+.es-machine-kept {
+  flex-basis: 100%;
+  margin: 0;
+}
+.es-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 65%);
+}
+.es-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--wb-border, #33504d);
+  border-radius: 8px;
+  background: var(--wb-panel, #101b1c);
+  color: var(--wb-text, #d8ebe7);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 60%);
+}
+.es-dialog:focus {
+  outline: none;
+}
+.es-dialog-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--wb-border, #33504d);
+}
+.es-dialog-header h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.es-dialog-header button,
+.es-dialog-footer button,
+.es-dialog-footer label {
+  flex: none;
+  white-space: nowrap;
+}
+/* Two classes, so these win over `.wb-panel`'s padding and overflow
+ * whichever stylesheet loads last. */
+.es-dialog .es-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem 0.9rem;
+}
+/* A collapsed row: its words take the width, its controls stay on one line
+ * at the right; a refusal under it takes the full line. */
+.es-dialog .wb-entry-collapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.es-dialog .wb-entry-collapsed > .wb-entry-summary {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A bundle's parameter chips (a route's waypoints) wrap inside the row's
+ * words rather than run under the controls beside them. */
+.es-dialog .wb-entry-summary .wb-with-chip {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.es-dialog .wb-entry-collapsed > button,
+.es-dialog .wb-entry-collapsed > [data-shared] {
+  flex: none;
+  white-space: nowrap;
+}
+.es-dialog .wb-entry-collapsed > :not(button, span) {
+  flex-basis: 100%;
+}
+.es-dialog-add-row {
+  display: block;
+  margin-top: 0.4rem;
+  white-space: nowrap;
+}
+.es-dialog .es-dialog-footer {
+  flex: none;
+  overflow: visible;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid var(--wb-border, #33504d);
 }

@@ -22,7 +22,6 @@ import {
   passForm,
   setBindingPostPass,
 } from '../world-building/postPass';
-import { patchStateHolds } from '../world-building/statePostEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import posts from './fixtures/the-mad-king-posts.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
@@ -63,6 +62,31 @@ type Parsed = {
   };
 };
 
+/** The castle's arrest (rpg-project#925): an outcome the outcomes form
+ * cannot say, carried through every edit of its neighbours. */
+const ARREST = {
+  arrest: {
+    cell: 'region-cells',
+    area: {
+      regions: ['region-gatehouse'],
+      cells: [
+        { r: 13, q: [[-8, -5]] },
+        { r: 14, q: [[-8, -6]] },
+      ],
+    },
+  },
+};
+
+/** The castle's jail (rpg-project#925): the `jailed` outcome, kept as written
+ * like the arrest beside it. */
+const JAIL = {
+  jail: {
+    words: 'The guards march you to the cells.',
+    rounds: 5,
+    escaped: 'prisoners-escaped',
+  },
+};
+
 describe('the recognition grammar loads and writes back (rpg-project#928)', () => {
   it('the served castle carries every new field, and an unedited download is byte-identical', () => {
     const doc = parse(served) as Parsed;
@@ -77,6 +101,8 @@ describe('the recognition grammar loads and writes back (rpg-project#928)', () =
           },
         },
       ],
+      arrested: [ARREST],
+      jailed: [JAIL],
     });
     for (const id of ['gate-1', 'gate-2', 'captain'])
       for (const post of Object.values(
@@ -222,6 +248,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const after = parse(added) as Parsed;
     expect(after.interactions['front-gate'].outcomes).toMatchObject({
       arrested: [
+        ARREST,
         {
           recognize: {
             topic: 'prisoner',
@@ -231,6 +258,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
           },
         },
       ],
+      jailed: [JAIL],
     });
     expect(after.interactions['front-gate'].recipe).toEqual(
       (parse(served) as Parsed).interactions['front-gate'].recipe
@@ -239,7 +267,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const removed = setInteractionOutcomes(
       again.scope,
       'front-gate',
-      withEntryRemoved(outcomesOf(again.scope, 'front-gate'), 'arrested', 0)
+      withEntryRemoved(outcomesOf(again.scope, 'front-gate'), 'arrested', 1)
     );
     expect(
       parse(exportDraftYaml({ draft: again.draft, scope: removed }, again.key))
@@ -247,8 +275,60 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     ).toEqual((parse(served) as Parsed).interactions['front-gate'].outcomes);
   });
 
-  it('removing the last outcome drops the key and keeps the interaction', () => {
+  it('removing a state’s only outcome drops that state and keeps the arrest and the jail in place (rpg-project#925)', () => {
     const saved = outcomesAfter((o) => withEntryRemoved(o, 'admitted', 0));
+    const after = parse(saved) as Parsed;
+    expect(after.interactions['front-gate'].outcomes).toEqual({
+      arrested: [ARREST],
+      jailed: [JAIL],
+    });
+    roundTrips(saved);
+  });
+
+  it('the castle’s arrest and jail survive an edit of the admitted recognition, byte for byte (rpg-project#925)', () => {
+    const saved = outcomesAfter((o) => withTopic(o, 'admitted', 0, 'welcome'));
+    const block = served.slice(
+      served.indexOf('      # Hand edit (rpg-project#925, ruled 2026-11-13)'),
+      served.indexOf('    recipe:\n      ref: site:interactions:front-gate')
+    );
+    expect(block).toContain('      arrested:\n        - arrest:\n');
+    expect(block).toContain('      jailed:\n        - jail:\n');
+    expect(saved).toContain(block);
+    // The garrison's escape row and each gate speaker's quiet line ride
+    // along untouched (rpg-project#925).
+    expect(saved).toContain(
+      '      - {fact: prisoners-escaped, then: hostile}\n'
+    );
+    expect(saved.split('say: We’ll come quietly.').length - 1).toBe(3);
+    // The refusal line with its shouted answer, the garrison's row for it,
+    // and the jail's step back into itself (rpg-project#925).
+    expect(saved.split('say: You will never take me alive.').length - 1).toBe(
+      3
+    );
+    expect(
+      saved.split(
+        '                loudness: shout\n                fact: refused-arrest\n'
+      ).length - 1
+    ).toBe(3);
+    expect(saved).toContain('      - {fact: refused-arrest, then: hostile}\n');
+    expect(saved).toContain(
+      '            - { on: came-quietly, to: jailed, reason: another arrested went quietly }\n'
+    );
+    expect(
+      Object.keys(
+        (parse(saved) as Parsed).interactions['front-gate'].outcomes as object
+      )
+    ).toEqual(['admitted', 'arrested', 'jailed']);
+  });
+
+  it('removing the last outcome drops the key and keeps the interaction', () => {
+    const saved = outcomesAfter((o) =>
+      withEntryRemoved(
+        withEntryRemoved(withEntryRemoved(o, 'admitted', 0), 'arrested', 0),
+        'jailed',
+        0
+      )
+    );
     const after = parse(saved) as Parsed;
     expect(after.interactions['front-gate']).not.toHaveProperty('outcomes');
     expect(after.interactions['front-gate'].recipe).toEqual(
@@ -303,21 +383,5 @@ describe('a post’s pass edits only its own line (rpg-project#928)', () => {
     expect(
       exportDraftYaml({ draft: back, scope: again.scope }, again.key)
     ).toBe(served);
-  });
-
-  it('a state’s post switches from a password to recognition', () => {
-    const result = read(posts);
-    const draft = structuredClone(result.draft);
-    const binding = draft.room.monsterBindings!['gate-1'];
-    binding.states = patchStateHolds(binding.states!, 'posted', {
-      pass: { recognized: 'admitted' },
-    });
-    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
-    const after = parse(saved).room.room.monsterBindings['gate-1'].states;
-    expect(after.posted.holds.pass).toEqual({ recognized: 'admitted' });
-    expect(after.alert).toEqual(
-      parse(posts).room.room.monsterBindings['gate-1'].states.alert
-    );
-    roundTrips(saved);
   });
 });

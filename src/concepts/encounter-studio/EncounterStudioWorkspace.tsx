@@ -4,6 +4,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -12,19 +13,18 @@ import {
 import type { AnswerWaypointShape } from '../world-building/answerTableShape';
 import { BundlesPanel } from '../world-building/BundlesPanel';
 import { castMemberOf } from '../world-building/cast';
-import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { regionLabelPoint } from '../world-building/regionLabel';
 import { cellOwners } from '../world-building/roomDraft';
 import { appendWaypoint } from '../world-building/routeEdits';
 import {
+  pickedCells,
   RoutePickContext,
   type RoutePicking,
   type RoutePickRequest,
 } from '../world-building/routePicking';
 import { RowRefusalsContext } from '../world-building/rowRefusals';
 import type { SiteScope } from '../world-building/siteScope';
-import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
   useRoomPublishing,
@@ -35,13 +35,31 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
+import {
+  DEFAULT_ENCOUNTER_SECTION,
+  ENCOUNTER_GROUPS,
+  sectionPlaceOf,
+  type EncounterSectionKey,
+} from './encounterNav';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
+import {
+  clampInspectorWidth,
+  INSPECTOR_DEFAULT_WIDTH,
+  inspectorDocks,
+  inspectorMaxWidth,
+  readInspectorWidth,
+  writeInspectorWidth,
+} from './inspectorWidth';
+import { JoinInspector } from './JoinInspector';
+import { layoutCellCenter } from './layoutGeometry';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
+import { placeName } from './placeName';
+import { PlacesJoinList } from './PlacesJoinList';
 import {
   browserPublicationStorage,
   clearPublication,
@@ -49,25 +67,39 @@ import {
   writePublication,
   type PublicationRecord,
 } from './publicationMemory';
-import { refusalJumps, type RefusalTarget } from './refusalJump';
+import {
+  refusalJumps,
+  type RefusalJump,
+  type RefusalTarget,
+} from './refusalJump';
+import { RevealContextProvider } from './reveal';
+import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
+import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
 import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
-import { StudioFacts } from './StudioFacts';
+import { StudioExits } from './StudioExits';
 import { StudioInspector } from './StudioInspector';
+import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
-import { StudioPlayButton, StudioPublish } from './StudioPublish';
+import {
+  RefusalList,
+  StudioPlayButton,
+  StudioPublish,
+  StudioRefusalCount,
+} from './StudioPublish';
 import {
   currentRefusals,
+  keyRefusalOf,
   PUBLISH_RUNNING_TITLE,
   publishStatusText,
+  studioReadBackOf,
 } from './studioPublishing';
-import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
   type EncounterStudioSession,
@@ -83,23 +115,18 @@ import {
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
+import { StudioTabBar } from './StudioTabBar';
+import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
+import type { ThreadHub } from './threadHubs';
+import { usePlacesView } from './usePlacesView';
+import { useRevealController, type RevealKey } from './useReveal';
+import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 
-const ENCOUNTER_SECTIONS = {
-  cast: 'Cast',
-  party: 'Party',
-  tables: 'Tables',
-  bundles: 'Bundles',
-  factions: 'Factions',
-  dispositions: 'Dispositions',
-  intel: 'Intel',
-  endings: 'Endings',
-  concealments: 'Concealments',
-  interactions: 'Interactions',
-  scenarios: 'Scenarios',
-  facts: 'Facts',
-} as const;
+/** A section key's on-screen word (rpg-project#970, ruled 2026-11-16). */
+const sectionLabel = (key: EncounterSectionKey): string =>
+  sectionPlaceOf(key).label;
 
 /** A mount with no route into the game cannot play; the capability then
  * carries no character, so Play says so rather than launching nowhere. */
@@ -166,8 +193,27 @@ function StudioSurface({
   onPlay,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
-  const [encounterSection, setEncounterSection] =
-    useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
+  const navId = useId();
+  const groupTabId = (label: string): string =>
+    `${navId}-group-${label.replace(/\s+/g, '-')}`;
+  const sectionTabId = (key: string): string => `${navId}-section-${key}`;
+  /** The one reveal contract for every jump (rpg-project#983); items
+   * register by the same path map the jumps resolve through. */
+  const revealController = useRevealController();
+  revealController.setResolver((path) => keyOfPath(path, session.document));
+  revealController.setNamer((key) => nameOfKey(key, session.document));
+  /** A jump's reveal waits for the jump's own navigation (home, section,
+   * selection) to commit, then lands (rpg-project#983): it is queued here
+   * and fired by the effect below, never on a clock. */
+  const [queuedReveal, setQueuedReveal] = useState<{
+    key: RevealKey;
+    nonce: number;
+  } | null>(null);
+  const queueReveal = (key: RevealKey): void =>
+    setQueuedReveal((was) => ({ key, nonce: (was?.nonce ?? 0) + 1 }));
+  const [encounterSection, setEncounterSection] = useState<EncounterSectionKey>(
+    DEFAULT_ENCOUNTER_SECTION
+  );
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
   const [groundRef, setGroundRef] = useState<string | null>(null);
   const [groundBrush, setGroundBrush] = useState<'paint' | 'erase' | null>(
@@ -223,6 +269,44 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** The inspector's width (rpg-project#979): the viewer's own, kept in the
+   * browser, clamped to half the workspace as the window changes. */
+  const [inspectorWidth, setInspectorWidth] = useState(
+    () => readInspectorWidth(storage) ?? INSPECTOR_DEFAULT_WIDTH
+  );
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const measure = (): void => setWorkspaceWidth(window.innerWidth);
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const inspectorMax = inspectorMaxWidth(workspaceWidth, view);
+  const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
+  /** The work area's height, for a docked inspector to fill it: set on the
+   * root as `--es-work-height`, outside React, as the area resizes. */
+  const workAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const area = workAreaRef.current;
+    const root = area?.closest<HTMLElement>('.encounter-studio');
+    if (!area || !root) return;
+    const measure = (): void =>
+      root.style.setProperty(
+        '--es-work-height',
+        `${area.getBoundingClientRect().height}px`
+      );
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, []);
+  const commitInspectorWidth = (width: number): void => {
+    setInspectorWidth(width);
+    writeInspectorWidth(storage, width);
+  };
   const [sections, setSections] = useState<
     Record<StudioHome, StudioSidebarSection>
   >({ build: 'inspector', encounter: 'tables' });
@@ -240,6 +324,15 @@ function StudioSurface({
       setSidebarOpen(true);
     shownKey.current = selectionKey;
   }, [selectionKey]);
+  // A new selection takes the mark away (rpg-project#983); a jump's own
+  // selection is made in the same commit as its queued reveal, which the
+  // next effect lands after this one has cleared.
+  useEffect(() => {
+    revealController.clear();
+  }, [selectionKey, revealController]);
+  useEffect(() => {
+    if (queuedReveal) revealController.reveal(queuedReveal.key);
+  }, [queuedReveal, revealController]);
   const changeTool = (next: LayoutTool): void => {
     setGroundBrush(null);
     if (next !== layoutTool) session.cancelTransients();
@@ -395,29 +488,34 @@ function StudioSurface({
   const openDefinitions = (section: StudioSocialSection): void => {
     changeHome('encounter');
     setEncounterSection(section);
+    // From a creature's inspector, "Edit sides" lands on its faction and
+    // "Open behaviours" on the behaviour it runs (rpg-project#983).
+    if (session.arrange?.kind !== 'actor') return;
+    const binding = session.document.draft.room.monsterBindings?.[
+      session.arrange.monster.id
+    ] as { faction?: string; behaviors?: { use?: unknown }[] } | undefined;
+    const use = binding?.behaviors?.[0]?.use;
+    if (section === 'factions' && binding?.faction)
+      queueReveal({ kind: 'faction', id: binding.faction });
+    if (section === 'behaviours' && typeof use === 'string')
+      queueReveal({ kind: 'routine', id: use });
   };
-  /** A fact a read-back ref named; the Facts section brings it into view. */
-  const [focusFact, setFocusFact] = useState<string | null>(null);
-  const openFact = (fact: string): void => {
-    setFocusFact(fact);
-    openDefinitions('facts');
-  };
-  /** A writer or reader in the fact index: select the placed thing on the
-   * map, or open the home section that holds it. */
-  const [focusEnding, setFocusEnding] = useState<{ id: string } | null>(null);
-  const openFactUse = (target: FactUseTarget): void => {
-    if ('home' in target) {
-      if (target.home === 'endings') setFocusEnding({ id: target.id });
-      setEncounterSection(target.home);
+  /** The hub a read-back connection named: Threads opens on its thread
+   * (rpg-project#973). */
+  const [focusHub, setFocusHub] = useState<ThreadHub | null>(null);
+  /** The behaviour a read-back routine named: Behaviours opens on it
+   * (rpg-project#970). */
+  const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
+  const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
+    // The hub's row in Threads, or the routine's in Behaviours, is revealed.
+    queueReveal({ kind: hub, id });
+    if (hub === 'routine') {
+      setFocusRoutine(id);
+      openDefinitions('behaviours');
       return;
     }
-    const selected =
-      target.kind === 'creature'
-        ? session.creatures.select(target.id)
-        : session.selectScene([target.id]);
-    if (!selected) return;
-    changeHome('build');
-    setSidebarOpen(true);
+    setFocusHub({ kind: hub, id });
+    openDefinitions('facts');
   };
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
@@ -467,6 +565,36 @@ function StudioSurface({
   const draftId = session.document.draft.id;
   const seededFor = useRef<string | null>(null);
   const { setKey: setPublishKey } = publishing;
+  /** The engine's read-back, and the places mode drawn from it
+   * (rpg-project#968, #972). */
+  const readBack = studioReadBackOf(publishing, gate.state);
+  const placesView = usePlacesView(session, readBack);
+  /** A way pointer on a record's or a secret's entry opens the join its way
+   * goes through, as Places selects it (rpg-project#973). The pointer names
+   * the way; the way's own statement names its join. */
+  const [pendingJoin, setPendingJoin] = useState<string | null>(null);
+  /** A pointer whose way Places does not hold (no read-back yet, or a
+   * stale one) has no opener: it renders as text. */
+  const wayOpener = (wayId: string): (() => void) | null => {
+    const join = placesView.places?.joins.find((candidate) =>
+      candidate.ways.some((way) => way.statement.about?.id === wayId)
+    );
+    if (!join) return null;
+    return () => {
+      changeHome('build');
+      setSidebarOpen(true);
+      setPendingJoin(join.id);
+      queueReveal({ kind: 'join', id: join.id });
+    };
+  };
+  // The join is selected once Build is the home, where the map's selection
+  // can be cleared for it.
+  const { selectJoin } = placesView;
+  useEffect(() => {
+    if (pendingJoin === null || home !== 'build') return;
+    setPendingJoin(null);
+    selectJoin(pendingJoin);
+  }, [pendingJoin, home, selectJoin]);
   useEffect(() => {
     if (seededFor.current === draftId) return;
     seededFor.current = draftId;
@@ -586,19 +714,38 @@ function StudioSurface({
     currentRefusals(publishing, gate.state),
     session.document
   );
-  /** The row a refusal's jump asked for (rpg-project#720, R17). */
-  const [focusRow, setFocusRow] = useState<{
-    path: string;
-    nonce: number;
-  } | null>(null);
+  /** The header's list of the current refusals is open (R34). */
+  const [refusalsOpen, setRefusalsOpen] = useState(false);
+  /** The header counts a refused KEY too (R34), in the server's words; the
+   * Save panel shows that sentence at the key field instead of its list
+   * (R16), so it joins the header's list only. */
+  const keyRefusal = keyRefusalOf(publishing);
+  const headerJumps: RefusalJump[] = keyRefusal
+    ? [{ path: '', message: keyRefusal, target: { kind: 'key' } }, ...jumps]
+    : jumps;
+  /** What the header shows: the last settled refusals while a check is out. */
+  const shownRefusals = useSettledRefusals(
+    headerJumps,
+    publishing.preview.status === 'validating',
+    draftId
+  );
+  // At zero the list closes, so it never reopens on its own.
+  if (refusalsOpen && shownRefusals.length === 0) setRefusalsOpen(false);
+  const refusalCountRef = useRef<HTMLButtonElement>(null);
+  const closeRefusals = (): void => {
+    setRefusalsOpen(false);
+    refusalCountRef.current?.focus();
+  };
+  /** A key jump asks the Save panel to focus the key field; a new nonce is
+   * a new jump, consumed once. */
+  const [keyFocus, setKeyFocus] = useState(0);
   const rowRefusals = useMemo(
     () => ({
-      refusals: jumps.map(({ path, message }) => ({ path, message })),
-      focus: focusRow,
+      refusals: shownRefusals.map(({ path, message }) => ({ path, message })),
     }),
-    // `jumps` is rebuilt every render; its words are what matter.
+    // The list is rebuilt every render; its words are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(jumps.map((j) => [j.path, j.message])), focusRow]
+    [JSON.stringify(shownRefusals.map((j) => [j.path, j.message]))]
   );
   /** PICK ON MAP (rpg-project#720). A row under Encounter asks for a cell or
    * a route; Build opens on the Layout armed for it, each click is a
@@ -607,12 +754,18 @@ function StudioSurface({
   const [routePick, setRoutePick] = useState<{
     request: RoutePickRequest;
     waypoints: AnswerWaypointShape[];
-    section: keyof typeof ENCOUNTER_SECTIONS;
+    section: EncounterSectionKey;
+    /** Where the pick was asked from: an Encounter section returns there; a
+     * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
+    from: 'encounter' | 'build';
+    /** The Build view it was asked from, returned to when it ends. */
+    fromView: EncounterStudioView;
     document: unknown;
   } | null>(null);
   const routePicking: RoutePicking = {
     arm: (request) => {
       const section = encounterSection;
+      const from = home === 'build' ? 'build' : 'encounter';
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
@@ -620,6 +773,8 @@ function StudioSurface({
         request,
         waypoints: [...request.route],
         section,
+        from,
+        fromView: view,
         document: session.document,
       });
     },
@@ -632,6 +787,17 @@ function StudioSurface({
     setRoutePick(null);
     if (!pick) return;
     if (commit) pick.request.onDone(waypoints);
+    // Back where it was asked, the thing it was for is landed on and marked
+    // (rpg-project#975 C review).
+    const revealed = pick.request.revealPath
+      ? keyOfPath(pick.request.revealPath, session.document)
+      : null;
+    if (revealed) queueReveal(revealed);
+    if (pick.from === 'build') {
+      setSidebarOpen(true);
+      if (pick.fromView !== 'layout') switchView(pick.fromView);
+      return;
+    }
     changeHome('encounter');
     setEncounterSection(pick.section);
   };
@@ -639,6 +805,15 @@ function StudioSurface({
     if (!routePick) return;
     if (routePick.request.mode === 'cell')
       return finishPick(true, [{ q: cell.q, r: cell.r }]);
+    // A set of cells (rpg-project#975 C): a click adds a cell, or takes it
+    // away again.
+    if (routePick.request.mode === 'cells')
+      return setRoutePick({
+        ...routePick,
+        waypoints: pickedCells(routePick.waypoints, cell, (c) =>
+          cellOwners(session.document.draft).has(`${c.q},${c.r}`)
+        ),
+      });
     setRoutePick({
       ...routePick,
       waypoints: appendWaypoint(routePick.waypoints, cell),
@@ -654,8 +829,12 @@ function StudioSurface({
       routePick &&
       (!(home === 'build' && view === 'layout') ||
         routePick.document !== session.document)
-    )
+    ) {
       setRoutePick(null);
+      // A pick asked from Build's inspector (rpg-project#975 D) reopens it
+      // however it ends — a keyboard Undo mid-pick among them.
+      if (routePick.from === 'build') setSidebarOpen(true);
+    }
   }, [routePick, home, view, session.document]);
   const finishPickRef = useRef(finishPick);
   finishPickRef.current = finishPick;
@@ -728,26 +907,54 @@ function StudioSurface({
         return castMemberOf(session.document, target.ref)?.name ?? target.ref;
       case 'home':
         return target.id
-          ? `${ENCOUNTER_SECTIONS[target.section]} · ${target.id}`
-          : ENCOUNTER_SECTIONS[target.section];
+          ? `${sectionLabel(target.section)} · ${target.id}`
+          : sectionLabel(target.section);
       case 'ending':
         return `Ending ${target.id}`;
+      case 'key':
+        return 'File key';
     }
   };
   /** A refusal lands at the thing (R17): a placed thing, door, hex or cast
    * member is selected and its inspector opened on Build; a root policy
    * opens its Encounter section, an ending its own form. */
-  const jumpTo = (target: RefusalTarget): void => {
+  /** A jump lands on the item (rpg-project#983): after the selection or
+   * section below, the item its path names — the line, the row, the post,
+   * the faction — is revealed. A path names a place inside the thing; a
+   * target with no path is revealed as the thing itself. */
+  const jumpTo = (target: RefusalTarget, path?: string): void => {
+    const key =
+      (path ? keyOfPath(path, session.document) : null) ?? keyOfTarget(target);
+    if (key) queueReveal(key);
     const inspect = (selected: boolean): void => {
       if (!selected) return;
       changeHome('build');
       showSection('inspector');
     };
     switch (target.kind) {
-      case 'creature':
+      case 'creature': {
+        // The map shows what the jump selected: the Layout centres on it.
+        const monster = session.document.draft.room.monsterDeclarations.find(
+          (entry) => entry.id === target.id
+        );
+        if (monster && view === 'layout')
+          onFrameChange({
+            ...frame,
+            center: layoutCellCenter(monster.startingCell.location),
+          });
         return inspect(session.creatures.select(target.id));
-      case 'prop':
+      }
+      case 'prop': {
+        const item = session.document.draft.scene.items.find(
+          (entry) => entry.id === target.id
+        );
+        if (item && view === 'layout')
+          onFrameChange({
+            ...frame,
+            center: { x: item.transform.x, z: item.transform.z },
+          });
         return inspect(session.selectScene([target.id]));
+      }
       case 'door':
         return inspect(session.doorEditing.select(target.target));
       case 'hex':
@@ -759,16 +966,19 @@ function StudioSurface({
       case 'home':
         changeHome('encounter');
         setEncounterSection(target.section);
-        if (target.row)
-          setFocusRow((was) => ({
-            path: target.row!,
-            nonce: (was?.nonce ?? 0) + 1,
-          }));
+        if (target.section === 'behaviours' && target.id)
+          setFocusRoutine(target.id);
+        // A row (`target.row`) is landed on by the reveal above, which opens
+        // it on the way (rpg-project#983).
         return;
       case 'ending':
-        setFocusEnding({ id: target.id });
+        // The reveal above lands on the ending, which opens its form.
         changeHome('encounter');
         setEncounterSection('endings');
+        return;
+      case 'key':
+        changeSiteOperation('save');
+        setKeyFocus((was) => was + 1);
         return;
     }
   };
@@ -839,11 +1049,23 @@ function StudioSurface({
       labels.controls
     ) : null;
 
-  return (
+  // The engine's refusals reach every row in the workspace, Factions and the
+  // inspector included, not only Tables and Bundles (R34).
+  const surface = (
     <section
       className="encounter-studio"
       aria-label="Encounter Studio workspace"
       data-home={home}
+      data-inspector={
+        !(spatial && sidebarOpen)
+          ? undefined
+          : inspectorDocks(workspaceWidth, view)
+            ? 'docked'
+            : 'overlay'
+      }
+      style={
+        { '--es-inspector-width': `${inspectorShown}px` } as React.CSSProperties
+      }
     >
       <header className="es-header">
         {onBack && (
@@ -933,6 +1155,12 @@ function StudioSurface({
             3D
           </button>
         </nav>
+        <StudioRefusalCount
+          ref={refusalCountRef}
+          count={shownRefusals.length}
+          open={refusalsOpen}
+          onPress={() => setRefusalsOpen((open) => !open)}
+        />
         <div className="es-save">
           <span className="es-local-state">
             <span className="es-local">BROWSER RECOVERY</span>
@@ -970,6 +1198,35 @@ function StudioSurface({
           unreadable local draft” overwrites the unreadable stored data with
           this draft.
         </p>
+      )}
+      {refusalsOpen && shownRefusals.length > 0 && (
+        <section
+          id="studio-refusals"
+          className="es-refusals-panel"
+          role="group"
+          aria-label="Current refusals"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.stopPropagation();
+            closeRefusals();
+          }}
+        >
+          <p className="es-help">
+            The engine refuses this draft. Each refusal opens the thing to fix.
+          </p>
+          <RefusalList
+            jumps={shownRefusals}
+            nameOf={refusalNounName}
+            placeOf={(path) => placeName(path, session.document)}
+            onJump={(target, path) => {
+              setRefusalsOpen(false);
+              jumpTo(target, path);
+            }}
+          />
+          <button type="button" onClick={closeRefusals}>
+            Close refusals
+          </button>
+        </section>
       )}
       {siteOperation !== null && (
         <StudioSitePanel
@@ -1019,10 +1276,13 @@ function StudioSurface({
               gate={gate}
               characterId={playCharacter}
               jumps={jumps}
+              focusKey={keyFocus}
+              onKeyFocused={() => setKeyFocus(0)}
               nameOf={refusalNounName}
-              onJump={(target) => {
+              placeOf={(path) => placeName(path, session.document)}
+              onJump={(target, path) => {
                 changeSiteOperation(null);
-                jumpTo(target);
+                jumpTo(target, path);
               }}
             />
           )}
@@ -1117,7 +1377,9 @@ function StudioSurface({
               <strong>
                 {routePick.request.mode === 'cell'
                   ? `Picking a cell for ${routePick.request.label} · click the cell to walk to`
-                  : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
+                  : routePick.request.mode === 'cells'
+                    ? `Picking cells for ${routePick.request.label} · click a cell to add or take it away · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'cell' : 'cells'}`
+                    : `Picking a route for ${routePick.request.label} · click cells in walking order · ${routePick.waypoints.length} ${routePick.waypoints.length === 1 ? 'waypoint' : 'waypoints'}`}
               </strong>
               {routePick.request.mode === 'route' && (
                 <>
@@ -1141,6 +1403,11 @@ function StudioSurface({
                     Done picking route
                   </button>
                 </>
+              )}
+              {routePick.request.mode === 'cells' && (
+                <button type="button" onClick={() => finishPick(true)}>
+                  Done picking cells
+                </button>
               )}
               <button type="button" onClick={() => finishPick(false)}>
                 Cancel picking
@@ -1197,6 +1464,13 @@ function StudioSurface({
                     {label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  aria-pressed={placesView.on}
+                  onClick={placesView.toggle}
+                >
+                  Places
+                </button>
               </div>
             ) : (
               <div className="es-buttons" role="group" aria-label="Prop tools">
@@ -1223,11 +1497,7 @@ function StudioSurface({
               Door
             </button>
           )}
-          {home === 'encounter' && (
-            <strong>
-              Encounter configuration · {ENCOUNTER_SECTIONS[encounterSection]}
-            </strong>
-          )}
+          {home === 'encounter' && <strong>Encounter configuration</strong>}
           {spatial && (
             <button
               type="button"
@@ -1343,32 +1613,59 @@ function StudioSurface({
             onToggle={() => setSidebarOpen((open) => !open)}
             keyboardEnabled={spatial}
             compact={home === 'build'}
-          >
-            {home === 'build' && (
-              <StudioInspector
-                session={session}
-                inspection={inspection}
-                view={view}
-                layoutTool={layoutTool}
-                armedTool={armedTool}
-                onConfigure={openDefinitions}
-                onOpenFact={openFact}
-                onMoveCreature={moveSelectedCreature}
-                onFrameChange={onFrameChange}
-                onArmTool={armTool}
-                onPlacePartyStart={placePartyStart}
-                onOpenCastMember={(ref) => session.cast.select(ref)}
-                onOpenRegion={(regionId) => {
-                  session.selectRegion(regionId);
-                }}
-                activeRegionId={activeRegionId}
-                onMakeActive={setActiveChoice}
+            resize={
+              <StudioInspectorResize
+                width={inspectorShown}
+                max={inspectorMax}
+                onCommit={commitInspectorWidth}
               />
+            }
+          >
+            {home === 'build' && placesView.selectedJoin && (
+              <JoinInspector
+                join={placesView.selectedJoin}
+                document={session.document}
+                current={placesView.current}
+                onJump={jumpTo}
+                onOpenFact={openFact}
+                wayOpener={wayOpener}
+              />
+            )}
+            {home === 'build' && !placesView.selectedJoin && (
+              // A post's cells are picked on the map from here
+              // (rpg-project#975 D).
+              <RoutePickContext.Provider value={routePicking}>
+                <StudioInspector
+                  session={session}
+                  inspection={inspection}
+                  view={view}
+                  layoutTool={layoutTool}
+                  armedTool={armedTool}
+                  onConfigure={openDefinitions}
+                  onOpenFact={openFact}
+                  wayOpener={wayOpener}
+                  readBack={readBack}
+                  onOpenJoin={placesView.selectJoin}
+                  onJump={jumpTo}
+                  onMoveCreature={moveSelectedCreature}
+                  onFrameChange={onFrameChange}
+                  onArmTool={armTool}
+                  onPlacePartyStart={placePartyStart}
+                  onOpenCastMember={(ref) =>
+                    jumpTo({ kind: 'castMember', ref })
+                  }
+                  onOpenRegion={(regionId) => {
+                    session.selectRegion(regionId);
+                  }}
+                  activeRegionId={activeRegionId}
+                  onMakeActive={setActiveChoice}
+                />
+              </RoutePickContext.Provider>
             )}
           </StudioSidebar>
         </div>
       </div>
-      <div className="es-work-area">
+      <div className="es-work-area" ref={workAreaRef}>
         <div
           className="es-map-workspace"
           aria-hidden={!spatial}
@@ -1394,7 +1691,12 @@ function StudioSurface({
                   onShowEntire={() =>
                     frameBounds(contentBounds(session.document.draft))
                   }
-                />
+                >
+                  <PlacesJoinList
+                    view={placesView}
+                    selectedRegionId={selectedRegion?.id ?? null}
+                  />
+                </LayoutRoomList>
               )}
               <div className="es-layout-main">
                 <div className="es-canvas">
@@ -1429,11 +1731,15 @@ function StudioSurface({
                         ? session.concealments.pick({ kind: 'cell', cell })
                         : session.selectHex(cell))
                     }
-                    onClearSelection={() => void session.clearSelection()}
+                    onClearSelection={() => {
+                      placesView.clearJoin();
+                      void session.clearSelection();
+                    }}
                     placedEditing={placedEditing}
                     exits={session.document.scope.exits}
                     concealedCells={concealedCells}
                     frameTarget={frameTarget}
+                    places={placesView.layer}
                     routePick={
                       picking && routePick
                         ? {
@@ -1544,137 +1850,209 @@ function StudioSurface({
           aria-label="Encounter configuration"
           hidden={home !== 'encounter'}
         >
-          <nav className="es-buttons" aria-label="Encounter tools">
-            {(
-              [
-                'cast',
-                'party',
-                'tables',
-                'bundles',
-                'factions',
-                'dispositions',
-                'intel',
-                'endings',
-                'concealments',
-                'interactions',
-                'scenarios',
-                'facts',
-              ] as const
-            ).map((section) => (
-              <button
-                key={section}
-                type="button"
-                aria-pressed={encounterSection === section}
-                onClick={() => {
-                  setFocusEnding(null);
-                  setEncounterSection(section);
-                }}
-              >
-                {ENCOUNTER_SECTIONS[section]}
-              </button>
-            ))}
-          </nav>
-          {home === 'encounter' && encounterSection === 'cast' && (
-            <StudioCast
-              session={session}
-              onShowPlacement={(id) => {
-                // The one arbiter holds the placement; Build opens the
-                // inspector on it, in the view the author last used.
-                if (!session.creatures.select(id)) return;
-                changeHome('build');
-                setSidebarOpen(true);
+          {/* THE ENCOUNTER SIDE'S NAVIGATION (rpg-project#982): the groups
+              as the primary tab bar, the chosen group's sections as the
+              secondary bar attached under it, and the section's panel
+              attached under that. */}
+          <div className="es-encounter-nav">
+            <StudioTabBar
+              level="primary"
+              label="Encounter groups"
+              tabs={ENCOUNTER_GROUPS.map((group) => ({
+                key: group.label,
+                label: group.label,
+              }))}
+              selected={sectionPlaceOf(encounterSection).group}
+              onSelect={(label) => {
+                setEncounterSection(
+                  ENCOUNTER_GROUPS.find((group) => group.label === label)!
+                    .sections[0]!.key
+                );
               }}
+              idOf={groupTabId}
+              panelId={`${navId}-group`}
             />
-          )}
-          {home === 'encounter' &&
-            (encounterSection === 'intel' ||
-              encounterSection === 'factions' ||
-              encounterSection === 'dispositions') && (
-              <section
-                aria-label={`${ENCOUNTER_SECTIONS[encounterSection]} definitions`}
-                className="es-social-panel"
-              >
-                <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
-                <AboutPanel>
-                  <p>
-                    {encounterSection === 'intel'
-                      ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
-                      : encounterSection === 'factions'
-                        ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
-                        : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
-                  </p>
-                </AboutPanel>
-                {session.socialControls[encounterSection]}
-              </section>
-            )}
-          {home === 'encounter' && encounterSection === 'party' && (
-            <StudioParty session={session} />
-          )}
-          {home === 'encounter' && encounterSection === 'endings' && (
-            <StudioEndings session={session} focus={focusEnding?.id} />
-          )}
-          {home === 'encounter' && encounterSection === 'concealments' && (
-            <StudioConcealments
-              session={session}
-              onArmMembers={armConcealment}
-              onOpenIntel={() => setEncounterSection('intel')}
+          </div>
+          <div
+            role="tabpanel"
+            id={`${navId}-group`}
+            aria-labelledby={groupTabId(sectionPlaceOf(encounterSection).group)}
+            className="es-encounter-group"
+          >
+            <StudioTabBar<EncounterSectionKey>
+              level="secondary"
+              label="Encounter tools"
+              tabs={
+                ENCOUNTER_GROUPS.find(
+                  (group) =>
+                    group.label === sectionPlaceOf(encounterSection).group
+                )!.sections
+              }
+              selected={sectionPlaceOf(encounterSection).section}
+              onSelect={(key) => {
+                setEncounterSection(key);
+              }}
+              idOf={sectionTabId}
+              panelId={`${navId}-section`}
             />
-          )}
-          {home === 'encounter' && encounterSection === 'interactions' && (
-            <StudioInteractions session={session} />
-          )}
-          {home === 'encounter' && encounterSection === 'scenarios' && (
-            <StudioScenarios document={session.document} />
-          )}
-          {home === 'encounter' && encounterSection === 'facts' && (
-            <StudioFacts
-              document={session.document}
-              focus={focusFact}
-              onOpen={openFactUse}
-            />
-          )}
-          <RoutePickContext.Provider value={routePicking}>
-            <RowRefusalsContext.Provider value={rowRefusals}>
-              <div hidden={encounterSection !== 'bundles'}>
-                <h2>Bundles</h2>
-                <AboutPanel>
-                  <p>
-                    A behaviour written once and used as one line. A table row
-                    that says <code>use: pursuer</code> rolls as one share, and
-                    the bundle's own rows roll inside it.
-                  </p>
-                </AboutPanel>
-                <BundlesPanel
-                  key={session.document.draft.id}
-                  scope={session.document.scope}
-                  onChange={(bundles) => session.commitBundles(bundles)}
+            <div
+              role="tabpanel"
+              id={`${navId}-section`}
+              aria-labelledby={sectionTabId(
+                sectionPlaceOf(encounterSection).section
+              )}
+              className="es-encounter-panel"
+              data-layout={
+                LIST_DETAIL_SECTIONS.has(encounterSection)
+                  ? 'list-detail'
+                  : undefined
+              }
+            >
+              {home === 'encounter' && encounterSection === 'cast' && (
+                <StudioCast
+                  session={session}
+                  onShowPlacement={(id) => {
+                    // The one arbiter holds the placement; Build opens the
+                    // inspector on it, in the view the author last used.
+                    if (!session.creatures.select(id)) return;
+                    changeHome('build');
+                    setSidebarOpen(true);
+                  }}
                 />
-              </div>
-              <div hidden={encounterSection !== 'tables'}>
-                <h2>Tables</h2>
-                <AboutPanel>
-                  <p>
-                    Shared monster behavior. Define a table once; creatures and
-                    factions can reference it by name.
-                  </p>
-                </AboutPanel>
-                <TablesPanel
-                  key={session.document.draft.id}
-                  scope={session.document.scope}
-                  room={session.document.draft.room}
-                  placementNames={placementNames}
-                  collapsedEntries
-                  explicitRename
-                  onChange={(scope) => session.commitTables(scope.tables)}
+              )}
+              {home === 'encounter' && encounterSection === 'intel' && (
+                <section
+                  aria-label="Records definitions"
+                  className="es-social-panel"
+                >
+                  <h2>Records</h2>
+                  <AboutPanel>
+                    <p>
+                      Define records and what they reveal here. Select a
+                      creature or declared prop on the map to assign the records
+                      it holds in its inspector. Record ids and revealed fact
+                      ids are different references.
+                    </p>
+                  </AboutPanel>
+                  {session.socialControls.intel}
+                </section>
+              )}
+              {home === 'encounter' &&
+                (encounterSection === 'factions' ||
+                  encounterSection === 'dispositions') && (
+                  // SIDES (rpg-project#970): who the sides are, then how they
+                  // stand — the factions first, their dispositions under them.
+                  <section aria-label="Sides" className="es-social-panel">
+                    <h2>Sides</h2>
+                    <AboutPanel>
+                      <p>
+                        Define factions and shared policy here, then how the
+                        sides stand to each other. Assign individual placed
+                        creatures in their inspector on the map. A mind names a
+                        placed individual, not a reusable creature recipe.
+                      </p>
+                    </AboutPanel>
+                    <section aria-label="Factions definitions">
+                      {session.socialControls.factions}
+                    </section>
+                    <section aria-label="Dispositions definitions">
+                      {session.socialControls.dispositions}
+                    </section>
+                  </section>
+                )}
+              {home === 'encounter' && encounterSection === 'party' && (
+                <StudioParty session={session} />
+              )}
+              {home === 'encounter' && encounterSection === 'endings' && (
+                // WAYS OUT (rpg-project#970): the exits, each set on its hex and
+                // listed here with a jump to it, then the endings.
+                <section aria-label="Ways out" className="es-ways-out">
+                  <h2>Ways out</h2>
+                  <StudioExits
+                    exits={session.document.scope.exits ?? []}
+                    onJump={jumpTo}
+                  />
+                  <StudioEndings session={session} />
+                </section>
+              )}
+              {home === 'encounter' && encounterSection === 'concealments' && (
+                <StudioConcealments
+                  session={session}
+                  onArmMembers={armConcealment}
+                  onOpenIntel={() => setEncounterSection('intel')}
                 />
-              </div>
-            </RowRefusalsContext.Provider>
-          </RoutePickContext.Provider>
+              )}
+              {/* Conversations stays mounted, hidden, as Bundles does: an
+                  arrest's cells are picked on the map, and Done writes
+                  through the section's newest commit (rpg-project#975 C). */}
+              <RoutePickContext.Provider value={routePicking}>
+                <div hidden={encounterSection !== 'interactions'}>
+                  <StudioInteractions session={session} />
+                </div>
+              </RoutePickContext.Provider>
+              {home === 'encounter' && encounterSection === 'behaviours' && (
+                <StudioBehaviours
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusRoutine}
+                  onSelect={setFocusRoutine}
+                  onJump={jumpTo}
+                  onOpenFact={openFact}
+                  onCommitDefinition={session.commitBehaviorDefinition}
+                />
+              )}
+              {home === 'encounter' && encounterSection === 'facts' && (
+                <StudioThreads
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusHub}
+                  onSelect={setFocusHub}
+                  onJump={jumpTo}
+                  onOpenFact={openFact}
+                  wayOpener={wayOpener}
+                />
+              )}
+              <RoutePickContext.Provider value={routePicking}>
+                <div hidden={encounterSection !== 'bundles'}>
+                  <h2>Bundles</h2>
+                  <AboutPanel>
+                    <p>
+                      A behaviour written once and used as one line. A table row
+                      that says <code>use: pursuer</code> rolls as one share,
+                      and the bundle's own rows roll inside it.
+                    </p>
+                  </AboutPanel>
+                  <BundlesPanel
+                    key={session.document.draft.id}
+                    scope={session.document.scope}
+                    onChange={(bundles) => session.commitBundles(bundles)}
+                  />
+                </div>
+              </RoutePickContext.Provider>
+            </div>
+          </div>
         </section>
       </div>
     </section>
   );
+  return (
+    <RevealContextProvider controller={revealController}>
+      <RowRefusalsContext.Provider value={rowRefusals}>
+        {surface}
+      </RowRefusalsContext.Provider>
+    </RevealContextProvider>
+  );
 }
+
+/** The Encounter sections that are one list beside its detail
+ * (rpg-project#984): their panel is a fixed height the piece fills, and only
+ * its two panes scroll. Every other section scrolls as one pane in it. */
+const LIST_DETAIL_SECTIONS: ReadonlySet<string> = new Set([
+  'cast',
+  'concealments',
+  'facts',
+  'behaviours',
+]);
 
 export function EncounterStudioWorkspace({
   compositionSource,

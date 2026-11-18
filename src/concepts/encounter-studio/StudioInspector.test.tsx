@@ -32,8 +32,10 @@ import {
   placeCastMember,
 } from './fixtures/castDocument';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
+import { castleEngineReadBack } from './fixtures/engineReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import { StudioInspector, type StudioInspectorProps } from './StudioInspector';
 import {
   studioInspectionOf,
@@ -666,7 +668,8 @@ describe('StudioInspector', () => {
     expect(view.getByLabelText('NPC appearance')).toBeTruthy();
     expect(view.getByLabelText('Starting facing')).toBeTruthy();
     expect(view.getByRole('form', { name: 'Creature orders' })).toBeTruthy();
-    fireEvent.click(view.getByRole('button', { name: 'Edit factions' }));
+    // Factions and dispositions are Sides (rpg-project#970).
+    fireEvent.click(view.getByRole('button', { name: 'Edit sides' }));
     expect(props.onConfigure).toHaveBeenCalledWith('factions');
   });
 
@@ -1159,16 +1162,23 @@ describe('StudioInspector', () => {
   });
 
   describe('S2 read it back', () => {
-    it('the creature view opens with the read-back above Placement', () => {
+    it('the creature view opens with the engine’s read-back above Placement', () => {
       const session = createFakeStudioSession();
       const castle = createCastleReadBackDocument();
-      const onConfigure = vi.fn();
+      const onOpenFact = vi.fn();
       inspector(
         selected(
           { ...session, document: castle },
           { kind: 'actor', id: 'gate-1' }
         ),
-        { onConfigure }
+        {
+          onOpenFact,
+          readBack: {
+            readBack: castleEngineReadBack(),
+            readBackIsCurrent: true,
+            unavailable: null,
+          },
+        }
       );
       const sections = within(region())
         .getAllByRole('heading', { level: 3 })
@@ -1180,15 +1190,18 @@ describe('StudioInspector', () => {
       const readBack = within(region()).getByRole('region', {
         name: 'Read back',
       });
+      fireEvent.click(within(readBack).getByRole('button', { name: 'Full' }));
       expect(readBack.textContent).toContain(
-        'On its time it follows gate-patrol, shared with gate-2.'
+        'Guard (gate-1) runs the routine `gate-1-policy` (as `policy`)'
       );
+      // The choice is remembered per viewer; later tests start Folded.
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
       fireEvent.click(
         within(readBack).getAllByRole('button', {
-          name: 'Open table gate-patrol',
+          name: 'Open topic admitted',
         })[0]!
       );
-      expect(onConfigure).toHaveBeenCalledWith('tables');
+      expect(onOpenFact).toHaveBeenCalledWith('admitted', 'topic');
     });
   });
 });

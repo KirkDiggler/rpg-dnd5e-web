@@ -11,6 +11,7 @@ import {
 } from '../world-building/siteScope';
 import { AboutPanel, FieldHelp } from './FieldHelp';
 import { StudioCheckRows, type StudioCheck } from './StudioCheckRows';
+import { StudioListDetail } from './StudioListDetail';
 import { StudioSection } from './StudioSection';
 import type { EncounterStudioSession } from './studioSession';
 
@@ -71,22 +72,6 @@ export function StudioConcealments({
           Hiding a door hides only the door, never its wall.
         </p>
       </AboutPanel>
-      {ids.length === 0 ? (
-        <p className="es-help">No concealment yet.</p>
-      ) : (
-        <nav className="es-buttons" aria-label="Concealment list">
-          {ids.map((id) => (
-            <button
-              type="button"
-              key={id}
-              aria-pressed={open === id}
-              onClick={() => setOpenId(id)}
-            >
-              {id}
-            </button>
-          ))}
-        </nav>
-      )}
       <div className="es-buttons">
         <button
           type="button"
@@ -98,17 +83,35 @@ export function StudioConcealments({
           Add concealment
         </button>
       </div>
-      {open !== null && (
-        <ConcealmentForm
-          key={open}
-          session={session}
-          id={open}
-          spec={concealments[open]!}
-          onRenamed={setOpenId}
-          onArmMembers={onArmMembers}
-          onOpenIntel={onOpenIntel}
-        />
-      )}
+      <StudioListDetail
+        id="secrets"
+        label="Concealment list"
+        groups={[
+          {
+            rows: ids.map((id) => ({
+              key: { kind: 'concealment', id },
+              name: id,
+            })),
+          },
+        ]}
+        selected={open !== null ? { kind: 'concealment', id: open } : null}
+        onSelect={(key) => setOpenId(key.id)}
+        empty={<p className="es-help">No concealment yet.</p>}
+        detailLabel="Concealment"
+        detail={
+          open !== null ? (
+            <ConcealmentForm
+              key={open}
+              session={session}
+              id={open}
+              spec={concealments[open]!}
+              onRenamed={setOpenId}
+              onArmMembers={onArmMembers}
+              onOpenIntel={onOpenIntel}
+            />
+          ) : null
+        }
+      />
     </section>
   );
 }

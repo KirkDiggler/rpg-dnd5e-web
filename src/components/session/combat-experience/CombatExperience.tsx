@@ -11,6 +11,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -32,8 +33,10 @@ import { DesktopEffects } from './DesktopEffects';
 import { DesktopStatusSection } from './DesktopStatusSection';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { MemberPortrait } from './MemberPortrait';
+import { RelocateCutOverlay } from './RelocateCutOverlay';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
+import { SharingMode } from './SharingMode';
 import { speechAtSpeakers, voicesAtPlaces } from './speechAtSpeakers';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
@@ -231,6 +234,8 @@ function CombatExperienceContent({
   pacingNotice,
   monsterTurnIds,
   onNotificationInteractionChange,
+  partySharing,
+  relocateCut,
   renderMap,
   hoveredTarget,
   onSelectDeclaration,
@@ -242,6 +247,7 @@ function CombatExperienceContent({
   onChooseSpeakTarget,
   onApproachTarget,
   onSpeakOption,
+  onInteractOption,
   onConfirmTargets,
   onEndTurn,
   onLogModeChange,
@@ -348,6 +354,17 @@ function CombatExperienceContent({
   });
   // A creature's answer to the viewer speaks above it while its notice shows
   // (rpg-project#842): the map is handed who says what, nothing more.
+  // NO INPUT DURING THE CUT (rpg-project#925): the veil takes every pointer;
+  // this takes every key until it ends (it always ends: relocateCut.ts).
+  useEffect(() => {
+    if (!relocateCut) return;
+    const swallow = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', swallow, true);
+    return () => window.removeEventListener('keydown', swallow, true);
+  }, [relocateCut]);
   const speech = speechAtSpeakers(storyNotices);
   // An unseen speaker's voice marks the place it came from (rpg-project#934).
   const voices = voicesAtPlaces(storyNotices, revealedStory);
@@ -505,6 +522,7 @@ function CombatExperienceContent({
       }
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
+        <RelocateCutOverlay cut={relocateCut ?? null} />
         <div
           data-testid="session-combat-map"
           className={styles.map}
@@ -558,6 +576,7 @@ function CombatExperienceContent({
             onChooseSpeakTarget={onChooseSpeakTarget}
             onApproachTarget={onApproachTarget}
             onSpeakOption={onSpeakOption}
+            onInteractOption={onInteractOption}
             onConfirmTargets={onConfirmTargets}
             onCancelSelection={
               actionPresentation?.mode === 'organized-hud'
@@ -640,6 +659,7 @@ function CombatExperienceContent({
           >
             <span>World clock</span>
             <strong>Free roam</strong>
+            <SharingMode sharing={partySharing} />
           </div>
         ) : (
           <div
@@ -648,6 +668,7 @@ function CombatExperienceContent({
           >
             <span>Authority</span>
             <strong>Synchronizing</strong>
+            <SharingMode sharing={partySharing} />
           </div>
         )}
 

@@ -9,7 +9,8 @@
  * jump lands on it. The form judges nothing here: it only places the
  * server's words.
  */
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext } from 'react';
+import { useRevealablePath } from '../encounter-studio/useReveal';
 
 export interface RowRefusal {
   path: string;
@@ -18,13 +19,10 @@ export interface RowRefusal {
 
 export interface RowRefusals {
   refusals: readonly RowRefusal[];
-  /** The row a jump asked for, by its path; a new nonce is a new jump. */
-  focus: { path: string; nonce: number } | null;
 }
 
 export const RowRefusalsContext = createContext<RowRefusals>({
   refusals: [],
-  focus: null,
 });
 
 export function useRowRefusals(): RowRefusals {
@@ -64,6 +62,20 @@ export function refusalsAtRow(
   return refusals.filter((r) => rows.some((row) => isUnder(r.path, row)));
 }
 
+/** The refusals at an option LINE (`<owner>.options[i]`, R34) that are the
+ * line's own: under it, but not under one of its verdict rows
+ * (`…options[i].success[j]`), which show their own. */
+export function lineRefusals(
+  refusals: readonly RowRefusal[],
+  line: string
+): RowRefusal[] {
+  return refusals.filter(
+    (r) =>
+      isUnder(r.path, line) &&
+      !/^\.(?:success|failure)\[\d+\]/.test(r.path.slice(line.length))
+  );
+}
+
 /** The row a refusal names, by its path, or undefined for a path deeper or
  * shallower than a table or bundle row. */
 export function rowOfPath(path: string): string | undefined {
@@ -73,20 +85,18 @@ export function rowOfPath(path: string): string | undefined {
   );
 }
 
-/** The refusals under a row's paths, whether a jump has landed on it, and a
- * ref for the row's element, which is scrolled into view when one does. */
-export function useRowRefusalsAt(at: readonly string[] | undefined) {
-  const { refusals, focus } = useRowRefusals();
-  const rowRef = useRef<HTMLLIElement>(null);
+/** The refusals under a row's paths, and a ref for the row's element. The
+ * row is a reveal target under its path (rpg-project#983): every jump that
+ * names it — a refusal's or a read-back's — lands on it the same way, and
+ * `onReveal` opens it first (a collapsed row, a route editor). */
+export function useRowRefusalsAt(
+  at: readonly string[] | undefined,
+  onReveal?: () => void
+) {
+  const { refusals } = useRowRefusals();
+  const rowRef = useRevealablePath(at?.[0], onReveal);
   const mine = at ? refusalsAtRow(refusals, at) : [];
-  const focused =
-    focus !== null && at !== undefined && at.includes(focus.path)
-      ? focus.nonce
-      : 0;
-  useEffect(() => {
-    if (focused) rowRef.current?.scrollIntoView?.({ block: 'center' });
-  }, [focused]);
-  return { refusals: mine, focused, rowRef };
+  return { refusals: mine, rowRef };
 }
 
 /** A row's name in words, from its path: `tables.hall-patrol.time[4]` is

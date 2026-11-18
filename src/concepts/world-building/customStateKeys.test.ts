@@ -4,12 +4,7 @@ import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import castle from '../encounter-studio/fixtures/the-mad-king-states.yaml?raw';
 import { factionLayers, layeredOrders } from './layeredOrders';
 import { addMonsterAnswerEntry } from './monsterOrderEdits';
-import {
-  addSiteAnswerEntry,
-  addSiteTableAnswerEntry,
-  patchSiteAnswerEntry,
-  removeSiteAnswerEntry,
-} from './sitePolicyEdits';
+import { addSiteTableAnswerEntry } from './sitePolicyEdits';
 
 describe('recipe-picked keys are data, never object prototype properties (#1384 review)', () => {
   it.each(['__proto__', 'constructor', 'toString'])(
@@ -50,19 +45,6 @@ describe('recipe-picked keys are data, never object prototype properties (#1384 
   it.each(['__proto__', 'constructor', 'toString'])(
     'adds and edits %s without reading inherited values as rows',
     (key) => {
-      let scope = addSiteAnswerEntry(
-        { factions: [{ id: 'garrison' }] },
-        'garrison',
-        key
-      );
-      expect(Object.hasOwn(scope.factions![0].on!, key)).toBe(true);
-      expect(scope.factions![0].on![key]).toEqual([{ hold: {} }]);
-      scope = patchSiteAnswerEntry(scope, 'garrison', key, 0, {
-        attack: 'enemy',
-      });
-      expect(scope.factions![0].on![key]).toEqual([{ attack: 'enemy' }]);
-      scope = removeSiteAnswerEntry(scope, 'garrison', key, 0);
-      expect(scope.factions![0].on).toBeUndefined();
       const root = addSiteTableAnswerEntry(
         { tables: { drill: {} } },
         'drill',

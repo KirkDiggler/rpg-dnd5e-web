@@ -20,6 +20,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  definitionOf,
+  setBehaviorDefinition,
+} from '../encounter-studio/machineEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -173,6 +177,7 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import { SiteNamesContext, siteNamesOf } from './siteNames';
 import {
   AuthoredDispositions,
   CreatureOrders,
@@ -4787,379 +4792,442 @@ export function WorldBuildingConcept({
     guardSnapshotIntent((...args) =>
       socialSelectionActive() ? callback(...args) : false
     );
+  // The names a row's grant offers (rpg-project#975): records, regions,
+  // topics, from the document being edited.
+  const siteNames = useMemo(
+    () => siteNamesOf(siteScope, roomHistory.present.draft.room),
+    [siteScope, roomHistory.present.draft.room]
+  );
 
   if (roomMode && studioPresentation) {
     return (
-      <SiteBundlesContext.Provider value={siteScope.bundles}>
-        <PlacedMonstersContext.Provider value={placementNames}>
-          {studioPresentation.render({
-            document: roomHistory.present,
-            viewportProps,
-            intentEpoch: viewportGeneration,
-            arrange,
-            doorEditing,
-            commitArrange: guardSnapshotIntent(commitArrange),
-            selectHex: guardSnapshotIntent(selectStudioHex),
-            selectRegion: guardSnapshotIntent(selectStudioRegion),
-            selectScene: guardSnapshotIntent(
-              (ids: readonly string[]): boolean => {
-                const present = roomHistoryRef.current.present.draft.scene;
-                if (
-                  refuseWhilePublishing() ||
-                  ids.length === 0 ||
-                  !ids.every((id) =>
-                    [...present.items, ...present.groups].some(
-                      (entity) => entity.id === id
+      <SiteNamesContext.Provider value={siteNames}>
+        <SiteBundlesContext.Provider value={siteScope.bundles}>
+          <PlacedMonstersContext.Provider value={placementNames}>
+            {studioPresentation.render({
+              document: roomHistory.present,
+              viewportProps,
+              intentEpoch: viewportGeneration,
+              arrange,
+              doorEditing,
+              commitArrange: guardSnapshotIntent(commitArrange),
+              selectHex: guardSnapshotIntent(selectStudioHex),
+              selectRegion: guardSnapshotIntent(selectStudioRegion),
+              selectScene: guardSnapshotIntent(
+                (ids: readonly string[]): boolean => {
+                  const present = roomHistoryRef.current.present.draft.scene;
+                  if (
+                    refuseWhilePublishing() ||
+                    ids.length === 0 ||
+                    !ids.every((id) =>
+                      [...present.items, ...present.groups].some(
+                        (entity) => entity.id === id
+                      )
                     )
                   )
-                )
-                  return false;
-                selectInScene([...ids]);
-                return true;
-              }
-            ),
-            selectPartyStart: guardSnapshotIntent((): boolean => {
-              if (
-                refuseWhilePublishing() ||
-                !roomHistoryRef.current.present.draft.room.partyStart
-              )
-                return false;
-              selectStudioActor({ kind: 'start' });
-              return true;
-            }),
-            armPartyStart: guardSnapshotIntent((): boolean => {
-              if (refuseWhilePublishing()) return false;
-              armStartPlacement();
-              setTool('select');
-              return true;
-            }),
-            clearSelection: guardSnapshotIntent((): boolean => {
-              if (refuseWhilePublishing()) return false;
-              clearStudioSelection();
-              return true;
-            }),
-            cast: (() => {
-              /** One transaction. `follows` names the member's ref after the
-               * edit: the edited member becomes the selection, so a rename or
-               * an adoption keeps the author on the member they changed. */
-              const castIntent = <Args extends unknown[]>(
-                edit: (current: RoomDocument, ...args: Args) => RoomDocument,
-                follows?: (...args: Args) => string
-              ): ((...args: Args) => boolean) =>
-                guardSnapshotIntent((...args: Args): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  try {
-                    const next = edit(roomHistoryRef.current.present, ...args);
-                    if (!commitRoomDocument(next)) return false;
-                    const ref = follows?.(...args);
-                    if (ref !== undefined && castMemberOf(next, ref)) {
-                      clearStudioSelection();
-                      activateStudioTarget({ kind: 'cast', ref });
-                    }
-                    return true;
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                });
-              const MONSTER = 'dnd5e:monsters:';
-              return {
-                save: castIntent(
-                  (current, edit: CastEdit) =>
-                    applyCastEdit(current, edit, idFactory),
-                  (edit) =>
-                    edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
-                ),
-                rename: castIntent(
-                  (current, ref: string, toId: string) =>
-                    renameCastMember(current, ref, toId),
-                  (_ref, toId) => `${MONSTER}${toId}`
-                ),
-                adopt: castIntent(
-                  (current, ref: string, templateId: string) =>
-                    adoptCastMember(current, ref, templateId),
-                  (_ref, templateId) => `${MONSTER}${templateId}`
-                ),
-                remove: castIntent((current, ref: string) =>
-                  removeCastMember(current, ref)
-                ),
-                removeUnusedLook: castIntent(
-                  (current, ref: string, entryId: string) =>
-                    removeUnusedLook(current, ref, entryId)
-                ),
-                select: guardSnapshotIntent(selectStudioCastMember),
-                shuffle: castIntent((current, ref: string) =>
-                  shuffleCastLooks(current, ref, Math.random)
-                ),
-              };
-            })(),
-            creatures: {
-              select: guardSnapshotIntent((id: string): boolean => {
-                if (
-                  refuseWhilePublishing() ||
-                  !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
-                    (actor) => actor.id === id
-                  )
-                )
-                  return false;
-                selectStudioActor({ kind: 'actor', id });
-                return true;
-              }),
-              placement:
-                roomTool === 'monster' && armedCreature
-                  ? {
-                      name:
-                        castMemberOf(roomHistory.present, armedCreature.ref)
-                          ?.name ?? 'Creature',
-                      appearanceRef: armedCreature.appearanceRef,
-                    }
-                  : null,
-              armPlacement: guardSnapshotIntent(
-                (ref: string, appearanceRef: string): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const member = castMemberOf(
-                    roomHistoryRef.current.present,
-                    ref
-                  );
-                  if (!member)
-                    return rejectEdit(new Error(`${ref} is not in the cast.`));
-                  if (!castPlacementAppearanceAvailable(member, appearanceRef))
-                    return rejectEdit(
-                      new Error(
-                        member.defaults?.modelRef
-                          ? `Choose a look from ${member.name}'s default look family.`
-                          : 'Choose a default look in the cast to place it.'
-                      )
-                    );
-                  cancelTransients();
-                  setArmedMonsterRef(member.ref);
-                  setArmedCreature({ ref: member.ref, appearanceRef });
-                  setRoomTool('monster');
-                  setTool('select');
-                  setSelectedActorId(null);
-                  activateStudioTarget(null);
-                  setNotice('');
+                    return false;
+                  selectInScene([...ids]);
                   return true;
                 }
               ),
-              setDefinition: guardSnapshotIntent(
-                (id: string, ref: string): boolean => {
-                  if (selectionRevisionRef.current !== selectionRevision)
-                    return false;
-                  try {
-                    const current = roomHistoryRef.current.present;
-                    return commitRoomDocument({
-                      ...current,
-                      draft: setRoomMonsterDefinition(current.draft, id, ref),
-                    });
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                }
-              ),
-            },
-            doors: {
-              setBinding: guardSnapshotIntent(
-                (
-                  doorId: string,
-                  next: RoomDoorBinding | undefined
-                ): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const current = roomHistoryRef.current.present;
-                  const attached = (current.draft.room.walls ?? []).some(
-                    (wall) =>
-                      wall.openings.some(
-                        (opening) => opening.door?.id === doorId
-                      )
-                  );
-                  if (!attached)
-                    return rejectEdit(new Error(`There is no door ${doorId}.`));
-                  if (next === undefined)
-                    return rejectEdit(
-                      new Error(
-                        'A door on a wall always has a state. Delete the doorway to remove it.'
-                      )
-                    );
-                  const bindings = withDoorBinding(
-                    current.draft.room.doorBindings,
-                    doorId,
-                    next
-                  );
-                  const room: RoomGameplayData = { ...current.draft.room };
-                  if (bindings === undefined) delete room.doorBindings;
-                  else room.doorBindings = bindings;
-                  return commitRoomDocument({
-                    ...current,
-                    draft: { ...current.draft, room },
-                  });
-                }
-              ),
-            },
-            exits: {
-              set: guardSnapshotIntent(
-                (cell: RoomHexCell, id: string | null): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const current = roomHistoryRef.current.present;
-                  const walkable = isFloorCell(current.draft, cell);
-                  if (
-                    id !== null &&
-                    !walkable &&
-                    !exitAt(current.scope.exits, cell)
-                  )
-                    return rejectEdit(
-                      new Error(
-                        `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
-                      )
-                    );
-                  const previous = exitAt(current.scope.exits, cell)?.id;
-                  if (previous !== undefined && id === null) {
-                    const referrers = exitReferrers(current, previous);
-                    if (referrers.length)
-                      return rejectEdit(
-                        new Error(
-                          stillNamedRefusal(`Exit ${previous}`, referrers)
-                        )
-                      );
-                  }
-                  try {
-                    const exits = setExitAt(current.scope.exits, cell, id);
-                    const scope =
-                      previous !== undefined && id !== null && id !== previous
-                        ? {
-                            ...renameExitReferences(current, previous, id),
-                          }
-                        : { ...current.scope };
-                    if (exits.length === 0) delete scope.exits;
-                    else scope.exits = exits;
-                    return commitRoomDocument({ ...current, scope });
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                }
-              ),
-            },
-            endings: {
-              set: guardSnapshotIntent(
-                (next: readonly SiteEnding[]): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const current = roomHistoryRef.current.present;
-                  try {
-                    const endings = validateSiteEndings([...next]);
-                    const scope = { ...current.scope };
-                    if (endings.length === 0) delete scope.endings;
-                    else scope.endings = endings;
-                    return commitRoomDocument({ ...current, scope });
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                }
-              ),
-            },
-            concealments: {
-              add: guardSnapshotIntent((): boolean => {
-                if (refuseWhilePublishing()) return false;
-                const current = roomHistoryRef.current.present;
-                return commitRoomDocument({
-                  ...current,
-                  scope: addConcealment(current.scope),
-                });
-              }),
-              update: guardSnapshotIntent(
-                (
-                  id: string,
-                  spec: SiteConcealmentSpec | undefined
-                ): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const current = roomHistoryRef.current.present;
-                  if (!Object.hasOwn(current.scope.concealments ?? {}, id))
-                    return rejectEdit(
-                      new Error(`There is no concealment ${id}.`)
-                    );
-                  if (spec === undefined) {
-                    const referrers = concealmentReferrers(current.scope, id);
-                    if (referrers.length)
-                      return rejectEdit(
-                        new Error(
-                          stillNamedRefusal(`Concealment ${id}`, referrers)
-                        )
-                      );
-                  }
-                  try {
-                    if (spec !== undefined)
-                      validateSiteConcealments(
-                        { [id]: spec },
-                        { requireMembers: false }
-                      );
-                    if (spec === undefined && paintingConcealmentId === id)
-                      setPaintingConcealmentId(null);
-                    return commitRoomDocument({
-                      ...current,
-                      scope: setConcealment(current.scope, id, spec),
-                    });
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                }
-              ),
-              rename: guardSnapshotIntent(
-                (from: string, to: string): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  const current = roomHistoryRef.current.present;
-                  const concealments = current.scope.concealments ?? {};
-                  if (!Object.hasOwn(concealments, from))
-                    return rejectEdit(
-                      new Error(`There is no concealment ${from}.`)
-                    );
-                  if (from === to) return true;
-                  if (Object.hasOwn(concealments, to))
-                    return rejectEdit(
-                      new Error(`There is already a concealment ${to}.`)
-                    );
-                  try {
-                    const scope = renameRevealReferences(
-                      renameConcealment(current.scope, from, to),
-                      from,
-                      to
-                    );
-                    validateSiteConcealments(scope.concealments, {
-                      requireMembers: false,
-                    });
-                    if (paintingConcealmentId === from)
-                      setPaintingConcealmentId(to);
-                    return commitRoomDocument({ ...current, scope });
-                  } catch (error) {
-                    return rejectEdit(error);
-                  }
-                }
-              ),
-              armedId: activeConcealmentId,
-              armMembers: (id: string): boolean => {
-                if (!mountedRef.current || refuseWhilePublishing())
-                  return false;
+              selectPartyStart: guardSnapshotIntent((): boolean => {
                 if (
-                  !Object.hasOwn(
-                    roomHistoryRef.current.present.scope.concealments ?? {},
-                    id
-                  )
+                  refuseWhilePublishing() ||
+                  !roomHistoryRef.current.present.draft.room.partyStart
                 )
                   return false;
-                setRoomTool('select');
-                setTool('select');
-                setPaintingConcealmentId(id);
+                selectStudioActor({ kind: 'start' });
                 return true;
+              }),
+              armPartyStart: guardSnapshotIntent((): boolean => {
+                if (refuseWhilePublishing()) return false;
+                armStartPlacement();
+                setTool('select');
+                return true;
+              }),
+              clearSelection: guardSnapshotIntent((): boolean => {
+                if (refuseWhilePublishing()) return false;
+                clearStudioSelection();
+                return true;
+              }),
+              cast: (() => {
+                /** One transaction. `follows` names the member's ref after the
+                 * edit: the edited member becomes the selection, so a rename or
+                 * an adoption keeps the author on the member they changed. */
+                const castIntent = <Args extends unknown[]>(
+                  edit: (current: RoomDocument, ...args: Args) => RoomDocument,
+                  follows?: (...args: Args) => string
+                ): ((...args: Args) => boolean) =>
+                  guardSnapshotIntent((...args: Args): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    try {
+                      const next = edit(
+                        roomHistoryRef.current.present,
+                        ...args
+                      );
+                      if (!commitRoomDocument(next)) return false;
+                      const ref = follows?.(...args);
+                      if (ref !== undefined && castMemberOf(next, ref)) {
+                        clearStudioSelection();
+                        activateStudioTarget({ kind: 'cast', ref });
+                      }
+                      return true;
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  });
+                const MONSTER = 'dnd5e:monsters:';
+                return {
+                  save: castIntent(
+                    (current, edit: CastEdit) =>
+                      applyCastEdit(current, edit, idFactory),
+                    (edit) =>
+                      edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
+                  ),
+                  rename: castIntent(
+                    (current, ref: string, toId: string) =>
+                      renameCastMember(current, ref, toId),
+                    (_ref, toId) => `${MONSTER}${toId}`
+                  ),
+                  adopt: castIntent(
+                    (current, ref: string, templateId: string) =>
+                      adoptCastMember(current, ref, templateId),
+                    (_ref, templateId) => `${MONSTER}${templateId}`
+                  ),
+                  remove: castIntent((current, ref: string) =>
+                    removeCastMember(current, ref)
+                  ),
+                  removeUnusedLook: castIntent(
+                    (current, ref: string, entryId: string) =>
+                      removeUnusedLook(current, ref, entryId)
+                  ),
+                  select: guardSnapshotIntent(selectStudioCastMember),
+                  shuffle: castIntent((current, ref: string) =>
+                    shuffleCastLooks(current, ref, Math.random)
+                  ),
+                };
+              })(),
+              creatures: {
+                select: guardSnapshotIntent((id: string): boolean => {
+                  if (
+                    refuseWhilePublishing() ||
+                    !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
+                      (actor) => actor.id === id
+                    )
+                  )
+                    return false;
+                  selectStudioActor({ kind: 'actor', id });
+                  return true;
+                }),
+                placement:
+                  roomTool === 'monster' && armedCreature
+                    ? {
+                        name:
+                          castMemberOf(roomHistory.present, armedCreature.ref)
+                            ?.name ?? 'Creature',
+                        appearanceRef: armedCreature.appearanceRef,
+                      }
+                    : null,
+                armPlacement: guardSnapshotIntent(
+                  (ref: string, appearanceRef: string): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const member = castMemberOf(
+                      roomHistoryRef.current.present,
+                      ref
+                    );
+                    if (!member)
+                      return rejectEdit(
+                        new Error(`${ref} is not in the cast.`)
+                      );
+                    if (
+                      !castPlacementAppearanceAvailable(member, appearanceRef)
+                    )
+                      return rejectEdit(
+                        new Error(
+                          member.defaults?.modelRef
+                            ? `Choose a look from ${member.name}'s default look family.`
+                            : 'Choose a default look in the cast to place it.'
+                        )
+                      );
+                    cancelTransients();
+                    setArmedMonsterRef(member.ref);
+                    setArmedCreature({ ref: member.ref, appearanceRef });
+                    setRoomTool('monster');
+                    setTool('select');
+                    setSelectedActorId(null);
+                    activateStudioTarget(null);
+                    setNotice('');
+                    return true;
+                  }
+                ),
+                setDefinition: guardSnapshotIntent(
+                  (id: string, ref: string): boolean => {
+                    if (selectionRevisionRef.current !== selectionRevision)
+                      return false;
+                    try {
+                      const current = roomHistoryRef.current.present;
+                      return commitRoomDocument({
+                        ...current,
+                        draft: setRoomMonsterDefinition(current.draft, id, ref),
+                      });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
               },
-              disarm: () => setPaintingConcealmentId(null),
-              pick: guardSnapshotIntent(pickConcealmentMember),
-              setDoorHiddenBy: guardSnapshotIntent(
-                (doorId: string, concealmentId: string | null): boolean => {
+              doors: {
+                setBinding: guardSnapshotIntent(
+                  (
+                    doorId: string,
+                    next: RoomDoorBinding | undefined
+                  ): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    const attached = (current.draft.room.walls ?? []).some(
+                      (wall) =>
+                        wall.openings.some(
+                          (opening) => opening.door?.id === doorId
+                        )
+                    );
+                    if (!attached)
+                      return rejectEdit(
+                        new Error(`There is no door ${doorId}.`)
+                      );
+                    if (next === undefined)
+                      return rejectEdit(
+                        new Error(
+                          'A door on a wall always has a state. Delete the doorway to remove it.'
+                        )
+                      );
+                    const bindings = withDoorBinding(
+                      current.draft.room.doorBindings,
+                      doorId,
+                      next
+                    );
+                    const room: RoomGameplayData = { ...current.draft.room };
+                    if (bindings === undefined) delete room.doorBindings;
+                    else room.doorBindings = bindings;
+                    return commitRoomDocument({
+                      ...current,
+                      draft: { ...current.draft, room },
+                    });
+                  }
+                ),
+              },
+              exits: {
+                set: guardSnapshotIntent(
+                  (cell: RoomHexCell, id: string | null): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    const walkable = isFloorCell(current.draft, cell);
+                    if (
+                      id !== null &&
+                      !walkable &&
+                      !exitAt(current.scope.exits, cell)
+                    )
+                      return rejectEdit(
+                        new Error(
+                          `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
+                        )
+                      );
+                    const previous = exitAt(current.scope.exits, cell)?.id;
+                    if (previous !== undefined && id === null) {
+                      const referrers = exitReferrers(current, previous);
+                      if (referrers.length)
+                        return rejectEdit(
+                          new Error(
+                            stillNamedRefusal(`Exit ${previous}`, referrers)
+                          )
+                        );
+                    }
+                    try {
+                      const exits = setExitAt(current.scope.exits, cell, id);
+                      const scope =
+                        previous !== undefined && id !== null && id !== previous
+                          ? {
+                              ...renameExitReferences(current, previous, id),
+                            }
+                          : { ...current.scope };
+                      if (exits.length === 0) delete scope.exits;
+                      else scope.exits = exits;
+                      return commitRoomDocument({ ...current, scope });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
+              },
+              endings: {
+                set: guardSnapshotIntent(
+                  (next: readonly SiteEnding[]): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    try {
+                      const endings = validateSiteEndings([...next]);
+                      const scope = { ...current.scope };
+                      if (endings.length === 0) delete scope.endings;
+                      else scope.endings = endings;
+                      return commitRoomDocument({ ...current, scope });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
+              },
+              concealments: {
+                add: guardSnapshotIntent((): boolean => {
                   if (refuseWhilePublishing()) return false;
+                  const current = roomHistoryRef.current.present;
+                  return commitRoomDocument({
+                    ...current,
+                    scope: addConcealment(current.scope),
+                  });
+                }),
+                update: guardSnapshotIntent(
+                  (
+                    id: string,
+                    spec: SiteConcealmentSpec | undefined
+                  ): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    if (!Object.hasOwn(current.scope.concealments ?? {}, id))
+                      return rejectEdit(
+                        new Error(`There is no concealment ${id}.`)
+                      );
+                    if (spec === undefined) {
+                      const referrers = concealmentReferrers(current.scope, id);
+                      if (referrers.length)
+                        return rejectEdit(
+                          new Error(
+                            stillNamedRefusal(`Concealment ${id}`, referrers)
+                          )
+                        );
+                    }
+                    try {
+                      if (spec !== undefined)
+                        validateSiteConcealments(
+                          { [id]: spec },
+                          { requireMembers: false }
+                        );
+                      if (spec === undefined && paintingConcealmentId === id)
+                        setPaintingConcealmentId(null);
+                      return commitRoomDocument({
+                        ...current,
+                        scope: setConcealment(current.scope, id, spec),
+                      });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
+                rename: guardSnapshotIntent(
+                  (from: string, to: string): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    const concealments = current.scope.concealments ?? {};
+                    if (!Object.hasOwn(concealments, from))
+                      return rejectEdit(
+                        new Error(`There is no concealment ${from}.`)
+                      );
+                    if (from === to) return true;
+                    if (Object.hasOwn(concealments, to))
+                      return rejectEdit(
+                        new Error(`There is already a concealment ${to}.`)
+                      );
+                    try {
+                      const scope = renameRevealReferences(
+                        renameConcealment(current.scope, from, to),
+                        from,
+                        to
+                      );
+                      validateSiteConcealments(scope.concealments, {
+                        requireMembers: false,
+                      });
+                      if (paintingConcealmentId === from)
+                        setPaintingConcealmentId(to);
+                      return commitRoomDocument({ ...current, scope });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
+                armedId: activeConcealmentId,
+                armMembers: (id: string): boolean => {
+                  if (!mountedRef.current || refuseWhilePublishing())
+                    return false;
+                  if (
+                    !Object.hasOwn(
+                      roomHistoryRef.current.present.scope.concealments ?? {},
+                      id
+                    )
+                  )
+                    return false;
+                  setRoomTool('select');
+                  setTool('select');
+                  setPaintingConcealmentId(id);
+                  return true;
+                },
+                disarm: () => setPaintingConcealmentId(null),
+                pick: guardSnapshotIntent(pickConcealmentMember),
+                setDoorHiddenBy: guardSnapshotIntent(
+                  (doorId: string, concealmentId: string | null): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    const current = roomHistoryRef.current.present;
+                    try {
+                      return commitRoomDocument({
+                        ...current,
+                        scope: setPropHiddenBy(
+                          current.scope,
+                          doorId,
+                          concealmentId
+                        ),
+                      });
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                ),
+              },
+              commitTables: guardSnapshotIntent(
+                (tables: SiteScope['tables']): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  const scope = { ...current.scope };
+                  if (tables === undefined) delete scope.tables;
+                  else scope.tables = tables;
+                  return commitRoomDocument({ ...current, scope });
+                }
+              ),
+              commitBundles: guardSnapshotIntent(
+                (bundles: SiteScope['bundles']): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  const scope = { ...current.scope };
+                  if (
+                    bundles === undefined ||
+                    Object.keys(bundles).length === 0
+                  )
+                    delete scope.bundles;
+                  else scope.bundles = bundles;
+                  return commitRoomDocument({ ...current, scope });
+                }
+              ),
+              commitPartySharing: guardSnapshotIntent(
+                (word: SharingWord | undefined): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  const scope = withSharing(current.scope, word);
+                  return commitRoomDocument({ ...current, scope });
+                }
+              ),
+              commitInteractionOutcomes: guardSnapshotIntent(
+                (id: string, outcomes: Outcomes): boolean => {
                   const current = roomHistoryRef.current.present;
                   try {
                     return commitRoomDocument({
                       ...current,
-                      scope: setPropHiddenBy(
+                      scope: setInteractionOutcomes(
                         current.scope,
-                        doorId,
-                        concealmentId
+                        id,
+                        outcomes
                       ),
                     });
                   } catch (error) {
@@ -5167,438 +5235,438 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
-            },
-            commitTables: guardSnapshotIntent(
-              (tables: SiteScope['tables']): boolean => {
-                const current = roomHistoryRef.current.present;
-                const scope = { ...current.scope };
-                if (tables === undefined) delete scope.tables;
-                else scope.tables = tables;
-                return commitRoomDocument({ ...current, scope });
-              }
-            ),
-            commitBundles: guardSnapshotIntent(
-              (bundles: SiteScope['bundles']): boolean => {
-                const current = roomHistoryRef.current.present;
-                const scope = { ...current.scope };
-                if (bundles === undefined || Object.keys(bundles).length === 0)
-                  delete scope.bundles;
-                else scope.bundles = bundles;
-                return commitRoomDocument({ ...current, scope });
-              }
-            ),
-            commitPartySharing: guardSnapshotIntent(
-              (word: SharingWord | undefined): boolean => {
-                const current = roomHistoryRef.current.present;
-                const scope = withSharing(current.scope, word);
-                return commitRoomDocument({ ...current, scope });
-              }
-            ),
-            commitInteractionOutcomes: guardSnapshotIntent(
-              (id: string, outcomes: Outcomes): boolean => {
-                const current = roomHistoryRef.current.present;
-                try {
-                  return commitRoomDocument({
-                    ...current,
-                    scope: setInteractionOutcomes(current.scope, id, outcomes),
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
-            commitInteractionApproach: guardSnapshotIntent(
-              (id: string, within: number | null): boolean => {
-                const current = roomHistoryRef.current.present;
-                try {
-                  return commitRoomDocument({
-                    ...current,
-                    scope: setInteractionApproach(current.scope, id, within),
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
-            mapLabelSelection: {
-              selectedId:
-                activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
-              select: guardSnapshotIntent(selectStudioLabel),
-            },
-            regionEditing: {
-              resolutions: regionResolutions,
-              finishes: {
-                catalog: materialCatalog,
-                projection: roomFinishes,
-                set: guardSnapshotIntent(
-                  (
-                    regionId: string,
-                    value: RegionWallFinishPatch | null
-                  ): boolean =>
-                    arrange?.kind === 'region' && arrange.region.id === regionId
-                      ? commitArrange({
-                          kind: 'region-edit',
-                          target: arrange.target,
-                          wallFinish: value,
-                        })
-                      : false
-                ),
-              },
-              createRegion: guardSnapshotIntent((name: string): boolean => {
-                if (refuseWhilePublishing()) return false;
-                try {
+              commitBehaviorDefinition: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    definition: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
                   const current = roomHistoryRef.current.present;
-                  const id = idFactory();
-                  if (
-                    !commitRoomDocument({
+                  try {
+                    const definition = definitionOf(current.scope, id);
+                    if (!definition)
+                      throw new Error(
+                        `behaviorDefinitions.${id}: this site authors no such behaviour`
+                      );
+                    return commitRoomDocument({
                       ...current,
-                      draft: createRegion(current.draft, id, name),
-                    })
-                  )
-                    return false;
-                  activateStudioTarget({ kind: 'region', id });
-                  return true;
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }),
-              // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
-              // argument, so these act on it whatever is selected. A refusal
-              // (unknown region, blank name, the implicit region's removal)
-              // surfaces through the owner's notice, never a silent false.
-              renameRegion: guardSnapshotIntent(
-                (regionId: string, name: string): boolean =>
-                  editRegionById((draft) => renameRegion(draft, regionId, name))
-              ),
-              setRegionLighting: guardSnapshotIntent(
-                (regionId: string, intensity: number): boolean =>
-                  editRegionById((draft) =>
-                    setRegionLighting(draft, regionId, intensity)
-                  )
-              ),
-              removeRegion: guardSnapshotIntent((regionId: string): boolean => {
-                if (!editRegionById((draft) => removeRegion(draft, regionId)))
-                  return false;
-                if (
-                  activeStudioTargetRef.current?.kind === 'region' &&
-                  activeStudioTargetRef.current.id === regionId
-                )
-                  activateStudioTarget(null);
-                return true;
-              }),
-            },
-            groundEditing: {
-              catalog: groundCatalog,
-              setBase: guardSnapshotIntent(
-                (regionId, ref) =>
-                  studioHomeRef.current === 'build' &&
-                  editRegionById((draft) => {
-                    requireAvailableGround(ref);
-                    return setRegionGroundBase(draft, regionId, ref);
-                  })
-              ),
-              paint: guardSnapshotIntent(
-                (regionId, cells, ref) =>
-                  studioHomeRef.current === 'build' &&
-                  editRegionById((draft) => {
-                    requireAvailableGround(ref);
-                    return paintRegionGround(draft, regionId, cells, ref);
-                  })
-              ),
-            },
-            renameDocument: guardSnapshotIntent(renameDocument),
-            importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
-            wallEditing: {
-              finishes: {
-                catalog: materialCatalog,
-                statuses: roomFinishes.walls,
-              },
-              selectedId:
-                activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
-              assetRef: wallAssetRef,
-              snapEnabled: wallSnapEnabled,
-              endpointSnapEnabled: wallEndpointSnapEnabled,
-              rightAngleEnabled: wallRightAngleEnabled,
-              setRightAngle: guardSnapshotIntent(
-                (enabled: boolean): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  if (enabled !== wallRightAngleEnabled) {
-                    cancelTransients();
-                    setWallRightAngleEnabled(enabled);
+                      scope: setBehaviorDefinition(
+                        current.scope,
+                        id,
+                        edit(definition)
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
                   }
-                  return true;
                 }
               ),
-              setEndpointSnap: guardSnapshotIntent(
-                (enabled: boolean): boolean => {
-                  if (refuseWhilePublishing()) return false;
-                  if (enabled !== wallEndpointSnapEnabled) {
-                    cancelTransients();
-                    setWallEndpointSnapEnabled(enabled);
+              commitInteractionApproach: guardSnapshotIntent(
+                (id: string, within: number | null): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setInteractionApproach(current.scope, id, within),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
                   }
-                  return true;
                 }
               ),
-              options: studioWallOptions,
-              select: guardSnapshotIntent(selectStudioWall),
-              setAsset: guardSnapshotIntent((ref: string | null): boolean => {
-                if (refuseWhilePublishing()) return false;
-                if (
-                  ref !== null &&
-                  !wallAssetOptions.some((option) => option.ref === ref)
-                ) {
-                  setNotice(
-                    `Wall appearance refused; unsupported asset ${ref}.`
-                  );
-                  return false;
-                }
-                if (ref !== wallAssetRef) {
-                  cancelTransients();
-                  setWallAssetRef(ref);
-                }
-                return true;
-              }),
-              setSnap: guardSnapshotIntent((enabled: boolean): boolean => {
-                if (refuseWhilePublishing()) return false;
-                if (enabled !== wallSnapEnabled) {
-                  cancelTransients();
-                  setWallSnapEnabled(enabled);
-                }
-                return true;
-              }),
-              create: guardSnapshotIntent(createStudioWall),
-              edit: guardSnapshotIntent((next, join) =>
-                !walls.some((wall) => wall.id === next.id) ||
-                wallGestureActive(next.id)
-                  ? editWall(next, join)
-                  : false
-              ),
-              remove: guardSnapshotIntent((id) =>
-                !walls.some((wall) => wall.id === id) ||
-                (activeStudioTargetRef.current?.kind === 'wall' &&
-                  activeStudioTargetRef.current.id === id &&
-                  selectionRevisionRef.current === selectionRevision)
-                  ? removeWall(id)
-                  : false
-              ),
-              reportRefusal: (message: string): void => {
-                guardSnapshotIntent(() => {
-                  setNotice(message);
-                  return true;
-                })();
+              mapLabelSelection: {
+                selectedId:
+                  activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
+                select: guardSnapshotIntent(selectStudioLabel),
               },
-            },
-            canUndo: !publishBusy && roomHistory.past.length > 0,
-            canRedo: !publishBusy && roomHistory.future.length > 0,
-            undo: () => {
-              if (
-                viewportGenerationRef.current === viewportGeneration &&
-                mountedRef.current
-              )
-                undo();
-            },
-            redo: () => {
-              if (
-                viewportGenerationRef.current === viewportGeneration &&
-                mountedRef.current
-              )
-                redo();
-            },
-            commitFloor: guardIntent(
-              (cells, mode, regionId) =>
-                studioHomeRef.current === 'build' &&
-                commitFloor(cells, mode, regionId)
-            ),
-            refuseEdit: (sentence: string) => rejectEdit(new Error(sentence)),
-            createMapLabel: guardIntent((text: string, location: WorldPoint) =>
-              applyRoomIntent((current) => ({
-                ...current,
-                draft: createMapLabel(
-                  current.draft,
-                  idFactory(),
-                  text,
-                  location
+              regionEditing: {
+                resolutions: regionResolutions,
+                finishes: {
+                  catalog: materialCatalog,
+                  projection: roomFinishes,
+                  set: guardSnapshotIntent(
+                    (
+                      regionId: string,
+                      value: RegionWallFinishPatch | null
+                    ): boolean =>
+                      arrange?.kind === 'region' &&
+                      arrange.region.id === regionId
+                        ? commitArrange({
+                            kind: 'region-edit',
+                            target: arrange.target,
+                            wallFinish: value,
+                          })
+                        : false
+                  ),
+                },
+                createRegion: guardSnapshotIntent((name: string): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  try {
+                    const current = roomHistoryRef.current.present;
+                    const id = idFactory();
+                    if (
+                      !commitRoomDocument({
+                        ...current,
+                        draft: createRegion(current.draft, id, name),
+                      })
+                    )
+                      return false;
+                    activateStudioTarget({ kind: 'region', id });
+                    return true;
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }),
+                // BY ID, NOT BY SELECTION (rpg-project#725): the region is the
+                // argument, so these act on it whatever is selected. A refusal
+                // (unknown region, blank name, the implicit region's removal)
+                // surfaces through the owner's notice, never a silent false.
+                renameRegion: guardSnapshotIntent(
+                  (regionId: string, name: string): boolean =>
+                    editRegionById((draft) =>
+                      renameRegion(draft, regionId, name)
+                    )
                 ),
-              }))
-            ),
-            moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
-              labelIntentIsCurrent(id, true)
-                ? applyRoomIntent((current) => ({
-                    ...current,
-                    draft: moveMapLabel(current.draft, id, location),
-                  }))
-                : false
-            ),
-            renameMapLabel: guardIntent((id: string, text: string) =>
-              labelIntentIsCurrent(id)
-                ? applyRoomIntent((current) => ({
-                    ...current,
-                    draft: renameMapLabel(current.draft, id, text),
-                  }))
-                : false
-            ),
-            deleteMapLabel: guardIntent((id: string) =>
-              labelIntentIsCurrent(id)
-                ? applyRoomIntent((current) => ({
-                    ...current,
-                    draft: deleteMapLabel(current.draft, id),
-                  }))
-                : false
-            ),
-            cancelTransients,
-            propTool: tool,
-            setPropTool: (next) => {
-              cancelTransients();
-              setTool(next);
-              setRoomTool(next);
-            },
-            socialControls: {
-              factions: (
-                <FactionsPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  placementNames={placementNames}
-                  onChange={guardSnapshotIntent(commitPolicies)}
-                  onNotice={guardSnapshotIntent((message: string) => {
+                setRegionLighting: guardSnapshotIntent(
+                  (regionId: string, intensity: number): boolean =>
+                    editRegionById((draft) =>
+                      setRegionLighting(draft, regionId, intensity)
+                    )
+                ),
+                removeRegion: guardSnapshotIntent(
+                  (regionId: string): boolean => {
+                    if (
+                      !editRegionById((draft) => removeRegion(draft, regionId))
+                    )
+                      return false;
+                    if (
+                      activeStudioTargetRef.current?.kind === 'region' &&
+                      activeStudioTargetRef.current.id === regionId
+                    )
+                      activateStudioTarget(null);
+                    return true;
+                  }
+                ),
+              },
+              groundEditing: {
+                catalog: groundCatalog,
+                setBase: guardSnapshotIntent(
+                  (regionId, ref) =>
+                    studioHomeRef.current === 'build' &&
+                    editRegionById((draft) => {
+                      requireAvailableGround(ref);
+                      return setRegionGroundBase(draft, regionId, ref);
+                    })
+                ),
+                paint: guardSnapshotIntent(
+                  (regionId, cells, ref) =>
+                    studioHomeRef.current === 'build' &&
+                    editRegionById((draft) => {
+                      requireAvailableGround(ref);
+                      return paintRegionGround(draft, regionId, cells, ref);
+                    })
+                ),
+              },
+              renameDocument: guardSnapshotIntent(renameDocument),
+              importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
+              wallEditing: {
+                finishes: {
+                  catalog: materialCatalog,
+                  statuses: roomFinishes.walls,
+                },
+                selectedId:
+                  activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
+                assetRef: wallAssetRef,
+                snapEnabled: wallSnapEnabled,
+                endpointSnapEnabled: wallEndpointSnapEnabled,
+                rightAngleEnabled: wallRightAngleEnabled,
+                setRightAngle: guardSnapshotIntent(
+                  (enabled: boolean): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    if (enabled !== wallRightAngleEnabled) {
+                      cancelTransients();
+                      setWallRightAngleEnabled(enabled);
+                    }
+                    return true;
+                  }
+                ),
+                setEndpointSnap: guardSnapshotIntent(
+                  (enabled: boolean): boolean => {
+                    if (refuseWhilePublishing()) return false;
+                    if (enabled !== wallEndpointSnapEnabled) {
+                      cancelTransients();
+                      setWallEndpointSnapEnabled(enabled);
+                    }
+                    return true;
+                  }
+                ),
+                options: studioWallOptions,
+                select: guardSnapshotIntent(selectStudioWall),
+                setAsset: guardSnapshotIntent((ref: string | null): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  if (
+                    ref !== null &&
+                    !wallAssetOptions.some((option) => option.ref === ref)
+                  ) {
+                    setNotice(
+                      `Wall appearance refused; unsupported asset ${ref}.`
+                    );
+                    return false;
+                  }
+                  if (ref !== wallAssetRef) {
+                    cancelTransients();
+                    setWallAssetRef(ref);
+                  }
+                  return true;
+                }),
+                setSnap: guardSnapshotIntent((enabled: boolean): boolean => {
+                  if (refuseWhilePublishing()) return false;
+                  if (enabled !== wallSnapEnabled) {
+                    cancelTransients();
+                    setWallSnapEnabled(enabled);
+                  }
+                  return true;
+                }),
+                create: guardSnapshotIntent(createStudioWall),
+                edit: guardSnapshotIntent((next, join) =>
+                  !walls.some((wall) => wall.id === next.id) ||
+                  wallGestureActive(next.id)
+                    ? editWall(next, join)
+                    : false
+                ),
+                remove: guardSnapshotIntent((id) =>
+                  !walls.some((wall) => wall.id === id) ||
+                  (activeStudioTargetRef.current?.kind === 'wall' &&
+                    activeStudioTargetRef.current.id === id &&
+                    selectionRevisionRef.current === selectionRevision)
+                    ? removeWall(id)
+                    : false
+                ),
+                reportRefusal: (message: string): void => {
+                  guardSnapshotIntent(() => {
                     setNotice(message);
                     return true;
-                  })}
-                />
+                  })();
+                },
+              },
+              canUndo: !publishBusy && roomHistory.past.length > 0,
+              canRedo: !publishBusy && roomHistory.future.length > 0,
+              undo: () => {
+                if (
+                  viewportGenerationRef.current === viewportGeneration &&
+                  mountedRef.current
+                )
+                  undo();
+              },
+              redo: () => {
+                if (
+                  viewportGenerationRef.current === viewportGeneration &&
+                  mountedRef.current
+                )
+                  redo();
+              },
+              commitFloor: guardIntent(
+                (cells, mode, regionId) =>
+                  studioHomeRef.current === 'build' &&
+                  commitFloor(cells, mode, regionId)
               ),
-              dispositions: (
-                <DispositionsPanel
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  placementNames={placementNames}
-                  onChange={guardSnapshotIntent(commitPolicies)}
-                />
+              refuseEdit: (sentence: string) => rejectEdit(new Error(sentence)),
+              createMapLabel: guardIntent(
+                (text: string, location: WorldPoint) =>
+                  applyRoomIntent((current) => ({
+                    ...current,
+                    draft: createMapLabel(
+                      current.draft,
+                      idFactory(),
+                      text,
+                      location
+                    ),
+                  }))
               ),
-              intel: (
-                <IntelPanel
-                  explicitRename
-                  scope={siteScope}
-                  room={roomDraft.room}
-                  onChange={guardSnapshotIntent(commitPolicies)}
-                />
+              moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
+                labelIntentIsCurrent(id, true)
+                  ? applyRoomIntent((current) => ({
+                      ...current,
+                      draft: moveMapLabel(current.draft, id, location),
+                    }))
+                  : false
               ),
-              selection:
-                arrange?.kind === 'actor' ? (
-                  <>
-                    <CreatureOrders
-                      scope={siteScope}
-                      room={roomDraft.room}
-                      monster={arrange.monster}
-                      placementNames={placementNames}
-                      titled={false}
-                      binding={
-                        roomDraft.room.monsterBindings?.[arrange.monster.id]
-                      }
-                      onFactionChange={guardBindingIntent(
-                        (faction: string | undefined) =>
-                          setMonsterFaction(arrange.monster.id, faction)
-                      )}
-                      onOrdersChange={guardBindingIntent(
-                        (next: RoomMonsterBinding | undefined) =>
-                          setMonsterOrders(arrange.monster.id, next)
-                      )}
-                    />
-                    <StudioSection
-                      title="Authored dispositions"
-                      level="subsection"
-                      about={
-                        <p>
-                          These are authored relationships, not a live stance
-                          calculation. Conditions and knowledge are evaluated by
-                          the engine.
-                        </p>
-                      }
-                    >
-                      <AuthoredDispositions
-                        document={{ draft: roomDraft, scope: siteScope }}
-                        faction={
-                          roomDraft.room.monsterBindings?.[arrange.monster.id]
-                            ?.faction
-                        }
-                      />
-                    </StudioSection>
-                  </>
-                ) : arrange?.kind === 'scene' ? (
-                  selectedProp && optionSections.single ? (
+              renameMapLabel: guardIntent((id: string, text: string) =>
+                labelIntentIsCurrent(id)
+                  ? applyRoomIntent((current) => ({
+                      ...current,
+                      draft: renameMapLabel(current.draft, id, text),
+                    }))
+                  : false
+              ),
+              deleteMapLabel: guardIntent((id: string) =>
+                labelIntentIsCurrent(id)
+                  ? applyRoomIntent((current) => ({
+                      ...current,
+                      draft: deleteMapLabel(current.draft, id),
+                    }))
+                  : false
+              ),
+              cancelTransients,
+              propTool: tool,
+              setPropTool: (next) => {
+                cancelTransients();
+                setTool(next);
+                setRoomTool(next);
+              },
+              socialControls: {
+                factions: (
+                  <FactionsPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    placementNames={placementNames}
+                    onChange={guardSnapshotIntent(commitPolicies)}
+                    onNotice={guardSnapshotIntent((message: string) => {
+                      setNotice(message);
+                      return true;
+                    })}
+                  />
+                ),
+                dispositions: (
+                  <DispositionsPanel
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    placementNames={placementNames}
+                    onChange={guardSnapshotIntent(commitPolicies)}
+                  />
+                ),
+                intel: (
+                  <IntelPanel
+                    explicitRename
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    onChange={guardSnapshotIntent(commitPolicies)}
+                  />
+                ),
+                selection:
+                  arrange?.kind === 'actor' ? (
                     <>
-                      {declarationEditor}
-                      {optionSections.orders ? (
-                        <PropOrders
-                          items={[selectedProp]}
-                          bindings={roomDraft.room.propBindings}
-                          declaredIds={
-                            new Set(
-                              Object.keys(roomDraft.room.propDeclarations)
-                            )
+                      <CreatureOrders
+                        scope={siteScope}
+                        room={roomDraft.room}
+                        monster={arrange.monster}
+                        placementNames={placementNames}
+                        titled={false}
+                        binding={
+                          roomDraft.room.monsterBindings?.[arrange.monster.id]
+                        }
+                        onFactionChange={guardBindingIntent(
+                          (faction: string | undefined) =>
+                            setMonsterFaction(arrange.monster.id, faction)
+                        )}
+                        onOrdersChange={guardBindingIntent(
+                          (next: RoomMonsterBinding | undefined) =>
+                            setMonsterOrders(arrange.monster.id, next)
+                        )}
+                      />
+                      <StudioSection
+                        title="Authored dispositions"
+                        level="subsection"
+                        about={
+                          <p>
+                            These are authored relationships, not a live stance
+                            calculation. Conditions and knowledge are evaluated
+                            by the engine.
+                          </p>
+                        }
+                      >
+                        <AuthoredDispositions
+                          document={{ draft: roomDraft, scope: siteScope }}
+                          faction={
+                            roomDraft.room.monsterBindings?.[arrange.monster.id]
+                              ?.faction
                           }
-                          doorIds={
-                            new Set(
-                              Object.keys(roomDraft.room.doorBindings ?? {})
-                            )
-                          }
-                          recordIds={(siteScope.intel ?? []).map(
-                            (record) => record.id
-                          )}
-                          scope={siteScope}
-                          room={roomDraft.room}
-                          placementNames={placementNames}
-                          onChange={guardBindingIntent(
-                            (id: string, next: RoomPropBinding | undefined) =>
-                              id === selectedProp.id
-                                ? setPropBinding(id, next)
-                                : false
-                          )}
                         />
-                      ) : (
-                        <p>
-                          {optionSections.door
-                            ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
-                            : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
-                        </p>
-                      )}
+                      </StudioSection>
                     </>
-                  ) : (
-                    <p>
-                      Select one placed prop to edit its held intel and orders.
-                    </p>
-                  )
-                ) : null,
-            },
-            propControls: {
-              palette: assetPalette,
-              tree: siteSceneTree,
-              selection:
-                activeStudioTarget?.kind === 'scene'
-                  ? renderVisualPropControls()
-                  : null,
-              arrangeExtras:
-                activeStudioTarget?.kind === 'scene' ? (
-                  <>
-                    <div className="wb-actions">{duplicateDeleteButtons}</div>
-                    {pointLightEditor}
-                  </>
-                ) : null,
-              groupActions:
-                activeStudioTarget?.kind === 'scene'
-                  ? groupUngroupActions
-                  : null,
-            },
-            saveStatus,
-            notice: notice || null,
-            autosaveBlocked,
-            saveLocalDraft: saveNow,
-            dismissNotice: () => setNotice(''),
-            publishing: {
-              busy: publishBusy,
-              setBusy: handlePublishBusy,
-            },
-          })}
-        </PlacedMonstersContext.Provider>
-      </SiteBundlesContext.Provider>
+                  ) : arrange?.kind === 'scene' ? (
+                    selectedProp && optionSections.single ? (
+                      <>
+                        {declarationEditor}
+                        {optionSections.orders ? (
+                          <PropOrders
+                            items={[selectedProp]}
+                            bindings={roomDraft.room.propBindings}
+                            declaredIds={
+                              new Set(
+                                Object.keys(roomDraft.room.propDeclarations)
+                              )
+                            }
+                            doorIds={
+                              new Set(
+                                Object.keys(roomDraft.room.doorBindings ?? {})
+                              )
+                            }
+                            recordIds={(siteScope.intel ?? []).map(
+                              (record) => record.id
+                            )}
+                            scope={siteScope}
+                            room={roomDraft.room}
+                            placementNames={placementNames}
+                            onChange={guardBindingIntent(
+                              (
+                                id: string,
+                                next: RoomPropBinding | undefined
+                              ) =>
+                                id === selectedProp.id
+                                  ? setPropBinding(id, next)
+                                  : false
+                            )}
+                          />
+                        ) : (
+                          <p>
+                            {optionSections.door
+                              ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
+                              : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p>
+                        Select one placed prop to edit its held intel and
+                        orders.
+                      </p>
+                    )
+                  ) : null,
+              },
+              propControls: {
+                palette: assetPalette,
+                tree: siteSceneTree,
+                selection:
+                  activeStudioTarget?.kind === 'scene'
+                    ? renderVisualPropControls()
+                    : null,
+                arrangeExtras:
+                  activeStudioTarget?.kind === 'scene' ? (
+                    <>
+                      <div className="wb-actions">{duplicateDeleteButtons}</div>
+                      {pointLightEditor}
+                    </>
+                  ) : null,
+                groupActions:
+                  activeStudioTarget?.kind === 'scene'
+                    ? groupUngroupActions
+                    : null,
+              },
+              saveStatus,
+              notice: notice || null,
+              autosaveBlocked,
+              saveLocalDraft: saveNow,
+              dismissNotice: () => setNotice(''),
+              publishing: {
+                busy: publishBusy,
+                setBusy: handlePublishBusy,
+              },
+            })}
+          </PlacedMonstersContext.Provider>
+        </SiteBundlesContext.Provider>
+      </SiteNamesContext.Provider>
     );
   }
 

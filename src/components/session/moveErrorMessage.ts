@@ -67,5 +67,9 @@ export function formatMoveError(err: unknown): string {
   if (isNotYourTurnError(err)) {
     return NOT_YOUR_TURN_MESSAGE;
   }
+  // The server's sentence as written (rpg-project#925): `rawMessage`, never
+  // `message`, which carries a "[failed_precondition] " prefix the player
+  // has no use for.
+  if (err instanceof ConnectError) return err.rawMessage || 'Move RPC failed';
   return err instanceof Error ? err.message : 'Move RPC failed';
 }

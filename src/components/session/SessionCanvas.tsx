@@ -86,6 +86,7 @@ import { resolveMainHandPresentationByRefKey } from '../hex-grid/mainHandWeapons
 import type { OffHandPresentation } from '../hex-grid/offHandEquipment';
 import { resolveOffHandPresentationByRefKey } from '../hex-grid/offHandEquipment';
 import { PathPreview } from '../hex-grid/PathPreview';
+import { driftToward } from '../hex-grid/presentationDrift';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import { AreaFootprintPreview } from './AreaFootprintPreview';
@@ -187,6 +188,16 @@ export interface SessionCanvasProps {
    * A peer's off hand comes from their sighting; see above. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
+  /**
+   * The viewer's own walk-off during a relocation cut (rpg-project#925):
+   * toward `to`, for show. The figure is drawn offset; `myPosition` is
+   * untouched.
+   */
+  selfWalkOff?: {
+    readonly key: string;
+    readonly to: { readonly x: number; readonly y: number };
+    readonly durationMs: number;
+  };
   /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
    * or absent when the author stated none — in which case the camera sits
    * exactly where it always has. Presentation only: it aims the first
@@ -233,6 +244,13 @@ export interface SessionCanvasProps {
    * called in that case unless `cellAimEnabled` gives the occupied cell to
    * CELL aiming instead. */
   onEntityClick?: (subject: string) => void;
+  /**
+   * A click on a figure that has nothing of its own to do, standing on a
+   * cell: true when the cell's prop took the click (rpg-project#959) — a
+   * friend standing on the grate does not hide the grate. False leaves the
+   * click as it was (nothing).
+   */
+  onPropUnderFigure?: (cell: CubeCoord) => boolean;
   /** Fires when a click lands on a live, sighted creature that is NOT in
    * `attackableTargets`, while the caller offers an approach (an armed
    * Speak choosing who to talk to — rpg-project#753 R4). The walk toward
@@ -378,6 +396,7 @@ export function SessionScene({
   offHandPresentation,
   localIsDowned = false,
   myPosition,
+  selfWalkOff,
   startFacing,
   movements,
   heldMovementMembers,
@@ -386,6 +405,7 @@ export function SessionScene({
   onHexClick,
   onCancelSelection,
   onEntityClick,
+  onPropUnderFigure,
   onApproachClick,
   onBumpClick,
   clickToAct,
@@ -435,6 +455,19 @@ export function SessionScene({
   // `new THREE.Vector3(...)` built inline on every render (Copilot review,
   // PR #764) would snap the camera back to the character on any unrelated
   // re-render, silently discarding whatever the player just panned to.
+  const selfDrift = useMemo(
+    () =>
+      selfWalkOff
+        ? driftToward(
+            selfWalkOff.key,
+            myPosition,
+            positionToCube(selfWalkOff.to),
+            hexSize,
+            selfWalkOff.durationMs
+          )
+        : undefined,
+    [selfWalkOff, myPosition, hexSize]
+  );
   const target = cubeToWorld(myPosition, hexSize);
   const initialTargetRef = useRef<THREE.Vector3 | null>(null);
   if (initialTargetRef.current === null) {
@@ -627,8 +660,11 @@ export function SessionScene({
         case 'speak':
           onSpeakToClick?.(subject);
           return;
-        case 'menu':
         case 'none':
+          if (observed && !memberTargeting)
+            onPropUnderFigure?.(observed.position);
+          return;
+        case 'menu':
           return;
       }
     },
@@ -645,6 +681,7 @@ export function SessionScene({
       onBumpClick,
       onStrikeClick,
       onSpeakToClick,
+      onPropUnderFigure,
       bumpArmed,
       verbsFor,
     ]
@@ -667,8 +704,12 @@ export function SessionScene({
         handleTargetClick(characterId);
         return;
       }
+      // A GHOST IS NOT A HIT (rpg-project#961): a remembered member is
+      // where someone was last seen, not someone standing there, and pathing
+      // already walks through it (`occupantPassages`). Its cell is the floor:
+      // the ordinary walk, or the thing standing on it (rpg-project#959).
       const hit = otherMembers?.find(
-        (member) => coordToKey(member.position) === key
+        (member) => !member.remembered && coordToKey(member.position) === key
       );
       if (hit) {
         handleTargetClick(hit.subject);
@@ -1031,13 +1072,24 @@ export function SessionScene({
         entityId={characterId}
         targetMarker={targetMarkerFor(characterId)}
         speech={speech?.get(characterId)}
-        onClick={memberTargeting ? handleTargetClick : undefined}
+        // YOUR OWN FIGURE NEVER HIDES WHAT YOU STAND ON (rpg-project#959):
+        // the figure's mesh takes every click on it (and stops it reaching
+        // the floor), so off targeting, a click on it is a click on the prop
+        // under it, if any.
+        onClick={
+          memberTargeting
+            ? handleTargetClick
+            : onPropUnderFigure
+              ? () => onPropUnderFigure(myPosition)
+              : undefined
+        }
         onPointerOver={memberTargeting ? setMeshHoveredSubject : undefined}
         onPointerOut={
           memberTargeting ? () => setMeshHoveredSubject(null) : undefined
         }
         name={characterName}
         position={myPosition}
+        presentationDrift={selfDrift}
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}

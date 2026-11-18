@@ -7,7 +7,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import type { CreatureStates } from '../world-building/creatureStates';
 import { setDoorBindingState } from '../world-building/doorBindingEdits';
 import {
   dungeonSourceLost,
@@ -30,10 +29,6 @@ import {
   saveRoomDraft,
   stringifyRoomDraft,
 } from '../world-building/roomDraft';
-import {
-  patchStateHolds,
-  setStateBlocks,
-} from '../world-building/statePostEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import posts from './fixtures/the-mad-king-posts.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
@@ -489,57 +484,6 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
       exportDraftYaml({ draft: loaded.value, scope: loaded.scope }, result.key)
     ).toBe(served);
   });
-
-  it('the two authored post fields edit and export, and only their lines change', () => {
-    const result = read(posts);
-    const binding = result.draft.room.monsterBindings!['gate-1'];
-    let states: CreatureStates = setStateBlocks(
-      binding.states!,
-      'alert',
-      false
-    );
-    states = patchStateHolds(states, 'posted', {
-      against: 'leaving',
-      pass: undefined,
-    });
-    const draft = {
-      ...result.draft,
-      room: {
-        ...result.draft.room,
-        monsterBindings: {
-          ...result.draft.room.monsterBindings,
-          'gate-1': { ...binding, states },
-        },
-      },
-    };
-    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
-    const gate = parse(saved).room.room.monsterBindings['gate-1'].states;
-    expect(gate.posted.holds).toEqual({
-      door: 'gate-wall-door',
-      at: [
-        { q: -3, r: 7 },
-        { q: -4, r: 7 },
-      ],
-      against: 'leaving',
-    });
-    expect(gate.alert).not.toHaveProperty('blocks');
-    expect(gate.alert.holds.against).toBe('entering');
-    const held =
-      '            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }\n';
-    expect(saved).toBe(
-      posts
-        .replace(
-          held,
-          '            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: leaving }\n'
-        )
-        .replace(
-          '          alert:\n            blocks: true\n',
-          '          alert:\n'
-        )
-    );
-    const again = read(saved);
-    expect(again.draft.room.monsterBindings!['gate-1'].states).toEqual(states);
-  });
 });
 
 /**
@@ -569,15 +513,22 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
               success: admitted
               failure: troupe-failed
 `;
-  // The castle authors no `not` of an interaction; the captain's stand-aside
-  // gets one here, withheld once the party is arrested.
+  // The captain's stand-aside authors its own `not`s since rpg-project#925
+  // (closed to the wanted and the arrested). The castle authors no `not` of
+  // an interaction; one more is added here, withheld once the party is
+  // arrested, so that form is round-tripped too.
   const STAND_ASIDE_REQUIRES = `            requires:
-              not:
-                interaction: { id: front-gate, in: [arrested] }
+              - not:
+                  recognized: wanted
+              - not:
+                  recognized: arrested
+`;
+  const NOT_INTERACTION = `              - not:
+                  interaction: { id: front-gate, in: [arrested] }
 `;
   const gate = served.replace(
-    '            say: Stand aside or bleed.\n',
-    `            say: Stand aside or bleed.\n${STAND_ASIDE_REQUIRES}`
+    STAND_ASIDE_REQUIRES,
+    `${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`
   );
 
   type Parsed = {
@@ -606,7 +557,8 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
   it('the served castle carries every new form', () => {
     expect(ROOT_INTERACTIONS).toContain('  front-gate:\n');
     expect(served.split(TROUPE_REQUIRES)).toHaveLength(4);
-    expect(gate).toContain(STAND_ASIDE_REQUIRES);
+    expect(served.split(STAND_ASIDE_REQUIRES)).toHaveLength(2);
+    expect(gate).toContain(`${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`);
     const captain = parse(gate).room.room.monsterBindings.captain.options;
     const option = (id: string) =>
       captain.find((o: { id: string }) => o.id === id);
@@ -624,9 +576,11 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     expect(option('guest').requires).toEqual([
       { interaction: { id: 'front-gate', in: ['fresh', 'warned-troupe'] } },
     ]);
-    expect(option('stand-aside').requires).toEqual({
-      not: { interaction: { id: 'front-gate', in: ['arrested'] } },
-    });
+    expect(option('stand-aside').requires).toEqual([
+      { not: { recognized: 'wanted' } },
+      { not: { recognized: 'arrested' } },
+      { not: { interaction: { id: 'front-gate', in: ['arrested'] } } },
+    ]);
   });
 
   it('imports, keeps each list as a list, and an unedited download is byte-identical', () => {
@@ -678,7 +632,7 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     ]);
     expect(saved).toContain(ROOT_INTERACTIONS);
     expect(saved.split(TROUPE_REQUIRES)).toHaveLength(4);
-    expect(saved).toContain(STAND_ASIDE_REQUIRES);
+    expect(saved).toContain(`${STAND_ASIDE_REQUIRES}${NOT_INTERACTION}`);
     // It re-parses, and re-imports with the same grammar.
     expect(grammarOf(parse(saved))).toEqual(grammarOf(parse(gate)));
     const again = read(saved);

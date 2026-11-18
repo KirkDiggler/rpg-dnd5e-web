@@ -2,6 +2,7 @@ import type { CompositionSource } from '@/compositions/compositionSource';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { documentPlacementNames } from '../world-building/placementNames';
 import { projectStudioArrange } from '../world-building/studioArrange';
 import type {
   WorldBuildingCanvasOptions,
@@ -15,7 +16,7 @@ import type {
   EncounterStudioSession,
   LayoutViewportProps,
 } from './studioSession';
-import { studioButton } from './studioTestNavigation';
+import { encounterSection, studioButton } from './studioTestNavigation';
 
 const observed = vi.hoisted(() => ({
   session: null as EncounterStudioSession | null,
@@ -85,6 +86,20 @@ vi.mock('@/author/useAuthoringGate', () => ({
   useAuthoringGate: () => ({ state: gate.state, retry: vi.fn() }),
 }));
 
+/** The refusals the header reads (R34), set by a test; null reads the real
+ * publishing hook, which with the gate off holds none. */
+const refusals = vi.hoisted(() => ({
+  current: null as Array<{ path: string; message: string }> | null,
+}));
+vi.mock('./studioPublishing', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./studioPublishing')>();
+  return {
+    ...real,
+    currentRefusals: (...args: Parameters<typeof real.currentRefusals>) =>
+      refusals.current ?? real.currentRefusals(...args),
+  };
+});
+
 vi.mock('./LayoutViewport', () => ({
   LayoutViewport: (props: LayoutViewportProps) => {
     observed.layoutProps = props;
@@ -146,6 +161,7 @@ function createSession(): EncounterStudioSession {
 
 beforeEach(() => {
   gate.state = 'gate-off';
+  refusals.current = null;
   observed.session = createSession();
   observed.ownerMounts =
     observed.ownerUnmounts =
@@ -626,6 +642,8 @@ describe('shared Arrange context lifecycle', () => {
       'Wall',
       'Door',
       'Note',
+      // The places mode toggle (rpg-project#972).
+      'Places',
       'Inspector (N)',
       'Undo',
       'Redo',
@@ -673,30 +691,28 @@ describe('shared Arrange context lifecycle', () => {
         .map((node) => node.textContent)
     ).toEqual(['Build', 'Encounter']);
   });
-  it('keeps exactly one sidebar section, name drafts and the canvas across section switches and N', () => {
-    observed.session!.document.scope.tables = { patrol: {} };
+  // Re-homed from the Tables section (rpg-project#970 review): the Bundles
+  // section, which remains, guards the same lifecycle.
+  it('keeps exactly one sidebar section and the canvas across section switches and N', () => {
     const mounted = render(
       <EncounterStudioWorkspace compositionSource={source} />
     );
     const canvas = screen.getByLabelText('Layout floor surface');
-    click('Tables');
-    fireEvent.click(screen.getByLabelText('Table patrol'));
-    const name = screen.getByLabelText('Table id for patrol');
-    fireEvent.change(name, { target: { value: 'Night watch' } });
-    fireEvent.blur(name);
+    const bundles = (): void => {
+      fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
+      fireEvent.click(encounterSection('Bundles'));
+    };
+    bundles();
+    expect(screen.getByRole('heading', { name: 'Bundles' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Options (N)' })).toBeNull();
     click('Wall');
-    expect(screen.queryByRole('button', { name: 'Add table' })).toBeNull();
     expect(
       screen.getByRole('region', { name: 'New wall palette' })
     ).toBeTruthy();
-    click('Tables');
+    bundles();
     expect(
       screen.queryByRole('region', { name: 'New wall palette' })
     ).toBeNull();
-    expect(
-      (screen.getByLabelText('Table id for patrol') as HTMLInputElement).value
-    ).toBe('Night watch');
     fireEvent.keyDown(window, { key: 'n' });
     expect(
       screen.queryByRole('complementary', { name: 'Studio options' })
@@ -716,11 +732,6 @@ describe('shared Arrange context lifecycle', () => {
     ).toBe('true');
     expect(screen.getByLabelText('Layout floor surface')).toBe(canvas);
     expect(observed.layoutUnmounts).toBe(0);
-    expect(observed.session!.commitTables).not.toHaveBeenCalled();
-    click('Apply table name');
-    expect(observed.session!.commitTables).toHaveBeenCalledWith({
-      'Night watch': {},
-    });
   });
 
   it('N ignores text fields, selects, contenteditable, modifiers, repeats and composition', () => {
@@ -889,5 +900,342 @@ describe('shared Arrange context lifecycle', () => {
     expect(
       within(inspector()).getByRole('heading', { name: 'Room' })
     ).toBeTruthy();
+  });
+
+  describe('a refusal is seen from anywhere (R34)', () => {
+    const SAYS_AND_DOES =
+      'an option is said or done, not both: write `say` or `do`';
+    const refused = {
+      path: 'room.room.monsterBindings.goblin-1.options[0].do',
+      message: SAYS_AND_DOES,
+    };
+    /** A document that places goblin-1, so its refusal is a jump. */
+    const placeGoblin = (): void => {
+      observed.session = {
+        ...observed.session!,
+        document: createPopulatedStudioDocument(),
+      };
+    };
+    const count = (): HTMLElement | null =>
+      within(document.querySelector('.es-header') as HTMLElement).queryByRole(
+        'button',
+        { name: /refusal/ }
+      );
+
+    it('with no refusal the header shows no count', () => {
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()).toBeNull();
+      click('Encounter');
+      expect(count()).toBeNull();
+    });
+
+    it('with one refusal the header names the count on Build and on Encounter, in both views', () => {
+      refusals.current = [refused];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()?.textContent).toBe('1 refusal');
+      click('3D');
+      expect(count()?.textContent).toBe('1 refusal');
+      click('Encounter');
+      expect(count()?.textContent).toBe('1 refusal');
+      click('Build');
+      click('Layout');
+      expect(count()?.textContent).toBe('1 refusal');
+    });
+
+    it('two refusals are counted as two', () => {
+      refusals.current = [refused, { path: 'line 3', message: 'bad yaml' }];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(count()?.textContent).toBe('2 refusals');
+    });
+
+    it("activating the count lists each refusal in the engine's words without opening Save", () => {
+      refusals.current = [refused, { path: 'line 3', message: 'bad yaml' }];
+      placeGoblin();
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      click('Encounter');
+      const button = count()!;
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(button);
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      const list = within(
+        screen.getByRole('group', { name: 'Current refusals' })
+      );
+      const name = documentPlacementNames(observed.session!.document).get(
+        'goblin-1'
+      )!;
+      expect(
+        list.getByRole('button', { name: `${name}: ${SAYS_AND_DOES}` })
+      ).toBeTruthy();
+      // A refusal with no noun stays a sentence, with its path.
+      expect(list.getByText('bad yaml')).toBeTruthy();
+      expect(
+        list
+          .getAllByRole('button')
+          .filter((button) => button.getAttribute('aria-label') !== 'Copy path')
+          .map((button) => button.textContent)
+      ).toEqual([`${name}: ${SAYS_AND_DOES}`, 'Close refusals']);
+      expect(
+        screen.queryByRole('region', { name: 'Save and Play' })
+      ).toBeNull();
+    });
+
+    it('Escape or Close closes the list and returns focus to the count', () => {
+      refusals.current = [refused];
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      fireEvent.click(count()!);
+      fireEvent.keyDown(
+        screen.getByRole('group', { name: 'Current refusals' }),
+        { key: 'Escape' }
+      );
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+      fireEvent.click(count()!);
+      fireEvent.click(screen.getByRole('button', { name: 'Close refusals' }));
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(document.activeElement).toBe(count());
+    });
+
+    it('the jump selects the creature and opens its inspector on Build', () => {
+      refusals.current = [refused];
+      placeGoblin();
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      click('Encounter');
+      fireEvent.click(count()!);
+      const name = documentPlacementNames(observed.session!.document).get(
+        'goblin-1'
+      )!;
+      fireEvent.click(
+        screen.getByRole('button', { name: `${name}: ${SAYS_AND_DOES}` })
+      );
+      expect(observed.session!.creatures.select).toHaveBeenLastCalledWith(
+        'goblin-1'
+      );
+      expect(
+        screen
+          .getByRole('button', { name: 'Build' })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+      expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+      // The list closes on the jump; the count stays while the refusal does.
+      expect(
+        screen.queryByRole('group', { name: 'Current refusals' })
+      ).toBeNull();
+      expect(count()?.textContent).toBe('1 refusal');
+    });
+  });
+});
+
+describe('the author sets the inspector width (rpg-project#979)', () => {
+  const WIDTH_KEY = 'rpg.concepts.encounter-studio.inspector-width.v1';
+  /** A per-test store; the width is the only thing the shell writes. */
+  function memory(initial: Record<string, string> = {}) {
+    const bytes = new Map(Object.entries(initial));
+    return {
+      bytes,
+      getItem: vi.fn((key: string) => bytes.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        bytes.set(key, value);
+      }),
+    };
+  }
+  const handle = (): HTMLElement =>
+    screen.getByRole('separator', { name: 'Resize inspector' });
+  const now = (): number => Number(handle().getAttribute('aria-valuenow'));
+  const cssWidth = (): string =>
+    (
+      document.querySelector('.encounter-studio') as HTMLElement
+    ).style.getPropertyValue('--es-inspector-width');
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1280,
+    });
+  });
+
+  it('the handle is a vertical separator with its limits: default 384, min 320, max half the workspace', () => {
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={memory()} />
+    );
+    expect(handle().getAttribute('aria-orientation')).toBe('vertical');
+    expect(handle().getAttribute('aria-controls')).toBe('studio-sidebar');
+    expect(handle().tabIndex).toBe(0);
+    expect(now()).toBe(384);
+    expect(handle().getAttribute('aria-valuemin')).toBe('320');
+    expect(handle().getAttribute('aria-valuemax')).toBe('640');
+    expect(cssWidth()).toBe('384px');
+  });
+
+  it('arrows step the width within the limits, Home and End go to them, and the width is kept', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(400);
+    expect(cssWidth()).toBe('400px');
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    expect(now()).toBe(368);
+    fireEvent.keyDown(handle(), { key: 'Home' });
+    expect(now()).toBe(320);
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' });
+    expect(now()).toBe(320);
+    fireEvent.keyDown(handle(), { key: 'End' });
+    expect(now()).toBe(640);
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(640);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('640');
+    // Double-click resets to the default.
+    fireEvent.doubleClick(handle());
+    expect(now()).toBe(384);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('384');
+  });
+
+  it('a drag on the inner edge widens toward the map, previews without committing, and commits on release', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), {
+      clientX: 700,
+      pointerId: 1,
+      buttons: 1,
+    });
+    // The preview is the CSS variable alone; nothing is kept yet.
+    expect(cssWidth()).toBe('484px');
+    expect(storage.bytes.has(WIDTH_KEY)).toBe(false);
+    fireEvent.pointerUp(handle(), { clientX: 700, pointerId: 1 });
+    expect(now()).toBe(484);
+    expect(storage.bytes.get(WIDTH_KEY)).toBe('484');
+    // Past the limit it stops at the limit.
+    fireEvent.pointerDown(handle(), { clientX: 700, pointerId: 2 });
+    fireEvent.pointerMove(handle(), {
+      clientX: -2000,
+      pointerId: 2,
+      buttons: 1,
+    });
+    fireEvent.pointerUp(handle(), { clientX: -2000, pointerId: 2 });
+    expect(now()).toBe(640);
+  });
+
+  const resizeWindow = (width: number): void =>
+    act(() => {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: width,
+      });
+      window.dispatchEvent(new Event('resize'));
+    });
+  const docking = (): string | null =>
+    (document.querySelector('.encounter-studio') as HTMLElement).getAttribute(
+      'data-inspector'
+    );
+
+  it('a stored 640 is restored, and clamped when the window narrows so the map keeps its floor', () => {
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: '640' })}
+      />
+    );
+    expect(now()).toBe(640);
+    // Layout's floor: the room list (220) and a 320 px canvas, plus the gutter.
+    resizeWindow(1000);
+    expect(handle().getAttribute('aria-valuemax')).toBe('436');
+    expect(now()).toBe(436);
+    expect(cssWidth()).toBe('436px');
+  });
+
+  it('at 1280 in 3D the widest inspector leaves the palette, the scene tree and a 320 px canvas', () => {
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: '640' })}
+      />
+    );
+    expect(docking()).toBe('docked');
+    click('3D');
+    // 1280 − 24 gutter − 250 palette − 270 scene tree − 320 canvas = 416.
+    expect(handle().getAttribute('aria-valuemax')).toBe('416');
+    expect(now()).toBe(416);
+    expect(docking()).toBe('docked');
+    // Back on Layout the author's own width returns; it was only clamped.
+    click('Layout');
+    expect(now()).toBe(640);
+    click('3D');
+    fireEvent.keyDown(handle(), { key: 'End' });
+    expect(now()).toBe(416);
+  });
+
+  it('where the default inspector and the map floor do not fit side by side, the inspector overlays', () => {
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={memory()} />
+    );
+    resizeWindow(820);
+    expect(docking()).toBe('overlay');
+    click('3D');
+    expect(docking()).toBe('overlay');
+    // 3D docks only from 1248 px (840 floor + 384 + 24).
+    resizeWindow(1247);
+    expect(docking()).toBe('overlay');
+    resizeWindow(1248);
+    expect(docking()).toBe('docked');
+    // A hidden inspector neither docks nor overlays.
+    click('Inspector (N)');
+    expect(docking()).toBeNull();
+  });
+
+  it('a drag whose release is lost ends without committing, and a hover with no button does not resize', () => {
+    const storage = memory();
+    render(
+      <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    );
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1, buttons: 1 });
+    expect(cssWidth()).toBe('484px');
+    fireEvent.lostPointerCapture(handle(), { pointerId: 1 });
+    expect(cssWidth()).toBe('384px');
+    fireEvent.pointerMove(handle(), { clientX: 600, pointerId: 1, buttons: 0 });
+    expect(cssWidth()).toBe('384px');
+    // A move with the button already up ends a live drag the same way.
+    fireEvent.pointerDown(handle(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 700, pointerId: 1, buttons: 1 });
+    fireEvent.pointerMove(handle(), { clientX: 650, pointerId: 1, buttons: 0 });
+    expect(cssWidth()).toBe('384px');
+    fireEvent.pointerMove(handle(), { clientX: 600, pointerId: 1, buttons: 1 });
+    expect(cssWidth()).toBe('384px');
+    expect(now()).toBe(384);
+    expect(storage.bytes.has(WIDTH_KEY)).toBe(false);
+  });
+
+  it('a store that throws or holds nonsense leaves the default', () => {
+    const throwing = {
+      getItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+    };
+    const first = render(
+      <EncounterStudioWorkspace compositionSource={source} storage={throwing} />
+    );
+    expect(now()).toBe(384);
+    // A write that throws still moves the edge for this visit.
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' });
+    expect(now()).toBe(400);
+    first.unmount();
+    render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        storage={memory({ [WIDTH_KEY]: 'wide' })}
+      />
+    );
+    expect(now()).toBe(384);
   });
 });

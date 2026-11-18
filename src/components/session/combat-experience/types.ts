@@ -3,6 +3,7 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import type { PartySharing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AttackRef,
   ClockKind,
@@ -18,6 +19,7 @@ import type { PartySide } from '../partySide';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import type { DescribeContext } from './describeAct';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
+import type { RelocateCut } from './relocateCut';
 import type { VoiceAtPlace } from './speechAtSpeakers';
 import type { ToastRule } from './toastPolicy';
 
@@ -242,6 +244,11 @@ export interface CombatExperienceMapRenderProps {
 interface CombatExperienceBaseProps {
   /** Review defaults to a fixed visual-gate frame; the production portal fills its definite-height parent. */
   layout?: CombatExperienceLayout;
+  /** The run's sharing dial as the server reports it (rpg-project#935);
+   * absent or UNSPECIFIED shows nothing. */
+  partySharing?: PartySharing;
+  /** The viewer's own relocation cut while it plays (rpg-project#925). */
+  relocateCut?: RelocateCut | null;
   /** Existing observer-disclosed roster; one shared portrait cache for this HUD. */
   portraits?: {
     scopeKey: string;
@@ -344,6 +351,9 @@ interface CombatExperienceBaseProps {
   onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
   /** Say one of the chosen target's lines: the option id, echoed verbatim. */
   onSpeakOption?: (optionId: string) => void;
+  /** Do one of the chosen prop's things (rpg-project#959): the option id,
+   * echoed verbatim. */
+  onInteractOption?: (optionId: string) => void;
   /** A map click on a Speak target the offer does not list: walk toward it. */
   onApproachTarget?: (target: SpeakTarget) => void;
   onConfirmTargets?: () => void;

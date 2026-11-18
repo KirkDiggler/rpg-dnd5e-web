@@ -168,6 +168,15 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
       executable: false,
       arms: null,
     },
+
+    // A thing done to a prop (rpg-project#959) is NEVER a declaration of its
+    // own: its rows ride the Speak row's `interact_options`, and the prop's
+    // menu sends them. A server that offered one as a row would be offering
+    // something this client draws as nothing.
+    [Verb.INTERACT]: {
+      executable: false,
+      arms: null,
+    },
   });
 
 /** Every value the proto `Verb` enum defines, for the exhaustiveness test. */

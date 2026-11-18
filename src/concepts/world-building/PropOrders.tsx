@@ -172,6 +172,7 @@ export function PropOrders({
                 the editor carries: it cannot run, so `flee` is not offered. */}
             <OptionsEditor
               owner={id}
+              at={`room.room.propBindings.${id}`}
               options={binding?.options ?? []}
               room={room}
               isProp

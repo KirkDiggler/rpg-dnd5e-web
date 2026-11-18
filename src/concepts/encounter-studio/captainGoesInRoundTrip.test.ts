@@ -5,12 +5,11 @@
  * line that `requires` a recognition's absence, and the captain's machine
  * woken by `on: topic` and guarded by `topic:admitted` into an `in-hall`
  * state with its own table row. The studio loads each, writes each back
- * byte for byte, and says a line's grant in the read-back. No control edits
+ * byte for byte. No control edits
  * them: the operator ruled studio editing onto the needs list (2026-11-12).
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { readBackOf } from '../world-building/readBack';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 
@@ -155,41 +154,12 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
     roundTrips(editedFirst(served, from, to));
   });
 
-  it('the read-back says what a winning line grants, and to whom', () => {
-    const result = read(served);
-    const text = JSON.stringify(
-      readBackOf(result, { kind: 'creature', id: 'gate-1' })
-    );
-    expect(text).toContain(
-      'it recognises the speaker’s party he sees as admitted, and every other carrier who saw it said does too'
-    );
-    expect(text).toContain(
-      'it recognises the speaker as admitted, and every other carrier who saw it said does too'
-    );
-  });
-
-  it('the read-back says what a missed line grants, and the line asking after friends (rpg-project#932)', () => {
-    const result = read(served);
-    const text = JSON.stringify(
-      readBackOf(result, { kind: 'creature', id: 'gate-1' })
-    );
-    expect(text).toContain(
-      'Failure: “Never seen you before. Unless one of that lot will speak for you.”, and it recognises the speaker as turned-away, and every other carrier who saw it said does too'
-    );
-    expect(text).toContain(
-      '“Our friends must have just gone in. Did you see a funny man and let them in?”'
-    );
-  });
-
-  it('the read-back names a grant it cannot say, and keeps it', () => {
+  it('a grant field the studio does not know is kept as written', () => {
     const text = editedFirst(
       served,
       '                  about: speaker\n',
       '                  about: speaker\n                  until: dawn\n'
     );
-    const result = roundTrips(text);
-    expect(
-      JSON.stringify(readBackOf(result, { kind: 'creature', id: 'gate-1' }))
-    ).toContain('a recognition this build cannot say, kept as written');
+    roundTrips(text);
   });
 });

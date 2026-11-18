@@ -1,4 +1,5 @@
 import { fireEvent, screen, within } from '@testing-library/react';
+import { ENCOUNTER_GROUPS } from './encounterNav';
 
 /** Legacy gesture fixtures name an action, not its old toolbar position.
  * Navigate the real new home/options controls before returning that action. */
@@ -12,14 +13,6 @@ export function studioButton(name: string): HTMLElement {
     if (toggle().getAttribute('aria-expanded') !== 'true')
       fireEvent.click(toggle());
   };
-  // Tables is an Encounter-home section; Cast is the home's default.
-  if (name === 'Tables') {
-    const home = button('Encounter');
-    if (home.getAttribute('aria-pressed') !== 'true') fireEvent.click(home);
-    return within(
-      screen.getByRole('navigation', { name: 'Encounter tools' })
-    ).getByRole('button', { name: 'Tables' });
-  }
   if (name === 'Options (N)' || name === 'Inspector (N)') return toggle();
   // Wall, Door and Note are Layout tools; their options show in the inspector.
   if (name === 'Wall' || name === 'Door' || name === 'Label') {
@@ -43,4 +36,23 @@ export function studioButton(name: string): HTMLElement {
     });
   }
   return button(name);
+}
+
+/** An Encounter-side section by its on-screen word (rpg-project#970): the
+ * group that holds it is chosen first, then the section in that group's row.
+ * The Encounter home must already be open. */
+export function encounterSection(label: string): HTMLElement {
+  const group = ENCOUNTER_GROUPS.find((entry) =>
+    entry.sections.some((section) => section.label === label)
+  );
+  if (!group) throw new Error(`no Encounter section is called ${label}`);
+  fireEvent.click(
+    within(screen.getByRole('tablist', { name: 'Encounter groups' })).getByRole(
+      'tab',
+      { name: group.label }
+    )
+  );
+  return within(
+    screen.getByRole('tablist', { name: 'Encounter tools' })
+  ).getByRole('tab', { name: label });
 }

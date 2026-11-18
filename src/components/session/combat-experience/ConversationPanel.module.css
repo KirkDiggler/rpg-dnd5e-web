@@ -116,3 +116,13 @@
   font-size: 11px;
   font-style: italic;
 }
+
+/* A prop's lines sit under its things to do (rpg-project#959). */
+.sayHeading {
+  display: block;
+  margin: 8px 2px 4px;
+  opacity: 0.75;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

@@ -1,5 +1,6 @@
 import { CircleHelp, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { taggedThrough } from '../sharedVia';
 import { describeAct } from './describeAct';
 import { recentEventIdentity } from './recentEventIdentity';
 import { StoryNoticeContent } from './StoryNoticeContent';
@@ -71,9 +72,27 @@ export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
             onClick={(event) => event.stopPropagation()}
           >
             <header className={styles.identity}>
-              <Icon size={18} aria-hidden="true" />
-              <strong>{identity.who}</strong>
-              <span>{identity.what}</span>
+              {/* WHO, THEN WHAT: the name (with its icon) and the tag share a
+                  wrapping row, so a long tag ("Speech · through Toolkit
+                  Sandbox Fighter") drops beneath the name rather than
+                  squeezing it. The close button stays top-right. */}
+              <div className={styles.who} data-part="who">
+                <span className={styles.name} data-part="name">
+                  <Icon size={18} aria-hidden="true" />
+                  <strong>{identity.who}</strong>
+                </span>
+                {/* The corner tag carries the through-mark (rpg-project#935). */}
+                <span className={styles.tag} data-part="tag">
+                  {entry.describeContext
+                    ? taggedThrough(
+                        identity.what,
+                        entry.act,
+                        entry.describeContext.viewerMember,
+                        entry.describeContext.memberNames
+                      )
+                    : identity.what}
+                </span>
+              </div>
               {entry.notice.dismiss && (
                 <button
                   type="button"

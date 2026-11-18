@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { BindingPostPasses } from './BindingPostPasses';
+import { BindingPosts } from './BindingPostPasses';
 import { PassField } from './PassField';
 import type { RoomMonsterBinding } from './roomDraft';
 
@@ -90,9 +90,10 @@ describe('a creature’s behavior posts', () => {
   it('edits the pass of a post and keeps every other key', () => {
     const onChange = vi.fn();
     render(
-      <BindingPostPasses
+      <BindingPosts
         owner="captain"
         binding={captain}
+        scope={{}}
         topics={['admitted']}
         onChange={onChange}
       />
@@ -111,15 +112,19 @@ describe('a creature’s behavior posts', () => {
     });
   });
 
-  it('shows nothing for a creature that posts nothing', () => {
+  it('says plainly when a creature runs no behaviour, and offers no post (rpg-project#975 D)', () => {
     render(
-      <BindingPostPasses
+      <BindingPosts
         owner="cook"
         binding={{}}
+        scope={{}}
         topics={[]}
         onChange={vi.fn()}
       />
     );
-    expect(screen.queryByLabelText('Behavior posts for cook')).toBeNull();
+    expect(screen.getByTestId('posts-no-behaviour-cook').textContent).toBe(
+      'This creature runs no behaviour, so it has no state to hold a post in.'
+    );
+    expect(screen.queryByLabelText('Add post state for cook')).toBeNull();
   });
 });

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { keyRefusalOf, type StudioPublishing } from './studioPublishing';
+import { castleEngineReadBack } from './fixtures/engineReadBack';
+import {
+  currentRefusals,
+  GATE_OFF_SENTENCE,
+  keyRefusalOf,
+  studioReadBackOf,
+  type StudioPublishing,
+} from './studioPublishing';
 
 /** Only the fields `keyRefusalOf` reads. */
 function publishingWith(
@@ -79,5 +86,92 @@ describe('keyRefusalOf', () => {
         })
       )
     ).toBeNull();
+  });
+});
+
+describe('studioReadBackOf (rpg-project#968)', () => {
+  const kept = {
+    readBack: castleEngineReadBack(),
+    readBackIsCurrent: false,
+    preview: { status: 'idle' },
+    yaml: 'key: x',
+  } as unknown as StudioPublishing;
+
+  it('authoring turned off after a good check drops the sentences and says why', () => {
+    expect(studioReadBackOf(kept, 'gate-off')).toEqual({
+      readBack: null,
+      readBackIsCurrent: false,
+      unavailable: GATE_OFF_SENTENCE,
+    });
+  });
+
+  it('with authoring live the kept sentences stay, marked by the hook', () => {
+    expect(studioReadBackOf(kept, 'live')).toEqual({
+      readBack: kept.readBack,
+      readBackIsCurrent: false,
+      unavailable: null,
+    });
+  });
+});
+
+/** The fields `currentRefusals` and `keyRefusalOf` read, with the current
+ * bytes. */
+function current(
+  yaml: string | null,
+  saver: Partial<StudioPublishing['saver']>,
+  preview: Partial<StudioPublishing['preview']>
+): StudioPublishing {
+  return {
+    error: null,
+    yaml,
+    saver: {
+      status: 'idle',
+      errors: [],
+      message: null,
+      submittedYaml: null,
+      ...saver,
+    },
+    preview: { status: 'idle', errors: [], message: null, ...preview },
+  } as unknown as StudioPublishing;
+}
+
+describe('refusals describe the current bytes only (R34)', () => {
+  const refused = [{ path: 'x', message: 'no' }] as never;
+  it("counts the live check's refusals while bytes are encoded", () => {
+    expect(
+      currentRefusals(
+        current('a', {}, { status: 'errors', errors: refused }),
+        'live'
+      )
+    ).toEqual(refused);
+  });
+  it('counts nothing once the bytes are gone (a cleared key)', () => {
+    expect(
+      currentRefusals(
+        current(null, {}, { status: 'errors', errors: refused }),
+        'live'
+      )
+    ).toEqual([]);
+  });
+  it("a refused save's key sentence is current only for the bytes it submitted", () => {
+    const saver = {
+      status: 'error' as const,
+      message: 'InvalidArgument: key must match [a-z0-9-]+',
+      submittedYaml: 'old',
+    };
+    expect(keyRefusalOf(current('old', saver, {}))).toBe(
+      'key must match [a-z0-9-]+'
+    );
+    expect(keyRefusalOf(current('new', saver, {}))).toBeNull();
+  });
+  it("a check's key sentence is not current once the bytes are gone", () => {
+    const preview = {
+      status: 'unreachable' as const,
+      message: 'InvalidArgument: key must match [a-z0-9-]+',
+    };
+    expect(keyRefusalOf(current('a', {}, preview))).toBe(
+      'key must match [a-z0-9-]+'
+    );
+    expect(keyRefusalOf(current(null, {}, preview))).toBeNull();
   });
 });

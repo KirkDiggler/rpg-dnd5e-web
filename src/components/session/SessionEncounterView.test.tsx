@@ -15,6 +15,7 @@ import {
 import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
+  PartySharing,
   VendorStockMode,
   WatchZoneSchema,
   type GetAtlasResponse,
@@ -39,6 +40,7 @@ import {
   FootprintShape,
   GridKind,
   HexLayout,
+  InteractOptionSchema,
   LifeState,
   MemberKind,
   Passage,
@@ -160,6 +162,7 @@ const hoisted = vi.hoisted(() => ({
   streamRecordFn: vi.fn(),
   getRecordFn: vi.fn(),
   streamActsFn: vi.fn(),
+  getStatusFn: vi.fn(),
   getStoryActsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
   publishDiceThrowFn: vi.fn(),
@@ -239,6 +242,7 @@ vi.mock('@/api/client', () => ({
     publishDiceThrow: hoisted.publishDiceThrowFn,
   },
   sessionClient: {
+    getStatus: hoisted.getStatusFn,
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
     getStory: hoisted.getStoryFn,
@@ -5754,7 +5758,7 @@ describe('SessionEncounterView production combat integration', () => {
       renderView();
       await screen.findByTestId('session-canvas');
       result.release();
-      expect(await screen.findByText('Aldric searches')).toBeTruthy();
+      expect(await screen.findByText('You search')).toBeTruthy();
       // The server's verdict, not total against `against`: the line says
       // it, and the formula line carries the roll (#1301).
       expect(screen.getByText('failed perception check')).toBeTruthy();
@@ -6188,7 +6192,7 @@ describe('SessionEncounterView production combat integration', () => {
   it('recovers an Attack selector refusal with generic copy, refreshed provider why, cleared arm, and no retry', async () => {
     readyTurn();
     hoisted.attackFn.mockRejectedValue(
-      new ConnectError('raw selector mismatch', Code.FailedPrecondition)
+      new ConnectError('raw selector mismatch', Code.Aborted)
     );
     renderView();
     await screen.findByRole('button', { name: /longsword/i });
@@ -6225,10 +6229,29 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
   });
 
+  it('shows an Attack refusal sentence (FAILED_PRECONDITION) as the server wrote it (rpg-project#925)', async () => {
+    readyTurn();
+    hoisted.attackFn.mockRejectedValue(
+      new ConnectError('Guard bars the way', Code.FailedPrecondition)
+    );
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText('Guard bars the way');
+    expect(
+      screen.queryByText('That option changed; review your current actions.')
+    ).toBeNull();
+    expect(screen.queryByText(/failed_precondition/i)).toBeNull();
+    expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+  });
+
   it('recovers an End Turn selector refusal instead of swallowing it and never retries', async () => {
     readyTurn();
     hoisted.endTurnFn.mockRejectedValue(
-      new ConnectError('stale end selector', Code.FailedPrecondition)
+      new ConnectError('stale end selector', Code.Aborted)
     );
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /end turn/i }));
@@ -6242,10 +6265,10 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.endTurnFn).toHaveBeenCalledTimes(1);
   });
 
-  it('recovers every Move FailedPrecondition through the stale declaration path regardless of not-your-turn wording', async () => {
+  it('recovers a stale Move declaration (ABORTED, rpg-api#1238) through the stale declaration path', async () => {
     readyTurn();
     hoisted.moveFn.mockRejectedValue(
-      new ConnectError('selector no longer current', Code.FailedPrecondition)
+      new ConnectError('selector no longer current', Code.Aborted)
     );
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /move/i }));
@@ -7300,5 +7323,107 @@ describe('a shout caught through a wall, through the live feed (rpg-dnd5e-web#14
     expect(within(notices).queryByText('You hear voices')).toBeNull();
     expect(within(notices).queryByText('You hear a voice')).toBeNull();
     expect(notices.querySelectorAll('article')).toHaveLength(1);
+  });
+});
+
+describe('the run’s sharing mode (rpg-project#935)', () => {
+  it('sits on the world-clock plate in the server’s words', async () => {
+    readyScene();
+    hoisted.getStatusFn.mockResolvedValue({ partySharing: PartySharing.VIEW });
+    renderView();
+    const plate = await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() =>
+      expect(within(plate).getByText('Shared view')).toBeTruthy()
+    );
+  });
+
+  it('a failed status read shows nothing and the view carries on', async () => {
+    readyScene();
+    hoisted.getStatusFn.mockRejectedValue(new Error('unavailable'));
+    renderView();
+    const plate = await screen.findByTestId('session-combat-free-roam');
+    expect(within(plate).getByText('Free roam')).toBeTruthy();
+    await waitFor(() => expect(hoisted.getStatusFn).toHaveBeenCalled());
+    expect(screen.queryByTestId('sharing-mode')).toBeNull();
+  });
+});
+
+describe('click a placed prop (rpg-project#959, the operator’s grate)', () => {
+  /** The kitchen: the grate is a PLACED footprint on cell (1,0), and the
+   * Speak row offers its two ways. */
+  function kitchen(where = { x: 0, y: 0 }) {
+    readyScene();
+    hoisted.whereResult.position = where;
+    hoisted.atlasResult.atlas = pointyAtlas({
+      placed: [{ id: 'grate', cells: [{ x: 1, y: 0 }] }],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      declarations: [
+        create(DeclarationSchema, {
+          id: 'v2.speak.sealed.1',
+          verb: Verb.SPEAK,
+          available: true,
+          targetKind: TargetKind.MEMBER,
+          interactOptions: [
+            create(InteractOptionSchema, {
+              propId: 'grate',
+              optionId: 'to-chapel',
+              doWords: 'You lift the grate and take the way up.',
+              available: true,
+            }),
+          ],
+        }),
+      ],
+    });
+  }
+  const GRATE = { x: 1, y: -1, z: 0 };
+
+  it('a click on the grate’s cell opens its menu, and walks nowhere', async () => {
+    kitchen();
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalled());
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onHexClick?.(GRATE);
+    });
+    expect(await screen.findByText('What do you do with grate?')).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: 'You lift the grate and take the way up.',
+      })
+    ).toBeTruthy();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('standing on the grate, a click on your own figure (or a friend on it) opens its menu', async () => {
+    kitchen({ x: 1, y: 0 });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalled());
+    let opened = false;
+    await act(async () => {
+      opened =
+        hoisted.lastCanvasProps.current?.onPropUnderFigure?.(GRATE) ?? false;
+    });
+    expect(opened).toBe(true);
+    expect(await screen.findByText('What do you do with grate?')).toBeTruthy();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('a figure on a cell with no prop keeps its click', async () => {
+    kitchen();
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    let opened = true;
+    await act(async () => {
+      opened =
+        hoisted.lastCanvasProps.current?.onPropUnderFigure?.({
+          x: 0,
+          y: 0,
+          z: 0,
+        }) ?? true;
+    });
+    expect(opened).toBe(false);
   });
 });

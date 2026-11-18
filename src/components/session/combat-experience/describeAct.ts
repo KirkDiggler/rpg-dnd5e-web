@@ -28,6 +28,7 @@ import {
   Sense,
   StateKind,
   type Act,
+  type InteractAct,
   type Party,
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -36,10 +37,16 @@ import { authoredWords, holdingPhrase } from '../holdingBeat';
 import { endingResultLine } from '../runEnding';
 import {
   cameThroughFriend,
-  friendNames,
-  perceivers,
-  throughMark,
+  perceiverSays,
+  taggedThrough,
+  type PerceptionVerb,
 } from '../sharedVia';
+import {
+  arrestSentence,
+  relocateEyebrow,
+  relocateSentence,
+} from './relocateLine';
+import { speakSkillName } from './speakOptions';
 import { hopsPhrase, speechWords } from './speechLine';
 
 /**
@@ -239,14 +246,23 @@ export function describeAct(
 }
 
 /**
- * WHAT CAME THROUGH A FRIEND SAYS SO (rpg-project#935): the mark "through
- * Bea" closes the line's detail, so the log row, the toast and every form
- * that reads the describer carry it. The viewer's own entry has no mark.
+ * WHAT CAME THROUGH A FRIEND SAYS SO IN ITS TAG (rpg-project#935): the log
+ * row's eyebrow reads "Speech · through Bea" — never the sentence, so
+ * nothing is said twice, and always when a friend's senses contributed,
+ * even when the sentence names that friend. The viewer's own entry keeps
+ * the plain tag.
  */
 function withThroughMark(act: Act, context: DescribeContext) {
-  const mark = throughMark(act, context.viewerMember, context.memberNames);
-  return <T extends { detail: string }>(d: T | null): T | null =>
-    d && mark ? { ...d, detail: d.detail ? `${d.detail} · ${mark}` : mark } : d;
+  return <T extends { eyebrow: string }>(d: T | null): T | null =>
+    d && {
+      ...d,
+      eyebrow: taggedThrough(
+        d.eyebrow,
+        act,
+        context.viewerMember,
+        context.memberNames
+      ),
+    };
 }
 
 /** The roll wording a describer pass uses: the log's detail, or none. */
@@ -396,7 +412,7 @@ function describeWith(
       // words are `speechLine`'s; the roll is the speaker's when a speaker is
       // named and someone's when not — never attributed from elsewhere.
       const sp = body.value;
-      const words = speechWords(sp, name);
+      const words = speechWords(sp, name, context.viewerMember);
       const check = sp.skill ? `${sp.skill} check` : '';
       const rolled = rw.short(sp.roll)
         ? words.speakerSeen
@@ -542,6 +558,16 @@ function describeWith(
           roll: t.dealt.roll,
         };
       }
+      // A PROP'S ANSWER IS NARRATED (rpg-project#959): a prop has no voice,
+      // so its words stand alone, as the author wrote them, with no speaker.
+      if (t.narration)
+        return {
+          eyebrow: 'Narration',
+          headline: t.narration,
+          detail: rw.withRoll('', t.roll),
+          tone: 'neutral',
+          roll: t.roll,
+        };
       return {
         eyebrow: 'Answer',
         // The pick only: whatever the creature said is its own Speech.
@@ -614,18 +640,15 @@ function describeWith(
     }
     case 'perception': {
       const p = body.value;
-      // WHO PERCEIVED IT (rpg-project#935): the observer, or the friends it
-      // came through — never the viewer for what they did not perceive.
-      const who = perceivers(act, context.viewerMember);
-      const subject =
-        who.length > 0
-          ? friendNames(who, context.memberNames)
-          : name(p.observer);
+      // WHO PERCEIVED IT, SAID ONE WAY (rpg-project#935): "You hear" for the
+      // viewer's own, "Bea hears" for anyone else's (`perceiverSays`).
+      const says = (verb: PerceptionVerb) =>
+        perceiverSays(act, context.viewerMember, context.memberNames, verb);
       switch (p.sense) {
         case Sense.HEARING:
           return {
             eyebrow: 'Heard',
-            headline: `${subject} hears ${p.heard?.kind ? soundPhrase(p.heard.kind) : 'something'}`,
+            headline: `${says('hear')} ${p.heard?.kind ? soundPhrase(p.heard.kind) : 'something'}`,
             // A sound's hops are ROOMS it crossed, never cells (the same
             // words a Speech's voice uses, `speechLine.hopsPhrase`).
             detail: p.heard ? hopsPhrase(p.heard.hops) : '',
@@ -640,7 +663,7 @@ function describeWith(
           const check = ability ? `${ability} check` : '';
           return {
             eyebrow: 'Search',
-            headline: `${subject} searches`,
+            headline: says('search'),
             detail: rw.withRoll(`${verdict} ${check}`.trim(), roll),
             tone: roll?.beaten ? 'success' : 'neutral',
             roll,
@@ -649,7 +672,7 @@ function describeWith(
         case Sense.REVEAL:
           return {
             eyebrow: 'Found',
-            headline: `${subject} finds ${authoredWords(p.revealed?.concealment ?? 'something')}`,
+            headline: `${says('find')} ${authoredWords(p.revealed?.concealment ?? 'something')}`,
             detail: '',
             tone: 'success',
           };
@@ -666,8 +689,8 @@ function describeWith(
           return {
             eyebrow: 'Seen',
             headline: gained.length
-              ? `${subject} sees ${seen(gained)}`
-              : `${subject} loses sight of ${seen(lost)}`,
+              ? `${says('see')} ${seen(gained)}`
+              : `${says('lose sight of')} ${seen(lost)}`,
             detail:
               gained.length && lost.length
                 ? `loses sight of ${seen(lost)}`
@@ -771,6 +794,30 @@ function describeWith(
           return null; // a tick and the scene opening: bookkeeping
       }
     }
+    // A member set down without walking, as this viewer saw it
+    // (rpg-project#925). LEFT never names a destination.
+    case 'relocate':
+      return {
+        eyebrow: relocateEyebrow(body.value),
+        headline: relocateSentence(body.value, context.viewerMember, name),
+        detail: '',
+        tone: 'neutral',
+      };
+    case 'interact':
+      return describeInteract(
+        body.value,
+        context,
+        name,
+        rw,
+        cameThroughFriend(act, context.viewerMember)
+      );
+    case 'arrest':
+      return {
+        eyebrow: 'Arrest',
+        headline: arrestSentence(body.value, context.viewerMember, name),
+        detail: '',
+        tone: 'danger',
+      };
     case undefined:
       return null;
     default: {
@@ -920,6 +967,12 @@ export function formatRollFormula(
     }
     case 'speech':
       return rollFormula(body.value.skill || 'Check', body.value.roll, 'DC');
+    case 'interact':
+      return rollFormula(
+        body.value.skill ? speakSkillName(body.value.skill) : 'Check',
+        body.value.roll,
+        'DC'
+      );
     case 'sneak':
       return rollFormula('Stealth', body.value.roll, 'DC');
     case 'deathSave':
@@ -949,4 +1002,63 @@ export function formatRollFormula(
     default:
       return '';
   }
+}
+
+/**
+ * A THING DONE TO A PROP, as this viewer saw it (rpg-project#959). Every word
+ * is content's; the client words only the generic when none was authored.
+ *
+ * - The doer's version is the one whose `actor` is the viewer's own
+ *   character (never keyed on `words`): their own `do` words, with the check
+ *   when there was one.
+ * - A witness shown the thing: the actor's name and the authored seen words,
+ *   or "<name> uses <thing>" when none were written.
+ * - A witness who saw the actor and not the thing (`place` set, no `prop`):
+ *   "<name> does something over there". Nothing names the thing.
+ */
+function describeInteract(
+  i: InteractAct,
+  context: DescribeContext,
+  name: (p: Party | undefined) => string,
+  rw: RollWords,
+  throughFriend: boolean
+): Omit<DescribedAct, 'text' | 'outcome'> {
+  const actor = name(i.actor) || 'Someone';
+  const own = Boolean(
+    context.viewerMember && i.actor?.id === context.viewerMember
+  );
+  if (own) {
+    const skill = i.skill ? speakSkillName(i.skill) : '';
+    return {
+      eyebrow: `Done${skill && i.roll ? ` · ${skill}` : ''}`,
+      headline: i.words || (i.prop ? `You use ${name(i.prop)}` : 'You do it'),
+      detail: rw.withRoll(skill ? `${skill} check` : '', i.roll),
+      tone: i.beaten === false ? 'danger' : 'neutral',
+      roll: i.roll,
+    };
+  }
+  if (!i.prop?.id)
+    return {
+      eyebrow: 'Done',
+      headline: i.place
+        ? `${actor} does something over there`
+        : `${actor} does something`,
+      detail: '',
+      tone: 'neutral',
+    };
+  // THE DOER'S OWN VERSION, SHOWN THROUGH A FRIEND (shared view): its words
+  // are the doer's second person ("You lift the grate…") and never this
+  // viewer's line. Only the doer's version sets `option`; a version through
+  // a friend may be theirs. Either way the generic third person stands in,
+  // and the corner tag says whose eyes it came through.
+  const doersWords = i.option !== '' || throughFriend;
+  return {
+    eyebrow: 'Done',
+    headline:
+      i.words && !doersWords
+        ? `${actor}: ${i.words}`
+        : `${actor} uses ${name(i.prop)}`,
+    detail: '',
+    tone: 'neutral',
+  };
 }

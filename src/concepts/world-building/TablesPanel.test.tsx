@@ -12,7 +12,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
-import { FactionsPanel, TableNameSelect } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import { TablesPanel } from './TablesPanel';
 import { tableUsers } from './tableUsers';
@@ -225,104 +224,6 @@ describe('TablesPanel — the site’s shared tables, declared at the root', () 
   });
 });
 
-describe('TableNameSelect — the reference, chosen from what the site declares', () => {
-  it('offers exactly the declared tables, and an unset choice', () => {
-    render(
-      <TableNameSelect
-        scope={site}
-        value={undefined}
-        label="Table for goblin-1"
-        placeholder="none"
-        onChange={() => {}}
-      />
-    );
-    const select = screen.getByLabelText('Table for goblin-1');
-    expect(
-      Array.from(select.querySelectorAll('option')).map((o) => o.value)
-    ).toEqual(['', 'goblin-drill', 'watch-drill']);
-  });
-
-  it('carries a name this site does not declare instead of dropping it', () => {
-    // A hand-written file may name a table that is not here. The builder must
-    // not rewrite bytes the server accepts and the engine is the one that
-    // refuses the name — so the value keeps its own option and stays selected.
-    render(
-      <TableNameSelect
-        scope={site}
-        value="ghost-drill"
-        label="Table for goblin-1"
-        placeholder="none"
-        onChange={() => {}}
-      />
-    );
-    const select = screen.getByLabelText(
-      'Table for goblin-1'
-    ) as HTMLSelectElement;
-    expect(select.value).toBe('ghost-drill');
-    expect(select.textContent).toContain('not declared here');
-  });
-
-  it('hands the parent the name, and `undefined` for the unset choice', () => {
-    const onChange = vi.fn();
-    render(
-      <TableNameSelect
-        scope={site}
-        value={undefined}
-        label="Table for goblin-1"
-        placeholder="none"
-        onChange={onChange}
-      />
-    );
-    const select = screen.getByLabelText('Table for goblin-1');
-    fireEvent.change(select, { target: { value: 'watch-drill' } });
-    expect(onChange).toHaveBeenLastCalledWith('watch-drill');
-    fireEvent.change(select, { target: { value: '' } });
-    expect(onChange).toHaveBeenLastCalledWith(undefined);
-  });
-});
-
-describe('the faction’s table reference', () => {
-  it('offers the site’s tables and writes the chosen one', () => {
-    const onChange = vi.fn();
-    render(
-      <FactionsPanel
-        scope={{ tables: site.tables, factions: [{ id: 'goblins' }] }}
-        onChange={onChange}
-      />
-    );
-    fireEvent.click(screen.getByLabelText('Faction goblins'));
-    const select = screen.getByLabelText('Table for goblins');
-    expect(
-      Array.from(select.querySelectorAll('option')).map((o) => o.value)
-    ).toEqual(['', 'goblin-drill', 'watch-drill']);
-
-    fireEvent.change(select, { target: { value: 'watch-drill' } });
-    expect(
-      (onChange.mock.calls.at(-1)![0] as SiteScope).factions?.[0]?.table
-    ).toBe('watch-drill');
-  });
-
-  it('clears the name to absence, never to an empty string', () => {
-    const onChange = vi.fn();
-    render(
-      <FactionsPanel
-        scope={{
-          tables: site.tables,
-          factions: [{ id: 'goblins', table: 'goblin-drill' }],
-        }}
-        onChange={onChange}
-      />
-    );
-    fireEvent.click(screen.getByLabelText('Faction goblins'));
-    fireEvent.change(screen.getByLabelText('Table for goblins'), {
-      target: { value: '' },
-    });
-    const faction = (onChange.mock.calls.at(-1)![0] as SiteScope).factions?.[0];
-    expect(faction?.table).toBeUndefined();
-    expect('table' in (faction ?? {})).toBe(false);
-  });
-});
-
 /**
  * THE HEARING ROWS IN THE ROOT TABLE EDITOR (rpg-project#569 R6–R8, R10): a
  * `when` is a list with a `not` per condition, `heard` and `fact` join the
@@ -424,21 +325,21 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     });
   });
 
-  it('keeps a `heard` loudness the form does not edit through a kind, span and `not` edit (rpg-project#933)', () => {
+  it('keeps a voice’s `heard` loudness through a `not` edit, and drops it with the voice (rpg-project#933, #975)', () => {
     const last = mount({
       when: { heard: { kind: 'voice', within: 1, loudness: 'shout' } },
       toward: 'sound',
-    });
-    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
-      target: { value: 'clang' },
-    });
-    expect(last()?.when).toEqual({
-      heard: { kind: 'clang', within: 1, loudness: 'shout' },
     });
     fireEvent.click(screen.getByLabelText('Not for time entry'));
     expect(last()?.when).toEqual([
       { not: { heard: { kind: 'voice', within: 1, loudness: 'shout' } } },
     ]);
+    // A loudness is a voice's only: the engine refuses it on another sound,
+    // so the form takes it away with the voice.
+    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
+      target: { value: 'clang' },
+    });
+    expect(last()?.when).toEqual({ heard: { kind: 'clang', within: 1 } });
   });
 
   it('authors a `fact` condition as a free id', () => {

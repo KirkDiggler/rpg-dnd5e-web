@@ -2,7 +2,8 @@ import type { InteractResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/
 import { useCallback, useState } from 'react';
 import { sessionClient } from './client';
 
-export interface InteractParams {
+/** A person in the world, reached for (the vendor). */
+export interface InteractWorldParams {
   session: string;
   /** The reaching player — the local player's own member id. */
   actor: string;
@@ -12,6 +13,18 @@ export interface InteractParams {
    * adjacent, matching the proto's own default. */
   range?: number;
 }
+
+/** A thing done to a prop (rpg-project#959): the prop, the option and the
+ * revision, each echoed verbatim from its `InteractOption` row. */
+export interface InteractPropParams {
+  session: string;
+  actor: string;
+  prop: string;
+  optionId: string;
+  revision: bigint;
+}
+
+export type InteractParams = InteractWorldParams | InteractPropParams;
 
 export interface UseInteractResult {
   interact: (params: InteractParams) => Promise<InteractResponse>;
@@ -43,14 +56,27 @@ export function useSessionInteract(): UseInteractResult {
       setLoading(true);
       setError(null);
       try {
-        const response = await sessionClient.interact({
-          session: params.session,
-          actor: params.actor,
-          target: params.target,
-          range: params.range ?? 0,
-        });
+        // Exactly one of `target` and `prop` is set (the proto's rule).
+        const response = await sessionClient.interact(
+          'prop' in params
+            ? {
+                session: params.session,
+                actor: params.actor,
+                prop: params.prop,
+                optionId: params.optionId,
+                revision: params.revision,
+              }
+            : {
+                session: params.session,
+                actor: params.actor,
+                target: params.target,
+                range: params.range ?? 0,
+              }
+        );
         return response;
       } catch (err) {
+        // A ConnectError is rethrown as itself, so its code (ABORTED for a
+        // stale thing) reaches the caller.
         const wrapped =
           err instanceof Error ? err : new Error('Interact RPC failed');
         setError(wrapped);

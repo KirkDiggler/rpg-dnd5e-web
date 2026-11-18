@@ -14,6 +14,7 @@ import {
   type SiteEnding,
 } from '../world-building/siteScope';
 import { AboutPanel } from './FieldHelp';
+import { RevealLi } from './RevealDiv';
 import type { EncounterStudioSession } from './studioSession';
 
 /** An ending's forms: one key each, never `holds` (rpg-project#578, H4). */
@@ -71,28 +72,14 @@ function leaveWhen(exit: string, other: boolean): PredicateDoc {
  * an ending with no `when` cannot be applied. */
 export function StudioEndings({
   session,
-  focus,
 }: {
   session: EncounterStudioSession;
-  /** An ending to open, from the fact index. */
-  focus?: string | null;
 }): React.JSX.Element {
   const document = session.document;
   const endings = document.scope.endings ?? [];
   const names = documentPlacementNames(document);
   const [staged, setStaged] = useState<Staged | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
-  // A new focus from the fact index opens that ending; edits to the list
-  // do not reopen it.
-  const [opened, setOpened] = useState<string | null | undefined>(undefined);
-  if (focus !== opened) {
-    setOpened(focus);
-    const index = endings.findIndex((ending) => ending.id === focus);
-    if (focus && index >= 0) {
-      setStaged(stagedOf(index, endings[index]!));
-      setRefusal(null);
-    }
-  }
   const exits = (document.scope.exits ?? []).map((exit) => exit.id);
   const commit = (next: SiteEnding[]): boolean => {
     try {
@@ -143,7 +130,16 @@ export function StudioEndings({
       ) : (
         <ol className="es-inspector-list" aria-label="Authored endings">
           {endings.map((ending, index) => (
-            <li key={`${index}:${ending.id}`} data-ending={ending.id}>
+            <RevealLi
+              key={`${index}:${ending.id}`}
+              revealKey={{ kind: 'ending', id: ending.id }}
+              // A jump to an ending opens its form (rpg-project#983).
+              onReveal={() => {
+                setStaged(stagedOf(index, ending));
+                setRefusal(null);
+              }}
+              data-ending={ending.id}
+            >
               <span>
                 <strong>{ending.id}</strong>: when{' '}
                 {endingClause(ending, { names })}
@@ -186,7 +182,7 @@ export function StudioEndings({
                   Remove
                 </button>
               </span>
-            </li>
+            </RevealLi>
           ))}
         </ol>
       )}

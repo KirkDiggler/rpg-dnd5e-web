@@ -1,11 +1,12 @@
 import { markIfArmed } from '@/dev/perfMarks';
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, type ReactNode } from 'react';
 import { regionSizeText } from '../world-building/regionSize';
 import type { RoomDraft } from '../world-building/roomDraft';
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { layoutFooterText } from './layoutFooterText';
 import type { RegionOverview } from './overviewColours';
 import { cellsBounds } from './overviewFrame';
+import { RevealLi } from './RevealDiv';
 
 /** Layout's regions list (R7, rpg-project#725 R5): every authored region by
  * its name — its label on the map — with its colour, its size and its light.
@@ -23,7 +24,10 @@ export function LayoutRoomList({
   onCreate,
   onShowEntire,
   unappliedFinishes,
+  children,
 }: {
+  /** Shown under the rooms: the places mode's join list (rpg-project#972). */
+  children?: ReactNode;
   draft: Readonly<RoomDraft>;
   /** Regions whose wall finish is authored but not applied: a stale pattern
    * start, missing material or unresolved wall boundary. A boundary can
@@ -68,7 +72,11 @@ export function LayoutRoomList({
             const unapplied = unappliedFinishes?.has(region.id) ?? false;
             const light = Math.round(region.lighting.intensity * 100);
             return (
-              <li key={region.id} className="es-region-row">
+              <RevealLi
+                key={region.id}
+                revealKey={{ kind: 'region', id: region.id }}
+                className="es-region-row"
+              >
                 <input
                   type="radio"
                   name="es-active-region"
@@ -101,7 +109,7 @@ export function LayoutRoomList({
                     {unapplied && ' — finish unapplied'}
                   </small>
                 </button>
-              </li>
+              </RevealLi>
             );
           })}
         </ul>
@@ -125,6 +133,7 @@ export function LayoutRoomList({
           New region
         </button>
       </form>
+      {children}
     </aside>
   );
 }

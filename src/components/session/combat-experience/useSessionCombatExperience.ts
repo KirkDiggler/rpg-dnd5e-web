@@ -3,6 +3,7 @@ import { useSessionAttack } from '@/api/useSessionAttack';
 import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
+import { useSessionInteract } from '@/api/useSessionInteract';
 import { useSessionReact } from '@/api/useSessionReact';
 import { useSessionSpeak, type SpeakTarget } from '@/api/useSessionSpeak';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
@@ -55,17 +56,26 @@ import {
   toggleMemberTarget,
 } from './memberTargeting';
 import { reactionWindowDeclaration } from './reactionWindow';
+import { ownRelocation, useRelocateCut, type RelocateCut } from './relocateCut';
 import {
   CONVERSATION_MOVED_ON_MESSAGE,
   isKeptRollAct,
   isMovedOnRefusal,
+  isSentenceRefusal,
   isStaleDeclarationRefusal,
+  refusalNotice,
   ROLL_KEPT_MESSAGE,
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
 import { speakAddressOf, type HailFocus } from './speakAddress';
-import { sameSpeakTarget, speakLine, speakLinesFor } from './speakOptions';
+import {
+  interactThing,
+  offersAnything,
+  sameSpeakTarget,
+  speakLine,
+  speakLinesFor,
+} from './speakOptions';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -221,6 +231,16 @@ export interface UseSessionCombatExperienceResult {
   onChooseSpeakTarget: (target: SpeakTarget | null) => void;
   /** Speak's second step: say the chosen target's line with this option id. */
   onSpeakOption: (optionId: string) => void;
+  /** Do the chosen prop's thing with this option id (rpg-project#959). */
+  onInteractOption: (optionId: string) => void;
+  /** A click on a prop's cell with nothing armed (rpg-project#959): true
+   * when its menu opened; false leaves the click to the floor. */
+  onPropClick: (prop: string) => boolean;
+  /** The floor walk a prop's click becomes when its menu did not open: on
+   * arrival the menu opens if the fresh offer lists anything for it. */
+  propMenuOnArrival: (prop: string) => MoveOutcome;
+  /** A plain walk elsewhere drops a prop's carried click. */
+  cancelPropArrival: () => void;
   /**
    * A click on a creature or prop while Speak is armed, from the map. One the
    * offer already lists is chosen exactly as `onChooseSpeakTarget` would;
@@ -240,6 +260,12 @@ export interface UseSessionCombatExperienceResult {
    * the camera to centre on once per opening. Null when no address stands.
    */
   hailFocus: HailFocus | null;
+  /**
+   * The viewer's own character being set down elsewhere, as a cut
+   * (rpg-project#925): the veil's phase and words, and where the camera goes.
+   * Null when no cut plays.
+   */
+  relocateCut: RelocateCut | null;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -472,9 +498,15 @@ export function useSessionCombatExperience({
    * fresh offer after acceptance is the one read at the new cell, and it
    * settles the intent.
    */
-  const approachRef = useRef<{ target: SpeakTarget; walked: boolean } | null>(
-    null
-  );
+  /** A Speak approach carried across its walk (rpg-project#753 R4). With
+   * `menuOnly` it is a prop's click carried across a plain walk
+   * (rpg-project#959): on arrival the prop's menu opens when the fresh offer
+   * lists anything for it, and nothing opens when it does not. */
+  const approachRef = useRef<{
+    target: SpeakTarget;
+    walked: boolean;
+    menuOnly?: boolean;
+  } | null>(null);
   /** THE STRIKE INTENT (rpg-project#872): a hostile's click carried across
    * the walk to the server's approach cell; see `onStrike`. */
   const strikeRef = useRef<{
@@ -498,6 +530,7 @@ export function useSessionCombatExperience({
   } | null>(null);
   const standingAddressKeyRef = useRef<string | null>(null);
   const hailSequenceRef = useRef(0);
+  const relocate = useRelocateCut();
   const [hailFocus, setHailFocus] = useState<HailFocus | null>(null);
   const approachArgRef = useRef(approach);
   approachArgRef.current = approach;
@@ -634,6 +667,7 @@ export function useSessionCombatExperience({
   const { activate } = useSessionActivate();
   const { cast } = useSessionCast();
   const { speak } = useSessionSpeak();
+  const { interact } = useSessionInteract();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -802,7 +836,7 @@ export function useSessionCombatExperience({
               armedDeclarationId: speak.id,
               speakTarget:
                 interaction.speakTarget &&
-                speakLinesFor(speak, interaction.speakTarget).length > 0
+                offersAnything(speak, interaction.speakTarget)
                   ? interaction.speakTarget
                   : null,
               // Kept: the next revocation (the act after this one) carries
@@ -902,7 +936,7 @@ export function useSessionCombatExperience({
       // left open on an empty list (rpg-project#569).
       (armedVerb !== Verb.SPEAK ||
         !interaction.speakTarget ||
-        speakLinesFor(armedMatches[0], interaction.speakTarget).length > 0);
+        offersAnything(armedMatches[0], interaction.speakTarget));
     return {
       armedIsCurrent: current,
       presentationState: current
@@ -1235,7 +1269,7 @@ export function useSessionCombatExperience({
               // resumed the turn before the response was lost. Fail closed,
               // keep the message, reconcile, and never retry — a replayed
               // answer would be a second swing.
-              const notice = `Reaction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Reaction', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -1336,7 +1370,7 @@ export function useSessionCombatExperience({
               recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
             } else {
               attemptedDeathSaveDeclarationIdRef.current = current.id;
-              const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Death Save', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -1558,7 +1592,7 @@ export function useSessionCombatExperience({
     (target: SpeakTarget | null): void => {
       const declaration = armedSpeak();
       if (!declaration) return;
-      if (target && speakLinesFor(declaration, target).length === 0) return;
+      if (target && !offersAnything(declaration, target)) return;
       setInteraction({
         ...interactionRef.current,
         speakTarget: target,
@@ -1573,7 +1607,7 @@ export function useSessionCombatExperience({
     (target: SpeakTarget): void => {
       const declaration = armedSpeak();
       if (!declaration) return;
-      if (speakLinesFor(declaration, target).length > 0) {
+      if (offersAnything(declaration, target)) {
         approachRef.current = null;
         chooseSpeakTarget(target);
         return;
@@ -1604,8 +1638,16 @@ export function useSessionCombatExperience({
   useEffect(() => {
     const intent = approachRef.current;
     if (!intent?.walked || !authorityFresh) return;
-    approachRef.current = null;
-    if (interactionRef.current.armedDeclarationId !== null) return;
+    // A PROP'S CLICK WAITS FOR ITS ARRIVAL (rpg-project#959). On the world
+    // clock a walk goes on from the stream after its answer, so the first
+    // fresh offer can be read mid-walk, before the prop is in reach. The
+    // carried click stays until an offer lists the prop (its menu opens), the
+    // player arms something else, or the next walk or click replaces it.
+    if (!intent.menuOnly) approachRef.current = null;
+    if (interactionRef.current.armedDeclarationId !== null) {
+      approachRef.current = null;
+      return;
+    }
     const speaks = declarations.filter(
       (declaration) =>
         declaration.verb === Verb.SPEAK &&
@@ -1616,13 +1658,15 @@ export function useSessionCombatExperience({
     const declaration = speaks.length === 1 ? speaks[0]! : undefined;
     if (!declaration) return;
     if (!actsOnThisClock(clock, active, member)) return;
+    const offered = offersAnything(declaration, intent.target);
+    // A prop's click (rpg-project#959) opens its menu or nothing: the walk
+    // was the click, and an empty offer is not a reason to open Speak.
+    if (intent.menuOnly && !offered) return;
+    approachRef.current = null;
     setInteraction({
       ...EMPTY_INTERACTION,
       armedDeclarationId: declaration.id,
-      speakTarget:
-        speakLinesFor(declaration, intent.target).length > 0
-          ? intent.target
-          : null,
+      speakTarget: offered ? intent.target : null,
     });
     setTargeting(true);
   }, [active, authorityFresh, clock, declarations, member, setInteraction]);
@@ -1664,10 +1708,8 @@ export function useSessionCombatExperience({
           if (!mountedRef.current) return;
           // THE CONVERSATION MOVED ON (rpg-project#924), not an error.
           // ABORTED: the line was offered at a revision the interaction has
-          // advanced past. FAILED_PRECONDITION: another speaker's waiting
-          // roll holds the line this client believed free. Nothing was
-          // spent either way; the panel re-opens on the same target from the
-          // next fresh offer, where the line comes back current or pending.
+          // advanced past. Nothing was spent; the panel re-opens on the same
+          // target from the next fresh offer.
           if (isMovedOnRefusal(error) || isStaleDeclarationRefusal(error)) {
             reopenConversation(
               declaration.id,
@@ -1676,12 +1718,21 @@ export function useSessionCombatExperience({
             );
             return;
           }
+          // FAILED_PRECONDITION: a refusal with the server's sentence (a line
+          // another speaker's waiting roll holds, say). The panel re-opens the
+          // same way, and says what the server said (rpg-project#925).
+          if (isSentenceRefusal(error)) {
+            reopenConversation(
+              declaration.id,
+              target,
+              refusalNotice('Speak', error)
+            );
+            return;
+          }
           // A refusal at the door — the target cannot perceive the actor, or
           // the option was withdrawn (`ErrNoOption`) — is shown as one. The
           // request names no selector, so there is no stale id to recover.
-          const notice = `Speak failed: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`;
+          const notice = refusalNotice('Speak', error);
           invalidateAuthority();
           setInteraction({
             ...EMPTY_INTERACTION,
@@ -1704,6 +1755,161 @@ export function useSessionCombatExperience({
       speak,
     ]
   );
+
+  /**
+   * DO A THING TO A PROP (rpg-project#959): the live Interact with the prop,
+   * the option id and the revision, each echoed verbatim from its row, and
+   * nothing else. It is read back as a spoken line is: nothing off the
+   * response but that it landed; the deed, the roll and any narration arrive
+   * as acts, the roll window as the clock's. A stale thing (ABORTED) re-opens
+   * the menu as a moved-on line does; a refusal with a sentence re-opens it
+   * with the sentence as written.
+   */
+  const onInteractOption = useCallback(
+    (optionId: string): void => {
+      const declaration = armedSpeak();
+      if (!declaration) return;
+      const target = interactionRef.current.speakTarget;
+      if (target?.case !== 'propId') return;
+      const thing = interactThing(declaration, target, optionId);
+      if (!thing || thing.pending) return;
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      speakInFlightRef.current = true;
+      void (async () => {
+        try {
+          await interact({
+            session,
+            actor: member,
+            prop: thing.propId,
+            optionId: thing.optionId,
+            revision: thing.revision,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isMovedOnRefusal(error) || isStaleDeclarationRefusal(error)) {
+            reopenConversation(
+              declaration.id,
+              target,
+              CONVERSATION_MOVED_ON_MESSAGE
+            );
+            return;
+          }
+          if (isSentenceRefusal(error)) {
+            reopenConversation(
+              declaration.id,
+              target,
+              refusalNotice('Interact', error)
+            );
+            return;
+          }
+          invalidateAuthority();
+          setInteraction({
+            ...EMPTY_INTERACTION,
+            changedOptionNotice: refusalNotice('Interact', error),
+          });
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } finally {
+          speakInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      armedSpeak,
+      interact,
+      invalidateAuthority,
+      member,
+      reopenConversation,
+      scheduleRefresh,
+      session,
+      setInteraction,
+    ]
+  );
+
+  /** The one available Speak row on this clock, armed or not: the row a
+   * prop's menu is read from. */
+  const idleSpeak = useCallback((): Declaration | undefined => {
+    if (!authorityRef.current.fresh) return undefined;
+    const speaks = declarationsRef.current.filter(
+      (declaration) =>
+        declaration.verb === Verb.SPEAK &&
+        declaration.targetKind === TargetKind.MEMBER &&
+        declaration.available &&
+        declaration.id.length > 0
+    );
+    const declaration = speaks.length === 1 ? speaks[0]! : undefined;
+    if (!declaration) return undefined;
+    if (
+      !actsOnThisClock(
+        authorityRef.current.clock,
+        authorityRef.current.active,
+        member
+      )
+    )
+      return undefined;
+    return declaration;
+  }, [member]);
+
+  /**
+   * CLICK A THING (rpg-project#959). A click on a prop's cell, with nothing
+   * armed, opens that prop's menu when the Speak row lists anything for it:
+   * things to do first, its lines under "Say…". True when it opened; false
+   * leaves the click to the floor (a prop with nothing to offer walks, as
+   * before).
+   */
+  const onPropClick = useCallback(
+    (prop: string): boolean => {
+      if (!prop || strikeBlocked()) return false;
+      if (interactionRef.current.armedDeclarationId !== null) return false;
+      const declaration = idleSpeak();
+      const target: SpeakTarget = { case: 'propId', value: prop };
+      if (!declaration || !offersAnything(declaration, target)) return false;
+      carryWorldMovementRef.current = false;
+      approachRef.current = null;
+      strikeRef.current = null;
+      setInteraction({
+        ...EMPTY_INTERACTION,
+        armedDeclarationId: declaration.id,
+        speakTarget: target,
+      });
+      setTargeting(true);
+      return true;
+    },
+    // strikeBlocked reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [idleSpeak, setInteraction]
+  );
+
+  /**
+   * A prop the offer does not list (beyond reach, or offering nothing): the
+   * floor walk the click already is carries it, and on arrival its menu opens
+   * if the fresh offer lists anything for it. THE WEB COMPUTES NO REACH: the
+   * walk is the click's own, never redirected.
+   */
+  /** Drop a prop's carried click: a plain walk elsewhere replaces it. */
+  const cancelPropArrival = useCallback((): void => {
+    if (approachRef.current?.menuOnly) approachRef.current = null;
+  }, []);
+
+  const propMenuOnArrival = useCallback((prop: string): MoveOutcome => {
+    const intent = {
+      target: { case: 'propId', value: prop } as SpeakTarget,
+      walked: false,
+      menuOnly: true,
+    };
+    approachRef.current = intent;
+    return {
+      accepted: () => {
+        if (approachRef.current === intent) intent.walked = true;
+      },
+      refused: () => {
+        if (approachRef.current === intent) approachRef.current = null;
+      },
+    };
+  }, []);
 
   /**
    * THE ORDINARY ATTACK PATH: one Attack request echoing the server's
@@ -1742,7 +1948,7 @@ export function useSessionCombatExperience({
             // committed the command even though its response did not arrive.
             // Keep the honest error, but never leave pre-command authority
             // armed or executable and never replay the mutation.
-            const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Attack', error);
             // A legacy window cannot identify its die without the response;
             // keep that already-open choice answerable after response loss.
             // A current window carries its own provider ID and can still roll.
@@ -1974,7 +2180,7 @@ export function useSessionCombatExperience({
                 exactTarget
               );
             } else {
-              const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              const notice = refusalNotice('Activate', error);
               invalidateAuthority();
               setInteraction({
                 ...EMPTY_INTERACTION,
@@ -2323,7 +2529,7 @@ export function useSessionCombatExperience({
             // committed — the ack is thin by design, so a transport error
             // cannot be told from a refusal after the fact. Fail closed,
             // preserve the message, reconcile, and never retry.
-            const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Activate', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2432,7 +2638,7 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(current.id, Verb.CAST, targets[0]);
           } else {
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2550,7 +2756,7 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(current.id, Verb.CAST);
           } else {
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2714,7 +2920,7 @@ export function useSessionCombatExperience({
             // Ambiguous about whether the cast committed — the ack is thin by
             // design. Fail closed, preserve the message, reconcile, never
             // retry.
-            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('Cast', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2786,7 +2992,7 @@ export function useSessionCombatExperience({
             // Non-selector failures are ambiguous and may describe a committed
             // EndTurn. Fail closed, preserve the transport error, and reconcile
             // snapshots without ever retrying the command.
-            const notice = `End turn failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            const notice = refusalNotice('End turn', error);
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -2872,6 +3078,12 @@ export function useSessionCombatExperience({
         heard ? viewerCellRef.current : undefined
       );
       pacing.acceptActs(run, metadata);
+      // THE CUT (rpg-project#925): the viewer's own character set down
+      // elsewhere — live only; a catch-up page replays history already lived.
+      if (metadata.source === 'live') {
+        const own = ownRelocation(run, member);
+        if (own) relocate.start(own);
+      }
       // A ROLL IS KEPT (rpg-project#938): the viewer's own waiting line,
       // judged as rolled by the walk that took them away from it. Its window
       // is gone with it, and the player is told why — live only: a catch-up
@@ -2921,7 +3133,7 @@ export function useSessionCombatExperience({
         });
       });
     },
-    [member, pacing, presentation]
+    [member, pacing, presentation, relocate]
   );
 
   const phase = targeting ? 'targeting' : presentation.phase;
@@ -2958,10 +3170,15 @@ export function useSessionCombatExperience({
       onTargetClick,
       onChooseSpeakTarget: chooseSpeakTarget,
       onSpeakOption,
+      onInteractOption,
+      onPropClick,
+      propMenuOnArrival,
+      cancelPropArrival,
       onApproachTarget,
       onStrike,
       onSpeakTo,
       hailFocus,
+      relocateCut: relocate.cut,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2996,10 +3213,15 @@ export function useSessionCombatExperience({
       onTargetClick,
       chooseSpeakTarget,
       onSpeakOption,
+      onInteractOption,
+      onPropClick,
+      propMenuOnArrival,
+      cancelPropArrival,
       onApproachTarget,
       onStrike,
       onSpeakTo,
       hailFocus,
+      relocate.cut,
       onConfirmTargets,
       pacing.notice,
       pacing.monsterTurnIds,
