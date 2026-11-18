@@ -74,6 +74,11 @@ import {
 } from './refusalJump';
 import { RevealContextProvider } from './reveal';
 import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
+import {
+  useRunWatch,
+  watchUnavailableReason,
+  type WatchedRun,
+} from './runWatch';
 import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -96,6 +101,7 @@ import {
 import {
   currentRefusals,
   keyRefusalOf,
+  playUnavailableReason,
   PUBLISH_RUNNING_TITLE,
   publishStatusText,
   studioReadBackOf,
@@ -118,6 +124,7 @@ import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
 import { StudioTabBar } from './StudioTabBar';
 import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
+import { StudioWatch } from './StudioWatch';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
@@ -531,10 +538,23 @@ function StudioSurface({
    * owner's lock is its busy boundary; the preview asks the server only
    * while the gate says the server accepts authoring (S6-Q3). */
   const gate = useAuthoringGate();
+  /** Watch a run (rpg-project#1004): the same launch as Play, but the
+   * started run is watched here instead of entered. The intent is set by
+   * the button pressed, and read when the launch hands its session over. */
+  const [watch, setWatch] = useState<WatchedRun | null>(null);
+  const watchIntent = useRef(false);
+  const enterWatch = useRef<(run: WatchedRun) => void>(() => {});
   const capability = useMemo<RoomPublishingCapability>(
     () => ({
       characterId: onPlay ? characterId : null,
-      onPlay: onPlay ?? NO_PLAY,
+      onPlay: (encounterId: string, seat: string) => {
+        if (watchIntent.current) {
+          watchIntent.current = false;
+          enterWatch.current({ session: encounterId, member: seat });
+          return;
+        }
+        (onPlay ?? NO_PLAY)(encounterId, seat);
+      },
     }),
     [characterId, onPlay]
   );
@@ -850,9 +870,24 @@ function StudioSurface({
     siteOperation === 'copy' && copyOrigin?.sourceKey === publishing.key.trim();
   const pressPlay = (): void => {
     if (copyKeyRefused) return;
+    watchIntent.current = false;
     if (siteOperation !== 'copy') setSiteOperation('save');
     void publishing.saveAndPlay();
   };
+  const watchReason = watchUnavailableReason();
+  const pressWatch = (): void => {
+    if (copyKeyRefused || watchReason) return;
+    if (siteOperation !== 'copy') setSiteOperation('save');
+    watchIntent.current = true;
+    void publishing.saveAndPlay();
+  };
+  enterWatch.current = (run) => {
+    setWatch(run);
+    setSiteOperation(null);
+    if (home === 'encounter') changeHome('build');
+    if (view !== 'layout') switchView('layout');
+  };
+  const run = useRunWatch(watch, session.document.draft);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -1184,6 +1219,29 @@ function StudioSurface({
             }
             onPress={pressPlay}
           />
+          <button
+            type="button"
+            disabled={
+              watchReason !== null ||
+              playUnavailableReason(gate.state, playCharacter) !== null ||
+              copyKeyRefused ||
+              publishing.busy
+            }
+            title={
+              watchReason ??
+              'Start a run of this encounter and watch it on the Layout'
+            }
+            aria-describedby={watchReason ? 'studio-watch-reason' : undefined}
+            aria-pressed={watch !== null}
+            onClick={pressWatch}
+          >
+            Watch a run
+          </button>
+          {watchReason && (
+            <span id="studio-watch-reason" className="es-help">
+              {watchReason}
+            </span>
+          )}
         </div>
       </header>
       {session.autosaveBlocked && (
@@ -1687,7 +1745,7 @@ function StudioSurface({
                 <div className="es-canvas">
                   <LayoutViewport
                     draft={session.document.draft}
-                    tool={layoutTool}
+                    tool={watch ? 'select' : layoutTool}
                     groundCatalog={groundCatalog}
                     groundBrush={groundBrush}
                     frame={frame}
@@ -1720,7 +1778,17 @@ function StudioSurface({
                       placesView.clearJoin();
                       void session.clearSelection();
                     }}
-                    placedEditing={placedEditing}
+                    placedEditing={watch ? undefined : placedEditing}
+                    watching={
+                      watch
+                        ? {
+                            members: Object.values(run.view.members),
+                            names: placedEditing.names,
+                            selectedId: run.selected,
+                            onSelect: run.setSelected,
+                          }
+                        : undefined
+                    }
                     exits={session.document.scope.exits}
                     concealedCells={concealedCells}
                     frameTarget={frameTarget}
@@ -1735,6 +1803,15 @@ function StudioSurface({
                         : undefined
                     }
                   />
+                  {watch && (
+                    <StudioWatch
+                      watch={watch}
+                      run={run}
+                      readBack={readBack.readBack}
+                      names={placedEditing.names}
+                      onStop={() => setWatch(null)}
+                    />
+                  )}
                 </div>
                 <LayoutFooter draft={session.document.draft} />
               </div>

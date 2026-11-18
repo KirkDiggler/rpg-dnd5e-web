@@ -2337,3 +2337,25 @@
   padding: 0.6rem 0.9rem;
   border-top: 1px solid var(--wb-border, #33504d);
 }
+
+/* Watching a run (rpg-project#1004): the run's panel over the Layout's
+   right edge, scrolling on its own. */
+.es-watch {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: min(440px, 48%);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  background: #101923;
+  border-left: 1px solid var(--wb-border);
+}
+.es-watch h3,
+.es-watch h4 {
+  margin: 0;
+}
