@@ -32,8 +32,7 @@ afterEach(cleanup);
 const GATE = 'gate-1-policy';
 
 function studio() {
-  const read = readDraftYaml(served);
-  if (!read.ok) throw new Error(read.refusal);
+  const read = castleRead();
   const commits: Node[] = [];
   const commit = vi.fn((id: string, definition: Node) => {
     expect(id).toBe(GATE);
@@ -215,8 +214,12 @@ describe('the List pop-up', () => {
   });
 });
 
-function castleScope() {
+function castleRead() {
   const read = readDraftYaml(served);
   if (!read.ok) throw new Error(read.refusal);
-  return read.scope;
+  return read;
+}
+
+function castleScope() {
+  return castleRead().scope;
 }
