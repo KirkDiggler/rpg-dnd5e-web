@@ -1266,10 +1266,11 @@ const OTHER_PREDICATE_FORMS: readonly string[] = Object.freeze([
   'stance',
 ]);
 
-/** Requirement keys the holding words retired (rpg-project#1005): carried as
+/** Requirement keys the noted words retired (rpg-project#1005): carried as
  * written, for the engine to name. */
 const RETIRED_REQUIREMENT_KEYS: readonly string[] = Object.freeze([
   'recognized',
+  'holds',
 ]);
 
 /**
@@ -1441,13 +1442,13 @@ function validateOptionRequires(
 }
 
 /** One requirement: exactly `{ fact: <id> }`, `{ carries: <prop id> }`,
- * `{ holds: <holding> }` or `{ interaction: { id, in } }`, or `{ not: }` one
+ * `{ noted: <topic> }` or `{ interaction: { id, in } }`, or `{ not: }` one
  * of them (rpg-project#719, #922, #1005). A real predicate of another form
  * is refused BY NAME with the engine's sentence, since the author wrote
  * something meaningful in the wrong place.
  *
  * A RETIRED WORD IS CARRIED, NOT REFUSED (rpg-project#1005): a file written
- * before the holding words still says `recognized: <topic>`. The studio
+ * before the noted words still says `recognized: <topic>` or `holds: <prop>`. The studio
  * loads it as written and writes it back as written; the engine's
  * validate-only check names the word that replaced it. */
 function validateOptionRequirement(
@@ -1483,11 +1484,11 @@ function validateOptionRequirement(
     };
   if (RETIRED_REQUIREMENT_KEYS.includes(form))
     return { ...value } as unknown as OptionRead;
-  if (form === 'holds') {
-    const holding = value.holds;
-    if (typeof holding !== 'string' || holding === '')
-      fail(`${path}.holds`, 'must name a holding');
-    return { holds: holding };
+  if (form === 'noted') {
+    const topic = value.noted;
+    if (typeof topic !== 'string' || topic === '')
+      fail(`${path}.noted`, 'must name a topic');
+    return { noted: topic };
   }
   if (form !== 'fact' && form !== 'carries') fail(path, shape);
   const id = value[form];

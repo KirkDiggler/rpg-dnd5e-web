@@ -30,10 +30,10 @@ export const NOT_HOLDS_FROM_THE_START_REFUSAL =
 
 /** `optionRequiresForms`: what an option may require (rpg-project#922: one
  * or a list, and the interaction form; rpg-project#928: what the one spoken
- * to holds; rpg-project#1005: the words `carries` and `holds`). */
+ * to has noted; rpg-project#1005: the words `carries` and `noted`). */
 export const OPTION_REQUIRES_FORMS =
   'an option requires one or a list of { fact: <id> }, { carries: <prop id> }, ' +
-  '{ interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them';
+  '{ interaction: { id, in: [<state>] } }, { noted: <topic> }, or { not: } one of them';
 
 /** `interactionForm`: the interaction predicate's own sentence. */
 export const INTERACTION_FORM =
@@ -61,33 +61,33 @@ export interface InteractionRead {
   interaction: { id: string; in: string[] };
 }
 
-/** The creature spoken to holds a holding about the speaker (rpg-project#928;
- * the word `holds` since rpg-project#1005). The holding is the author's;
+/** The creature spoken to has noted a topic about the speaker
+ * (rpg-project#928; the word `noted` since rpg-project#1005). The topic is the author's;
  * whether anything in the file gives it, and whether the line is a
  * creature's, is the compiler's to judge at Save & Play. The studio carries
  * it and says it. */
-export interface HoldsRead {
-  holds: string;
+export interface NotedRead {
+  noted: string;
 }
 
 /** What one requirement reads: a fact the speaker knows, a prop they carry,
- * the state of the run's interaction, or a holding the one spoken to holds
+ * the state of the run's interaction, or a topic the one spoken to has noted
  * about the speaker. */
 export type OptionRead =
   | { fact: string }
   | { carries: string }
   | InteractionRead
-  | HoldsRead;
+  | NotedRead;
 
 /** Whether a read is one of the forms the studio edits. A read written in
- * any other key — the retired `recognized` among them (rpg-project#1005) —
+ * any other key — the retired `recognized` and `holds` among them (rpg-project#1005) —
  * is carried as written, said as written, and left to the engine to name. */
 export function isKnownRead(read: OptionRead): boolean {
   const r = read as Record<string, unknown>;
   return (
     typeof r.fact === 'string' ||
     typeof r.carries === 'string' ||
-    typeof r.holds === 'string' ||
+    typeof r.noted === 'string' ||
     (r.interaction !== null &&
       typeof r.interaction === 'object' &&
       Array.isArray((r.interaction as { in?: unknown }).in))
@@ -159,10 +159,10 @@ function requirementSentence(
     return 'not' in r
       ? `Offered unless ${interactionWords(read)}.`
       : `Offered while ${interactionWords(read)}.`;
-  if ('holds' in read)
+  if ('noted' in read)
     return 'not' in r
-      ? `Offered unless the one spoken to holds ${read.holds} about the speaker.`
-      : `Offered while the one spoken to holds ${read.holds} about the speaker.`;
+      ? `Offered unless the one spoken to has noted ${read.noted} about the speaker.`
+      : `Offered while the one spoken to has noted ${read.noted} about the speaker.`;
   if ('not' in r)
     return 'fact' in read
       ? `Offered unless the speaker knows ${read.fact}.`
@@ -191,8 +191,8 @@ function requirementGate(r: OptionRequirement): string {
       ? `fact ${read.fact}`
       : 'carries' in read
         ? `carries ${read.carries}`
-        : 'holds' in read
-          ? `holds ${read.holds}`
+        : 'noted' in read
+          ? `noted ${read.noted}`
           : `${read.interaction.id} in ${read.interaction.in.join('|')}`;
   return 'not' in r ? `unless ${what}` : `requires ${what}`;
 }

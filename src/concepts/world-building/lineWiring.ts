@@ -9,8 +9,8 @@
  * stays a mapping while it has one, and becomes a list when a second is
  * added; a list stays a list. Each requirement is a fact the speaker knows,
  * a prop they carry (`carries`), a conversation in one of its states, or a
- * holding the one spoken to holds about them (`holds`) — or `not` one of
- * those. A requirement written in any other key (the retired `recognized`)
+ * topic the one spoken to has noted about them (`noted`) — or `not` one of
+ * those. A requirement written in any other key (the retired `recognized` and `holds`)
  * is shown and kept as written; the engine names its word.
  *
  * `advance: { interaction, success?, failure? }` steps a conversation on the
@@ -32,13 +32,13 @@ export const REQUIREMENT_KINDS = [
   'fact',
   'carries',
   'interaction',
-  'holds',
+  'noted',
 ] as const;
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 export type RequirementChoice = RequirementKind | `not-${RequirementKind}`;
 
 /** What each requirement's select offers, in order: the plain reads, then
- * their negations. A prop's line is offered no `holds`: a prop holds
+ * their negations. A prop's line is offered no `noted`: a prop notes
  * nothing about anybody. */
 export const REQUIREMENT_CHOICES: readonly {
   value: RequirementChoice;
@@ -48,15 +48,15 @@ export const REQUIREMENT_CHOICES: readonly {
   { value: 'carries', label: 'The speaker carries a prop' },
   { value: 'interaction', label: 'A conversation is in a state' },
   {
-    value: 'holds',
-    label: 'The one spoken to holds this about the speaker',
+    value: 'noted',
+    label: 'The one spoken to has noted this about the speaker',
   },
   { value: 'not-fact', label: 'Unless the speaker knows a fact' },
   { value: 'not-carries', label: 'Unless the speaker carries a prop' },
   { value: 'not-interaction', label: 'Unless a conversation is in a state' },
   {
-    value: 'not-holds',
-    label: 'Unless the one spoken to holds this about the speaker',
+    value: 'not-noted',
+    label: 'Unless the one spoken to has noted this about the speaker',
   },
 ];
 
@@ -67,7 +67,7 @@ function kindOf(read: OptionRead): string {
   if ('fact' in read) return 'fact';
   if ('carries' in read) return 'carries';
   if ('interaction' in read) return 'interaction';
-  return 'holds';
+  return 'noted';
 }
 
 /** Which choice a requirement is: one of {@link REQUIREMENT_CHOICES}, or —
@@ -80,7 +80,7 @@ export function choiceOf(r: OptionRequirement): string {
 /** The requirement a choice starts as. The same read negated or not keeps
  * what it names; another kind starts from what the site defines: its first
  * holdable prop, its first conversation in that conversation's first state,
- * its first holding. */
+ * its first topic. */
 export function requirementFor(
   choice: RequirementChoice,
   was: OptionRequirement | undefined,
@@ -112,8 +112,8 @@ export function requirementFor(
         };
         break;
       }
-      case 'holds':
-        read = { holds: names.topics[0] ?? '' };
+      case 'noted':
+        read = { noted: names.topics[0] ?? '' };
         break;
     }
   return negated ? { not: read } : read;

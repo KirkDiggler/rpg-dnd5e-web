@@ -14,14 +14,14 @@ import type { SiteScope } from './siteScope';
  *   outcomes:
  *     admitted:
  *       - give:
- *           holding: admitted                 # the author's word
+ *           topic: admitted                   # the author's word
  *           to: spoken_to                     # the one word: the creature spoken to
  *           about: party_in_sight             # the one word: the speaker's party it sees
  *           heard_by: carriers_who_witnessed  # optional, the one word
  *
  * The root `interactions:` map rides the scope's `unread` (rpg-project#922)
  * and is never interpreted beyond this: the studio reads the give entries
- * it can say in plain words, edits their holding and whether the
+ * it can say in plain words, edits their topic and whether the
  * witnessing carriers hear it, adds and removes them, and leaves every other
  * key — the recipe, an unknown consequence kind, a word this build does not
  * know — as written. The dungeonspec compiler is the validator.
@@ -42,7 +42,7 @@ export type Outcomes = Record<string, unknown[]>;
 
 /** One give entry the studio can say and edit. */
 export interface Giving {
-  holding: string;
+  topic: string;
   to: string;
   about: string;
   heard: boolean;
@@ -104,35 +104,35 @@ export function outcomesOf(scope: Readonly<SiteScope>, id: string): Outcomes {
 }
 
 /** One entry as a give the form edits, or undefined for any other shape:
- * another kind, an unknown key (the retired `topic` or `holder` among
+ * another kind, an unknown key (the retired `holder` among
  * them), a word that is not text. */
 export function giveOf(entry: unknown): Giving | undefined {
   if (!mapping(entry) || Object.keys(entry).length !== 1) return undefined;
   const r = entry.give;
   if (!mapping(r)) return undefined;
   for (const key of Object.keys(r))
-    if (!['holding', 'to', 'about', 'heard_by'].includes(key)) return undefined;
-  const { holding, to, about } = r;
+    if (!['topic', 'to', 'about', 'heard_by'].includes(key)) return undefined;
+  const { topic, to, about } = r;
   if (
-    typeof holding !== 'string' ||
+    typeof topic !== 'string' ||
     typeof to !== 'string' ||
     typeof about !== 'string'
   )
     return undefined;
   if (r.heard_by !== undefined && typeof r.heard_by !== 'string')
     return undefined;
-  return { holding, to, about, heard: r.heard_by !== undefined };
+  return { topic, to, about, heard: r.heard_by !== undefined };
 }
 
-/** Every holding the site's interactions give, sorted, each once: the
- * holdings a pass or a line may ask `holds` of. */
+/** Every topic the site's interactions give, sorted, each once: the
+ * topics a pass or a line may ask `noted` of. */
 export function grantedTopics(scope: Readonly<SiteScope>): string[] {
   const topics = new Set<string>();
   for (const id of Object.keys(interactionsOf(scope)))
     for (const list of Object.values(outcomesOf(scope, id)))
       for (const entry of list) {
         const r = giveOf(entry);
-        if (r && r.holding) topics.add(r.holding);
+        if (r && r.topic) topics.add(r.topic);
       }
   return [...topics].sort();
 }
@@ -152,14 +152,14 @@ function editEntry(
   return { ...outcomes, [state]: next };
 }
 
-/** The outcomes with one give's holding set. */
-export function withHolding(
+/** The outcomes with one give's topic set. */
+export function withTopic(
   outcomes: Outcomes,
   state: string,
   index: number,
-  holding: string
+  topic: string
 ): Outcomes {
-  return editEntry(outcomes, state, index, (r) => ({ ...r, holding }));
+  return editEntry(outcomes, state, index, (r) => ({ ...r, topic }));
 }
 
 /** The outcomes with one give about the party in sight, or the
@@ -190,16 +190,16 @@ export function withHeard(
 }
 
 /** The outcomes with a give added to a state: the creature spoken to comes
- * to hold the holding about the party in sight, heard by the witnessing
+ * to note the topic about the party in sight, heard by the witnessing
  * carriers. */
 export function withGiveAdded(
   outcomes: Outcomes,
   state: string,
-  holding: string
+  topic: string
 ): Outcomes {
   const entry = {
     give: {
-      holding,
+      topic,
       to: TO_SPOKEN_TO,
       about: ABOUT_PARTY_IN_SIGHT,
       heard_by: HEARD_BY_WITNESSES,
@@ -255,7 +255,7 @@ export function setInteractionOutcomes(
 // `interactions.go` `outcomesOf`, `arrestOf` and the engine's
 // `validateOutcomes`):
 //
-//   - give: { holding, to, about, heard_by? }
+//   - give: { topic, to, about, heard_by? }
 //   - arrest: { cell: <region>, area: { regions?: [<region>], cells?: [rows] } }
 //     — the area names its regions or its cells;
 //   - jail: { words, rounds?, escaped?: <fact> } — only in a conversation
@@ -304,7 +304,7 @@ export function arrests(
 }
 
 /** A new outcome of one kind, started from what the site defines: a
- * give of its first holding about the party in sight, witnessed; an
+ * give of its first topic about the party in sight, witnessed; an
  * arrest held in and seized in its first region; a jail with words to
  * write. */
 export function newOutcome(
@@ -315,7 +315,7 @@ export function newOutcome(
     case 'give':
       return {
         give: {
-          holding: names.topics[0] ?? '',
+          topic: names.topics[0] ?? '',
           to: TO_SPOKEN_TO,
           about: ABOUT_PARTY_IN_SIGHT,
           heard_by: HEARD_BY_WITNESSES,

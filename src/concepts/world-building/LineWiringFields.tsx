@@ -4,9 +4,9 @@
  * A form, not a sentence: each label names the field; what the line does is
  * the engine's read-back. Conversations, their states and the beats their
  * recipes listen for are offered from the file (`SiteNamesContext`); a fact
- * and a holding are declared by mention, so each is typed, with the
- * holdings the file mentions offered. A requirement written in a key the
- * studio does not edit (the retired `recognized`) is shown as written and
+ * and a topic are declared by mention, so each is typed, with the
+ * topics the file mentions offered. A requirement written in a key the
+ * studio does not edit (the retired `recognized` and `holds`) is shown as written and
  * kept; the engine's refusal names its new word.
  */
 import { useContext, useId } from 'react';
@@ -105,17 +105,17 @@ function RequirementFields({
         </select>
       </label>
     );
-  if ('holds' in read)
+  if ('noted' in read)
     return (
       <label>
-        <span>Holding</span>
+        <span>Topic</span>
         <input
-          aria-label={label('holding')}
+          aria-label={label('topic')}
           list={topicsId}
-          placeholder="a holding"
-          value={read.holds}
+          placeholder="a topic"
+          value={read.noted}
           onChange={(event) =>
-            onChange(withRead(requirement, { holds: event.target.value }))
+            onChange(withRead(requirement, { noted: event.target.value }))
           }
         />
         <datalist id={topicsId}>
@@ -204,7 +204,7 @@ export function RequiresFields({
   const names = useContext(SiteNamesContext);
   const items = requirementsOf(requires);
   const choices = REQUIREMENT_CHOICES.filter(
-    (choice) => !isProp || !choice.value.endsWith('holds')
+    (choice) => !isProp || !choice.value.endsWith('noted')
   );
   const rows: (OptionRequirement | undefined)[] =
     items.length === 0 ? [undefined] : items;

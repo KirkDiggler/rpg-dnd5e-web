@@ -361,7 +361,7 @@
                 "kind": "creature",
                 "id": "gate-1"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) has noted `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.alert.pass",
               "connects": [
                 {
@@ -393,7 +393,7 @@
                 "kind": "creature",
                 "id": "gate-1"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) has noted `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.challenged.pass",
               "connects": [
                 {
@@ -425,7 +425,7 @@
                 "kind": "creature",
                 "id": "gate-1"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) has noted `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.posted.pass",
               "connects": [
                 {
@@ -473,7 +473,7 @@
                 "kind": "creature",
                 "id": "gate-1"
               },
-              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-1) holds `admitted` about the speaker.",
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-1) has noted `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-1.options[0].requires[1]",
               "connects": [
                 {
@@ -642,7 +642,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) has noted `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.captain.posts.back-to-gate.pass",
               "connects": [
                 {
@@ -679,7 +679,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) has noted `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.captain.posts.ready.pass",
               "connects": [
                 {
@@ -893,7 +893,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "The line “We’ll come quietly.” (`come-quietly`) is offered to a speaker only while Guard Captain (captain) holds `arrested` about the speaker, and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed.",
+              "sentence": "The line “We’ll come quietly.” (`come-quietly`) is offered to a speaker only while Guard Captain (captain) has noted `arrested` about the speaker, and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed.",
               "path": "room.room.monsterBindings.captain.options[2].requires[1]",
               "connects": [
                 {
@@ -966,7 +966,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "The line “You will never take me alive.” (`never-alive`) is offered to a speaker only while Guard Captain (captain) holds `arrested` about the speaker, and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed.",
+              "sentence": "The line “You will never take me alive.” (`never-alive`) is offered to a speaker only while Guard Captain (captain) has noted `arrested` about the speaker, and only while the speaker is still held under the arrest: not once a fight has broken the hold, nor once jailed.",
               "path": "room.room.monsterBindings.captain.options[3].requires[1]",
               "connects": [
                 {
@@ -1023,7 +1023,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) does NOT hold `wanted` about the speaker.",
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `wanted` about the speaker.",
               "path": "room.room.monsterBindings.captain.options[4].requires[0]",
               "connects": [
                 {
@@ -1039,7 +1039,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) does NOT hold `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
               "path": "room.room.monsterBindings.captain.options[4].requires[1]",
               "connects": [
                 {
@@ -1276,7 +1276,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) holds `admitted` about the speaker.",
+              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) has noted `admitted` about the speaker.",
               "path": "room.room.monsterBindings.captain.options[8].requires",
               "connects": [
                 {
@@ -1569,7 +1569,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a holding about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `ready`, when Guard Captain (captain) notes a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) has noted `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
               "connects": [
                 {
@@ -2032,7 +2032,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
               "connects": [
                 {
@@ -2434,7 +2434,7 @@
               "paths": ["room.room.monsterBindings.gate-1.behaviors[0]"]
             },
             {
-              "text": "While its routine is in `alert`, `challenged` or `posted`, its body blocks its cell; and when the guard stands, up, on q -3, r 7 or q -4, r 7, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard holds `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "text": "While its routine is in `alert`, `challenged` or `posted`, its body blocks its cell; and when the guard stands, up, on q -3, r 7 or q -4, r 7, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard has noted `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "paths": [
                 "room.room.monsterBindings.gate-1.blockingStates",
                 "room.room.monsterBindings.gate-1.posts.alert",
@@ -2452,14 +2452,14 @@
               "base": "room.room.monsterBindings.gate-1.options[0]",
               "items": [
                 {
-                  "text": "Offered while: `front-gate` is in `admitted` and the guard holds `admitted` about the speaker.",
+                  "text": "Offered while: `front-gate` is in `admitted` and the guard has noted `admitted` about the speaker.",
                   "paths": [
                     "room.room.monsterBindings.gate-1.options[0].requires[0]",
                     "room.room.monsterBindings.gate-1.options[0].requires[1]"
                   ]
                 },
                 {
-                  "text": "When said: the guard answers “Right you are. Go on through, the lot of you.”, at `speak`; the guard comes to hold `admitted` about the speaker and every member of the speaker's party the guard sees then; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard comes to hold it about nobody, nobody else holds anything",
+                  "text": "When said: the guard answers “Right you are. Go on through, the lot of you.”, at `speak`; the guard notes `admitted` about the speaker and every member of the speaker's party the guard sees then; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard notes it about nobody, nobody else notes anything",
                   "paths": [
                     "room.room.monsterBindings.gate-1.options[0].success[0]",
                     "room.room.monsterBindings.gate-1.options[0].success[0].give"
@@ -2510,7 +2510,7 @@
               "paths": ["room.room.monsterBindings.captain.behaviors[0]"]
             },
             {
-              "text": "While its routine is in `back-to-gate` or `ready` and the guard captain stands, up, on q -4, r 8, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard captain holds `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "text": "While its routine is in `back-to-gate` or `ready` and the guard captain stands, up, on q -4, r 8, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard captain has noted `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "paths": [
                 "room.room.monsterBindings.captain.posts.back-to-gate",
                 "room.room.monsterBindings.captain.posts.back-to-gate.pass",
@@ -2580,7 +2580,7 @@
               "base": "room.room.monsterBindings.captain.options[4]",
               "items": [
                 {
-                  "text": "Offered while: the guard captain does NOT hold `wanted` about the speaker and the guard captain does NOT hold `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
+                  "text": "Offered while: the guard captain has NOT noted `wanted` about the speaker and the guard captain has NOT noted `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
                   "paths": [
                     "room.room.monsterBindings.captain.options[4].requires[0]",
                     "room.room.monsterBindings.captain.options[4].requires[1]"
@@ -2676,7 +2676,7 @@
               "base": "room.room.monsterBindings.captain.options[8]",
               "items": [
                 {
-                  "text": "Offered while: the guard captain holds `admitted` about the speaker.",
+                  "text": "Offered while: the guard captain has noted `admitted` about the speaker.",
                   "paths": [
                     "room.room.monsterBindings.captain.options[8].requires"
                   ]
@@ -2768,7 +2768,7 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, on coming to hold a holding about someone (judged or heard), if it holds `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
+                  "text": "In `ready`, on noting a topic about someone (judged or heard), if it has noted `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
                   ]
@@ -2813,7 +2813,7 @@
                   ]
                 },
                 {
-                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it holds `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
+                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it has noted `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
                   ]

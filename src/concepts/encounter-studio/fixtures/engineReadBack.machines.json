@@ -503,7 +503,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a holding about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `ready`, when Guard Captain (captain) notes a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) has noted `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
               "connects": [
                 {
@@ -966,7 +966,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
               "connects": [
                 {
@@ -3613,7 +3613,7 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, on coming to hold a holding about someone (judged or heard), if it holds `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
+                  "text": "In `ready`, on noting a topic about someone (judged or heard), if it has noted `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
                   ]
@@ -3658,7 +3658,7 @@
                   ]
                 },
                 {
-                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it holds `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
+                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it has noted `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
                   ]

@@ -1,7 +1,7 @@
 /**
- * ADMISSION IS A HOLDING, AUTHORED (rpg-project#928; the holding words,
+ * ADMISSION IS A TOPIC NOTED, AUTHORED (rpg-project#928; the noted words,
  * rpg-project#1005). The served castle carries an interaction's `outcomes`
- * that `give` a holding, a line that `requires` one (`holds`), and posts
+ * that `give` a topic, a line that `requires` one (`noted`), and posts
  * whose `pass` is one; the studio loads each, writes each
  * back byte for byte, and edits only the lines its two controls own.
  */
@@ -16,7 +16,7 @@ import {
   withEntryRemoved,
   withGiveAdded,
   withHeard,
-  withHolding,
+  withTopic,
 } from '../world-building/interactionOutcomes';
 import {
   bindingPosts,
@@ -88,14 +88,14 @@ const JAIL = {
   },
 };
 
-describe('the holding grammar loads and writes back (rpg-project#928, #1005)', () => {
+describe('the noted grammar loads and writes back (rpg-project#928, #1005)', () => {
   it('the served castle carries every new field, and an unedited download is byte-identical', () => {
     const doc = parse(served) as Parsed;
     expect(doc.interactions['front-gate'].outcomes).toEqual({
       admitted: [
         {
           give: {
-            holding: 'admitted',
+            topic: 'admitted',
             to: 'spoken_to',
             about: 'party_in_sight',
             heard_by: 'carriers_who_witnessed',
@@ -109,8 +109,8 @@ describe('the holding grammar loads and writes back (rpg-project#928, #1005)', (
       for (const post of Object.values(
         doc.room.room.monsterBindings[id].posts!
       ))
-        expect(post.pass).toEqual({ holds: 'admitted' });
-    expect(served).toContain('              holds: admitted\n');
+        expect(post.pass).toEqual({ noted: 'admitted' });
+    expect(served).toContain('              noted: admitted\n');
     expect(served).toContain('        behaviorState: policy\n');
     const result = roundTrips(served);
     expect(grantedTopics(result.scope)).toEqual(['admitted']);
@@ -118,33 +118,33 @@ describe('the holding grammar loads and writes back (rpg-project#928, #1005)', (
 
   it.each([
     [
-      'a line that requires a holding',
-      '            requires:\n              holds: admitted\n',
-      '            requires:\n              holds: welcome\n',
+      'a line that requires a topic noted',
+      '            requires:\n              noted: admitted\n',
+      '            requires:\n              noted: welcome\n',
     ],
     [
       'a line that requires its absence',
-      '            requires:\n              holds: admitted\n',
-      '            requires:\n              not:\n                holds: admitted\n',
+      '            requires:\n              noted: admitted\n',
+      '            requires:\n              not:\n                noted: admitted\n',
     ],
     [
       'a line that requires it in a list',
-      '            requires:\n              holds: admitted\n',
-      '            requires:\n              - holds: admitted\n              - fact: feast-tonight\n',
+      '            requires:\n              noted: admitted\n',
+      '            requires:\n              - noted: admitted\n              - fact: feast-tonight\n',
     ],
     [
       'a binding post whose pass is a password',
-      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { noted: admitted }\n            at:\n              - q: -4\n',
       '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: troupe-password\n            at:\n              - q: -4\n',
     ],
     [
       'a binding post whose pass is a list',
-      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
-      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: [{ holds: admitted }, { fact: feast-tonight }]\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { noted: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: [{ noted: admitted }, { fact: feast-tonight }]\n            at:\n              - q: -4\n',
     ],
     [
       'a binding post whose pass is a not',
-      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { noted: admitted }\n            at:\n              - q: -4\n',
       '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { not: { fact: caught-in-kitchen } }\n            at:\n              - q: -4\n',
     ],
     [
@@ -168,16 +168,16 @@ describe('the holding grammar loads and writes back (rpg-project#928, #1005)', (
 
   it.each([
     ['a password', 'pass: troupe-admitted }', 'pass: troupe-admitted }'],
-    ['a holding', 'pass: troupe-admitted }', 'pass: { holds: admitted } }'],
+    ['a topic noted', 'pass: troupe-admitted }', 'pass: { noted: admitted } }'],
     [
       'a list',
       'pass: troupe-admitted }',
-      'pass: [{ holds: admitted }, { fact: feast-tonight }] }',
+      'pass: [{ noted: admitted }, { fact: feast-tonight }] }',
     ],
     [
       'a not',
       'pass: troupe-admitted }',
-      'pass: { not: { holds: admitted } } }',
+      'pass: { not: { noted: admitted } } }',
     ],
   ])(
     'a state’s post whose pass is %s loads and writes back byte for byte',
@@ -214,7 +214,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const result = read(served);
     const outcomes = outcomesOf(result.scope, 'front-gate');
     expect(giveOf(outcomes.admitted[0])).toEqual({
-      holding: 'admitted',
+      topic: 'admitted',
       to: 'spoken_to',
       about: 'party_in_sight',
       heard: true,
@@ -224,13 +224,9 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     );
   });
 
-  it('changing the holding rewrites its own line and nothing else', () => {
-    const saved = outcomesAfter((o) =>
-      withHolding(o, 'admitted', 0, 'welcome')
-    );
-    expect(changedLines(served, saved)).toEqual([
-      '            holding: welcome',
-    ]);
+  it('changing the topic rewrites its own line and nothing else', () => {
+    const saved = outcomesAfter((o) => withTopic(o, 'admitted', 0, 'welcome'));
+    expect(changedLines(served, saved)).toEqual(['            topic: welcome']);
     roundTrips(saved);
   });
 
@@ -252,7 +248,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
         ARREST,
         {
           give: {
-            holding: 'prisoner',
+            topic: 'prisoner',
             to: 'spoken_to',
             about: 'party_in_sight',
             heard_by: 'carriers_who_witnessed',
@@ -287,9 +283,7 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
   });
 
   it('the castle’s arrest and jail survive an edit of the admitted give, byte for byte (rpg-project#925)', () => {
-    const saved = outcomesAfter((o) =>
-      withHolding(o, 'admitted', 0, 'welcome')
-    );
+    const saved = outcomesAfter((o) => withTopic(o, 'admitted', 0, 'welcome'));
     const block = served.slice(
       served.indexOf('      # Hand edit (rpg-project#925, ruled 2026-11-13)'),
       served.indexOf('    recipe:\n      ref: site:interactions:front-gate')
@@ -351,20 +345,20 @@ describe('the gate’s outcome edits only its own lines (rpg-project#928)', () =
     const scope = setInteractionOutcomes(
       result.scope,
       'front-gate',
-      withHolding(outcomes, 'admitted', 1, 'welcome')
+      withTopic(outcomes, 'admitted', 1, 'welcome')
     );
     const saved = exportDraftYaml({ draft: result.draft, scope }, result.key);
-    expect(changedLines(text, saved)).toEqual(['            holding: welcome']);
+    expect(changedLines(text, saved)).toEqual(['            topic: welcome']);
   });
 });
 
 describe('a post’s pass edits only its own line (rpg-project#928)', () => {
-  it('a binding post switches from a holding to a password and back', () => {
+  it('a binding post switches from a topic to a password and back', () => {
     const result = read(served);
     const binding = result.draft.room.monsterBindings!.captain;
     expect(passForm(bindingPosts(binding).ready.pass)).toEqual({
-      kind: 'holds',
-      holding: 'admitted',
+      kind: 'noted',
+      topic: 'admitted',
     });
     const draft = structuredClone(result.draft);
     draft.room.monsterBindings!.captain = setBindingPostPass(
@@ -381,7 +375,7 @@ describe('a post’s pass edits only its own line (rpg-project#928)', () => {
     back.room.monsterBindings!.captain = setBindingPostPass(
       again.draft.room.monsterBindings!.captain,
       'ready',
-      { holds: 'admitted' }
+      { noted: 'admitted' }
     )!;
     expect(
       exportDraftYaml({ draft: back, scope: again.scope }, again.key)
@@ -389,7 +383,7 @@ describe('a post’s pass edits only its own line (rpg-project#928)', () => {
   });
 });
 
-describe('every holding word survives an edit of a neighbour (rpg-project#1005)', () => {
+describe('every noted word survives an edit of a neighbour (rpg-project#1005)', () => {
   /** The castle with one line's words changed through the draft, written
    * out: only that line may differ. */
   function withSayChanged(text: string, from: string, to: string): string {
@@ -411,21 +405,21 @@ describe('every holding word survives an edit of a neighbour (rpg-project#1005)'
   }
 
   it.each([
-    ['holds, on a requirement', '              - holds: admitted\n'],
-    ['holds, inside a not', '                  holds: wanted\n'],
-    ['holds, on a pass', '            pass: { holds: admitted }\n'],
+    ['noted, on a requirement', '              - noted: admitted\n'],
+    ['noted, inside a not', '                  noted: wanted\n'],
+    ['noted, on a pass', '            pass: { noted: admitted }\n'],
     [
       'give, on a row',
-      '                give:\n                  holding: admitted\n                  to: spoken_to\n',
+      '                give:\n                  topic: admitted\n                  to: spoken_to\n',
     ],
     [
       'give, on an outcome',
-      '        - give:\n            holding: admitted\n            to: spoken_to\n',
+      '        - give:\n            topic: admitted\n            to: spoken_to\n',
     ],
     ['carries', '              carries: purse\n'],
     [
-      'holds.anyone, on a guard',
-      '                  name: holds.anyone:admitted\n',
+      'noted.anyone, on a guard',
+      '                  name: noted.anyone:admitted\n',
     ],
   ])('the served castle keeps %s', (_name, words) => {
     expect(served).toContain(words);

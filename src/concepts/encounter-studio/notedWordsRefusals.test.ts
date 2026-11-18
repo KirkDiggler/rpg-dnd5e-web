@@ -1,9 +1,9 @@
 /**
- * Where the compiler's refusals of the holding grammar land
- * (rpg-project#928; the holding words, rpg-project#1005). The studio does not judge these fields: the
+ * Where the compiler's refusals of the noted grammar land
+ * (rpg-project#928; the noted words, rpg-project#1005). The studio does not judge these fields: the
  * validate-only PutDungeon does, and its `FieldError` paths open the noun
  * that holds them. Paths and sentences are the compiler's (rpg-toolkit
- * dungeonspec `outcomesOf`, `optionRequires`, `passRefusal`, at 79bcc525).
+ * dungeonspec `outcomesOf`, `optionRequires`, `passRefusal`, at encounter v0.222.1).
  */
 import { describe, expect, it } from 'vitest';
 import { readDraftYaml } from './draftFile';
@@ -16,12 +16,12 @@ function document() {
   return { draft: read.draft, scope: read.scope };
 }
 
-describe('the holding refusals land at their nouns', () => {
+describe('the noted refusals land at their nouns', () => {
   it.each([
     [
       'an unknown word on an outcome',
       'interactions.front-gate.outcomes.admitted[0].give.to',
-      'a holding is given `to: spoken_to`, the creature the line was said to',
+      'a topic is given `to: spoken_to`, the creature the line was said to',
       { kind: 'home', section: 'interactions', id: 'front-gate' },
     ],
     [
@@ -31,15 +31,15 @@ describe('the holding refusals land at their nouns', () => {
       { kind: 'home', section: 'interactions', id: 'front-gate' },
     ],
     [
-      'a line asking for a holding nothing gives',
-      'room.room.monsterBindings.captain.options[6].requires.holds',
-      '"welcome" is a holding no interaction\'s `outcomes` and no line\'s row gives, so nobody could ever hold it about anyone',
+      'a line asking for a topic nothing gives',
+      'room.room.monsterBindings.captain.options[6].requires.noted',
+      '"welcome" is a topic no interaction\'s `outcomes` and no line\'s row gives, so nobody could ever have noted it about anyone',
       { kind: 'creature', id: 'captain' },
     ],
     [
-      'a pass asking for a holding nothing gives',
-      'room.room.monsterBindings.gate-2.posts.ready.pass.holds',
-      '"welcome" is a holding no interaction\'s `outcomes` and no line\'s row gives, so nobody could ever hold it about anyone',
+      'a pass asking for a topic nothing gives',
+      'room.room.monsterBindings.gate-2.posts.ready.pass.noted',
+      '"welcome" is a topic no interaction\'s `outcomes` and no line\'s row gives, so nobody could ever have noted it about anyone',
       { kind: 'creature', id: 'gate-2' },
     ],
   ])('%s', (_name, path, message, target) => {

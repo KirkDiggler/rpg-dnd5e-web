@@ -1,5 +1,5 @@
 /**
- * A post's pass (rpg-project#928, #1005): a password or a holding (`holds`),
+ * A post's pass (rpg-project#928, #1005): a password or a topic noted (`noted`),
  * switched and typed; any other shape shown as written and never offered for change.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -32,18 +32,18 @@ describe('the pass field', () => {
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
-  it('switches a password to a holding on the word typed, and back', () => {
+  it('switches a password to a topic on the word typed, and back', () => {
     const onChange = renderPass('admitted');
     fireEvent.change(screen.getByLabelText('Pass kind in gate-1 posted'), {
-      target: { value: 'holds' },
+      target: { value: 'noted' },
     });
-    expect(onChange).toHaveBeenLastCalledWith({ holds: 'admitted' });
+    expect(onChange).toHaveBeenLastCalledWith({ noted: 'admitted' });
   });
 
-  it('a holding offers the site’s holdings and writes the one typed', () => {
-    const onChange = renderPass({ holds: 'admitted' });
+  it('a topic offers the site’s topics and writes the one typed', () => {
+    const onChange = renderPass({ noted: 'admitted' });
     const topic = screen.getByLabelText(
-      'Pass holding in gate-1 posted'
+      'Pass topic in gate-1 posted'
     ) as HTMLInputElement;
     expect(topic.value).toBe('admitted');
     const offered = [
@@ -53,7 +53,7 @@ describe('the pass field', () => {
     ].map((o) => (o as HTMLOptionElement).value);
     expect(offered).toEqual(['admitted', 'guest']);
     fireEvent.change(topic, { target: { value: 'welcome' } });
-    expect(onChange).toHaveBeenLastCalledWith({ holds: 'welcome' });
+    expect(onChange).toHaveBeenLastCalledWith({ noted: 'welcome' });
     fireEvent.change(screen.getByLabelText('Pass kind in gate-1 posted'), {
       target: { value: 'fact' },
     });
@@ -61,8 +61,8 @@ describe('the pass field', () => {
   });
 
   it.each([
-    ['a list', [{ holds: 'admitted' }, { fact: 'feast-tonight' }]],
-    ['a not', { not: { holds: 'admitted' } }],
+    ['a list', [{ noted: 'admitted' }, { fact: 'feast-tonight' }]],
+    ['a not', { not: { noted: 'admitted' } }],
     ['a form it does not know', { carries: 'seal' }],
     ['the retired word', { recognized: 'admitted' }],
   ])('%s is shown as written and offered no change', (_name, value) => {
@@ -82,7 +82,7 @@ describe('a creature’s behavior posts', () => {
       ready: {
         door: 'gate-wall-door',
         against: 'entering',
-        pass: { holds: 'admitted' },
+        pass: { noted: 'admitted' },
         at: [{ q: -4, r: 8 }],
       },
     },

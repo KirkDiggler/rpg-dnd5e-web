@@ -5,11 +5,10 @@
  *
  * - records: the site's `intel` ids;
  * - regions: the site's regions, by id with their names;
- * - topics: every holding the file mentions — given by a line's row or a
- *   conversation's outcome (`give: { holding }`), or asked for by a
- *   `holds:` requirement (rpg-project#1005). A holding is declared by
- *   mention, so the form also takes a new one typed. (The list keeps the
- *   name `topics`: the read-back's hub for a holding is still "Topics".)
+ * - topics: every topic the file mentions — given by a line's row or a
+ *   conversation's outcome (`give: { topic }`), or asked for by a
+ *   `noted:` requirement (rpg-project#1005). A topic is declared by
+ *   mention, so the form also takes a new one typed.
  *
  * Provided once at the document's root (`WorldBuildingConcept`), as the
  * bundles are; a form outside it offers nothing and keeps what is written.
@@ -34,9 +33,9 @@ export interface SiteConversation {
 export interface SiteNames {
   readonly records: readonly string[];
   readonly regions: readonly { readonly id: string; readonly name: string }[];
-  /** Every holding the file mentions, given or asked for. Which of them
+  /** Every topic the file mentions, given or asked for. Which of them
    * something gives is the engine's to say (a conversation's arrest gives
-   * holdings of its own): a requirement on one nothing gives is refused at
+   * topics of its own): a requirement on one nothing gives is refused at
    * its field, in the engine's words. */
   readonly topics: readonly string[];
   /** The site's conversations (root `interactions`). */
@@ -65,13 +64,13 @@ export const SiteNamesContext = createContext<SiteNames>(NO_SITE_NAMES);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Every holding a list of lines gives or asks for. */
+/** Every topic a list of lines gives or asks for. */
 function lineTopics(options: unknown, into: Set<string>): void {
   if (!Array.isArray(options)) return;
   const asked = (requirement: unknown): void => {
     if (Array.isArray(requirement)) return requirement.forEach(asked);
     if (!isRecord(requirement)) return;
-    if (typeof requirement.holds === 'string') into.add(requirement.holds);
+    if (typeof requirement.noted === 'string') into.add(requirement.noted);
     if (requirement.not !== undefined) asked(requirement.not);
   };
   for (const option of options) {
@@ -82,7 +81,7 @@ function lineTopics(options: unknown, into: Set<string>): void {
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         const topic =
-          isRecord(row) && isRecord(row.give) ? row.give.holding : undefined;
+          isRecord(row) && isRecord(row.give) ? row.give.topic : undefined;
         if (typeof topic === 'string' && topic !== '') into.add(topic);
       }
     }

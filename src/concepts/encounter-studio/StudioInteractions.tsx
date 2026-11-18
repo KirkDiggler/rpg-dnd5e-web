@@ -25,9 +25,9 @@ import {
   withEntry,
   withEntryRemoved,
   withHeard,
-  withHolding,
   withJail,
   withOutcomeAdded,
+  withTopic,
   type OutcomeKind,
   type Outcomes,
 } from '../world-building/interactionOutcomes';
@@ -76,8 +76,9 @@ export function StudioInteractions({
         <p>
           What follows the conversation entering a state is authored here once,
           whichever line got it there. A give: the creature the line was said to
-          comes to hold the holding about the speaker’s party it sees; a post’s
-          pass or a line’s requirement can then ask <code>holds</code> of it.
+          comes to note the topic about the speaker’s party it sees; a post’s
+          pass or a line’s requirement can then ask whether it has{' '}
+          <code>noted</code> it.
         </p>
       </AboutPanel>
       {ids.length === 0 ? (
@@ -195,7 +196,7 @@ function ApproachField({
 }
 
 const KIND_LABELS: Record<OutcomeKind, string> = {
-  give: 'Gives a holding',
+  give: 'Gives a topic',
   arrest: 'Arrests',
   jail: 'Jails',
 };
@@ -203,7 +204,7 @@ const KIND_LABELS: Record<OutcomeKind, string> = {
 /**
  * One conversation's outcomes (rpg-project#928, #975 C): for each state it
  * enters, what follows — each entry ONE kind, chosen like a row's grant: it
- * gives a holding, arrests or jails. A form, not a sentence: what an arrest does
+ * gives a topic, arrests or jails. A form, not a sentence: what an arrest does
  * is the engine's read-back (here and in the places view's arrest passage).
  *
  * An arrest and a jail are a relocation reached from a conversation (R33),
@@ -369,19 +370,19 @@ function OutcomesField({
                       give={
                         give
                           ? {
-                              holding: give.holding,
+                              topic: give.topic,
                               about: give.about,
                               heard_by: give.heard
                                 ? HEARD_BY_WITNESSES
                                 : undefined,
                             }
-                          : { holding: '', about: ABOUT_PARTY_IN_SIGHT }
+                          : { topic: '', about: ABOUT_PARTY_IN_SIGHT }
                       }
                       canBeWitnessed
                       onChange={(patch) => {
                         let next = outcomes;
-                        if (patch.holding !== undefined)
-                          next = withHolding(next, state, index, patch.holding);
+                        if (patch.topic !== undefined)
+                          next = withTopic(next, state, index, patch.topic);
                         if (patch.about !== undefined)
                           next = withAbout(next, state, index, patch.about);
                         if (patch.heard !== undefined)

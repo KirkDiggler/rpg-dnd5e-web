@@ -47,7 +47,7 @@ export interface StateHolds {
   /** Empty, as absent, reads as both. */
   against?: PostDirection | '';
   /** What lets a mover through (`postPass.ts`): a fact as a bare word, the
-   * requirement grammar (`{ holds: <holding> }`, a list, a `not`), as
+   * requirement grammar (`{ noted: <topic> }`, a list, a `not`), as
    * written. */
   pass?: unknown;
   /** A field a newer server added: kept as written, never read. */
@@ -59,7 +59,7 @@ export interface CreatureState {
   /** The body blocks while in this state (rpg-project#836). */
   blocks?: boolean;
   post?: StateHolds;
-  /** A state field a newer server added — or one the holding words retired
+  /** A state field a newer server added — or one the noted words retired
    * (a state's `holds`, rpg-project#1005), which the engine names: kept as written, never read, so a
    * document the server serves always imports (rpg-project#857). */
   [future: string]: unknown;
@@ -92,9 +92,9 @@ export type CreatureStates = { initial: string } & Record<
  * (rpg-project#842): a step refused by this body, or a door verb refused by
  * its hold. It is heard by the barrier alone, at once, in the Move that
  * bumped, and is scoped like `heard`. `topic` (rpg-project#929) wakes a
- * member who has come to hold a holding about someone (a `give` from an
+ * member who has come to note a topic about someone (a `give` from an
  * interaction's outcome or a line's success row); a recipe machine guards
- * it with `holds.anyone:<id>` (rpg-project#1005; the retired `topic:<id>`). `turn` is the member's own turn and
+ * it with `noted.anyone:<id>` (rpg-project#1005; the retired `topic:<id>`). `turn` is the member's own turn and
  * `approached` someone coming up to it (rpg-project#996; both in the
  * toolkit's `encounter.MachineBeats`). Besides these the engine takes
  * `deed:<word>` and `clock:<name>`; an authored beat not listed here is

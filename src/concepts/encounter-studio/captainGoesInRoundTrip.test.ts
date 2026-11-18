@@ -1,10 +1,10 @@
 /**
  * THE CAPTAIN GOES IN; A STRAGGLER IS VOUCHED FOR (rpg-project#929). The
- * served castle carries a line whose success row gives a holding (`give:`
- * on the row, `about: speaker` for a straggler's own case; the holding
- * words, rpg-project#1005), a line that `requires` a holding's absence, and
+ * served castle carries a line whose success row gives a topic (`give:`
+ * on the row, `about: speaker` for a straggler's own case; the noted
+ * words, rpg-project#1005), a line that `requires` a topic's absence, and
  * the captain's machine woken by `on: topic` and guarded by
- * `holds.anyone:admitted` into an `in-hall`
+ * `noted.anyone:admitted` into an `in-hall`
  * state with its own table row. The studio loads each, writes each back
  * byte for byte. No control edits
  * them: the operator ruled studio editing onto the needs list (2026-11-12).
@@ -55,7 +55,7 @@ type Parsed = {
 };
 
 const STRAGGLER_GRANT = `                give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
@@ -71,7 +71,7 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
         expect.arrayContaining(['vouch', 'straggler'])
       );
       expect(byId.vouch.success![0].give).toEqual({
-        holding: 'admitted',
+        topic: 'admitted',
         to: 'spoken_to',
         about: 'party_in_sight',
         heard_by: 'carriers_who_witnessed',
@@ -80,18 +80,18 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
         about: 'speaker',
       });
       expect(byId.straggler.requires).toContainEqual({
-        not: { holds: 'admitted' },
+        not: { noted: 'admitted' },
       });
       // ONE TRY (rpg-project#932): a missed case turns the speaker away,
       // and the case asks that the guard not hold it.
       expect(byId.straggler.failure![0].give).toEqual({
-        holding: 'turned-away',
+        topic: 'turned-away',
         to: 'spoken_to',
         about: 'speaker',
         heard_by: 'carriers_who_witnessed',
       });
       expect(byId.straggler.requires).toContainEqual({
-        not: { holds: 'turned-away' },
+        not: { noted: 'turned-away' },
       });
       expect(Object.keys(byId)).toContain('friends-inside');
       expect(byId['friends-inside'].success![0].give).toBeUndefined();
@@ -102,7 +102,7 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       .find((t) => t.on === 'topic');
     expect(wake).toEqual({
       on: 'topic',
-      when: { fact: { name: 'holds.anyone:admitted', op: 'eq', value: true } },
+      when: { fact: { name: 'noted.anyone:admitted', op: 'eq', value: true } },
       to: 'in-hall',
       reason: 'admitted the party; goes in',
     });
@@ -127,24 +127,24 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
     ['a winning line that grants nothing', STRAGGLER_GRANT, ''],
     [
       'a losing line that grants nothing',
-      `              - say: Never seen you before. Unless one of that lot will speak for you.\n${STRAGGLER_GRANT.replace('holding: admitted', 'holding: turned-away')}`,
+      `              - say: Never seen you before. Unless one of that lot will speak for you.\n${STRAGGLER_GRANT.replace('topic: admitted', 'topic: turned-away')}`,
       '              - say: Never seen you before. Unless one of that lot will speak for you.\n',
     ],
     [
-      'a line that requires the holding, not its absence',
-      '              - not:\n                  holds: admitted\n',
-      '              - holds: admitted\n',
+      'a line that requires the topic, not its absence',
+      '              - not:\n                  noted: admitted\n',
+      '              - noted: admitted\n',
     ],
     [
-      'the captain woken on another holding',
-      '                  name: holds.anyone:admitted\n',
-      '                  name: holds.anyone:welcome\n',
+      'the captain woken on another topic',
+      '                  name: noted.anyone:admitted\n',
+      '                  name: noted.anyone:welcome\n',
     ],
     [
       'the captain’s wake with no guard',
       `              when:
                 fact:
-                  name: holds.anyone:admitted
+                  name: noted.anyone:admitted
                   op: eq
                   value: true
               to: in-hall
@@ -174,7 +174,7 @@ describe('the captain goes back to his gate (rpg-project#1000)', () => {
                       op: eq
                       value: failed
                   - fact:
-                      name: holds:admitted
+                      name: noted:admitted
                       op: eq
                       value: true
               to: back-to-gate

@@ -3,7 +3,7 @@
  * (rpg-project#975 A). The edits the form makes, as the engine reads them
  * (`dungeonspec` `AnswerSpec`, `GiveSpec`, `RelocateSpec`):
  *
- * - `give: { holding, to, about, heard_by? }` (rpg-project#1005; the retired
+ * - `give: { topic, to, about, heard_by? }` (rpg-project#1005; the retired
  *   `recognize` is never read and is kept as written) — to is always
  *   `spoken_to`; about is `party_in_sight` or `speaker`; `heard_by` is
  *   `carriers_who_witnessed` or absent;
@@ -29,7 +29,7 @@ export const GIVE_HEARD_BY = 'carriers_who_witnessed';
 export const LOUDNESSES = ['whisper', 'speak', 'shout', 'scream'] as const;
 
 export interface GiveShape {
-  holding: string;
+  topic: string;
   to: string;
   about: string;
   heard_by?: string;
@@ -58,7 +58,7 @@ export function grantOf(row: AnswerEntryShape): RowGrant | undefined {
 }
 
 /** The row with exactly this grant (or none), started from what the site
- * defines: its first holding, record or region. */
+ * defines: its first topic, record or region. */
 export function withGrant(
   row: AnswerEntryShape,
   grant: RowGrant | undefined,
@@ -70,7 +70,7 @@ export function withGrant(
   switch (grant) {
     case 'give':
       next.give = {
-        holding: names.topics[0] ?? '',
+        topic: names.topics[0] ?? '',
         to: GIVE_TO,
         about: GIVE_ABOUT[0],
       } satisfies GiveShape;
@@ -91,12 +91,12 @@ export function withGrant(
 /** The row's give with one field changed, the others as written. */
 export function withGive(
   row: GrantingRow,
-  patch: { holding?: string; about?: string; heard?: boolean }
+  patch: { topic?: string; about?: string; heard?: boolean }
 ): GrantingRow {
   const was = isRecord(row.give) ? row.give : undefined;
   const next: GiveShape = {
     ...(was as GiveShape | undefined),
-    holding: patch.holding ?? was?.holding ?? '',
+    topic: patch.topic ?? was?.topic ?? '',
     to: GIVE_TO,
     about: patch.about ?? was?.about ?? GIVE_ABOUT[0],
   };

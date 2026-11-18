@@ -3,15 +3,15 @@
  * dungeonspec's `PassSpec` reads it. Two spellings the engine runs:
  *
  *   pass: troupe-password      a fact the walker knows (a password)
- *   pass: { holds: admitted }  the post's holder holds `admitted` about the walker
+ *   pass: { noted: admitted }  the post's holder has noted `admitted` about the walker
  *
  * and the rest of the requirement grammar (a list, a `not`) that the form
  * does not author. The pass is CARRIED AS WRITTEN: the studio reads the two
  * spellings it edits and leaves every other one untouched — a pass still
  * written in the retired `{ recognized: … }` among them, which the engine
- * refuses naming `holds` (rpg-project#1005). Whether the fact
+ * refuses naming `noted` (rpg-project#1005). Whether the fact
  * is one the file sets, and whether something in the file gives the
- * holding, is the compiler's to judge at Save & Play.
+ * topic, is the compiler's to judge at Save & Play.
  */
 import { normalizeBinding } from './monsterOrderEdits';
 import type { RoomMonsterBinding } from './roomDraft';
@@ -21,7 +21,7 @@ import type { RoomMonsterBinding } from './roomDraft';
 export type PassForm =
   | { kind: 'none' }
   | { kind: 'fact'; fact: string }
-  | { kind: 'holds'; holding: string }
+  | { kind: 'noted'; topic: string }
   | { kind: 'other'; written: unknown };
 
 const mapping = (value: unknown): value is Record<string, unknown> =>
@@ -35,9 +35,9 @@ export function passForm(pass: unknown): PassForm {
   if (
     mapping(pass) &&
     Object.keys(pass).length === 1 &&
-    typeof pass.holds === 'string'
+    typeof pass.noted === 'string'
   )
-    return { kind: 'holds', holding: pass.holds };
+    return { kind: 'noted', topic: pass.noted };
   return { kind: 'other', written: pass };
 }
 
@@ -49,8 +49,8 @@ export function passOf(form: Exclude<PassForm, { kind: 'other' }>): unknown {
       return undefined;
     case 'fact':
       return form.fact === '' ? undefined : form.fact;
-    case 'holds':
-      return form.holding === '' ? undefined : { holds: form.holding };
+    case 'noted':
+      return form.topic === '' ? undefined : { noted: form.topic };
   }
 }
 
@@ -62,8 +62,8 @@ export function passWords(pass: unknown): string {
       return 'nobody passes';
     case 'fact':
       return `a walker who knows ${form.fact}`;
-    case 'holds':
-      return `a walker the holder holds ${form.holding} about`;
+    case 'noted':
+      return `a walker the holder has noted ${form.topic} about`;
     case 'other':
       return JSON.stringify(form.written);
   }

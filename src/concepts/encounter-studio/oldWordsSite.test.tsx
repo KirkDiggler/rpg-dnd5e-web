@@ -1,5 +1,5 @@
 /**
- * A FILE IN THE OLD WORDS STILL OPENS (rpg-project#1005). The holding words
+ * A FILE IN THE OLD WORDS STILL OPENS (rpg-project#1005). The noted words
  * retired `recognized`, `recognize: { topic, holder }`, a line's `holds:
  * <prop>` and a state's `holds:` post. The studio LOADS WHAT RUNS and keeps
  * what it does not know: a file written before the rename loads, every old
@@ -39,10 +39,16 @@ function changedLines(a: string, b: string): string[] {
   return b.split('\n').filter((line, i) => line !== left[i]);
 }
 
-/** The engine's refusal of this file, verbatim (rpg-toolkit 79bcc525,
- * `go run ./cmd/readback` on `old-words-site.yaml`). */
+/** The engine's refusals of this file, verbatim (encounter v0.222.1,
+ * `go run ./cmd/readback` on `old-words-site.yaml`). The engine stops at the
+ * first; the next two are what it says once each earlier word is fixed. */
 const ENGINE_REFUSAL =
-  'line 27: `recognize` is now `give`: write give: { holding: <holding>, to: spoken_to, about: party_in_sight|speaker, heard_by: carriers_who_witnessed }';
+  'line 27: `recognize` is now `give`: write give: { topic: <topic>, to: spoken_to, about: party_in_sight|speaker, heard_by: carriers_who_witnessed }';
+const ENGINE_REFUSALS = [
+  ENGINE_REFUSAL,
+  'line 98: state "posted": line 2: a state\'s `holds` is now `post`: write post: { door: <door id>, at, against, pass }',
+  "line 104: `recognized` is now `noted`: write { noted: <topic> } (what the creature spoken to, or a post's holder, has noted about the speaker or the walker)",
+];
 
 function editor(result: Read): () => { index: number; option: OptionShape } {
   const room = result.draft.room;
@@ -167,7 +173,8 @@ describe('a file in the old words (rpg-project#1005)', () => {
         'Written as recognize in line 1 of front-goblin success entry'
       )
     ).toBeTruthy();
-    // `holds: prop-1` reads in the new meaning: what the one spoken to holds.
+    // `holds: prop-1` (carrying, before the rename) is retired too: its own
+    // key, as written.
     expect(
       (
         screen.getByLabelText(
@@ -176,20 +183,20 @@ describe('a file in the old words (rpg-project#1005)', () => {
       ).value
     ).toBe('holds');
     expect(
-      (
-        screen.getByLabelText(
-          'Line 2 requires holding for front-goblin'
-        ) as HTMLInputElement
-      ).value
-    ).toBe('prop-1');
+      screen.getByLabelText('Line 2 requires as written for front-goblin')
+        .textContent
+    ).toBe('holds: prop-1 — kept as written');
   });
 
-  it('the engine’s refusal is shown in its own words', () => {
-    const result = read(old);
-    const [jump] = refusalJumps([{ path: '', message: ENGINE_REFUSAL }], {
-      draft: result.draft,
-      scope: result.scope,
-    });
-    expect(jump).toEqual({ path: '', message: ENGINE_REFUSAL, target: null });
-  });
+  it.each(ENGINE_REFUSALS)(
+    'the engine’s refusal is shown in its own words: %s',
+    (message) => {
+      const result = read(old);
+      const [jump] = refusalJumps([{ path: '', message }], {
+        draft: result.draft,
+        scope: result.scope,
+      });
+      expect(jump).toEqual({ path: '', message, target: null });
+    }
+  );
 });

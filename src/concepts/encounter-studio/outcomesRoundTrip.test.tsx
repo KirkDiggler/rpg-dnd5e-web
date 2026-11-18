@@ -272,7 +272,7 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
     conversations();
     const at = 'front-gate admitted 1';
     expect(field<HTMLSelectElement>(`Outcome kind ${at}`).value).toBe('give');
-    expect(field<HTMLInputElement>(`Holding for ${at}`).value).toBe('admitted');
+    expect(field<HTMLInputElement>(`Topic for ${at}`).value).toBe('admitted');
     expect(field<HTMLSelectElement>(`About for ${at}`).value).toBe(
       'party_in_sight'
     );
@@ -319,7 +319,7 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
       '      admitted:\n        - jail:\n            words: ""\n'
     );
     expect(text).not.toContain(
-      '        - give:\n            holding: admitted\n            to: spoken_to\n            about: party_in_sight\n            heard_by: carriers_who_witnessed\n      # Hand edit'
+      '        - give:\n            topic: admitted\n            to: spoken_to\n            about: party_in_sight\n            heard_by: carriers_who_witnessed\n      # Hand edit'
     );
   });
 
@@ -383,7 +383,7 @@ describe('what the form cannot fully read is shown as written (rpg-project#975 C
         .textContent
     ).toContain('"about":"everyone"');
     expect(
-      screen.queryByLabelText('Holding for front-gate admitted 1')
+      screen.queryByLabelText('Topic for front-gate admitted 1')
     ).toBeNull();
   });
 
@@ -394,11 +394,11 @@ describe('what the form cannot fully read is shown as written (rpg-project#975 C
     );
     expect(text).not.toBe(served);
     const { saved } = conversations(vi.fn(), text);
-    fireEvent.change(field('Holding for front-gate admitted 2'), {
+    fireEvent.change(field('Topic for front-gate admitted 2'), {
       target: { value: 'welcomed' },
     });
     expect(changedLines(text, saved())).toEqual([
-      '            holding: welcomed',
+      '            topic: welcomed',
     ]);
   });
 });

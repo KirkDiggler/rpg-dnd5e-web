@@ -1,6 +1,6 @@
 /**
  * A ROW'S GRANT AND A LINE'S LOUDNESS, FROM THE FORM (rpg-project#975 A).
- * A line's success or failure row grants one thing — a holding given
+ * A line's success or failure row grants one thing — a topic given
  * (`give`), a record told (`tells`) or a relocation (`relocate`) — and
  * a line, a row and a heard voice carry a loudness. Each is authored through
  * the form on the castle and written back as the exact YAML the engine
@@ -189,7 +189,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     );
   });
 
-  it('a give: holding, about, to written as the engine reads it; witnesses only on a line that names a conversation', () => {
+  it('a give: topic, about, to written as the engine reads it; witnesses only on a line that names a conversation', () => {
     const result = read(served);
     const { last } = editor(result, 'scullion', 'creature');
     fireEvent.change(grants(row), { target: { value: 'give' } });
@@ -205,7 +205,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
         ) as HTMLInputElement
       ).disabled
     ).toBe(true);
-    fireEvent.change(screen.getByLabelText(`Holding for ${row} entry`), {
+    fireEvent.change(screen.getByLabelText(`Topic for ${row} entry`), {
       target: { value: 'kitchen-friend' },
     });
     ({ index, option } = second.last());
@@ -221,7 +221,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
       served.replace(
         '                tells: kitchen-way\n',
         '                give:\n' +
-          '                  holding: kitchen-friend\n' +
+          '                  topic: kitchen-friend\n' +
           '                  to: spoken_to\n' +
           '                  about: speaker\n'
       )
@@ -235,7 +235,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     const label = 'line 2 of gate-1 success';
     expect(grants(label).value).toBe('give');
     expect(
-      (screen.getByLabelText(`Holding for ${label} entry`) as HTMLInputElement)
+      (screen.getByLabelText(`Topic for ${label} entry`) as HTMLInputElement)
         .value
     ).toBe('admitted');
     expect(

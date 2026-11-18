@@ -2394,8 +2394,8 @@ function requiresText(r: OptionRequires): string {
   if ('not' in r) return `{ not: ${requiresText(r.not)} }`;
   if ('fact' in r) return `{ fact: ${scalar(r.fact)} }`;
   if ('carries' in r) return `{ carries: ${scalar(r.carries)} }`;
-  if ('holds' in r) return `{ holds: ${scalar(r.holds)} }`;
-  // A read in a retired word (`recognized`, rpg-project#1005) is carried and
+  if ('noted' in r) return `{ noted: ${scalar(r.noted)} }`;
+  // A read in a retired word (`recognized`, `holds`, rpg-project#1005) is carried and
   // written back as it was read; the engine names the word that replaced it.
   if (!('interaction' in r))
     return `{ ${Object.entries(r as Record<string, unknown>)

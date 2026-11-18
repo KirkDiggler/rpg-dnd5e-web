@@ -1,7 +1,7 @@
 /**
  * A LINE'S WIRING, FROM THE FORM (rpg-project#975 B). A line requires a list
  * of things, every one of which must be true — a fact the speaker knows, a
- * prop they carry (`carries`), a conversation in one of its states, a holding
+ * prop they carry (`carries`), a conversation in one of its states, a topic
  * the one spoken to holds about them (`holds`), or `not` one of those — and it may advance a
  * conversation: the beat a win steps it on, and the beat a miss does. Each
  * is authored through the form on the castle and written back as the exact
@@ -116,7 +116,7 @@ const field = <T extends HTMLElement>(label: string): T =>
   screen.getByLabelText(label) as T;
 
 describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
-  it('gate-1’s `vouch` reads as written: a conversation in a state, and a holding', () => {
+  it('gate-1’s `vouch` reads as written: a conversation in a state, and a topic noted', () => {
     editor(read(served), 'gate-1');
     expect(field<HTMLSelectElement>('Line 1 requires for gate-1').value).toBe(
       'interaction'
@@ -134,10 +134,10 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
         .checked
     ).toBe(false);
     expect(field<HTMLSelectElement>('Line 1 requires 2 for gate-1').value).toBe(
-      'holds'
+      'noted'
     );
     expect(
-      field<HTMLInputElement>('Line 1 requires holding 2 for gate-1').value
+      field<HTMLInputElement>('Line 1 requires topic 2 for gate-1').value
     ).toBe('admitted');
   });
 
@@ -188,15 +188,15 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     );
   });
 
-  it('a holds requirement offers the holdings the file mentions; Unless negates it', () => {
+  it('a noted requirement offers the topics the file mentions; Unless negates it', () => {
     const { saved } = steps(
       'scullion',
       () =>
         fireEvent.change(field('Line 1 requires for scullion'), {
-          target: { value: 'not-holds' },
+          target: { value: 'not-noted' },
         }),
       () =>
-        fireEvent.change(field('Line 1 requires holding for scullion'), {
+        fireEvent.change(field('Line 1 requires topic for scullion'), {
           target: { value: 'turned-away' },
         })
     );
@@ -207,7 +207,7 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
         "            say: There's a coin in it if you know a way out of here.\n" +
           '            requires:\n' +
           '              not:\n' +
-          '                holds: turned-away\n'
+          '                noted: turned-away\n'
       )
     );
   });
@@ -222,7 +222,7 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     );
     expect(saved).toBe(
       served.replace(
-        '                  in: [admitted]\n              - holds: admitted\n            success:\n              - say: Right you are.',
+        '                  in: [admitted]\n              - noted: admitted\n            success:\n              - say: Right you are.',
         '                  in: [admitted]\n            success:\n              - say: Right you are.'
       )
     );
@@ -233,8 +233,8 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     const offered = [
       ...field<HTMLSelectElement>('Line 1 requires for grate').options,
     ].map((option) => option.value);
-    expect(offered).not.toContain('holds');
-    expect(offered).not.toContain('not-holds');
+    expect(offered).not.toContain('noted');
+    expect(offered).not.toContain('not-noted');
     expect(offered).toContain('carries');
     expect(offered).toContain('interaction');
   });
@@ -469,9 +469,9 @@ describe('each new field is a place a jump lands on, named in words', () => {
     ).toBe('gate-1 · line `troupe` · advance · failure');
     expect(
       placeName(
-        'room.room.monsterBindings.gate-1.options[0].requires[1].holds',
+        'room.room.monsterBindings.gate-1.options[0].requires[1].noted',
         doc
       )
-    ).toBe('gate-1 · line `vouch` · requires 2 · holds');
+    ).toBe('gate-1 · line `vouch` · requires 2 · noted');
   });
 });

@@ -2,7 +2,7 @@
  * THE FORMS FOR A ROW'S GRANT AND A LOUDNESS (rpg-project#975 A). A form,
  * not a sentence: each label names the field; what the choice does is said
  * by the engine's read-back after the next check. Ids are offered from what
- * the site defines (`SiteNamesContext`); a holding, declared by mention, may
+ * the site defines (`SiteNamesContext`); a topic, declared by mention, may
  * also be typed new.
  *
  * `RelocationFields` is THE relocation (R33): a region, the words the moved
@@ -219,9 +219,9 @@ export function RelocationFields({
   );
 }
 
-/** A GIVE's fields (`give:`, rpg-project#1005): the holding given, to whom
+/** A GIVE's fields (`give:`, rpg-project#1005): the topic given, to whom
  * (the one spoken to, the only word), whom it is about, and whether the
- * witnessing carriers of the conversation come to hold it too. A line's row
+ * witnessing carriers of the conversation come to note it too. A line's row
  * gives one; a conversation's outcome writes one. */
 export function GiveFields({
   label,
@@ -231,24 +231,24 @@ export function GiveFields({
 }: {
   /** What the controls are named for: "<field> for <label>". */
   label: string;
-  give: { holding: string; about: string; heard_by?: string };
+  give: { topic: string; about: string; heard_by?: string };
   /** Whether there are carriers to witness it (a line naming a
    * conversation, or a conversation's own outcome). */
   canBeWitnessed: boolean;
-  onChange(patch: { holding?: string; about?: string; heard?: boolean }): void;
+  onChange(patch: { topic?: string; about?: string; heard?: boolean }): void;
 }): React.JSX.Element {
   const names = useContext(SiteNamesContext);
   const topicsId = useId();
   return (
     <>
       <label>
-        <span>Holding</span>
+        <span>Topic</span>
         <input
-          aria-label={`Holding for ${label}`}
+          aria-label={`Topic for ${label}`}
           list={topicsId}
-          placeholder="a holding, or a new one"
-          value={give.holding}
-          onChange={(event) => onChange({ holding: event.target.value })}
+          placeholder="a topic, or a new one"
+          value={give.topic}
+          onChange={(event) => onChange({ topic: event.target.value })}
         />
         <datalist id={topicsId}>
           {names.topics.map((topic) => (
@@ -291,12 +291,12 @@ export function GiveFields({
 }
 
 const GRANT_LABELS: Record<RowGrant, string> = {
-  give: 'Gives a holding',
+  give: 'Gives a topic',
   tells: 'Record',
   relocate: 'Relocation',
 };
 
-/** A line's verdict row's grant: Nothing, or ONE of a holding given, a
+/** A line's verdict row's grant: Nothing, or ONE of a topic given, a
  * record told or a relocation. Not on a table row (the caller offers it only
  * on a line's row); no give on a prop's line. A row still written in the
  * retired `recognize:` (rpg-project#1005) is said so and kept as written. */

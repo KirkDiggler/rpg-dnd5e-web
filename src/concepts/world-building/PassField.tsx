@@ -4,11 +4,11 @@ import { passForm, passOf } from './postPass';
 /**
  * A post's pass as one choice and one id (rpg-project#928): "the walker
  * knows a fact" (a password, the bare word; empty, nobody passes), or "the
- * holder holds a holding about the walker" (`{ holds: <holding> }`). A pass written in any other shape — a
+ * holder has noted a topic about the walker" (`{ noted: <topic> }`). A pass written in any other shape — a
  * list, a `not`, a form this build does not know — is shown as written and
  * left untouched; the form does not offer to change it.
  *
- * Holdings the site already gives are offered as you type; a new holding is
+ * Topics the site already gives are offered as you type; a new topic is
  * allowed (the compiler names one nothing gives).
  */
 export function PassField({
@@ -21,7 +21,7 @@ export function PassField({
   label: string;
   /** The pass as written. */
   value: unknown;
-  /** Holding ids the loaded content gives. */
+  /** Topic ids the loaded content gives. */
   topics?: readonly string[];
   onChange: (next: unknown) => void;
 }): React.JSX.Element {
@@ -41,19 +41,15 @@ export function PassField({
     );
   // An empty fact field is no pass at all: the password mode is also the
   // "nobody passes" one, as the field has always been.
-  const mode = form.kind === 'holds' ? 'holds' : 'fact';
+  const mode = form.kind === 'noted' ? 'noted' : 'fact';
   const id =
-    form.kind === 'fact'
-      ? form.fact
-      : form.kind === 'holds'
-        ? form.holding
-        : '';
-  const choose = (next: 'fact' | 'holds') => {
+    form.kind === 'fact' ? form.fact : form.kind === 'noted' ? form.topic : '';
+  const choose = (next: 'fact' | 'noted') => {
     if (next === mode) return;
-    // Switching keeps the word typed so far; `holds` needs a holding, so an
+    // Switching keeps the word typed so far; `noted` needs a topic, so an
     // empty one starts on the first the site gives.
     if (next === 'fact') onChange(passOf({ kind: 'fact', fact: id }));
-    else onChange(passOf({ kind: 'holds', holding: id || topics[0] || '' }));
+    else onChange(passOf({ kind: 'noted', topic: id || topics[0] || '' }));
   };
   return (
     <div aria-label={`Pass in ${label}`}>
@@ -62,11 +58,11 @@ export function PassField({
         <select
           aria-label={`Pass kind in ${label}`}
           value={mode}
-          onChange={(event) => choose(event.target.value as 'fact' | 'holds')}
+          onChange={(event) => choose(event.target.value as 'fact' | 'noted')}
         >
           <option value="fact">a walker who knows a fact (password)</option>
-          <option value="holds">
-            a walker the post's holder holds this about
+          <option value="noted">
+            a walker the post's holder has noted this about
           </option>
         </select>
       </label>
@@ -83,15 +79,15 @@ export function PassField({
           />
         </label>
       )}
-      {form.kind === 'holds' && (
+      {form.kind === 'noted' && (
         <label>
-          <span>Holding</span>
+          <span>Topic</span>
           <input
-            aria-label={`Pass holding in ${label}`}
+            aria-label={`Pass topic in ${label}`}
             list={topicList}
-            value={form.holding}
+            value={form.topic}
             onChange={(event) =>
-              onChange(passOf({ kind: 'holds', holding: event.target.value }))
+              onChange(passOf({ kind: 'noted', topic: event.target.value }))
             }
           />
           <datalist id={topicList}>

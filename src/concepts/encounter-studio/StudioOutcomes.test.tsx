@@ -1,6 +1,6 @@
 /**
  * An interaction's outcomes (rpg-project#928, #975 C): each entry one kind,
- * shown as fields — a give's holding and witnesses, an arrest, a jail —
+ * shown as fields — a give's topic and witnesses, an arrest, a jail —
  * an add for a recipe state and a remove; an entry of another kind is shown
  * as written and kept.
  */
@@ -37,7 +37,7 @@ function renderOutcomes(text = served) {
 }
 
 const GIVE = {
-  holding: 'admitted',
+  topic: 'admitted',
   to: 'spoken_to',
   about: 'party_in_sight',
   heard_by: 'carriers_who_witnessed',
@@ -68,14 +68,14 @@ const JAIL = {
 };
 
 describe('the outcomes form', () => {
-  it('shows the gate’s give as fields: its kind, holding, to (the one word, not offered) and witnesses (rpg-project#975 C)', () => {
+  it('shows the gate’s give as fields: its kind, topic, to (the one word, not offered) and witnesses (rpg-project#975 C)', () => {
     renderOutcomes();
     const at = 'front-gate admitted 1';
     expect(
       (screen.getByLabelText(`Outcome kind ${at}`) as HTMLSelectElement).value
     ).toBe('give');
     expect(
-      (screen.getByLabelText(`Holding for ${at}`) as HTMLInputElement).value
+      (screen.getByLabelText(`Topic for ${at}`) as HTMLInputElement).value
     ).toBe('admitted');
     expect(
       (screen.getByLabelText(`Given to for ${at}`) as HTMLSelectElement)
@@ -83,16 +83,13 @@ describe('the outcomes form', () => {
     ).toBe(true);
   });
 
-  it('commits a new holding, keeping the rest of the entry', () => {
+  it('commits a new topic, keeping the rest of the entry', () => {
     const commit = renderOutcomes();
-    fireEvent.change(
-      screen.getByLabelText('Holding for front-gate admitted 1'),
-      {
-        target: { value: 'welcome' },
-      }
-    );
+    fireEvent.change(screen.getByLabelText('Topic for front-gate admitted 1'), {
+      target: { value: 'welcome' },
+    });
     expect(commit).toHaveBeenCalledWith('front-gate', {
-      admitted: [{ give: { ...GIVE, holding: 'welcome' } }],
+      admitted: [{ give: { ...GIVE, topic: 'welcome' } }],
       arrested: [ARREST],
       jailed: [JAIL],
     });
@@ -148,16 +145,13 @@ describe('the outcomes form', () => {
       screen.getByLabelText('Outcome as written front-gate admitted 1')
         .textContent
     ).toBe('{"announce":{"to":"garrison"}}');
-    fireEvent.change(
-      screen.getByLabelText('Holding for front-gate admitted 2'),
-      {
-        target: { value: 'welcome' },
-      }
-    );
+    fireEvent.change(screen.getByLabelText('Topic for front-gate admitted 2'), {
+      target: { value: 'welcome' },
+    });
     expect(commit).toHaveBeenCalledWith('front-gate', {
       admitted: [
         { announce: { to: 'garrison' } },
-        { give: { ...GIVE, holding: 'welcome' } },
+        { give: { ...GIVE, topic: 'welcome' } },
       ],
       arrested: [ARREST],
       jailed: [JAIL],
@@ -184,14 +178,11 @@ describe('the outcomes form', () => {
       ).value
     ).toBe('jail');
     expect(screen.queryByLabelText(/^Outcome as written/)).toBeNull();
-    fireEvent.change(
-      screen.getByLabelText('Holding for front-gate admitted 1'),
-      {
-        target: { value: 'welcome' },
-      }
-    );
+    fireEvent.change(screen.getByLabelText('Topic for front-gate admitted 1'), {
+      target: { value: 'welcome' },
+    });
     expect(commit).toHaveBeenLastCalledWith('front-gate', {
-      admitted: [{ give: { ...GIVE, holding: 'welcome' } }],
+      admitted: [{ give: { ...GIVE, topic: 'welcome' } }],
       arrested: [ARREST],
       jailed: [JAIL],
     });
