@@ -228,15 +228,9 @@ export function MachineStateEdit({
           onJump={onJump}
         />
       )}
-      <p className="es-help">
-        Make a new list with <strong>List</strong> on any step that does one.
-        {lists.length === 0 && ' '}
-        {lists.length === 0 && (
-          <button type="button" onClick={() => setListOpen('')}>
-            Make a list
-          </button>
-        )}
-      </p>
+      <button type="button" onClick={() => setListOpen('')}>
+        Make a list
+      </button>
     </div>
   );
 }
