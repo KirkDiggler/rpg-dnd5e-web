@@ -1983,6 +1983,7 @@ function StudioSurface({
                   onSelect={setFocusRoutine}
                   onJump={jumpTo}
                   onOpenFact={openFact}
+                  onCommitDefinition={session.commitBehaviorDefinition}
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (

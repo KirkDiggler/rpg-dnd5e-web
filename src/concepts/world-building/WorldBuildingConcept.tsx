@@ -20,6 +20,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  definitionOf,
+  setBehaviorDefinition,
+} from '../encounter-studio/machineEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5127,6 +5131,33 @@ export function WorldBuildingConcept({
                         current.scope,
                         id,
                         outcomes
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              commitBehaviorDefinition: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    definition: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const definition = definitionOf(current.scope, id);
+                    if (!definition)
+                      throw new Error(
+                        `behaviorDefinitions.${id}: this site authors no such behaviour`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setBehaviorDefinition(
+                        current.scope,
+                        id,
+                        edit(definition)
                       ),
                     });
                   } catch (error) {
