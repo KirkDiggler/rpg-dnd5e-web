@@ -117,6 +117,12 @@ export function StudioWatch({
             : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`}
         </span>
       </nav>
+      {run.agedOut && (
+        <p className="es-help" role="status" data-testid="watch-aged-out">
+          Earlier steps are no longer in the record; showing the earliest step
+          it still holds.
+        </p>
+      )}
       {feed.notice && (
         <p className="es-help" role="status">
           {feed.notice}

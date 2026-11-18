@@ -32,9 +32,13 @@ export interface WatchedRun {
 export interface RunWatch {
   feed: RecordFeedSnapshot;
   view: RunView;
-  /** The step shown; null is live. */
+  /** The step shown, as an index into `view.steps`; null is live. */
   step: number | null;
+  /** Show this step (an index into `view.steps`), or live. */
   setStep(step: number | null): void;
+  /** The chosen step has aged out of the record (the feed keeps the newest
+   * beats); the earliest step still held is shown instead. */
+  agedOut: boolean;
   upTo: number;
   selected: string | null;
   setSelected(id: string | null): void;
@@ -59,11 +63,14 @@ export function useRunFold(
   draft: Readonly<RoomDraft>,
   feed: RecordFeedSnapshot
 ): RunWatch {
-  const [step, setStep] = useState<number | null>(null);
+  /** The chosen step BY THE RECORD'S OWN ACT ID ('' is the start), never
+   * by index: the feed drops its oldest rows, and an index would then name
+   * a later step. Null is live. */
+  const [chosen, setChosen] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const key = watch ? `${watch.session}\u0000${watch.member}` : '';
   useEffect(() => {
-    setStep(null);
+    setChosen(null);
     setSelected(null);
   }, [key]);
   const start = useMemo(
@@ -81,7 +88,11 @@ export function useRunFold(
     () => foldRun(start, feed.rows, 0).steps,
     [start, feed.rows]
   );
-  const shown = step !== null && step < steps.length ? step : null;
+  const found = chosen === null ? -1 : steps.findIndex((s) => s.act === chosen);
+  const agedOut = chosen !== null && found < 0;
+  const shown = chosen === null ? null : agedOut ? 0 : found;
+  const setStep = (index: number | null): void =>
+    setChosen(index === null ? null : (steps[index]?.act ?? null));
   const upTo = shown === null ? feed.rows.length : steps[shown]!.through;
   const view = useMemo(
     () => foldRun(start, feed.rows, upTo),
@@ -92,6 +103,7 @@ export function useRunFold(
     view,
     step: shown,
     setStep,
+    agedOut,
     upTo,
     selected,
     setSelected,

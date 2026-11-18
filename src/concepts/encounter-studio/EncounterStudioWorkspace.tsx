@@ -173,6 +173,8 @@ interface EncounterStudioWorkspaceProps {
   /** Routes this tab to the game on a watched run, remembering it for the
    * way back (App's handlePlayWatched). */
   onPlayWatched?: (encounterId: string, characterId: string) => void;
+  /** The studio stopped watching: the game's way back is retired. */
+  onWatchEnded?: () => void;
 }
 interface StudioSurfaceProps {
   session: EncounterStudioSession;
@@ -189,6 +191,7 @@ interface StudioSurfaceProps {
   onPlay?: (encounterId: string, characterId: string) => void;
   initialWatch?: WatchedRun | null;
   onPlayWatched?: (encounterId: string, characterId: string) => void;
+  onWatchEnded?: () => void;
   /** Where the studio remembers this draft's last saved key (S6-T7). */
   storage: KeyValueStorage;
 }
@@ -209,6 +212,7 @@ function StudioSurface({
   onPlay,
   initialWatch = null,
   onPlayWatched,
+  onWatchEnded,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
   const navId = useId();
@@ -1829,7 +1833,10 @@ function StudioSurface({
                       run={run}
                       readBack={readBack.readBack}
                       names={watchNames}
-                      onStop={() => setWatch(null)}
+                      onStop={() => {
+                        setWatch(null);
+                        onWatchEnded?.();
+                      }}
                       onPlayInGame={
                         onPlayWatched
                           ? () => onPlayWatched(watch.session, watch.member)
@@ -2150,6 +2157,7 @@ export function EncounterStudioWorkspace({
   onPlay,
   initialWatch = null,
   onPlayWatched,
+  onWatchEnded,
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [home, setHome] = useState<StudioHome>('build');
   const [view, setView] = useState<EncounterStudioView>('layout');
@@ -2192,6 +2200,7 @@ export function EncounterStudioWorkspace({
         onPlay={onPlay}
         initialWatch={initialWatch}
         onPlayWatched={onPlayWatched}
+        onWatchEnded={onWatchEnded}
         storage={publicationStorage}
       />
     ),
@@ -2205,6 +2214,7 @@ export function EncounterStudioWorkspace({
       onPlay,
       initialWatch,
       onPlayWatched,
+      onWatchEnded,
       publicationStorage,
     ]
   );

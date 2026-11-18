@@ -57,12 +57,14 @@ function Harness({
   selected,
   names,
   onPlayInGame = vi.fn(),
+  shownFeed = feed,
 }: {
+  shownFeed?: RecordFeedSnapshot;
   selected: string;
   names?: ReadonlyMap<string, string>;
   onPlayInGame?: () => void;
 }): React.JSX.Element {
-  const run = useRunFold(WATCH, draft, feed);
+  const run = useRunFold(WATCH, draft, shownFeed);
   if (run.selected !== selected) run.setSelected(selected);
   return (
     <StudioWatch
@@ -104,6 +106,45 @@ describe('StudioWatch', () => {
     expect(liveBox()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Live' }));
     expect(liveBox()?.getAttribute('data-state')).toBe('challenged');
+  });
+});
+
+describe('StudioWatch steps as the record ages', () => {
+  it('a chosen step stays the same verb when older rows leave the feed', () => {
+    // An earlier party walk the feed will drop.
+    const older: RecordFeedSnapshot = {
+      ...feed,
+      rows: [
+        row('0', 'move:0', 'moved', {
+          member: 'hero',
+          position: { x: 1, y: 2 },
+        }),
+        ...rows,
+      ],
+    };
+    const { rerender } = render(
+      <Harness selected="gate-1" shownFeed={older} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    // Chosen: the walk `move:1`, gate-1 alert.
+    expect(liveBox()?.getAttribute('data-state')).toBe('alert');
+    // The feed drops its oldest row; held by index, the same number would
+    // now name the later walk (`challenged`).
+    rerender(<Harness selected="gate-1" shownFeed={feed} />);
+    expect(liveBox()?.getAttribute('data-state')).toBe('alert');
+    expect(screen.queryByTestId('watch-aged-out')).toBeNull();
+  });
+
+  it('a chosen step that aged out falls back to the earliest held, and says so', () => {
+    const { rerender } = render(<Harness selected="gate-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    rerender(
+      <Harness selected="gate-1" shownFeed={{ ...feed, rows: rows.slice(2) }} />
+    );
+    expect(screen.getByTestId('watch-aged-out').textContent).toContain(
+      'no longer in the record'
+    );
+    expect(screen.getByTestId('watch-step').textContent).toContain('the start');
   });
 });
 

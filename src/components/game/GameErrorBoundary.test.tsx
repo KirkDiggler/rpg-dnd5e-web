@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameErrorBoundary } from './GameErrorBoundary';
-import { isFailedResume, rememberFailedResume } from './resumeFailure';
+import {
+  clearFailedOpen,
+  rememberFailedOpen,
+  skipResumeOnce,
+} from './resumeFailure';
 
 afterEach(() => {
   cleanup();
@@ -54,10 +58,28 @@ describe('GameErrorBoundary', () => {
 });
 
 describe('resumeFailure', () => {
-  it('remembers the run that failed, and only that run', () => {
-    expect(isFailedResume('run-1')).toBe(false);
-    rememberFailedResume('run-1');
-    expect(isFailedResume('run-1')).toBe(true);
-    expect(isFailedResume('run-2')).toBe(false);
+  it('skips the resume once, for that player and run only, then resumes again', () => {
+    rememberFailedOpen('alice', 'run-1');
+    expect(skipResumeOnce('bob', 'run-1')).toBe(false);
+    expect(skipResumeOnce('alice', 'run-2')).toBe(false);
+    expect(skipResumeOnce('alice', 'run-1')).toBe(true);
+    // The same load asks again (an effect run twice): still skipped.
+    expect(skipResumeOnce('alice', 'run-1')).toBe(true);
+    // A later load: the mark carries another load's skip.
+    const raw = JSON.parse(window.localStorage.getItem('rpg.game.openFailed')!);
+    window.localStorage.setItem(
+      'rpg.game.openFailed',
+      JSON.stringify({ ...raw, skippedBy: 'an-earlier-load' })
+    );
+    expect(skipResumeOnce('alice', 'run-1')).toBe(false);
+    expect(window.localStorage.getItem('rpg.game.openFailed')).toBeNull();
+  });
+
+  it('entering or leaving the run forgets the failure', () => {
+    rememberFailedOpen('alice', 'run-1');
+    clearFailedOpen('alice', 'run-2');
+    expect(skipResumeOnce('alice', 'run-1')).toBe(true);
+    clearFailedOpen('alice');
+    expect(skipResumeOnce('alice', 'run-1')).toBe(false);
   });
 });

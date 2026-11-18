@@ -21,11 +21,13 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { BackToStudio } from './components/game/BackToStudio';
+import { EnteredRun } from './components/game/EnteredRun';
 import { GameErrorBoundary } from './components/game/GameErrorBoundary';
 import { GameView } from './components/game/GameView';
 import {
-  isFailedResume,
-  rememberFailedResume,
+  clearFailedOpen,
+  rememberFailedOpen,
+  skipResumeOnce,
 } from './components/game/resumeFailure';
 import { SeatNotice } from './components/game/SeatNotice';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
@@ -289,15 +291,25 @@ function AppContent() {
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
       if (resumedLobbyCharacter.loading || resumeIdentityError) return;
-      // A run whose game view already failed to render stays on Home.
-      if (isFailedResume(myActiveLobby.data.encounterId)) return;
+      // The load right after this run's game view failed to render stays on
+      // Home, once, and says so with a Resume control.
+      if (skipResumeOnce(playerId ?? '', myActiveLobby.data.encounterId)) {
+        setFailedOpen(myActiveLobby.data.encounterId);
+        return;
+      }
+      setStudioReturn(null);
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
     } else if (myActiveLobby.data.lobbyId) {
       setResumeLobbyId(myActiveLobby.data.lobbyId);
       setCurrentView('lobby');
     }
-  }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
+  }, [
+    myActiveLobby.data,
+    resumedLobbyCharacter.loading,
+    resumeIdentityError,
+    playerId,
+  ]);
 
   // #906 batch 2: backtick toggles the feel dials drawer, mirroring the
   // wrench button, so it's reachable without hunting for the button —
@@ -391,6 +403,7 @@ function AppContent() {
    * Back handlers keep clearing (a stale active-lobby seat must not leak
    * into arbitrary returns). */
   const handleLeaveGameToHome = () => {
+    clearFailedOpen(playerId ?? '');
     if (!selectedId) {
       const seatedCharacterId = resumedLobbyCharacter.characterId;
       if (seatedCharacterId) {
@@ -409,6 +422,8 @@ function AppContent() {
   // the encounter on the authored key; drop straight
   // into it the same way resume-after-refresh does.
   const handlePlayAuthored = (encounterId: string, characterId: string) => {
+    // Any entry but the watch panel's leaves no way back to a studio run.
+    setStudioReturn(null);
     setResumeLobbyId(null);
     setLobbyCharacterId(characterId);
     setResumeEncounterId(encounterId);
@@ -423,8 +438,18 @@ function AppContent() {
     member: string;
   } | null>(null);
   const handlePlayWatched = (encounterId: string, characterId: string) => {
-    setStudioReturn({ session: encounterId, member: characterId });
     handlePlayAuthored(encounterId, characterId);
+    setStudioReturn({ session: encounterId, member: characterId });
+  };
+  /** The run the last load could not open, skipped once (resumeFailure). */
+  const [failedOpen, setFailedOpen] = useState<string | null>(null);
+  const resumeFailedOpen = () => {
+    if (!failedOpen) return;
+    clearFailedOpen(playerId ?? '', failedOpen);
+    setFailedOpen(null);
+    setResumeLobbyId(null);
+    setResumeEncounterId(failedOpen);
+    setCurrentView('lobby');
   };
   const handleBackToStudio = () => {
     setCurrentView('encounter-studio');
@@ -570,9 +595,11 @@ function AppContent() {
             onBack={handleLeaveGameToHome}
             onBackToStudio={studioReturn ? handleBackToStudio : undefined}
             onError={() => {
-              if (resumeEncounterId) rememberFailedResume(resumeEncounterId);
+              if (resumeEncounterId)
+                rememberFailedOpen(playerId ?? '', resumeEncounterId);
             }}
           >
+            <EnteredRun player={playerId ?? ''} encounter={resumeEncounterId} />
             {studioReturn && <BackToStudio onBack={handleBackToStudio} />}
             <GameView
               characterId={
@@ -611,6 +638,7 @@ function AppContent() {
               onPlay={handlePlayAuthored}
               initialWatch={studioReturn}
               onPlayWatched={handlePlayWatched}
+              onWatchEnded={() => setStudioReturn(null)}
             />
           ) : (
             <section className="p-8" aria-label="Encounter Studio unavailable">
@@ -659,27 +687,47 @@ function AppContent() {
             </div>
           </div>
         ) : currentView === 'home' ? (
-          <HomeView
-            playerId={playerId || 'test-player'}
-            sessionId="test-session"
-            selectedId={selectedId}
-            selectedType={selectedType}
-            onSelect={handleCarouselSelect}
-            onCreateClick={handleCreateCharacter}
-            onPlay={handlePlay}
-            onViewSheet={handleViewCharacter}
-            onContinueDraft={handleResumeDraft}
-            onDelete={handleDeleteCharacter}
-            onDeleteDraft={handleDeleteDraft}
-            onOpenWorldBuilder={handleOpenWorldBuilder}
-            onOpenStudio={() => setCurrentView('encounter-studio')}
-            worldBuilderAvailable={compositionSource !== undefined}
-            worldBuilderUnavailableMessage={
-              authDecision.kind === 'discord' && !authDecision.guildId
-                ? 'Open this Activity in a server to access its world'
-                : undefined
-            }
-          />
+          <>
+            {failedOpen && (
+              <div
+                role="status"
+                className="flex items-center justify-center gap-3 p-3 text-sm"
+              >
+                <span>
+                  Your running encounter <code>{failedOpen}</code> failed to
+                  open last time, so it was not resumed.
+                </span>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded border"
+                  onClick={resumeFailedOpen}
+                >
+                  Resume
+                </button>
+              </div>
+            )}
+            <HomeView
+              playerId={playerId || 'test-player'}
+              sessionId="test-session"
+              selectedId={selectedId}
+              selectedType={selectedType}
+              onSelect={handleCarouselSelect}
+              onCreateClick={handleCreateCharacter}
+              onPlay={handlePlay}
+              onViewSheet={handleViewCharacter}
+              onContinueDraft={handleResumeDraft}
+              onDelete={handleDeleteCharacter}
+              onDeleteDraft={handleDeleteDraft}
+              onOpenWorldBuilder={handleOpenWorldBuilder}
+              onOpenStudio={() => setCurrentView('encounter-studio')}
+              worldBuilderAvailable={compositionSource !== undefined}
+              worldBuilderUnavailableMessage={
+                authDecision.kind === 'discord' && !authDecision.guildId
+                  ? 'Open this Activity in a server to access its world'
+                  : undefined
+              }
+            />
+          </>
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
             characterId={currentCharacterId}

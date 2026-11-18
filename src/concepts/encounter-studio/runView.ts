@@ -5,7 +5,7 @@
  *
  * NOTHING HERE IS SIMULATED. The engine runs the encounter on the server,
  * exactly as it does in the game; this fold only reads what the engine
- * recorded it did (`moved`, `arrived`, `relocated`, `state`,
+ * recorded it did (`moved`, `arrived`, `relocated`, `exited`, `state`,
  * `behavior_decision`) and draws it. It never evaluates a guard, picks a
  * row or moves a creature itself (encounter-studio R30 rejected simulating
  * play in the studio; machine-inspection: the reader never evaluates a
@@ -207,6 +207,13 @@ export function foldRun(
         const id = str(f.member);
         const cell = studioCellOf(f.to);
         if (id && cell) member(id).cell = cell;
+        break;
+      }
+      case 'exited': {
+        // A member that left the run is no longer drawn; a later beat about
+        // it (it came back) draws it again.
+        const id = str(f.member);
+        if (id) members.delete(id);
         break;
       }
       case 'state': {

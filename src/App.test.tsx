@@ -998,3 +998,47 @@ describe('App Encounter Studio current-world entry', () => {
     ).toBeTruthy();
   });
 });
+
+describe('App resume after a game view failed to open (rpg-project#1004)', () => {
+  const failed = (player: string, encounter: string) =>
+    window.localStorage.setItem(
+      'rpg.game.openFailed',
+      JSON.stringify({ player, encounter })
+    );
+  afterEach(() => window.localStorage.clear());
+
+  it('the next load stays on Home once, says why, and Resume enters the run', async () => {
+    vi.stubEnv('MODE', 'development');
+    failed('test-player', 'enc-1');
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    render(<App />);
+    const resume = await screen.findByRole('button', { name: 'Resume' });
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('enc-1');
+    expect(screen.queryByTestId('game-view')).toBeNull();
+    fireEvent.click(resume);
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.encounterId).toBe('enc-1');
+    expect(window.localStorage.getItem('rpg.game.openFailed')).toBeNull();
+  });
+
+  it('another player’s failure does not stop this player’s resume', async () => {
+    vi.stubEnv('MODE', 'development');
+    failed('someone-else', 'enc-1');
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    render(<App />);
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.encounterId).toBe('enc-1');
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+  });
+});

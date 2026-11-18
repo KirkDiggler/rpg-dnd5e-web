@@ -192,6 +192,16 @@ describe('foldRun with state beats', () => {
     expect(foldRun(gate, run, 2).members['gate-1']!.state).toBeUndefined();
   });
 
+  it('a member that exited is no longer drawn', () => {
+    const left = [
+      ...run,
+      row('exited', { member: 'gate-1', kind: 'monster' }, 'time:E'),
+    ];
+    expect(foldRun(gate, left).members['gate-1']).toBeUndefined();
+    // Before it left, it was there.
+    expect(foldRun(gate, left, run.length).members['gate-1']).toBeDefined();
+  });
+
   it('unknown beats are ignored, never fatal', () => {
     const odd = [
       row('a-beat-from-the-future', { member: 'gate-1', position: 7 }),
