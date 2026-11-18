@@ -621,6 +621,43 @@
                 "kind": "creature",
                 "id": "captain"
               },
+              "sentence": "While its routine is in the state `back-to-gate` and it stands, up, on q -4, r 8, Guard Captain (captain) holds the door `gate-wall-door`: every creature not allied with Guard Captain (captain) is barred from crossing it, one way: a crossing that starts on the post's side, Gatehouse (region-gatehouse), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.",
+              "path": "room.room.monsterBindings.captain.posts.back-to-gate",
+              "connects": [
+                {
+                  "kind": "door",
+                  "id": "gate-wall-door",
+                  "role": "holds"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "while"
+                }
+              ]
+            },
+            {
+              "kind": "creature.post.pass",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.captain.posts.back-to-gate.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "creature.post",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
               "sentence": "While its routine is in the state `ready` and it stands, up, on q -4, r 8, Guard Captain (captain) holds the door `gate-wall-door`: every creature not allied with Guard Captain (captain) is barred from crossing it, one way: a crossing that starts on the post's side, Gatehouse (region-gatehouse), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.",
               "path": "room.room.monsterBindings.captain.posts.ready",
               "connects": [
@@ -628,6 +665,11 @@
                   "kind": "door",
                   "id": "gate-wall-door",
                   "role": "holds"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "while"
                 }
               ]
             },
@@ -1435,6 +1477,11 @@
                   "kind": "creature",
                   "id": "captain",
                   "role": "runs"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "starts"
                 }
               ]
             },
@@ -1445,7 +1492,14 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `ready`, Guard Captain (captain) listens for 7 beats.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "is"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1460,6 +1514,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -1476,6 +1545,21 @@
                   "kind": "fact",
                   "id": "gate-cowed",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -1492,6 +1576,21 @@
                   "kind": "topic",
                   "id": "admitted",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "topic",
+                  "role": "on"
                 }
               ]
             },
@@ -1502,7 +1601,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `ready`, when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard Captain (captain) sees them and they see Guard Captain (captain), Guard Captain (captain) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard Captain (captain) acts from its own `approached` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "approached",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1511,7 +1627,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `ready`, when someone walks into Guard Captain (captain) and its body stops them, Guard Captain (captain) acts from its own `barred` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "barred",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "barred",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1520,7 +1653,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `ready`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[5]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[5]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1529,7 +1679,206 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `ready`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, Guard Captain (captain) listens for 6 beats.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `gate-cowed`, Guard Captain (captain) moves to the state `cowed` (“stood aside”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard Captain (captain) sees them and they see Guard Captain (captain), Guard Captain (captain) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard Captain (captain) acts from its own `approached` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[2]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "approached",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when someone walks into Guard Captain (captain) and its body stops them, Guard Captain (captain) acts from its own `barred` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[3]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "barred",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "barred",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `back-to-gate` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[4]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "back-to-gate",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[5]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.state",
@@ -1538,7 +1887,14 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `cowed`, Guard Captain (captain) listens for 3 beats.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "is"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1553,6 +1909,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -1563,7 +1934,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `cowed`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[1]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[1]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1572,7 +1960,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `cowed`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.state",
@@ -1580,8 +1985,15 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `in-hall`, Guard Captain (captain) listens for 3 beats.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall"
+              "sentence": "In the state `in-hall`, Guard Captain (captain) listens for 4 beats.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "is"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1596,6 +2008,52 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "heard",
+                  "role": "on"
                 }
               ]
             },
@@ -1606,7 +2064,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `in-hall`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `in-hall` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "in-hall",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1615,7 +2090,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `in-hall`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[3]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.state",
@@ -1624,7 +2116,14 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `turned`, Guard Captain (captain) listens for 2 beats.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.turned"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.turned",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "is"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1633,7 +2132,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `turned`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[0]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[0]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -1642,7 +2158,24 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `turned`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]"
+              "path": "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -1651,7 +2184,30 @@
                 "id": "captain-policy"
               },
               "sentence": "`approached` row 1 of `captain-policy`: Guard Captain (captain) says “You there. Nobody passes this gate without my say. Speak.” (at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
-              "path": "behaviorDefinitions.captain-policy.table.approached[0]"
+              "path": "behaviorDefinitions.captain-policy.table.approached[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "row-of"
+                }
+              ]
+            },
+            {
+              "kind": "routine.row",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "`back-to-gate` row 1 of `captain-policy`: if Guard Captain (captain) knows of no enemy (none in reach, seen, remembered or lost), Guard Captain (captain) walks toward the cell q -4, r 8.",
+              "path": "behaviorDefinitions.captain-policy.table.back-to-gate[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "back-to-gate",
+                  "role": "row-of"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -1660,7 +2216,14 @@
                 "id": "captain-policy"
               },
               "sentence": "`barred` row 1 of `captain-policy`: Guard Captain (captain) says “Not one step further without my say.” (at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
-              "path": "behaviorDefinitions.captain-policy.table.barred[0]"
+              "path": "behaviorDefinitions.captain-policy.table.barred[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "barred",
+                  "role": "row-of"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -1669,7 +2232,14 @@
                 "id": "captain-policy"
               },
               "sentence": "`in-hall` row 1 of `captain-policy`: if Guard Captain (captain) knows of no enemy (none in reach, seen, remembered or lost), Guard Captain (captain) walks toward the cell q 3, r -9.",
-              "path": "behaviorDefinitions.captain-policy.table.in-hall[0]"
+              "path": "behaviorDefinitions.captain-policy.table.in-hall[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "in-hall",
+                  "role": "row-of"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -1684,6 +2254,11 @@
                   "kind": "bundle",
                   "id": "revenger",
                   "role": "uses"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             },
@@ -1700,6 +2275,11 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "asks"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             },
@@ -1710,7 +2290,14 @@
                 "id": "captain-policy"
               },
               "sentence": "`time` row 3 of `captain-policy`: if an enemy is in Guard Captain (captain)'s reach, Guard Captain (captain) attacks the enemy.",
-              "path": "behaviorDefinitions.captain-policy.table.time[2]"
+              "path": "behaviorDefinitions.captain-policy.table.time[2]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -1719,7 +2306,14 @@
                 "id": "captain-policy"
               },
               "sentence": "`time` row 4 of `captain-policy`: if Guard Captain (captain) sees an enemy and none is in its reach, Guard Captain (captain) walks toward the enemy.",
-              "path": "behaviorDefinitions.captain-policy.table.time[3]"
+              "path": "behaviorDefinitions.captain-policy.table.time[3]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
+                }
+              ]
             }
           ]
         }
@@ -1865,7 +2459,7 @@
                   ]
                 },
                 {
-                  "text": "When said: the guard answers “Right you are. Go on through, the lot of you.”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; the guard comes to hold `admitted` about the speaker and every member of the speaker's party the guard sees then; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard comes to hold it about nobody, nobody else holds anything",
+                  "text": "When said: the guard answers “Right you are. Go on through, the lot of you.”, at `speak`; the guard comes to hold `admitted` about the speaker and every member of the speaker's party the guard sees then; so does each other carrier of `front-gate` the line's words reached and who is up, about the same members, whether or not that carrier sees them (heard); if the guard comes to hold it about nobody, nobody else holds anything",
                   "paths": [
                     "room.room.monsterBindings.gate-1.options[0].success[0]",
                     "room.room.monsterBindings.gate-1.options[0].success[0].give"
@@ -1889,14 +2483,14 @@
                   ]
                 },
                 {
-                  "text": "On a win: the guard answers “Through to the hall, then. Don’t dawdle.”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-guest`",
+                  "text": "On a win: the guard answers “Through to the hall, then. Don’t dawdle.”, at `speak`; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-guest`",
                   "paths": [
                     "room.room.monsterBindings.gate-1.options[3].success[0]",
                     "room.room.monsterBindings.gate-1.options[3].advance"
                   ]
                 },
                 {
-                  "text": "On a miss: the guard answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`: its words reach everyone in the guard's room (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`",
+                  "text": "On a miss: the guard answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`; and the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`",
                   "paths": [
                     "room.room.monsterBindings.gate-1.options[3].failure[0]",
                     "room.room.monsterBindings.gate-1.options[3].advance"
@@ -1916,8 +2510,10 @@
               "paths": ["room.room.monsterBindings.captain.behaviors[0]"]
             },
             {
-              "text": "While its routine is in `ready` and the guard captain stands, up, on q -4, r 8, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard captain holds `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "text": "While its routine is in `back-to-gate` or `ready` and the guard captain stands, up, on q -4, r 8, it holds the door `gate-wall-door` against anyone not allied with it, one way: from its side (Gatehouse) to the far side; it lets a walker through, as an ally, when the guard captain holds `admitted` about the walker; but the door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "paths": [
+                "room.room.monsterBindings.captain.posts.back-to-gate",
+                "room.room.monsterBindings.captain.posts.back-to-gate.pass",
                 "room.room.monsterBindings.captain.posts.ready",
                 "room.room.monsterBindings.captain.posts.ready.pass"
               ],
@@ -1960,14 +2556,14 @@
                   ]
                 },
                 {
-                  "text": "On a win: the guard captain answers “Guests, is it? In you go. Mind your manners in the hall.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-troupe`",
+                  "text": "On a win: the guard captain answers “Guests, is it? In you go. Mind your manners in the hall.”, at `speak`; and the line steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-troupe`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[0].success[0]",
                     "room.room.monsterBindings.captain.options[0].advance"
                   ]
                 },
                 {
-                  "text": "On a miss: the guard captain answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand; and the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to `arrested` from `warned-troupe`",
+                  "text": "On a miss: the guard captain answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`; and the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to `arrested` from `warned-troupe`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[0].failure[0]",
                     "room.room.monsterBindings.captain.options[0].advance"
@@ -1991,14 +2587,14 @@
                   ]
                 },
                 {
-                  "text": "On a win: the guard captain answers “…go on, then. I saw nothing.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `gate-cowed` (weight 3 of 4); or the guard captain answers “Big words. GUARDS!”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `party-recognized` (weight 1 of 4)",
+                  "text": "On a win: the guard captain answers “…go on, then. I saw nothing.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `gate-cowed` (weight 3 of 4); or the guard captain answers “Big words. GUARDS!”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `party-recognized` (weight 1 of 4)",
                   "paths": [
                     "room.room.monsterBindings.captain.options[4].success[0]",
                     "room.room.monsterBindings.captain.options[4].success[1]"
                   ]
                 },
                 {
-                  "text": "On a miss: the guard captain answers “You’ll bleed first.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `party-recognized`",
+                  "text": "On a miss: the guard captain answers “You’ll bleed first.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `party-recognized`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[4].failure[0]"
                   ]
@@ -2020,13 +2616,13 @@
                   ]
                 },
                 {
-                  "text": "On a win: the guard captain answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `guards-turned`",
+                  "text": "On a win: the guard captain answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `guards-turned`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[5].success[0]"
                   ]
                 },
                 {
-                  "text": "On a miss: the guard captain answers “Lies. Get out before I change my mind.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "text": "On a miss: the guard captain answers “Lies. Get out before I change my mind.”, at `speak`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[5].failure[0]"
                   ]
@@ -2048,13 +2644,13 @@
                   ]
                 },
                 {
-                  "text": "On a win: the guard captain answers “Done. Go finish it.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and every member the guard captain's words reach (everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the guard captain, the guard captain included, learns the fact `throne-taken`",
+                  "text": "On a win: the guard captain answers “Done. Go finish it.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `throne-taken`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[6].success[0]"
                   ]
                 },
                 {
-                  "text": "On a miss: the guard captain answers “We’ll hold what we can.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "text": "On a miss: the guard captain answers “We’ll hold what we can.”, at `speak`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[6].failure[0]"
                   ]
@@ -2067,7 +2663,7 @@
               "base": "room.room.monsterBindings.captain.options[7]",
               "items": [
                 {
-                  "text": "When said: the guard captain answers “Evening. Keep to the road and mind the guards.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "text": "When said: the guard captain answers “Evening. Keep to the road and mind the guards.”, at `speak`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[7].success[0]"
                   ]
@@ -2086,7 +2682,7 @@
                   ]
                 },
                 {
-                  "text": "When said: the guard captain answers “In the great hall. You’re expected.”, at `speak`: its words reach everyone in the guard captain's room (the wall partition the guard captain stands in), and anyone in the next room within 30 feet of the guard captain by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand",
+                  "text": "When said: the guard captain answers “In the great hall. You’re expected.”, at `speak`",
                   "paths": [
                     "room.room.monsterBindings.captain.options[8].success[0]"
                   ]
@@ -2152,10 +2748,12 @@
               "base": "behaviorDefinitions.captain-policy.recipe.states.",
               "items": [
                 {
-                  "text": "In `ready`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "text": "In `ready`, `back-to-gate`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready",
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
                     "behaviorDefinitions.captain-policy.recipe.states.in-hall",
@@ -2163,9 +2761,10 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "text": "In `ready` or `back-to-gate`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[1]"
                   ]
                 },
                 {
@@ -2175,15 +2774,17 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "text": "In `ready` or `back-to-gate`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[2]"
                   ]
                 },
                 {
-                  "text": "In `ready`, when someone walks into it and its body stops them → acts from its `barred` rows.",
+                  "text": "In `ready` or `back-to-gate`, when someone walks into it and its body stops them → acts from its `barred` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[3]"
                   ]
                 },
                 {
@@ -2196,18 +2797,31 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "text": "In `ready`, `back-to-gate`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[5]",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]",
-                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[3]",
                     "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `back-to-gate`, on its time (out of a fight) → acts from its `back-to-gate` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[4]"
+                  ]
+                },
+                {
+                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it holds `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
                   ]
                 },
                 {
                   "text": "In `in-hall`, on its time (out of a fight) → acts from its `in-hall` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]"
                   ]
                 }
               ]
@@ -2221,6 +2835,12 @@
                   "text": "`approached`: says “You there. Nobody passes this gate without my say. Speak.”",
                   "paths": [
                     "behaviorDefinitions.captain-policy.table.approached[0]"
+                  ]
+                },
+                {
+                  "text": "`back-to-gate`: if it knows of no enemy → walks to q -4, r 8.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.back-to-gate[0]"
                   ]
                 },
                 {

@@ -151,7 +151,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 5 places and asked for or woken on in 13 places.",
+              "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 5 places and asked for or woken on in 15 places.",
               "path": "room.room.monsterBindings.gate-1.options[0].success[0].give"
             },
             {
@@ -476,6 +476,22 @@
                 "id": "admitted"
               },
               "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "path": "room.room.monsterBindings.captain.posts.back-to-gate.pass",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.captain.posts.ready.pass",
               "connects": [
                 {
@@ -514,6 +530,52 @@
                   "kind": "topic",
                   "id": "admitted",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "topic",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "heard",
+                  "role": "on"
                 }
               ]
             }
@@ -722,7 +784,7 @@
                 "kind": "fact",
                 "id": "guards-turned"
               },
-              "sentence": "The file does not say what the fact `guards-turned` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 16 places.",
+              "sentence": "The file does not say what the fact `guards-turned` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 17 places.",
               "path": "room.room.monsterBindings.captain.options[5].success[0]"
             },
             {
@@ -817,6 +879,52 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -833,6 +941,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -849,6 +972,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -865,6 +1003,11 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "asks"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             },
@@ -881,6 +1024,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -897,6 +1055,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -913,6 +1086,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "challenged",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -929,6 +1117,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -945,6 +1148,11 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "asks"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             },
@@ -961,6 +1169,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -977,6 +1200,21 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
                 }
               ]
             },
@@ -993,6 +1231,11 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "asks"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             },
@@ -1009,6 +1252,11 @@
                   "kind": "fact",
                   "id": "guards-turned",
                   "role": "asks"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "row-of"
                 }
               ]
             }
@@ -1817,7 +2065,7 @@
               ]
             },
             {
-              "text": "Asked by: the posts (gate-1, gate-2, captain); `vouch` (gate-1, gate-2); `straggler` (gate-1, gate-2); `friends-inside` (gate-1, gate-2); `the-way-in` (captain).",
+              "text": "Asked by: the posts (gate-1, gate-2, captain); `vouch` (gate-1, gate-2); `straggler` (gate-1, gate-2); `friends-inside` (gate-1, gate-2); `the-way-in` (captain); the routine `captain-policy`.",
               "paths": [
                 "room.room.monsterBindings.gate-1.posts.alert.pass",
                 "room.room.monsterBindings.gate-1.posts.challenged.pass",
@@ -1829,8 +2077,10 @@
                 "room.room.monsterBindings.gate-2.options[0].requires[1]",
                 "room.room.monsterBindings.gate-2.options[1].requires[1]",
                 "room.room.monsterBindings.gate-2.options[2].requires[1]",
+                "room.room.monsterBindings.captain.posts.back-to-gate.pass",
                 "room.room.monsterBindings.captain.posts.ready.pass",
-                "room.room.monsterBindings.captain.options[8].requires"
+                "room.room.monsterBindings.captain.options[8].requires",
+                "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
               ]
             },
             {
@@ -1906,6 +2156,7 @@
               "text": "Wakes: the routine `captain-policy`; the routine `gate-1-policy`; the routine `gate-2-policy`.",
               "paths": [
                 "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
                 "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
                 "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[0]",
                 "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[0]",

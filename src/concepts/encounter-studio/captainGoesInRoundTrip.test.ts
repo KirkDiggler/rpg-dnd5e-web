@@ -164,3 +164,53 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
     roundTrips(text);
   });
 });
+
+describe('the captain goes back to his gate (rpg-project#1000)', () => {
+  const STEP = `            - on: heard
+              when:
+                all:
+                  - fact:
+                      name: heard.claim
+                      op: eq
+                      value: failed
+                  - fact:
+                      name: holds:admitted
+                      op: eq
+                      value: true
+              to: back-to-gate
+              reason: an admitted guest lied to him
+`;
+  const STATE = '        back-to-gate:\n          transitions:\n';
+  const POST = '          back-to-gate:\n            door: gate-wall-door\n';
+
+  it('the served castle carries the new state, its step and its post, and an unedited download is byte-identical', () => {
+    for (const words of [STEP, STATE, POST])
+      expect(served.split(words)).toHaveLength(2);
+    const doc = parse(served) as Parsed;
+    const captain = doc.behaviorDefinitions['captain-policy'];
+    expect(captain.recipe.states['back-to-gate']).toBeDefined();
+    expect(
+      captain.recipe.states['in-hall'].transitions!.find(
+        (t) => t.on === 'heard'
+      )
+    ).toMatchObject({ to: 'back-to-gate' });
+    roundTrips(served);
+  });
+
+  it('an edit elsewhere keeps the new state, its step and its post byte for byte', () => {
+    const result = read(served);
+    const draft = structuredClone(result.draft);
+    const greet = draft.room.monsterBindings!.captain.options!.find(
+      (o) => o.id === 'greet'
+    )!;
+    greet.say = 'Good evening.';
+    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
+    const left = served.split('\n');
+    expect(saved.split('\n').filter((line, i) => line !== left[i])).toEqual([
+      '            say: Good evening.',
+    ]);
+    for (const words of [STEP, STATE, POST])
+      expect(saved.split(words)).toHaveLength(2);
+    roundTrips(saved);
+  });
+});

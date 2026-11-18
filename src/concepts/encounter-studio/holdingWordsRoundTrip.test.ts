@@ -134,18 +134,18 @@ describe('the holding grammar loads and writes back (rpg-project#928, #1005)', (
     ],
     [
       'a binding post whose pass is a password',
-      '            pass: { holds: admitted }\n            at:\n              - q: -4\n',
-      '            pass: troupe-password\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: troupe-password\n            at:\n              - q: -4\n',
     ],
     [
       'a binding post whose pass is a list',
-      '            pass: { holds: admitted }\n            at:\n              - q: -4\n',
-      '            pass: [{ holds: admitted }, { fact: feast-tonight }]\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: [{ holds: admitted }, { fact: feast-tonight }]\n            at:\n              - q: -4\n',
     ],
     [
       'a binding post whose pass is a not',
-      '            pass: { holds: admitted }\n            at:\n              - q: -4\n',
-      '            pass: { not: { fact: caught-in-kitchen } }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { holds: admitted }\n            at:\n              - q: -4\n',
+      '          ready:\n            door: gate-wall-door\n            against: entering\n            pass: { not: { fact: caught-in-kitchen } }\n            at:\n              - q: -4\n',
     ],
     [
       'an outcome heard by nobody else',

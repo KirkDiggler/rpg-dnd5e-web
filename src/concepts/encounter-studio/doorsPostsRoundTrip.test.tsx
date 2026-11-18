@@ -324,20 +324,30 @@ describe('a post, from the form (rpg-project#975 D)', () => {
   });
 
   it('removing the last post drops `posts` itself, never leaving `posts: {}`', () => {
+    // The captain keeps the same post in `ready` and in `back-to-gate`
+    // (rpg-project#1000): both go, and `posts` with them.
+    const POST =
+      '            door: gate-wall-door\n' +
+      '            against: entering\n' +
+      '            pass: { holds: admitted }\n' +
+      '            at:\n' +
+      '              - q: -4\n' +
+      '                r: 8\n';
     const { saved } = posts('captain');
     fireEvent.click(
       screen.getByRole('button', { name: 'Remove post captain ready' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove post captain back-to-gate' })
     );
     expect(saved()).toBe(
       served.replace(
         '        posts:\n' +
           '          ready:\n' +
-          '            door: gate-wall-door\n' +
-          '            against: entering\n' +
-          '            pass: { holds: admitted }\n' +
-          '            at:\n' +
-          '              - q: -4\n' +
-          '                r: 8\n',
+          POST +
+          '          # Hand edit (rpg-project#1000): the same post, back from the hall.\n' +
+          '          back-to-gate:\n' +
+          POST,
         ''
       )
     );
