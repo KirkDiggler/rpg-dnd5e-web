@@ -43,6 +43,11 @@ export type WorldAssetRole = NonNullable<
 >[number]['role'];
 
 /** One declared opening: the asset-local id and its leaf pivot in asset space. */
+import {
+  fitWallOpeningInstance,
+  type WallOpeningDescriptor,
+} from '@/rendering/wallOpeningFit';
+
 export interface WorldAssetDoor {
   id: string;
   /** Leaf pivot in the asset's local frame; the placement transform is the consumer's. */
@@ -81,6 +86,8 @@ export interface WorldAssetModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
+  /** Aperture-anchored fixed surround; distinct from a miterable wall body. */
+  wallOpeningFit?: PlainWallFit;
   /** Transient, fully loaded finish sets for explicit provider surface bindings.
    * The caller supplies a fitted compatible chart; no persisted room state here. */
   surfaceSelections?: readonly WorldSurfaceSelection[];
@@ -95,6 +102,8 @@ export interface WorldAssetModelProps {
    * door's live state: a placed door item is one door however many openings
    * its asset declares, and the caller is not the one that resolved them. */
   open?: boolean;
+  /** Unknown mutable state hides only moving leaves, retaining known fixed art. */
+  hideDoorLeaves?: boolean;
   /** Fires when the door was hit. The raycast is the whole assembly, so a
    * click on the frame, a leaf or the cap above all report the door — the
    * affordance belongs to the door, not to one of its parts. */
@@ -106,6 +115,7 @@ export interface WorldAssetModelProps {
 interface ResolvedLeaf {
   node: THREE.Object3D;
   restQuaternion: THREE.Quaternion;
+  restVisible: boolean;
 }
 
 interface ResolvedDoor {
@@ -231,7 +241,11 @@ function resolveRoles(
           node.getWorldPosition(new THREE.Vector3()).applyMatrix4(inverseRoot)
         );
       }
-      group.leaves.push({ node, restQuaternion: node.quaternion.clone() });
+      group.leaves.push({
+        node,
+        restQuaternion: node.quaternion.clone(),
+        restVisible: node.visible,
+      });
       doors.set(binding.door, group);
     }
     // `frame` is static by contract: binding it only proves the node exists.
@@ -315,12 +329,14 @@ function LoadedWorldAssetModel({
   onDoorsResolved,
   openDoors,
   open,
+  hideDoorLeaves,
   onDoorClick,
   heightScale,
   remembered,
   rememberedTint,
   visualLighting,
   plainWallFit,
+  openingDescriptor,
   surfaces,
   surfaceSelections,
   surfaceCharts,
@@ -343,25 +359,33 @@ function LoadedWorldAssetModel({
   onDoorsResolved?: (doors: readonly WorldAssetDoor[]) => void;
   openDoors: readonly string[];
   open?: boolean;
+  hideDoorLeaves?: boolean;
   onDoorClick?: () => void;
   heightScale: number;
   remembered: boolean;
   rememberedTint?: THREE.Color;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  openingDescriptor?: WallOpeningDescriptor;
   surfaces: GeneratedWorldAsset['surfaces'];
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfaceCharts?: readonly WallSurfaceChart[];
 }) {
   const { scene } = useGLTF(url);
   const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
+  const openingKey = openingDescriptor ? JSON.stringify(openingDescriptor) : '';
   const chartKey = JSON.stringify(surfaceCharts ?? []);
   const bindingKey = JSON.stringify(surfaces ?? []);
   const instance = useMemo(() => {
     const object = scene.clone(true);
     const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
     const fitted = fit
-      ? fitPlainWallInstance(object, fit)
+      ? openingKey
+        ? fitWallOpeningInstance(
+            object,
+            JSON.parse(openingKey) as WallOpeningDescriptor
+          )
+        : fitPlainWallInstance(object, fit)
       : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
     try {
       const charts = JSON.parse(chartKey) as WallSurfaceChart[];
@@ -388,7 +412,7 @@ function LoadedWorldAssetModel({
       for (const geometry of fitted.owned) geometry.dispose();
       throw error;
     }
-  }, [scene, fitKey, chartKey, bindingKey, assetRef]);
+  }, [scene, fitKey, openingKey, chartKey, bindingKey, assetRef]);
   const cloned = instance.object;
   const fit = instance.fit;
   useEffect(
@@ -449,9 +473,15 @@ function LoadedWorldAssetModel({
     for (const door of resolved.doors) {
       // `open` is the whole-assembly form: a placed door is one door, so its
       // live state applies to every group its asset declares.
-      applyLeafSwing(door.leaves, open === true || openDoors.includes(door.id));
+      for (const leaf of door.leaves)
+        leaf.node.visible = !hideDoorLeaves && leaf.restVisible;
+      if (!hideDoorLeaves)
+        applyLeafSwing(
+          door.leaves,
+          open === true || openDoors.includes(door.id)
+        );
     }
-  }, [open, openDoors, resolved]);
+  }, [open, openDoors, hideDoorLeaves, resolved]);
 
   /**
    * The authored `above` row, plus the clones that tile it upward. Row 0 IS
@@ -799,9 +829,11 @@ export function WorldAssetModel({
   visualLighting,
   openDoors = [],
   open,
+  hideDoorLeaves,
   onDoorClick,
   onDoorsResolved,
   plainWallFit,
+  wallOpeningFit,
   surfaceSelections,
   surfacePlans,
   surfaceProvider,
@@ -811,6 +843,22 @@ export function WorldAssetModel({
     onDiagnostic?.(diagnostic)
   );
   if (!asset) return null;
+  if (
+    wallOpeningFit &&
+    (plainWallFit ||
+      !asset.wallOpening ||
+      asset.roles?.filter((role) => role.role === 'frame').length !== 1 ||
+      ![
+        wallOpeningFit.width,
+        wallOpeningFit.height,
+        wallOpeningFit.depth,
+      ].every((v) => Number.isFinite(v) && v > 0) ||
+      wallOpeningFit.start !== undefined ||
+      wallOpeningFit.end !== undefined)
+  )
+    throw new Error(
+      'This asset requires valid aperture fitting without wall miters.'
+    );
   if (plainWallFit && !asset.tags.includes('wall-miter-90'))
     throw new Error('This asset is not enrolled for plain wall fitting.');
   if (
@@ -841,13 +889,23 @@ export function WorldAssetModel({
       onDiagnostic={onDiagnostic}
       onDoorsResolved={onDoorsResolved}
       openDoors={openDoors}
+      hideDoorLeaves={hideDoorLeaves}
       open={open}
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
       remembered={remembered}
       rememberedTint={rememberedTint}
       visualLighting={visualLighting}
-      plainWallFit={plainWallFit}
+      plainWallFit={plainWallFit ?? wallOpeningFit}
+      openingDescriptor={
+        wallOpeningFit && asset.wallOpening
+          ? {
+              ...asset.wallOpening,
+              frameNode: asset.roles!.find((role) => role.role === 'frame')!
+                .node,
+            }
+          : undefined
+      }
       surfaces={surfaceProvider?.bindings ?? asset.surfaces}
       surfaceSelections={surfaceSelections}
     />
