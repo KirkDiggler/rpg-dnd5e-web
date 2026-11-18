@@ -2213,21 +2213,97 @@
 .es-dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(0 0 0 / 55%);
+  padding: 1rem;
+  background: rgb(0 0 0 / 65%);
 }
 .es-dialog {
-  width: min(44rem, calc(100% - 2rem));
-  max-height: calc(100% - 4rem);
-  overflow: auto;
-  padding: 1rem;
-  background: var(--wb-panel);
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--wb-border, #33504d);
+  border-radius: 8px;
+  background: var(--wb-panel, #101b1c);
+  color: var(--wb-text, #d8ebe7);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 60%);
+}
+.es-dialog:focus {
+  outline: none;
 }
 .es-dialog-header {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--wb-border, #33504d);
+}
+.es-dialog-header h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.es-dialog-header button,
+.es-dialog-footer button,
+.es-dialog-footer label {
+  flex: none;
+  white-space: nowrap;
+}
+.es-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem 0.9rem;
+}
+/* A collapsed row: its words take the width, its controls stay on one line
+ * at the right; a refusal under it takes the full line. */
+.es-dialog .wb-entry-collapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.es-dialog .wb-entry-collapsed > .wb-entry-summary {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.es-dialog .wb-entry-collapsed > button,
+.es-dialog .wb-entry-collapsed > [data-shared] {
+  flex: none;
+  white-space: nowrap;
+}
+.es-dialog .wb-entry-collapsed > :not(button, span) {
+  flex-basis: 100%;
+}
+.es-dialog-add-row {
+  display: block;
+  margin-top: 0.4rem;
+  white-space: nowrap;
+}
+.es-dialog-footer {
+  flex: none;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid var(--wb-border, #33504d);
+}
+.es-dialog-footer .es-machine-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.es-dialog-footer .es-machine-new input {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.es-dialog-footer .es-machine-new > p {
+  flex-basis: 100%;
+  margin: 0;
 }

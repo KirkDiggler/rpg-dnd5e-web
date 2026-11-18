@@ -17,6 +17,7 @@
  */
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AnswerEntryShape } from '../world-building/answerTableShape';
 import { isUseEntry } from '../world-building/answerTableShape';
 import { STATE_BEATS } from '../world-building/creatureStates';
@@ -329,6 +330,10 @@ function ListDialog({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // The shell the List button sits in, read once as the pop-up opens.
+  const [host] = useState<Element | null>(
+    () => document.activeElement?.closest('.wb-shell') ?? null
+  );
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -367,11 +372,13 @@ function ListDialog({
       first.focus();
     }
   };
-  return (
+  // Rendered at the studio shell, so the backdrop covers the whole studio
+  // (not the pane it was opened from) and keeps the studio's tokens.
+  const dialog = (
     <div className="es-dialog-backdrop" onClick={onClose}>
       <div
         ref={ref}
-        className="es-dialog wb-panel"
+        className="es-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -386,7 +393,7 @@ function ListDialog({
           </button>
         </header>
         {listKey !== '' && (
-          <>
+          <div className="es-dialog-body">
             {rows.length === 0 && (
               <p className="es-help">No items yet. Add one.</p>
             )}
@@ -453,23 +460,27 @@ function ListDialog({
             </EntryList>
             <button
               type="button"
+              className="es-dialog-add-row"
               aria-label={`Add a row to ${listKey}`}
               onClick={() => commitRows([...rows, { ...NEW_ROW }])}
             >
               Add row
             </button>
-          </>
+          </div>
         )}
-        <NewName
-          what="list"
-          taken={tableKeysOf(definition)}
-          onAdd={(name) => {
-            const ok = onCommit(withListAdded(definition, name));
-            if (ok) onChoose(name);
-            return ok;
-          }}
-        />
+        <footer className="es-dialog-footer">
+          <NewName
+            what="list"
+            taken={tableKeysOf(definition)}
+            onAdd={(name) => {
+              const ok = onCommit(withListAdded(definition, name));
+              if (ok) onChoose(name);
+              return ok;
+            }}
+          />
+        </footer>
       </div>
     </div>
   );
+  return createPortal(dialog, host ?? document.body);
 }

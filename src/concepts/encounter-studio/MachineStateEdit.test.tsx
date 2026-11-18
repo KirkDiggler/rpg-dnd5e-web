@@ -174,10 +174,13 @@ describe('the List pop-up', () => {
   it('opens with the list’s rows; a change commits; Escape closes', () => {
     const { commit, last } = studio();
     openEdit();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Open the list of alert step 3' })
-    );
+    const list = screen.getByRole('button', {
+      name: 'Open the list of alert step 3',
+    });
+    list.focus();
+    fireEvent.click(list);
     const dialog = screen.getByRole('dialog', { name: 'approached' });
+    expect(document.activeElement).toBe(dialog);
     const rows = within(dialog).getAllByRole('listitem');
     expect(rows.length).toBeGreaterThan(0);
     const count = rows.length;
@@ -188,6 +191,9 @@ describe('the List pop-up', () => {
     expect(tableRowsOf(last(), 'approached')).toHaveLength(count + 1);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Open the list of alert step 3' })
+    );
   });
 
   it('a new list made in the pop-up is offered on the steps', () => {
