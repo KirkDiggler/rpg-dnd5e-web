@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { setBehaviorDefinition } from '../encounter-studio/machineEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5127,6 +5128,23 @@ export function WorldBuildingConcept({
                         current.scope,
                         id,
                         outcomes
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              commitBehaviorDefinition: guardSnapshotIntent(
+                (id: string, definition: Record<string, unknown>): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setBehaviorDefinition(
+                        current.scope,
+                        id,
+                        definition
                       ),
                     });
                   } catch (error) {

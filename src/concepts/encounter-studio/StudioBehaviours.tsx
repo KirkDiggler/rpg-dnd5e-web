@@ -21,12 +21,19 @@
  * box or an arrow puts its sentences first in the detail pane; a sentence
  * there marks its box or arrow. A read-back that does not say the shape
  * draws nothing, and the list is as it was.
+ *
+ * SET A MACHINE (rpg-project#996): a marked state's box opens the detail
+ * pane on two tabs, Read back (as before) and Edit, where the state's steps
+ * are set (`MachineStateEdit`). Each change is one undoable commit of the
+ * whole definition; the engine checks it and the drawing and read-back
+ * follow.
  */
 import type { ReadBackGroup } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useMemo, useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { MachineDrawing } from './MachineDrawing';
+import { definitionOf, type Node } from './machineEdit';
 import {
   boxName,
   layoutMachine,
@@ -36,6 +43,7 @@ import {
   pieceName,
   statementsOfMark,
 } from './machineLayout';
+import { MachineStateEdit } from './MachineStateEdit';
 import { machineOf } from './machineView';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
@@ -54,6 +62,7 @@ export function StudioBehaviours({
   onSelect,
   onJump,
   onOpenFact,
+  onCommitDefinition,
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -62,6 +71,9 @@ export function StudioBehaviours({
   onSelect(id: string): void;
   onJump?(target: RefusalTarget, path?: string): void;
   onOpenFact?(id: string, hub?: string): void;
+  /** Set one behaviour definition whole, one undoable commit
+   * (rpg-project#996). Without it the pane has no Edit tab. */
+  onCommitDefinition?(id: string, definition: Node): boolean;
 }): React.JSX.Element {
   const said = readBack.readBack;
   const machine = useMemo(() => {
@@ -95,6 +107,13 @@ export function StudioBehaviours({
   };
   const markedBox = machine?.layout.boxes.find((box) => box.id === mark);
   const markedPiece = machine?.layout.pieces.find((piece) => piece.id === mark);
+  // The Edit tab belongs to the box it was opened on; another mark starts
+  // on Read back.
+  const [editing, setEditing] = useState<string | null>(null);
+  const definition = focus ? definitionOf(document.scope, focus) : undefined;
+  const editable =
+    markedBox && definition && onCommitDefinition && focus ? markedBox : null;
+  const editOpen = editable !== null && editing === `${focus}|${mark}`;
   const groups: ReadBackGroup[] = (said?.sections ?? []).flatMap((section) =>
     section.groups.filter((group) => group.about?.kind === ROUTINE)
   );
@@ -191,33 +210,71 @@ export function StudioBehaviours({
         detail={
           focus && said ? (
             <div className="es-threads-thread" data-behaviour={focus}>
-              <ReadBack
-                document={document}
-                selection={{ kind: ROUTINE, id: focus }}
-                state={readBack}
-                onJump={onJump}
-                onOpenFact={onOpenFact}
-                drawing={
-                  machine
-                    ? {
-                        markedName: markedBox
-                          ? boxName(markedBox)
-                          : markedPiece
-                            ? pieceName(markedPiece)
-                            : null,
-                        marked: mark
-                          ? statementsOfMark(machine.layout, mark)
-                          : [],
-                        canMark: (statement) => machine.markOf.has(statement),
-                        markedKey: machineMarkedKey(focus),
-                        onMark: (statement) => {
-                          const id = machine.markOf.get(statement);
-                          if (id) markIt(id, 'sentence');
-                        },
-                      }
-                    : undefined
-                }
-              />
+              {editable && (
+                <div
+                  role="tablist"
+                  aria-label={`State ${editable.state.id}`}
+                  className="es-machine-tabs"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!editOpen}
+                    onClick={() => setEditing(null)}
+                  >
+                    Read back
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={editOpen}
+                    onClick={() => setEditing(`${focus}|${mark}`)}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+              {editOpen && editable && definition && onCommitDefinition ? (
+                <div role="tabpanel" aria-label={`Edit ${editable.state.id}`}>
+                  <MachineStateEdit
+                    routine={focus}
+                    state={editable.state.id}
+                    definition={definition}
+                    readBack={said}
+                    readBackIsCurrent={readBack.readBackIsCurrent}
+                    onCommit={(next) => onCommitDefinition(focus, next)}
+                    onJump={onJump}
+                  />
+                </div>
+              ) : (
+                <ReadBack
+                  document={document}
+                  selection={{ kind: ROUTINE, id: focus }}
+                  state={readBack}
+                  onJump={onJump}
+                  onOpenFact={onOpenFact}
+                  drawing={
+                    machine
+                      ? {
+                          markedName: markedBox
+                            ? boxName(markedBox)
+                            : markedPiece
+                              ? pieceName(markedPiece)
+                              : null,
+                          marked: mark
+                            ? statementsOfMark(machine.layout, mark)
+                            : [],
+                          canMark: (statement) => machine.markOf.has(statement),
+                          markedKey: machineMarkedKey(focus),
+                          onMark: (statement) => {
+                            const id = machine.markOf.get(statement);
+                            if (id) markIt(id, 'sentence');
+                          },
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </div>
           ) : null
         }

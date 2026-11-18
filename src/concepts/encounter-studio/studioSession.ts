@@ -349,6 +349,13 @@ export interface EncounterStudioSession {
    * undoable transaction; an empty map removes the key. Refused, with the
    * notice naming why, for an interaction not authored. */
   commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
+  /** One behaviour definition (rpg-project#996), set whole as one undoable
+   * transaction (`machineEdit.setBehaviorDefinition`). Refused, with the
+   * notice naming why, for a behaviour the file does not author. */
+  commitBehaviorDefinition(
+    id: string,
+    definition: Record<string, unknown>
+  ): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

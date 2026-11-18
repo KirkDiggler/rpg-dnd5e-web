@@ -92,10 +92,18 @@ export type CreatureStates = { initial: string } & Record<
  * bumped, and is scoped like `heard`. `topic` (rpg-project#929) wakes a
  * member who has come to hold a topic about someone (a recognition granted
  * by an interaction's outcome or a line's success row); a recipe machine
- * guards it with `topic:<id>`.
+ * guards it with `topic:<id>`. `turn` is the member's own turn and
+ * `approached` someone coming up to it (rpg-project#996; both in the
+ * toolkit's `encounter.MachineBeats`). Besides these the engine takes
+ * `deed:<word>` and `clock:<name>`; an authored beat not listed here is
+ * kept and shown as written.
+ *
+ * This list is the studio's own copy of the engine's words until the
+ * engine publishes them (rpg-project#997).
  */
 export const STATE_BEATS = [
   'time',
+  'turn',
   'heard',
   'barred',
   'deed',
@@ -104,6 +112,7 @@ export const STATE_BEATS = [
   'topic',
   'clock:world',
   'clock:fight',
+  'approached',
 ] as const;
 const mapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

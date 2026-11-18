@@ -2171,3 +2171,63 @@
 .encounter-studio .es-readback-statement[data-marked] {
   background: var(--es-revealed-tint, transparent);
 }
+
+/* SET A MACHINE (rpg-project#996): a marked state's Read back / Edit tabs,
+ * its steps as rows of controls, and the List pop-up. Plain on purpose: the
+ * first way to set a machine, to be iterated on. */
+.es-machine-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.es-machine-tabs [aria-selected='true'] {
+  background: var(--wb-raised);
+  font-weight: 600;
+}
+.es-machine-steps {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+}
+.es-machine-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem;
+}
+.es-machine-step label,
+.es-machine-new {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.es-machine-new {
+  flex-direction: row;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.es-machine-kept {
+  flex-basis: 100%;
+  margin: 0;
+}
+.es-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+}
+.es-dialog {
+  width: min(44rem, calc(100% - 2rem));
+  max-height: calc(100% - 4rem);
+  overflow: auto;
+  padding: 1rem;
+  background: var(--wb-panel);
+}
+.es-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

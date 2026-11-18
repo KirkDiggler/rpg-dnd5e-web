@@ -85,6 +85,7 @@ function fixture(): EncounterStudioSession {
     commitPartySharing: vi.fn(() => true),
     commitInteractionApproach: vi.fn(() => true),
     commitInteractionOutcomes: vi.fn(() => true),
+    commitBehaviorDefinition: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),
       rename: vi.fn(() => true),
