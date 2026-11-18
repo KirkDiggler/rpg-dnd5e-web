@@ -2340,20 +2340,73 @@
 
 /* Watching a run (rpg-project#1004): the run's panel over the Layout's
    right edge, scrolling on its own. */
+/* The panel takes the canvas's right edge and the map the rest: the canvas
+   pads its right side by the panel's width (rpg-project#1006, the operator:
+   "that sidebar is pretty cramped"). The default is 560 px, never past 40%
+   of the window; a drag of the panel's left edge sets --es-watch-width. */
+.es-canvas.es-canvas-watching {
+  --es-watch-default-width: min(560px, 40vw);
+  padding-right: var(--es-watch-width, var(--es-watch-default-width));
+}
 .es-watch {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
   z-index: 2;
-  width: min(440px, 48%);
+  width: var(--es-watch-width, var(--es-watch-default-width, 560px));
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+  background: #101923;
+  border-left: 1px solid var(--wb-border);
+}
+/* Everything above the trace scrolls on its own; the trace takes the
+   remaining height with its own scroll, so the page never scrolls. */
+.es-watch .es-watch-top {
+  flex: 0 1 auto;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.6rem;
-  background: #101923;
-  border-left: 1px solid var(--wb-border);
+}
+.es-watch .es-watch-trace {
+  flex: 1 1 0;
+  min-height: 30%;
+  overflow: auto;
+}
+.es-watch .es-watch-section > summary {
+  cursor: pointer;
+}
+.es-watch .es-watch-section > summary > h4 {
+  display: inline;
+}
+.es-watch-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+.es-watch-resize:hover,
+.es-watch-resize:focus-visible {
+  background: var(--wb-border);
+}
+/* A machine drawing scaled down to the panel while it stays readable
+   (watchPanel.ts machineFit); below 70% it keeps its size and scrolls. */
+.es-watch-machine-fit .es-machine-svg {
+  width: 100%;
+  height: auto;
+}
+.es-watch-machine-scroll .es-machine {
+  overflow-x: auto;
 }
 .es-watch h3,
 .es-watch h4 {

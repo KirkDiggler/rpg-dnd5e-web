@@ -133,6 +133,12 @@ import { useRevealController, type RevealKey } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
+import {
+  browserStorage,
+  readWatchWidth,
+  WATCH_WIDTH_STORAGE_KEY,
+  writeWatchWidth,
+} from './watchPanel';
 
 /** A section key's on-screen word (rpg-project#970, ruled 2026-11-16). */
 const sectionLabel = (key: EncounterSectionKey): string =>
@@ -909,6 +915,22 @@ function StudioSurface({
    * only, from the seat's cell as the record last put it. */
   const studioStep = useStudioStep(watch, run.view.steps.length);
   const layoutSteps = layoutStepsOf(watch, run, studioStep);
+  /** The watch panel's width the viewer chose (null: the default), kept
+   * in the browser as a per-viewer convenience. */
+  const [watchWidth, setWatchWidth] = useState<number | null>(() =>
+    readWatchWidth(browserStorage())
+  );
+  const resizeWatch = (next: number | null): void => {
+    setWatchWidth(next);
+    if (next !== null) writeWatchWidth(browserStorage(), next);
+    else {
+      try {
+        browserStorage()?.setItem(WATCH_WIDTH_STORAGE_KEY, '');
+      } catch {
+        // The store refused: the default still holds for this visit.
+      }
+    }
+  };
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -1777,7 +1799,18 @@ function StudioSurface({
                 </LayoutRoomList>
               )}
               <div className="es-layout-main">
-                <div className="es-canvas">
+                <div
+                  className={
+                    watch ? 'es-canvas es-canvas-watching' : 'es-canvas'
+                  }
+                  style={
+                    watch && watchWidth !== null
+                      ? ({
+                          '--es-watch-width': `${watchWidth}px`,
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                >
                   <LayoutViewport
                     draft={session.document.draft}
                     tool={watch ? 'select' : layoutTool}
@@ -1849,6 +1882,8 @@ function StudioSurface({
                       stepping={studioStep}
                       readBack={readBack.readBack}
                       names={watchNames}
+                      width={watchWidth}
+                      onResize={resizeWatch}
                       onStop={() => {
                         setWatch(null);
                         onWatchEnded?.();

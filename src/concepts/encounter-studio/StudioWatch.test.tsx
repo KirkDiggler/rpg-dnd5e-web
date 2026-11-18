@@ -154,13 +154,11 @@ describe('StudioWatch names and the game', () => {
       <Harness selected="gate-1" names={new Map([['gate-1', 'Gate guard']])} />
     );
     expect(
-      screen.getByRole('region', { name: 'Creature Gate guard' })
+      screen.getByRole('group', { name: 'Creature Gate guard' })
     ).toBeTruthy();
     cleanup();
     render(<Harness selected="gate-1" />);
-    expect(
-      screen.getByRole('region', { name: 'Creature gate-1' })
-    ).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Creature gate-1' })).toBeTruthy();
   });
 
   it('Play in the game hands this tab to the game for the watched run', () => {
@@ -301,5 +299,53 @@ describe('StudioWatch: what was said and who held the way (rpg-project#1006)', (
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(lines()).toEqual(['Guard says to hero: “Easy there, friend.”']);
     expect(screen.queryByTestId('watch-barred')).toBeNull();
+  });
+});
+
+describe('StudioWatch layout (rpg-project#1006)', () => {
+  function Panel({
+    onResize = vi.fn(),
+  }: {
+    onResize?: (width: number | null) => void;
+  }): React.JSX.Element {
+    const run = useRunFold(WATCH, draft, feed);
+    if (run.selected !== 'gate-1') run.setSelected('gate-1');
+    return (
+      <StudioWatch
+        watch={WATCH}
+        run={run}
+        readBack={null}
+        names={new Map([['hero', 'Aldric']])}
+        onStop={vi.fn()}
+        width={600}
+        onResize={onResize}
+      />
+    );
+  }
+
+  it('says whose run it is; the run and seat ids wait behind Run details', () => {
+    render(<Panel />);
+    expect(
+      screen.getByRole('heading', { name: 'Watching a run · Aldric' })
+    ).toBeTruthy();
+    const details = screen.getByTestId(
+      'watch-run-details'
+    ) as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain('run-1');
+    for (const id of ['watch-said', 'watch-creature', 'watch-trace'])
+      expect((screen.getByTestId(id) as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it('the panel’s edge resizes it from the keyboard, and a double-click resets it', () => {
+    const onResize = vi.fn<(width: number | null) => void>();
+    render(<Panel onResize={onResize} />);
+    const edge = screen.getByRole('separator', {
+      name: 'Resize the watch panel',
+    });
+    fireEvent.keyDown(edge, { key: 'ArrowLeft' });
+    expect(onResize).toHaveBeenLastCalledWith(616);
+    fireEvent.doubleClick(edge);
+    expect(onResize).toHaveBeenLastCalledWith(null);
   });
 });

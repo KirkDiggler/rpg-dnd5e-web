@@ -34,6 +34,10 @@ import type { LayoutSteps, RunSaid } from './studioSession';
 const RING = 0.55;
 /** How much of a line the speech mark shows before it is cut short. */
 const SPEECH_MARK_CHARS = 32;
+/** The bubble's height and its gap above the marker (its tail's length),
+ * in screen pixels. */
+const BUBBLE_HEIGHT = 18;
+const BUBBLE_LIFT = 10;
 
 function shorten(line: string, max: number): string {
   return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
@@ -221,19 +225,30 @@ export function LayoutRunOverlay({
                 aria-label={line}
               >
                 <title>{line}</title>
+                {/* Above the speaker's marker, its tail pointing down at
+                    it; the speaker's own label sits below the marker, so
+                    the two never meet. Other creatures' labels nearby are
+                    not avoided (rpg-project#1006: not this slice). */}
                 <rect
                   x={x - width / 2}
-                  y={y - 24}
+                  y={y - BUBBLE_LIFT - BUBBLE_HEIGHT}
                   width={width}
-                  height={18}
+                  height={BUBBLE_HEIGHT}
                   rx={6}
+                  fill="#fef9c3"
+                  stroke="#101923"
+                  strokeWidth={1}
+                />
+                <path
+                  data-run-said-tail=""
+                  d={`M ${x - 5} ${y - BUBBLE_LIFT - 0.5} L ${x} ${y - 2} L ${x + 5} ${y - BUBBLE_LIFT - 0.5} Z`}
                   fill="#fef9c3"
                   stroke="#101923"
                   strokeWidth={1}
                 />
                 <text
                   x={x}
-                  y={y - 11}
+                  y={y - BUBBLE_LIFT - 5}
                   textAnchor="middle"
                   fontSize={11}
                   fill="#101923"

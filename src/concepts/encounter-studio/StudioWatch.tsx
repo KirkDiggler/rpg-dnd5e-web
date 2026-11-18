@@ -26,12 +26,19 @@
 import { RecordPanel } from '@/components/session/combat-experience/RecordPanel';
 import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MachineDrawing } from './MachineDrawing';
 import { barredLine, runSpeechLine } from './runSpeech';
 import { barredOf, rowsAbout, speechOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
 import { FIGHT_MOVES_IN_THE_GAME, type StudioStep } from './useStudioStep';
+import {
+  clampWatchWidth,
+  machineFit,
+  WATCH_MIN_WIDTH,
+  WATCH_WIDTH_STEP,
+  watchDefaultWidth,
+} from './watchPanel';
 
 export function StudioWatch({
   watch,
@@ -41,6 +48,8 @@ export function StudioWatch({
   names,
   onStop,
   onPlayInGame,
+  width = null,
+  onResize,
 }: {
   watch: WatchedRun;
   run: RunWatch;
@@ -52,6 +61,10 @@ export function StudioWatch({
   /** Routes this tab to the game on the watched run; absent when the
    * studio has no route into the game. */
   onPlayInGame?: () => void;
+  /** The panel's width the viewer chose; null is the default. */
+  width?: number | null;
+  /** The viewer resized the panel; null returns it to the default. */
+  onResize?: (width: number | null) => void;
 }): React.JSX.Element {
   const { view, step, setStep, feed, upTo, selected } = run;
   const steps = view.steps;
@@ -81,169 +94,327 @@ export function StudioWatch({
     () => barredOf(feed.rows, upTo, run.from),
     [feed.rows, upTo, run.from]
   );
+  const seatName = names?.get(watch.member) ?? watch.member;
+  const memberName = member ? (names?.get(member.id) ?? member.id) : '';
   return (
     <aside
       className="es-watch wb-panel"
       aria-label="Watching a run"
       data-testid="studio-watch"
     >
-      <header className="es-watch-header">
-        <h3>Watching a run</h3>
-        <p className="es-help">
-          Run <code>{watch.session}</code> · seat <code>{watch.member}</code>.
-          The engine runs it; this map draws its record.
-        </p>
-        <div className="es-buttons">
-          {onPlayInGame && (
-            <button type="button" onClick={onPlayInGame}>
-              Play in the game
-            </button>
-          )}
-          <button type="button" onClick={onStop}>
-            Stop watching
-          </button>
-        </div>
-        <p className="es-help">
-          {stepping
-            ? 'At Live, click a marked hex next to your character to step there; the map moves when the run’s record says so. Or move in the game, then press Back to the studio there.'
-            : 'Move your character in the game, then press Back to the studio there; the map replays what you played.'}
-        </p>
-      </header>
-      <nav className="es-buttons es-watch-steps" aria-label="Steps of the run">
-        <button
-          type="button"
-          disabled={at <= 0}
-          onClick={() => setStep(at - 1)}
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          disabled={step === null || at >= last}
-          onClick={() => setStep(at + 1 >= last ? null : at + 1)}
-        >
-          Forward
-        </button>
-        <button
-          type="button"
-          aria-pressed={step === null}
-          onClick={() => setStep(null)}
-        >
-          Live
-        </button>
-        <span role="status" className="es-help" data-testid="watch-step">
-          {step === null ? 'Live · ' : ''}
-          {at === 0 || !shownStep
-            ? 'the start'
-            : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`}
-        </span>
-      </nav>
-      <section
-        className="es-watch-this-step"
-        aria-label="What happened this step"
-        data-testid="watch-this-step"
-      >
-        {stepping?.busy && (
-          <p className="es-help" role="status" data-testid="watch-step-busy">
-            Stepping…
-          </p>
-        )}
-        {live?.refusal && (
-          <p
-            className="es-watch-refusal"
-            role="alert"
-            data-testid="watch-step-refusal"
-          >
-            Your step was stopped: {live.refusal}
-          </p>
-        )}
-        {live?.fight && (
-          <p className="es-help" role="status" data-testid="watch-step-fight">
-            {FIGHT_MOVES_IN_THE_GAME}
-            {onPlayInGame ? ' Press Play in the game above.' : ''}
-          </p>
-        )}
-        {barred.map((b) => (
-          <p
-            key={b.index}
-            className="es-watch-barred"
-            data-testid="watch-barred"
-          >
-            {barredLine(b, names)}
-          </p>
-        ))}
-      </section>
-      <section aria-label="What was said" data-testid="watch-said">
-        <h4>What was said</h4>
-        {said.length === 0 ? (
-          <p className="es-help">Nothing said yet.</p>
-        ) : (
-          <ol className="es-watch-said">
-            {said.map((line) => (
-              <li key={line.utterance} data-utterance={line.utterance}>
-                {runSpeechLine(line, names)}
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-      {run.agedOut && (
-        <p className="es-help" role="status" data-testid="watch-aged-out">
-          Earlier steps are no longer in the record; showing the earliest step
-          it still holds.
-        </p>
-      )}
-      {feed.notice && (
-        <p className="es-help" role="status">
-          {feed.notice}
-        </p>
-      )}
-      {!member ? (
-        <p className="es-help">
-          {feed.rows.length === 0
-            ? 'No record beats yet. Play in the game to start the clock.'
-            : 'Select a creature on the map to see its machine and why it changed.'}
-        </p>
-      ) : (
-        <section aria-label={`Creature ${names?.get(member.id) ?? member.id}`}>
-          <h4>
-            {names?.get(member.id) ?? member.id}
-            {member.state && (
-              <>
-                {' '}
-                · <span data-testid="watch-state">{member.state}</span>
-              </>
+      {onResize && <WatchResize width={width} onResize={onResize} />}
+      <div className="es-watch-top">
+        <header className="es-watch-header">
+          <h3>Watching a run · {seatName}</h3>
+          <div className="es-buttons">
+            {onPlayInGame && (
+              <button type="button" onClick={onPlayInGame}>
+                Play in the game
+              </button>
             )}
-          </h4>
-          {member.lastReason && (
-            <p className="es-help">Last change: {member.lastReason}</p>
-          )}
-          {machines.map((machine) => (
-            <div key={machine.routine} data-live-state={machine.live ?? ''}>
-              <p className="es-help">
-                Runs <code>{machine.routine}</code>
-                {machine.live
-                  ? ''
-                  : ' · its state now is not one of this drawing’s boxes'}
-              </p>
-              <MachineDrawing
-                routine={machine.routine}
-                layout={machine.layout}
-                selected={machine.live}
-                onSelect={() => {}}
-              />
-            </div>
-          ))}
-          {!member.party && machines.length === 0 && (
+            <button type="button" onClick={onStop}>
+              Stop watching
+            </button>
+          </div>
+          <p className="es-help">
+            {stepping
+              ? 'At Live, click a marked hex beside your character to step.'
+              : 'Move in the game, then press Back to the studio there.'}
+          </p>
+          <details className="es-watch-section" data-testid="watch-run-details">
+            <summary>Run details</summary>
             <p className="es-help">
-              {readBack
-                ? 'The engine says no machine this creature runs.'
-                : 'The engine has not said the machines yet.'}
+              Run <code>{watch.session}</code> · seat{' '}
+              <code>{watch.member}</code>. The engine runs it; this map draws
+              its record.
+            </p>
+          </details>
+        </header>
+        <nav
+          className="es-buttons es-watch-steps"
+          aria-label="Steps of the run"
+        >
+          <button
+            type="button"
+            disabled={at <= 0}
+            onClick={() => setStep(at - 1)}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            disabled={step === null || at >= last}
+            onClick={() => setStep(at + 1 >= last ? null : at + 1)}
+          >
+            Forward
+          </button>
+          <button
+            type="button"
+            aria-pressed={step === null}
+            onClick={() => setStep(null)}
+          >
+            Live
+          </button>
+          <span role="status" className="es-help" data-testid="watch-step">
+            {step === null ? 'Live · ' : ''}
+            {at === 0 || !shownStep
+              ? 'the start'
+              : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`}
+          </span>
+        </nav>
+        <section
+          className="es-watch-this-step"
+          aria-label="What happened this step"
+          data-testid="watch-this-step"
+        >
+          {stepping?.busy && (
+            <p className="es-help" role="status" data-testid="watch-step-busy">
+              Stepping…
             </p>
           )}
-          <RecordPanel feed={memberFeed} />
+          {live?.refusal && (
+            <p
+              className="es-watch-refusal"
+              role="alert"
+              data-testid="watch-step-refusal"
+            >
+              Your step was stopped: {live.refusal}
+            </p>
+          )}
+          {live?.fight && (
+            <p className="es-help" role="status" data-testid="watch-step-fight">
+              {FIGHT_MOVES_IN_THE_GAME}
+              {onPlayInGame ? ' Press Play in the game above.' : ''}
+            </p>
+          )}
+          {barred.map((b) => (
+            <p
+              key={b.index}
+              className="es-watch-barred"
+              data-testid="watch-barred"
+            >
+              {barredLine(b, names)}
+            </p>
+          ))}
         </section>
+        {run.agedOut && (
+          <p className="es-help" role="status" data-testid="watch-aged-out">
+            Earlier steps are no longer in the record; showing the earliest step
+            it still holds.
+          </p>
+        )}
+        {feed.notice && (
+          <p className="es-help" role="status">
+            {feed.notice}
+          </p>
+        )}
+        <details
+          className="es-watch-section"
+          open
+          aria-label="What was said"
+          data-testid="watch-said"
+        >
+          <summary>
+            <h4>What was said</h4>
+          </summary>
+          {said.length === 0 ? (
+            <p className="es-help">Nothing said yet.</p>
+          ) : (
+            <ol className="es-watch-said">
+              {said.map((line) => (
+                <li key={line.utterance} data-utterance={line.utterance}>
+                  {runSpeechLine(line, names)}
+                </li>
+              ))}
+            </ol>
+          )}
+        </details>
+        {!member ? (
+          <p className="es-help">
+            {feed.rows.length === 0
+              ? 'No record beats yet. Play in the game to start the clock.'
+              : 'Select a creature on the map to see its machine and why it changed.'}
+          </p>
+        ) : (
+          <details
+            className="es-watch-section"
+            open
+            aria-label={`Creature ${memberName}`}
+            data-testid="watch-creature"
+          >
+            <summary>
+              <h4>
+                {memberName}
+                {member.state && (
+                  <>
+                    {' '}
+                    · <span data-testid="watch-state">{member.state}</span>
+                  </>
+                )}
+              </h4>
+            </summary>
+            {member.lastReason && (
+              <p className="es-help">Last change: {member.lastReason}</p>
+            )}
+            {machines.map((machine) => (
+              <div key={machine.routine} data-live-state={machine.live ?? ''}>
+                <p className="es-help">
+                  Runs <code>{machine.routine}</code>
+                  {machine.live
+                    ? ''
+                    : ' · its state now is not one of this drawing’s boxes'}
+                </p>
+                <FittedMachine width={machine.layout.width}>
+                  <MachineDrawing
+                    routine={machine.routine}
+                    layout={machine.layout}
+                    selected={machine.live}
+                    onSelect={() => {}}
+                  />
+                </FittedMachine>
+              </div>
+            ))}
+            {!member.party && machines.length === 0 && (
+              <p className="es-help">
+                {readBack
+                  ? 'The engine says no machine this creature runs.'
+                  : 'The engine has not said the machines yet.'}
+              </p>
+            )}
+          </details>
+        )}
+      </div>
+      {member && (
+        <details
+          className="es-watch-section es-watch-trace"
+          open
+          aria-label={`Trace of ${memberName}`}
+          data-testid="watch-trace"
+        >
+          <summary>
+            <h4>Trace</h4>
+          </summary>
+          <RecordPanel feed={memberFeed} />
+        </details>
       )}
     </aside>
+  );
+}
+
+/** A machine drawing as wide as the panel allows: its own size when it
+ * fits, scaled down to fit while it stays readable (`machineFit`), else its
+ * own size with a scroll. */
+function FittedMachine({
+  width,
+  children,
+}: {
+  width: number;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    setRoom(element.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setRoom(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const fit = machineFit(width, room);
+  return (
+    <div ref={ref} className={`es-watch-machine es-watch-machine-${fit}`}>
+      {children}
+    </div>
+  );
+}
+
+/** The panel's left edge: drag it, or focus it and use the arrows, to give
+ * the panel room; double-click returns to the default. A drag previews
+ * through `--es-watch-width` on the canvas and commits on release. */
+function WatchResize({
+  width,
+  onResize,
+}: {
+  width: number | null;
+  onResize(width: number | null): void;
+}): React.JSX.Element {
+  const drag = useRef<{ pointer: number; x: number; width: number } | null>(
+    null
+  );
+  const windowWidth = (): number =>
+    typeof window === 'undefined' ? 1920 : window.innerWidth;
+  const now = (element: Element): number =>
+    width ??
+    (element.closest('.es-watch') as HTMLElement | null)?.offsetWidth ??
+    watchDefaultWidth(windowWidth());
+  const widthAt = (clientX: number): number =>
+    drag.current
+      ? clampWatchWidth(
+          drag.current.width + drag.current.x - clientX,
+          windowWidth()
+        )
+      : (width ?? watchDefaultWidth(windowWidth()));
+  const preview = (element: Element, next: number | null): void => {
+    const canvas = element.closest('.es-canvas') as HTMLElement | null;
+    if (!canvas) return;
+    if (next === null) canvas.style.removeProperty('--es-watch-width');
+    else canvas.style.setProperty('--es-watch-width', `${next}px`);
+  };
+  return (
+    <div
+      className="es-watch-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the watch panel"
+      aria-valuenow={width ?? undefined}
+      aria-valuemin={WATCH_MIN_WIDTH}
+      tabIndex={0}
+      title="Drag to resize the panel; double-click to reset"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.current = {
+          pointer: event.pointerId,
+          x: event.clientX,
+          width: now(event.currentTarget),
+        };
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (drag.current?.pointer !== event.pointerId) return;
+        if ((event.buttons & 1) === 0) {
+          drag.current = null;
+          preview(event.currentTarget, width);
+          return;
+        }
+        preview(event.currentTarget, widthAt(event.clientX));
+      }}
+      onPointerUp={(event) => {
+        if (drag.current?.pointer !== event.pointerId) return;
+        const next = widthAt(event.clientX);
+        drag.current = null;
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+        onResize(next);
+      }}
+      onPointerCancel={(event) => {
+        if (drag.current?.pointer !== event.pointerId) return;
+        drag.current = null;
+        preview(event.currentTarget, width);
+      }}
+      onDoubleClick={() => onResize(null)}
+      onKeyDown={(event) => {
+        const by =
+          event.key === 'ArrowLeft'
+            ? WATCH_WIDTH_STEP
+            : event.key === 'ArrowRight'
+              ? -WATCH_WIDTH_STEP
+              : 0;
+        if (!by) return;
+        event.preventDefault();
+        onResize(clampWatchWidth(now(event.currentTarget) + by, windowWidth()));
+      }}
+    />
   );
 }
