@@ -219,6 +219,18 @@ export interface LayoutWatching {
   selectedId: string | null;
   /** A click on a member's glyph. */
   onSelect(id: string): void;
+  /** One step from the Layout (rpg-project#1006): the six cells next to
+   * the seat's cell are offered as steps. Absent offers none: stepped back
+   * in history, or no cell known for the seat. */
+  steps?: LayoutSteps;
+}
+
+export interface LayoutSteps {
+  /** The seat's cell, as the record last put it. */
+  from: import('../world-building/workspaceGeometry').RoomHexCell;
+  /** A step is in flight; further steps are ignored. */
+  busy: boolean;
+  onStep(cell: import('../world-building/workspaceGeometry').RoomHexCell): void;
 }
 
 export interface LayoutViewportProps {

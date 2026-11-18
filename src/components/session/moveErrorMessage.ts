@@ -63,6 +63,21 @@ export function isNotYourTurnError(err: unknown): boolean {
   );
 }
 
+/** session.ErrNoDeclarationID's wire text: a turn-clock Move sent with the
+ * world clock's empty selector (rpg-toolkit session/move.go). */
+const NO_DECLARATION_SENTINEL_TEXT = 'empty declaration id';
+
+/** True when a Move was refused because the member is on the turn clock (a
+ * fight): not its turn, or sent without the turn clock's selector. The
+ * studio's one-step move (rpg-project#1006) sends the world clock's empty
+ * selector and reads this to say moves in a fight are made in the game. */
+export function isTurnClockMoveRefusal(err: unknown): boolean {
+  if (isNotYourTurnError(err)) return true;
+  return ConnectError.from(err).rawMessage.includes(
+    NO_DECLARATION_SENTINEL_TEXT
+  );
+}
+
 export function formatMoveError(err: unknown): string {
   if (isNotYourTurnError(err)) {
     return NOT_YOUR_TURN_MESSAGE;

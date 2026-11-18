@@ -16,6 +16,10 @@
  * "Back to the studio" returns here watching the same run, its record
  * replayed from the start so Back and Forward cover what was just played.
  *
+ * ONE STEP FROM THE LAYOUT (#1006): at the live step the hexes next to
+ * the seat are steps (`useStudioStep`, the game's own Move). A refused or
+ * stopped step's sentence shows here; a fight sends moves to the game.
+ *
  * DEV MODE ONLY: the record is the diagnostic stream the server serves only
  * in development. Elsewhere the control is disabled and says why.
  */
@@ -26,10 +30,12 @@ import { useMemo } from 'react';
 import { MachineDrawing } from './MachineDrawing';
 import { rowsAbout } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
+import { FIGHT_MOVES_IN_THE_GAME, type StudioStep } from './useStudioStep';
 
 export function StudioWatch({
   watch,
   run,
+  stepping,
   readBack,
   names,
   onStop,
@@ -37,6 +43,8 @@ export function StudioWatch({
 }: {
   watch: WatchedRun;
   run: RunWatch;
+  /** One step from the Layout; absent offers none. */
+  stepping?: Pick<StudioStep, 'busy' | 'refusal' | 'fight'>;
   readBack: ReadBack | null;
   names?: ReadonlyMap<string, string>;
   onStop(): void;
@@ -84,9 +92,26 @@ export function StudioWatch({
           </button>
         </div>
         <p className="es-help">
-          Move your character in the game, then press Back to the studio there;
-          the map replays what you played.
+          {stepping
+            ? 'At Live, click a marked hex next to your character to step there; the map moves when the run’s record says so. Or move in the game, then press Back to the studio there.'
+            : 'Move your character in the game, then press Back to the studio there; the map replays what you played.'}
         </p>
+        {stepping?.busy && (
+          <p className="es-help" role="status" data-testid="watch-step-busy">
+            Stepping…
+          </p>
+        )}
+        {stepping?.refusal && (
+          <p className="es-help" role="alert" data-testid="watch-step-refusal">
+            {stepping.refusal}
+          </p>
+        )}
+        {stepping?.fight && (
+          <p className="es-help" role="status" data-testid="watch-step-fight">
+            {FIGHT_MOVES_IN_THE_GAME}
+            {onPlayInGame ? ' Press Play in the game above.' : ''}
+          </p>
+        )}
       </header>
       <nav className="es-buttons es-watch-steps" aria-label="Steps of the run">
         <button

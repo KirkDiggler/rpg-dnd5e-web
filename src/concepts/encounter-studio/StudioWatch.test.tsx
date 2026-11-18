@@ -177,3 +177,57 @@ describe('watch availability', () => {
     expect(watchUnavailableReason('production')).toBe(WATCH_DEV_ONLY_SENTENCE);
   });
 });
+
+describe('StudioWatch: one step from the Layout (rpg-project#1006)', () => {
+  function Stepped({
+    stepping,
+  }: {
+    stepping: { busy: boolean; refusal: string | null; fight: boolean };
+  }): React.JSX.Element {
+    const run = useRunFold(WATCH, draft, feed);
+    return (
+      <StudioWatch
+        watch={WATCH}
+        run={run}
+        stepping={stepping}
+        readBack={null}
+        onStop={vi.fn()}
+        onPlayInGame={vi.fn()}
+      />
+    );
+  }
+
+  it('a refused step shows the engine’s sentence; no fight line', () => {
+    render(
+      <Stepped
+        stepping={{
+          busy: false,
+          refusal: 'move destination: cell is not walkable',
+          fight: false,
+        }}
+      />
+    );
+    expect(screen.getByTestId('watch-step-refusal').textContent).toBe(
+      'move destination: cell is not walkable'
+    );
+    expect(screen.queryByTestId('watch-step-fight')).toBeNull();
+  });
+
+  it('a fight says moves in a fight are made in the game, beside Play in the game', () => {
+    render(
+      <Stepped
+        stepping={{
+          busy: false,
+          refusal: 'Not your turn — movement is locked.',
+          fight: true,
+        }}
+      />
+    );
+    expect(screen.getByTestId('watch-step-fight').textContent).toContain(
+      'Moves in a fight are made in the game.'
+    );
+    expect(
+      screen.getByRole('button', { name: 'Play in the game' })
+    ).toBeTruthy();
+  });
+});

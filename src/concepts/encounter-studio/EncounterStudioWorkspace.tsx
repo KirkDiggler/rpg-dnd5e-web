@@ -131,6 +131,7 @@ import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
+import { layoutStepsOf, useStudioStep } from './useStudioStep';
 
 /** A section key's on-screen word (rpg-project#970, ruled 2026-11-16). */
 const sectionLabel = (key: EncounterSectionKey): string =>
@@ -903,6 +904,10 @@ function StudioSurface({
     if (view !== 'layout') switchView('layout');
   };
   const run = useRunWatch(watch, session.document.draft);
+  /** One step from the Layout (rpg-project#1006): offered at the live step
+   * only, from the seat's cell as the record last put it. */
+  const studioStep = useStudioStep(watch);
+  const layoutSteps = layoutStepsOf(watch, run, studioStep);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -1810,6 +1815,7 @@ function StudioSurface({
                             names: watchNames,
                             selectedId: run.selected,
                             onSelect: run.setSelected,
+                            steps: layoutSteps,
                           }
                         : undefined
                     }
@@ -1831,6 +1837,7 @@ function StudioSurface({
                     <StudioWatch
                       watch={watch}
                       run={run}
+                      stepping={studioStep}
                       readBack={readBack.readBack}
                       names={watchNames}
                       onStop={() => {

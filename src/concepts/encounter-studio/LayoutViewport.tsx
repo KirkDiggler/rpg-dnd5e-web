@@ -864,7 +864,16 @@ export function LayoutViewport({
     const id = target
       ?.closest('[data-run-member]')
       ?.getAttribute('data-run-member');
-    if (id) watching.onSelect(id);
+    if (id) {
+      watching.onSelect(id);
+      return;
+    }
+    // Not a member: a step hex next to the seat (rpg-project#1006).
+    const step = target?.closest('[data-run-step]');
+    const q = Number(step?.getAttribute('data-step-q'));
+    const r = Number(step?.getAttribute('data-step-r'));
+    if (step && watching.steps && Number.isFinite(q) && Number.isFinite(r))
+      watching.steps.onStep({ q, r });
   };
   const pointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const active = gestureRef.current;
@@ -1416,6 +1425,7 @@ export function LayoutViewport({
           members={watching.members}
           names={watching.names}
           selectedId={watching.selectedId}
+          steps={watching.steps}
           transform={transform}
           worldTransform={worldTransform}
         />
