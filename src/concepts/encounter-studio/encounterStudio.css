@@ -2256,7 +2256,9 @@
   flex: none;
   white-space: nowrap;
 }
-.es-dialog-body {
+/* Two classes, so these win over `.wb-panel`'s padding and overflow
+ * whichever stylesheet loads last. */
+.es-dialog .es-dialog-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -2273,6 +2275,13 @@
 .es-dialog .wb-entry-collapsed > .wb-entry-summary {
   flex: 1 1 14rem;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A bundle's parameter chips (a route's waypoints) wrap inside the row's
+ * words rather than run under the controls beside them. */
+.es-dialog .wb-entry-summary .wb-with-chip {
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 .es-dialog .wb-entry-collapsed > button,
 .es-dialog .wb-entry-collapsed > [data-shared] {
@@ -2287,8 +2296,9 @@
   margin-top: 0.4rem;
   white-space: nowrap;
 }
-.es-dialog-footer {
+.es-dialog .es-dialog-footer {
   flex: none;
+  overflow: visible;
   padding: 0.6rem 0.9rem;
   border-top: 1px solid var(--wb-border, #33504d);
 }

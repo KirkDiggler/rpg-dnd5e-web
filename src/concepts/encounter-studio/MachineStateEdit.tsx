@@ -43,6 +43,12 @@ import {
 } from './machineEdit';
 import type { RefusalTarget } from './refusalJump';
 
+/** The studio root's class: its control and font styles are scoped under
+ * it, so the pop-up is rendered inside it (encounterStudio.css). */
+export const STUDIO_ROOT = 'encounter-studio';
+/** The panel class whose label and input styles a pane's controls wear
+ * (worldBuilding.css `.wb-panel …`). */
+const PANEL = 'wb-panel';
 const STAYS = '';
 const NONE = '';
 /** A new row, as the Bundles page makes one. */
@@ -79,12 +85,13 @@ export function MachineStateEdit({
   const states = statesOf(definition);
   const lists = tableKeysOf(definition);
   const [listOpen, setListOpen] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const setSteps = (next: unknown[]): boolean =>
     onCommit(withTransitions(definition, state, next));
   const setStep = (index: number, step: unknown): boolean =>
     setSteps(steps.map((s, i) => (i === index ? step : s)));
   return (
-    <div className="es-machine-edit" data-state={state}>
+    <div ref={root} className="es-machine-edit" data-state={state}>
       <h3>Steps in {state}</h3>
       {steps.length === 0 && (
         <p className="es-help">No steps yet: it stays here.</p>
@@ -227,6 +234,7 @@ export function MachineStateEdit({
           onChoose={setListOpen}
           onClose={() => setListOpen(null)}
           onJump={onJump}
+          host={root.current?.closest(`.${STUDIO_ROOT}`) ?? null}
         />
       )}
       <button type="button" onClick={() => setListOpen('')}>
@@ -318,6 +326,7 @@ function ListDialog({
   onChoose,
   onClose,
   onJump,
+  host,
 }: {
   routine: string;
   /** The list shown; empty when there is none yet to show. */
@@ -327,13 +336,11 @@ function ListDialog({
   onChoose(key: string): void;
   onClose(): void;
   onJump?(target: RefusalTarget): void;
+  /** The studio root to render into, or null to render in place. */
+  host: Element | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  // The shell the List button sits in, read once as the pop-up opens.
-  const [host] = useState<Element | null>(
-    () => document.activeElement?.closest('.wb-shell') ?? null
-  );
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -372,8 +379,11 @@ function ListDialog({
       first.focus();
     }
   };
-  // Rendered at the studio shell, so the backdrop covers the whole studio
-  // (not the pane it was opened from) and keeps the studio's tokens.
+  // Rendered as a child of the studio root (`.encounter-studio`), so the
+  // backdrop covers the whole studio above every pane while the studio's
+  // tokens, font and control styles (`.encounter-studio button, input…`)
+  // still apply; its body and footer are panels (`.wb-panel`), as the pane
+  // it opens from is, for the panel's label and input styles.
   const dialog = (
     <div className="es-dialog-backdrop" onClick={onClose}>
       <div
@@ -393,7 +403,7 @@ function ListDialog({
           </button>
         </header>
         {listKey !== '' && (
-          <div className="es-dialog-body">
+          <div className={`es-dialog-body ${PANEL}`}>
             {rows.length === 0 && (
               <p className="es-help">No items yet. Add one.</p>
             )}
@@ -468,7 +478,7 @@ function ListDialog({
             </button>
           </div>
         )}
-        <footer className="es-dialog-footer">
+        <footer className={`es-dialog-footer ${PANEL}`}>
           <NewName
             what="list"
             taken={tableKeysOf(definition)}
@@ -482,5 +492,5 @@ function ListDialog({
       </div>
     </div>
   );
-  return createPortal(dialog, host ?? document.body);
+  return host ? createPortal(dialog, host) : dialog;
 }

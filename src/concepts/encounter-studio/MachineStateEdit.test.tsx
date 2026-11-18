@@ -24,6 +24,7 @@ import {
   transitionsOf,
   type Node,
 } from './machineEdit';
+import { STUDIO_ROOT } from './MachineStateEdit';
 import { RevealProvider } from './reveal';
 import { StudioBehaviours } from './StudioBehaviours';
 
@@ -62,9 +63,11 @@ function studio() {
     );
   }
   render(
-    <RevealProvider>
-      <Harness />
-    </RevealProvider>
+    <div className={STUDIO_ROOT} data-testid="studio-root">
+      <RevealProvider>
+        <Harness />
+      </RevealProvider>
+    </div>
   );
   return {
     commit,
@@ -181,6 +184,16 @@ describe('the List pop-up', () => {
     fireEvent.click(list);
     const dialog = screen.getByRole('dialog', { name: 'approached' });
     expect(document.activeElement).toBe(dialog);
+    // The studio's control styles are scoped under its root and the panel
+    // class (`.encounter-studio button`, `.wb-panel input`): the pop-up is a
+    // direct child of the root, above every pane, and its body and footer
+    // are panels.
+    const root = screen.getByTestId('studio-root');
+    expect(dialog.closest(`.${STUDIO_ROOT}`)).toBe(root);
+    expect(dialog.parentElement!.parentElement).toBe(root);
+    expect(dialog.closest('.es-behaviours')).toBeNull();
+    expect(dialog.querySelector('.es-dialog-body.wb-panel')).not.toBeNull();
+    expect(dialog.querySelector('.es-dialog-footer.wb-panel')).not.toBeNull();
     const rows = within(dialog).getAllByRole('listitem');
     expect(rows.length).toBeGreaterThan(0);
     const count = rows.length;
