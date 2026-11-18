@@ -100,7 +100,7 @@ export function MachineStateEdit({
     <div ref={root} className="es-machine-edit" data-state={state}>
       <h3>Steps in {state}</h3>
       {steps.length === 0 && (
-        <p className="es-help">No steps yet: it stays here.</p>
+        <p className="es-help">No steps yet: it stays in {state}.</p>
       )}
       <ol className="es-machine-steps" aria-label={`Steps in ${state}`}>
         {steps.map((raw, index) => {
@@ -138,7 +138,7 @@ export function MachineStateEdit({
                 </select>
               </label>
               <label>
-                <span>Goes to</span>
+                <span>Then</span>
                 <select
                   aria-label={`Where ${name} goes`}
                   value={step.to ?? STAYS}
@@ -152,12 +152,16 @@ export function MachineStateEdit({
                     )
                   }
                 >
-                  <option value={STAYS}>stays here</option>
-                  {targets.map((target) => (
-                    <option key={target} value={target}>
-                      {target}
-                    </option>
-                  ))}
+                  {/* Staying is not a state: it is named for the marked
+                      state and set apart from the states it may go to. */}
+                  <option value={STAYS}>stays in {state}</option>
+                  <optgroup label="Goes to another state">
+                    {targets.map((target) => (
+                      <option key={target} value={target}>
+                        {target}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </label>
               <label>

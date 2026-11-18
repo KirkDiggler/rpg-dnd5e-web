@@ -129,9 +129,20 @@ describe('a marked box opens Read back and Edit', () => {
       'What fires alert step 4'
     );
     expect(barred.value).toBe('barred');
+    const then = screen.getByLabelText<HTMLSelectElement>(
+      'Where alert step 4 goes'
+    );
+    expect(then.value).toBe('challenged');
+    // Staying is first, named for the marked state, and apart from the
+    // states it may go to.
+    expect(then.options[0]!.textContent).toBe('stays in alert');
+    expect(then.options[0]!.parentElement).toBe(then);
+    const group = then.querySelector('optgroup')!;
+    expect(group.label).toBe('Goes to another state');
     expect(
-      screen.getByLabelText<HTMLSelectElement>('Where alert step 4 goes').value
-    ).toBe('challenged');
+      Array.from(group.querySelectorAll('option')).map((o) => o.value)
+    ).toContain('challenged');
+    expect(then.closest('label')!.textContent).toMatch(/^Then/);
     expect(
       screen.getByLabelText<HTMLSelectElement>(
         'The list alert step 4 does one of'
