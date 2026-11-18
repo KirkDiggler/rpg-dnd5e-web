@@ -1236,18 +1236,18 @@ export function optionDuplicateRefusal(id: string, previous: number): string {
 export function optionEmptyVerdictRefusal(verdict: string): string {
   return `\`${verdict}\` lists nothing — omit it, or write what is answered`;
 }
-/** `grammar.optionRequires`: a predicate form that is not fact or holds,
- * or `not` of one (rpg-project#719). */
+/** `grammar.optionRequires`: a predicate form that is none of an option's
+ * forms, or `not` of one (rpg-project#719). */
 export function optionRequiresFormRefusal(form: string): string {
   return `${OPTION_REQUIRES_FORMS}, and \`${form}\` is none of them`;
 }
-/** `grammar.optionRequires`: a holding of a prop the room does not place. */
-export function optionHoldsNotAPropRefusal(id: string): string {
-  return `"${id}" is not a prop in this dungeon, so nobody can hold it`;
+/** `grammar.optionRequires`: carrying a prop the room does not place. */
+export function optionCarriesNotAPropRefusal(id: string): string {
+  return `"${id}" is not a prop in this dungeon, so nobody can carry it`;
 }
-/** `grammar.optionRequires`: a holding of a prop nobody can pick up. */
-export function optionHoldsNotHoldableRefusal(id: string): string {
-  return `"${id}" is a prop nobody can pick up, so nobody can hold it`;
+/** `grammar.optionRequires`: carrying a prop nobody can pick up. */
+export function optionCarriesNotHoldableRefusal(id: string): string {
+  return `"${id}" is a prop nobody can pick up, so nobody can carry it`;
 }
 /** `grammar.approaches`: an approach that rolls nothing. */
 export const APPROACH_NO_ABILITY_REFUSAL =
@@ -1266,6 +1266,12 @@ const OTHER_PREDICATE_FORMS: readonly string[] = Object.freeze([
   'stance',
 ]);
 
+/** Requirement keys the holding words retired (rpg-project#1005): carried as
+ * written, for the engine to name. */
+const RETIRED_REQUIREMENT_KEYS: readonly string[] = Object.freeze([
+  'recognized',
+]);
+
 /**
  * A binding's `options:` — a creature's (`isProp` false) or a prop's.
  *
@@ -1273,9 +1279,9 @@ const OTHER_PREDICATE_FORMS: readonly string[] = Object.freeze([
  * engine's order and words: the id, the line, the check, the `requires` form,
  * and each verdict's rows by the table's own grammar under the verdict's key.
  *
- * WHAT IT DOES NOT JUDGE is whether a `holds` names a prop somebody can pick
- * up: that needs the room's props, which this reader does not have.
- * [optionHoldsRefusal] answers it where the room is in hand.
+ * WHAT IT DOES NOT JUDGE is whether a `carries` names a prop somebody can
+ * pick up: that needs the room's props, which this reader does not have.
+ * [optionCarriesRefusal] answers it where the room is in hand.
  */
 export function validateOptions(
   value: unknown,
@@ -1434,11 +1440,16 @@ function validateOptionRequires(
   return validateOptionRequirement(value, path);
 }
 
-/** One requirement: exactly `{ fact: <id> }`, `{ holds: <prop id> }` or `{
- * interaction: { id, in } }`, or `{ not: }` one of them (rpg-project#719,
- * #922). A real predicate of another form is refused BY NAME with the
- * engine's sentence, since the author wrote something meaningful in the
- * wrong place. */
+/** One requirement: exactly `{ fact: <id> }`, `{ carries: <prop id> }`,
+ * `{ holds: <holding> }` or `{ interaction: { id, in } }`, or `{ not: }` one
+ * of them (rpg-project#719, #922, #1005). A real predicate of another form
+ * is refused BY NAME with the engine's sentence, since the author wrote
+ * something meaningful in the wrong place.
+ *
+ * A RETIRED WORD IS CARRIED, NOT REFUSED (rpg-project#1005): a file written
+ * before the holding words still says `recognized: <topic>`. The studio
+ * loads it as written and writes it back as written; the engine's
+ * validate-only check names the word that replaced it. */
 function validateOptionRequirement(
   value: unknown,
   path: string
@@ -1470,17 +1481,19 @@ function validateOptionRequirement(
         `${path}.interaction`
       ),
     };
-  if (form === 'recognized') {
-    const topic = value.recognized;
-    if (typeof topic !== 'string' || topic === '')
-      fail(`${path}.recognized`, 'must name a topic');
-    return { recognized: topic };
+  if (RETIRED_REQUIREMENT_KEYS.includes(form))
+    return { ...value } as unknown as OptionRead;
+  if (form === 'holds') {
+    const holding = value.holds;
+    if (typeof holding !== 'string' || holding === '')
+      fail(`${path}.holds`, 'must name a holding');
+    return { holds: holding };
   }
-  if (form !== 'fact' && form !== 'holds') fail(path, shape);
+  if (form !== 'fact' && form !== 'carries') fail(path, shape);
   const id = value[form];
   if (typeof id !== 'string' || id === '')
     fail(`${path}.${form}`, 'must name an id');
-  return form === 'fact' ? { fact: id } : { holds: id };
+  return form === 'fact' ? { fact: id } : { carries: id };
 }
 
 /** `{ interaction: { id, in } }`'s object, as the engine's
@@ -1520,16 +1533,16 @@ function validateInteractionRead(
   return { id, in: [...(states as string[])] };
 }
 
-/** Whether a `requires: { holds }` names a prop somebody can pick up, against
- * the room's props — id to holdable, exactly the universe the engine builds
- * (`roomProps`: every `propDeclarations` id, holdable when its binding says
- * so). Answers the engine's sentence, or undefined when the holding is legal. */
-export function optionHoldsRefusal(
-  holds: string,
+/** Whether a `requires: { carries }` names a prop somebody can pick up,
+ * against the room's props — id to holdable, exactly the universe the engine
+ * builds (`roomProps`: every `propDeclarations` id, holdable when its binding
+ * says so). Answers the engine's sentence, or undefined when it is legal. */
+export function optionCarriesRefusal(
+  carries: string,
   props: ReadonlyMap<string, boolean>
 ): string | undefined {
-  const holdable = props.get(holds);
-  if (holdable === undefined) return optionHoldsNotAPropRefusal(holds);
-  if (!holdable) return optionHoldsNotHoldableRefusal(holds);
+  const holdable = props.get(carries);
+  if (holdable === undefined) return optionCarriesNotAPropRefusal(carries);
+  if (!holdable) return optionCarriesNotHoldableRefusal(carries);
   return undefined;
 }

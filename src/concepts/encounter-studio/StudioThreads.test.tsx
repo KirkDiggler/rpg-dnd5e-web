@@ -97,14 +97,12 @@ describe('StudioThreads', () => {
     });
   });
 
-  it('a hub taught and never asked is marked, and so is one granted and never asked', () => {
+  it('a hub taught and never asked is marked, and so is one given and never asked', () => {
     show(null);
     expect(row('Facts', 'king-is-cultist').textContent).toContain(
       'taught, never asked'
     );
-    expect(row('Topics', 'jailed').textContent).toContain(
-      'granted, never asked'
-    );
+    expect(row('Topics', 'jailed').textContent).toContain('given, never asked');
     expect(row('Facts', 'party-recognized').textContent).not.toContain('never');
   });
 

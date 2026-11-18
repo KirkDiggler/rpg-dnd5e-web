@@ -126,7 +126,7 @@ const EVERY_BODY: Record<string, [ReturnType<typeof act>, string | null]> = {
       case: 'hold',
       value: { by: alice, prop: { kind: PartyKind.PROP, id: 'iron-crown' } },
     }),
-    'Alice holds the iron crown',
+    'Alice picks up the iron crown',
   ],
   drop: [
     act(Family.ACT, {

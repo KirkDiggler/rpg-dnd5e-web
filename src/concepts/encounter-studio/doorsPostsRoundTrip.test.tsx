@@ -133,7 +133,7 @@ const POSTED =
   '          posted:\n' +
   '            door: gate-wall-door\n' +
   '            against: entering\n' +
-  '            pass: { recognized: admitted }\n' +
+  '            pass: { holds: admitted }\n' +
   '            at:\n' +
   '              - q: -3\n' +
   '                r: 7\n' +
@@ -334,7 +334,7 @@ describe('a post, from the form (rpg-project#975 D)', () => {
           '          ready:\n' +
           '            door: gate-wall-door\n' +
           '            against: entering\n' +
-          '            pass: { recognized: admitted }\n' +
+          '            pass: { holds: admitted }\n' +
           '            at:\n' +
           '              - q: -4\n' +
           '                r: 8\n',

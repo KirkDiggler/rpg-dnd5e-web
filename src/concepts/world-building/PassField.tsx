@@ -4,12 +4,12 @@ import { passForm, passOf } from './postPass';
 /**
  * A post's pass as one choice and one id (rpg-project#928): "the walker
  * knows a fact" (a password, the bare word; empty, nobody passes), or "the
- * holder recognises the walker" (a topic). A pass written in any other shape — a
+ * holder holds a holding about the walker" (`{ holds: <holding> }`). A pass written in any other shape — a
  * list, a `not`, a form this build does not know — is shown as written and
  * left untouched; the form does not offer to change it.
  *
- * Topics the site's interactions already grant are offered as you type; a
- * new topic is allowed (the compiler names one no outcome grants).
+ * Holdings the site already gives are offered as you type; a new holding is
+ * allowed (the compiler names one nothing gives).
  */
 export function PassField({
   label,
@@ -21,7 +21,7 @@ export function PassField({
   label: string;
   /** The pass as written. */
   value: unknown;
-  /** Topic ids the loaded content grants. */
+  /** Holding ids the loaded content gives. */
   topics?: readonly string[];
   onChange: (next: unknown) => void;
 }): React.JSX.Element {
@@ -41,19 +41,19 @@ export function PassField({
     );
   // An empty fact field is no pass at all: the password mode is also the
   // "nobody passes" one, as the field has always been.
-  const mode = form.kind === 'recognized' ? 'recognized' : 'fact';
+  const mode = form.kind === 'holds' ? 'holds' : 'fact';
   const id =
     form.kind === 'fact'
       ? form.fact
-      : form.kind === 'recognized'
-        ? form.topic
+      : form.kind === 'holds'
+        ? form.holding
         : '';
-  const choose = (next: 'fact' | 'recognized') => {
+  const choose = (next: 'fact' | 'holds') => {
     if (next === mode) return;
-    // Switching keeps the word typed so far; a recognition needs a topic, so
-    // an empty one starts on the first the site grants.
+    // Switching keeps the word typed so far; `holds` needs a holding, so an
+    // empty one starts on the first the site gives.
     if (next === 'fact') onChange(passOf({ kind: 'fact', fact: id }));
-    else onChange(passOf({ kind: 'recognized', topic: id || topics[0] || '' }));
+    else onChange(passOf({ kind: 'holds', holding: id || topics[0] || '' }));
   };
   return (
     <div aria-label={`Pass in ${label}`}>
@@ -62,12 +62,12 @@ export function PassField({
         <select
           aria-label={`Pass kind in ${label}`}
           value={mode}
-          onChange={(event) =>
-            choose(event.target.value as 'fact' | 'recognized')
-          }
+          onChange={(event) => choose(event.target.value as 'fact' | 'holds')}
         >
           <option value="fact">a walker who knows a fact (password)</option>
-          <option value="recognized">a walker the holder recognises</option>
+          <option value="holds">
+            a walker the holder holds a holding about
+          </option>
         </select>
       </label>
       {mode === 'fact' && (
@@ -83,17 +83,15 @@ export function PassField({
           />
         </label>
       )}
-      {form.kind === 'recognized' && (
+      {form.kind === 'holds' && (
         <label>
-          <span>Recognised as (topic)</span>
+          <span>Holding</span>
           <input
-            aria-label={`Pass topic in ${label}`}
+            aria-label={`Pass holding in ${label}`}
             list={topicList}
-            value={form.topic}
+            value={form.holding}
             onChange={(event) =>
-              onChange(
-                passOf({ kind: 'recognized', topic: event.target.value })
-              )
+              onChange(passOf({ kind: 'holds', holding: event.target.value }))
             }
           />
           <datalist id={topicList}>

@@ -415,7 +415,7 @@ function CombatExperienceContent({
     for (const target of holdTargets) {
       standingActions.push({
         key: `session-combat-hold-${target.id}`,
-        label: holdPending ? 'Holding…' : `Hold the ${propLabel(target)}`,
+        label: holdPending ? 'Picking up…' : `Pick up the ${propLabel(target)}`,
         icon: '✋',
         title: `Pick up the ${propLabel(target)}`,
         pending: holdPending,

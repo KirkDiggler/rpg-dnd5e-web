@@ -34,10 +34,11 @@ export interface StateTransition {
 /** The ways a post holds (rpg-project#857, R6); absent reads as both. */
 export const POST_DIRECTIONS = ['both', 'entering', 'leaving'] as const;
 export type PostDirection = (typeof POST_DIRECTIONS)[number];
-/** A state's post (dungeonspec `HoldsSpec`, rpg-project#852 and #857): the
- * door whose opening a creature in this state bars, the cells he holds it
- * from (none means his placed cell), the direction it holds, and the fact
- * that walks a mover through. Carried as written: whether the door exists,
+/** A state's post (`post:`, dungeonspec `HoldsSpec`, rpg-project#852 and
+ * #857; the key `post` since rpg-project#1005, which retired a state's
+ * `holds`): the door whose opening a creature in this state bars, the cells
+ * it keeps it from (none means its placed cell), the direction it holds, and
+ * the fact that walks a mover through. Carried as written: whether the door exists,
  * the cells are floor and the pass is a fact the file sets is the server's
  * to judge at PutDungeon. */
 export interface StateHolds {
@@ -46,7 +47,7 @@ export interface StateHolds {
   /** Empty, as absent, reads as both. */
   against?: PostDirection | '';
   /** What lets a mover through (`postPass.ts`): a fact as a bare word, the
-   * requirement grammar (`{ recognized: <topic> }`, a list, a `not`), as
+   * requirement grammar (`{ holds: <holding> }`, a list, a `not`), as
    * written. */
   pass?: unknown;
   /** A field a newer server added: kept as written, never read. */
@@ -57,8 +58,9 @@ export interface CreatureState {
   transitions?: StateTransition[];
   /** The body blocks while in this state (rpg-project#836). */
   blocks?: boolean;
-  holds?: StateHolds;
-  /** A state field a newer server added: kept as written, never read, so a
+  post?: StateHolds;
+  /** A state field a newer server added — or one the holding words retired
+   * (a state's `holds`, rpg-project#1005), which the engine names: kept as written, never read, so a
    * document the server serves always imports (rpg-project#857). */
   [future: string]: unknown;
 }
@@ -78,7 +80,7 @@ export const STATE_FIELDS = [
   'terminal',
   'transitions',
   'blocks',
-  'holds',
+  'post',
 ] as const;
 /** Flat on disk: `initial` beside the named states, not another states map. */
 export type CreatureStates = { initial: string } & Record<
@@ -90,9 +92,9 @@ export type CreatureStates = { initial: string } & Record<
  * (rpg-project#842): a step refused by this body, or a door verb refused by
  * its hold. It is heard by the barrier alone, at once, in the Move that
  * bumped, and is scoped like `heard`. `topic` (rpg-project#929) wakes a
- * member who has come to hold a topic about someone (a recognition granted
- * by an interaction's outcome or a line's success row); a recipe machine
- * guards it with `topic:<id>`. `turn` is the member's own turn and
+ * member who has come to hold a holding about someone (a `give` from an
+ * interaction's outcome or a line's success row); a recipe machine guards
+ * it with `holds.anyone:<id>` (rpg-project#1005; the retired `topic:<id>`). `turn` is the member's own turn and
  * `approached` someone coming up to it (rpg-project#996; both in the
  * toolkit's `encounter.MachineBeats`). Besides these the engine takes
  * `deed:<word>` and `clock:<name>`; an authored beat not listed here is
@@ -138,7 +140,7 @@ function cell(value: unknown, path: string): { q: number; r: number } {
     r: raw.r as number,
   });
 }
-function holds(value: unknown, path: string): StateHolds {
+function post(value: unknown, path: string): StateHolds {
   const raw = objectShape(value, path);
   if (typeof raw.door !== 'string' || !raw.door)
     fail(
@@ -239,18 +241,20 @@ export function validateStates(value: unknown, path: string): CreatureStates {
         if (typeof body.blocks !== 'boolean')
           fail(`${at}.blocks`, 'must be a boolean');
         state.blocks = body.blocks;
-      } else if (key === 'holds') {
-        state.holds = holds(body.holds, `${at}.holds`);
+      } else if (key === 'post') {
+        state.post = post(body.post, `${at}.post`);
       } else if (key === 'transitions') {
         state.transitions = [];
       } else put(state, key, carried(body[key]));
     }
     if (body.terminal === true)
-      for (const key of ['blocks', 'holds'] as const)
-        if (key in body && (key === 'holds' || body.blocks))
+      for (const key of ['blocks', 'post'] as const)
+        if (key in body && (key === 'post' || body.blocks))
           fail(
             `${at}.${key}`,
-            `a terminal state ends the machine and holds no post: ${key} is for a state the creature stands in`
+            key === 'post'
+              ? 'a terminal state ends the machine and keeps no post: post is for a state the creature stands in'
+              : `a terminal state ends the machine and holds no post: ${key} is for a state the creature stands in`
           );
     if ('transitions' in body) {
       if (!Array.isArray(body.transitions))

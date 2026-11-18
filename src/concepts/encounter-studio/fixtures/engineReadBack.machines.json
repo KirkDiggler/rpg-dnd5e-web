@@ -503,7 +503,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds the topic `admitted` about anyone (Guard Captain (captain) recognises someone as `admitted`), Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a holding about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
               "connects": [
                 {
@@ -3397,7 +3397,7 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, on coming to hold a topic about someone (judged or heard), if it holds the topic `admitted` about anyone (it recognises someone as `admitted`) → to `in-hall` (“admitted the party; goes in”).",
+                  "text": "In `ready`, on coming to hold a holding about someone (judged or heard), if it holds `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
                   ]

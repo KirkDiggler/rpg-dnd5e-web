@@ -152,7 +152,7 @@
                 "id": "admitted"
               },
               "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 5 places and asked for or woken on in 13 places.",
-              "path": "room.room.monsterBindings.gate-1.options[0].success[0].recognize"
+              "path": "room.room.monsterBindings.gate-1.options[0].success[0].give"
             },
             {
               "kind": "topic.grant",
@@ -160,8 +160,8 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-1) — the creature the line is said to — comes to hold `admitted` about the speaker and each member of the speaker's party that Guard (gate-1) sees at that moment (a member out of Guard (gate-1)'s sight is not recognised): Guard (gate-1) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
-              "path": "room.room.monsterBindings.gate-1.options[0].success[0].recognize",
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-1) — the creature the line is said to — is given the holding `admitted`, and comes to hold it about the speaker and each member of the speaker's party that Guard (gate-1) sees at that moment (Guard (gate-1) holds nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes to hold it about nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-1.options[0].success[0].give",
               "connects": [
                 {
                   "kind": "topic",
@@ -191,8 +191,8 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-1) — the creature the line is said to — comes to hold `admitted` about the speaker alone, if Guard (gate-1) sees the speaker (not whoever stands beside the speaker): Guard (gate-1) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
-              "path": "room.room.monsterBindings.gate-1.options[1].success[0].recognize",
+              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-1) — the creature the line is said to — is given the holding `admitted`, and comes to hold it about the speaker alone, if Guard (gate-1) sees the speaker (not whoever stands beside the speaker). Every other creature that carries the conversation `front-gate` (Guard (gate-2) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes to hold it about nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-1.options[1].success[0].give",
               "connects": [
                 {
                   "kind": "topic",
@@ -222,8 +222,8 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-2) — the creature the line is said to — comes to hold `admitted` about the speaker and each member of the speaker's party that Guard (gate-2) sees at that moment (a member out of Guard (gate-2)'s sight is not recognised): Guard (gate-2) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
-              "path": "room.room.monsterBindings.gate-2.options[0].success[0].recognize",
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, Guard (gate-2) — the creature the line is said to — is given the holding `admitted`, and comes to hold it about the speaker and each member of the speaker's party that Guard (gate-2) sees at that moment (Guard (gate-2) holds nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes to hold it about nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-2.options[0].success[0].give",
               "connects": [
                 {
                   "kind": "topic",
@@ -253,8 +253,8 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-2) — the creature the line is said to — comes to hold `admitted` about the speaker alone, if Guard (gate-2) sees the speaker (not whoever stands beside the speaker): Guard (gate-2) recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
-              "path": "room.room.monsterBindings.gate-2.options[1].success[0].recognize",
+              "sentence": "On a win of the line “I’m with the troupe. I fell behind on the road.” (`straggler`), Guard (gate-2) — the creature the line is said to — is given the holding `admitted`, and comes to hold it about the speaker alone, if Guard (gate-2) sees the speaker (not whoever stands beside the speaker). Every other creature that carries the conversation `front-gate` (Guard (gate-1) and Guard Captain (captain)), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes to hold it about nobody, nobody else comes to hold anything either.",
+              "path": "room.room.monsterBindings.gate-2.options[1].success[0].give",
               "connects": [
                 {
                   "kind": "topic",
@@ -284,8 +284,8 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to (whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) comes to hold `admitted` about the speaker and each member of the speaker's party that the creature sees at that moment (a member out of the creature's sight is not recognised): that creature recognises them as `admitted`. Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard Captain (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises nobody, nobody else comes to hold anything either.",
-              "path": "interactions.front-gate.outcomes.admitted[0].recognize",
+              "sentence": "When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to (whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) is given the holding `admitted`, and comes to hold it about the speaker and each member of the speaker's party that the creature sees at that moment (the creature holds nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard Captain (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, comes to hold `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes to hold it about nobody, nobody else comes to hold anything either.",
+              "path": "interactions.front-gate.outcomes.admitted[0].give",
               "connects": [
                 {
                   "kind": "topic",
@@ -315,7 +315,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.alert.pass",
               "connects": [
                 {
@@ -331,7 +331,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.challenged.pass",
               "connects": [
                 {
@@ -347,7 +347,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) recognises the walker as `admitted` (Guard (gate-1) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-1) lets a walker through that post, as an ally walks, when Guard (gate-1) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-1.posts.posted.pass",
               "connects": [
                 {
@@ -363,7 +363,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-1) recognises the speaker as `admitted` (Guard (gate-1) holds `admitted` about the speaker).",
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-1) holds `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-1.options[0].requires[1]",
               "connects": [
                 {
@@ -379,7 +379,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-1) does NOT recognise the speaker as `admitted` (Guard (gate-1) does not hold `admitted` about the speaker).",
+              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-1) does NOT hold `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-1.options[1].requires[1]",
               "connects": [
                 {
@@ -395,7 +395,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-1) does NOT recognise the speaker as `admitted` (Guard (gate-1) does not hold `admitted` about the speaker).",
+              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-1) does NOT hold `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-1.options[2].requires[1]",
               "connects": [
                 {
@@ -411,7 +411,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "Guard (gate-2) lets a walker through that post, as an ally walks, when Guard (gate-2) recognises the walker as `admitted` (Guard (gate-2) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard (gate-2) lets a walker through that post, as an ally walks, when Guard (gate-2) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.gate-2.posts.ready.pass",
               "connects": [
                 {
@@ -427,7 +427,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-2) recognises the speaker as `admitted` (Guard (gate-2) holds `admitted` about the speaker).",
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while Guard (gate-2) holds `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-2.options[0].requires[1]",
               "connects": [
                 {
@@ -443,7 +443,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-2) does NOT recognise the speaker as `admitted` (Guard (gate-2) does not hold `admitted` about the speaker).",
+              "sentence": "The line “I’m with the troupe. I fell behind on the road.” (`straggler`) is offered to a speaker only while Guard (gate-2) does NOT hold `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-2.options[1].requires[1]",
               "connects": [
                 {
@@ -459,7 +459,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-2) does NOT recognise the speaker as `admitted` (Guard (gate-2) does not hold `admitted` about the speaker).",
+              "sentence": "The line “Our friends must have just gone in. Did you see a funny man and let them in?” (`friends-inside`) is offered to a speaker only while Guard (gate-2) does NOT hold `admitted` about the speaker.",
               "path": "room.room.monsterBindings.gate-2.options[2].requires[1]",
               "connects": [
                 {
@@ -475,7 +475,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) recognises the walker as `admitted` (Guard Captain (captain) holds `admitted` about the walker). The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
+              "sentence": "Guard Captain (captain) lets a walker through that post, as an ally walks, when Guard Captain (captain) holds `admitted` about the walker. The door has other holders, and stays barred to a walker while any posted holder does not let them through (see the door `gate-wall-door`).",
               "path": "room.room.monsterBindings.captain.posts.ready.pass",
               "connects": [
                 {
@@ -491,7 +491,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) recognises the speaker as `admitted` (Guard Captain (captain) holds `admitted` about the speaker).",
+              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) holds `admitted` about the speaker.",
               "path": "room.room.monsterBindings.captain.options[8].requires",
               "connects": [
                 {
@@ -507,7 +507,7 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds the topic `admitted` about anyone (Guard Captain (captain) recognises someone as `admitted`), Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a holding about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
               "connects": [
                 {
@@ -1803,17 +1803,17 @@
         {
           "text": "`admitted` — its meaning is not declared in the file.",
           "paths": [
-            "room.room.monsterBindings.gate-1.options[0].success[0].recognize"
+            "room.room.monsterBindings.gate-1.options[0].success[0].give"
           ],
           "items": [
             {
               "text": "Granted by: saying `vouch` (gate-1, gate-2); a win of `straggler` (gate-1, gate-2); the conversation `front-gate` on entering `admitted`.",
               "paths": [
-                "room.room.monsterBindings.gate-1.options[0].success[0].recognize",
-                "room.room.monsterBindings.gate-1.options[1].success[0].recognize",
-                "room.room.monsterBindings.gate-2.options[0].success[0].recognize",
-                "room.room.monsterBindings.gate-2.options[1].success[0].recognize",
-                "interactions.front-gate.outcomes.admitted[0].recognize"
+                "room.room.monsterBindings.gate-1.options[0].success[0].give",
+                "room.room.monsterBindings.gate-1.options[1].success[0].give",
+                "room.room.monsterBindings.gate-2.options[0].success[0].give",
+                "room.room.monsterBindings.gate-2.options[1].success[0].give",
+                "interactions.front-gate.outcomes.admitted[0].give"
               ]
             },
             {

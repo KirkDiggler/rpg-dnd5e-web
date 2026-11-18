@@ -16,6 +16,13 @@
  * entries over those statements), keep-1's, keep-2's and the king's entries, `captain-policy`, and the
  * place's entries over the kept statements. Every kept sentence and entry
  * text is the engine's, unedited.
+ *
+ * THE HOLDING WORDS (rpg-project#1005). In every pinned file below, each
+ * sentence, entry text and path the rename changed is re-taken from rpg-toolkit
+ * 79bcc525 (`readback.Of` with `folded` as `rb.Folded()`, on the castle at that
+ * commit): the old engine's read-back and the new one's, on the castle before
+ * and after the rename, align string for string, and each string that differs
+ * replaced its old form here. Strings the rename did not touch are as recorded.
  */
 import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {

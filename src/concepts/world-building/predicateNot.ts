@@ -8,8 +8,8 @@
  *     withheld from whoever knows the fact or carries the prop, offered to
  *     whoever does not (lane rpg-project#722, D3);
  *   - on an `until`, an `arrives` or an ending's `when` it is WAITED FOR, and
- *     a `not` of a fact, a round or a fall holds from the first frame and can
- *     only stop holding, so the engine refuses it; only a `not` of a stance a
+ *     a `not` of a fact, a round or a fall is true from the first frame and
+ *     can only stop being true, so the engine refuses it; only a `not` of a stance a
  *     pair can turn away from fires.
  *
  * THE ENGINE'S SENTENCES, word for word (`dungeonspec/factions.go`
@@ -24,15 +24,16 @@ export const NOT_OF_NOT_REFUSAL =
 
 /** `notHoldsFromTheStart`. */
 export const NOT_HOLDS_FROM_THE_START_REFUSAL =
-  'a not of a fact, a round or a fall holds from the start and can only stop holding, ' +
+  'a not of a fact, a round or a fall is true from the start and can only stop being true, ' +
   "so nothing can fire it: a not is read by an option's requires or a leave ending's if, " +
   'and waited for only on a stance a pair can turn away from';
 
 /** `optionRequiresForms`: what an option may require (rpg-project#922: one
- * or a list, and the interaction form; rpg-project#928: recognition). */
+ * or a list, and the interaction form; rpg-project#928: what the one spoken
+ * to holds; rpg-project#1005: the words `carries` and `holds`). */
 export const OPTION_REQUIRES_FORMS =
-  'an option requires one or a list of { fact: <id> }, { holds: <prop id> }, ' +
-  '{ interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them';
+  'an option requires one or a list of { fact: <id> }, { carries: <prop id> }, ' +
+  '{ interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them';
 
 /** `interactionForm`: the interaction predicate's own sentence. */
 export const INTERACTION_FORM =
@@ -60,22 +61,48 @@ export interface InteractionRead {
   interaction: { id: string; in: string[] };
 }
 
-/** The creature spoken to holds a topic about the speaker (rpg-project#928):
- * he recognises them. The topic is the author's; whether any interaction's
- * outcome grants it, and whether the line is a creature's, is the compiler's
- * to judge at Save & Play. The studio carries it and says it. */
-export interface RecognizedRead {
-  recognized: string;
+/** The creature spoken to holds a holding about the speaker (rpg-project#928;
+ * the word `holds` since rpg-project#1005). The holding is the author's;
+ * whether anything in the file gives it, and whether the line is a
+ * creature's, is the compiler's to judge at Save & Play. The studio carries
+ * it and says it. */
+export interface HoldsRead {
+  holds: string;
 }
 
 /** What one requirement reads: a fact the speaker knows, a prop they carry,
- * the state of the run's interaction, or whether the one spoken to
- * recognises the speaker. */
+ * the state of the run's interaction, or a holding the one spoken to holds
+ * about the speaker. */
 export type OptionRead =
   | { fact: string }
-  | { holds: string }
+  | { carries: string }
   | InteractionRead
-  | RecognizedRead;
+  | HoldsRead;
+
+/** Whether a read is one of the forms the studio edits. A read written in
+ * any other key — the retired `recognized` among them (rpg-project#1005) —
+ * is carried as written, said as written, and left to the engine to name. */
+export function isKnownRead(read: OptionRead): boolean {
+  const r = read as Record<string, unknown>;
+  return (
+    typeof r.fact === 'string' ||
+    typeof r.carries === 'string' ||
+    typeof r.holds === 'string' ||
+    (r.interaction !== null &&
+      typeof r.interaction === 'object' &&
+      Array.isArray((r.interaction as { in?: unknown }).in))
+  );
+}
+
+/** A read the studio does not edit, as written: "recognized: admitted". */
+export function writtenRead(read: OptionRead): string {
+  return Object.entries(read as Record<string, unknown>)
+    .map(
+      ([key, value]) =>
+        `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`
+    )
+    .join(', ');
+}
 
 /** One requirement: a read, or `not` around one. */
 export type OptionRequirement = OptionRead | { not: OptionRead };
@@ -124,21 +151,25 @@ function requirementSentence(
   propName: (id: string) => string
 ): string {
   const read = requiresRead(r);
+  if (!isKnownRead(read))
+    return 'not' in r
+      ? `Offered unless ${writtenRead(read)} (as written).`
+      : `Requires ${writtenRead(read)} (as written).`;
   if ('interaction' in read)
     return 'not' in r
       ? `Offered unless ${interactionWords(read)}.`
       : `Offered while ${interactionWords(read)}.`;
-  if ('recognized' in read)
+  if ('holds' in read)
     return 'not' in r
-      ? `Offered unless the one spoken to recognises the speaker as ${read.recognized}.`
-      : `Offered while the one spoken to recognises the speaker as ${read.recognized}.`;
+      ? `Offered unless the one spoken to holds ${read.holds} about the speaker.`
+      : `Offered while the one spoken to holds ${read.holds} about the speaker.`;
   if ('not' in r)
     return 'fact' in read
       ? `Offered unless the speaker knows ${read.fact}.`
-      : `Offered unless the speaker is carrying the ${propName(read.holds)}.`;
+      : `Offered unless the speaker is carrying the ${propName(read.carries)}.`;
   return 'fact' in read
     ? `Offered to a speaker who knows ${read.fact}.`
-    : `Offered to a speaker carrying the ${propName(read.holds)}.`;
+    : `Offered to a speaker carrying the ${propName(read.carries)}.`;
 }
 
 /** The requirements as the Read back says them, one sentence each. */
@@ -154,13 +185,14 @@ export function requiresSentence(
 /** One requirement as the read-only line says it: "requires fact x". */
 function requirementGate(r: OptionRequirement): string {
   const read = requiresRead(r);
-  const what =
-    'fact' in read
+  const what = !isKnownRead(read)
+    ? writtenRead(read)
+    : 'fact' in read
       ? `fact ${read.fact}`
-      : 'holds' in read
-        ? `holding ${read.holds}`
-        : 'recognized' in read
-          ? `recognized ${read.recognized}`
+      : 'carries' in read
+        ? `carries ${read.carries}`
+        : 'holds' in read
+          ? `holds ${read.holds}`
           : `${read.interaction.id} in ${read.interaction.in.join('|')}`;
   return 'not' in r ? `unless ${what}` : `requires ${what}`;
 }

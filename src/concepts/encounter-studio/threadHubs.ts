@@ -74,12 +74,12 @@ const RULES: Record<
   },
   topic: {
     summary: (c) =>
-      `granted by ${count(c, 'topic.grant')}, asked by ${count(c, 'topic.ask')}`,
+      `given by ${count(c, 'topic.grant')}, asked by ${count(c, 'topic.ask')}`,
     mark: (c) =>
       count(c, 'topic.ask') === 0 && count(c, 'topic.grant') > 0
-        ? 'granted, never asked'
+        ? 'given, never asked'
         : count(c, 'topic.grant') === 0 && count(c, 'topic.ask') > 0
-          ? 'asked, never granted'
+          ? 'asked, never given'
           : null,
   },
   record: {

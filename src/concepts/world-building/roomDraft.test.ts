@@ -1712,7 +1712,7 @@ describe('options on a binding (rpg-project#569)', () => {
           {
             id: 'bribe',
             say: 'Ten gold says you never saw us.',
-            requires: { holds: 'purse' },
+            requires: { carries: 'purse' },
             check: [
               { ability: 'persuasion', dc: 8 },
               { ability: 'deception', dc: 10, tool: 'dnd5e:items:dice' },
@@ -1788,7 +1788,7 @@ describe('options on a binding (rpg-project#569)', () => {
           })
       )
     ).toThrow(
-      'options[0].requires: an option requires one or a list of { fact: <id> }, { holds: <prop id> }, { interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them, and `round` is none of them'
+      'options[0].requires: an option requires one or a list of { fact: <id> }, { carries: <prop id> }, { interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them, and `round` is none of them'
     );
     expect(refusal((d) => (goblin(d)[0].failure = []))).toThrow(
       'options[0].failure: `failure` lists nothing — omit it, or write what is answered'
@@ -1820,20 +1820,20 @@ describe('options on a binding (rpg-project#569)', () => {
     ).toThrow(
       "Prop binding for altar options[0].success[0].flee: a prop cannot run: `flee` is a creature's answer"
     );
-    // `requires: { holds }` names a placed prop somebody can pick up.
+    // `requires: { carries }` names a placed prop somebody can pick up.
     expect(
-      refusal((d) => (goblin(d)[1].requires = { holds: 'crown' }))
+      refusal((d) => (goblin(d)[1].requires = { carries: 'crown' }))
     ).toThrow(
-      'Monster binding for goblin-1 options[1].requires.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
+      'Monster binding for goblin-1 options[1].requires.carries: "crown" is not a prop in this dungeon, so nobody can carry it'
     );
     expect(
-      refusal((d) => (goblin(d)[1].requires = { holds: 'altar' }))
-    ).toThrow('"altar" is a prop nobody can pick up, so nobody can hold it');
-    // A `not` of a holding names its prop one level down (rpg-project#719).
+      refusal((d) => (goblin(d)[1].requires = { carries: 'altar' }))
+    ).toThrow('"altar" is a prop nobody can pick up, so nobody can carry it');
+    // A `not` of carrying names its prop one level down (rpg-project#719).
     expect(
-      refusal((d) => (goblin(d)[1].requires = { not: { holds: 'crown' } }))
+      refusal((d) => (goblin(d)[1].requires = { not: { carries: 'crown' } }))
     ).toThrow(
-      'Monster binding for goblin-1 options[1].requires.not.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
+      'Monster binding for goblin-1 options[1].requires.not.carries: "crown" is not a prop in this dungeon, so nobody can carry it'
     );
     // A key a line does not read is carried now, not refused (rpg-project#857).
     expect(

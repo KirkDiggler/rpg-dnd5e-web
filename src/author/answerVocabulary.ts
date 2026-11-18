@@ -337,7 +337,7 @@ export interface AnswerWhenSpec {
   readonly heardBodyKeys: readonly string[];
   /** `fact: <id>` — the creature holds that world fact (R6). */
   readonly factKey: 'fact';
-  /** `not: { <condition> }` — holds when the ONE condition inside does not
+  /** `not: { <condition> }` — true when the ONE condition inside is not
    * (R8). It wraps a condition, never a list: a negated `and` is an `or` the
    * grammar has not paid for. */
   readonly notKey: 'not';

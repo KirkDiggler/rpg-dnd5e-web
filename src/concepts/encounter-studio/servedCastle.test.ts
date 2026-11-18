@@ -519,9 +519,9 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
   // arrested, so that form is round-tripped too.
   const STAND_ASIDE_REQUIRES = `            requires:
               - not:
-                  recognized: wanted
+                  holds: wanted
               - not:
-                  recognized: arrested
+                  holds: arrested
 `;
   const NOT_INTERACTION = `              - not:
                   interaction: { id: front-gate, in: [arrested] }
@@ -577,8 +577,8 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
       { interaction: { id: 'front-gate', in: ['fresh', 'warned-troupe'] } },
     ]);
     expect(option('stand-aside').requires).toEqual([
-      { not: { recognized: 'wanted' } },
-      { not: { recognized: 'arrested' } },
+      { not: { holds: 'wanted' } },
+      { not: { holds: 'arrested' } },
       { not: { interaction: { id: 'front-gate', in: ['arrested'] } } },
     ]);
   });

@@ -453,8 +453,8 @@ function describeWith(
       };
     case 'hold':
       return {
-        eyebrow: 'Hold',
-        headline: `${name(body.value.by)} holds ${name(body.value.prop)}`,
+        eyebrow: 'Pick up',
+        headline: `${name(body.value.by)} picks up ${name(body.value.prop)}`,
         detail: '',
         tone: 'neutral',
       };

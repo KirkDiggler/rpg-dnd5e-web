@@ -5,29 +5,31 @@ import type { SiteScope } from './siteScope';
 /**
  * WHAT FOLLOWS AN INTERACTION ENTERING A STATE (rpg-project#928): an
  * interaction's `outcomes:`, keyed by the state it enters, each a list of
- * consequences. The one kind today is `recognize`. A line's success row
- * may carry the same `recognize` (rpg-project#929), granted when the line
- * wins; `recognizeOf` reads either:
+ * consequences: a `give`, an `arrest` or a `jail`. A line's success row may
+ * carry the same `give` (rpg-project#929), given when the line wins;
+ * `giveOf` reads either (the words since rpg-project#1005; the retired
+ * `recognize: { topic, holder }` is never read, so an entry still written
+ * that way is shown and kept as written and the engine names `give`):
  *
  *   outcomes:
  *     admitted:
- *       - recognize:
- *           topic: admitted                   # the author's word
- *           holder: spoken_to                 # the one word: the creature spoken to
- *           about: party_in_sight             # the one word: the speaker's party he sees
+ *       - give:
+ *           holding: admitted                 # the author's word
+ *           to: spoken_to                     # the one word: the creature spoken to
+ *           about: party_in_sight             # the one word: the speaker's party it sees
  *           heard_by: carriers_who_witnessed  # optional, the one word
  *
  * The root `interactions:` map rides the scope's `unread` (rpg-project#922)
- * and is never interpreted beyond this: the studio reads the recognize
- * entries it can say in plain words, edits their topic and whether the
+ * and is never interpreted beyond this: the studio reads the give entries
+ * it can say in plain words, edits their holding and whether the
  * witnessing carriers hear it, adds and removes them, and leaves every other
  * key — the recipe, an unknown consequence kind, a word this build does not
  * know — as written. The dungeonspec compiler is the validator.
  */
 
-/** `holder`'s one word: the creature the winning line was said to. */
-export const HOLDER_SPOKEN_TO = 'spoken_to';
-/** `about`'s one word: the speaker's party the holder sees. */
+/** `to`'s one word: the creature the winning line was said to. */
+export const TO_SPOKEN_TO = 'spoken_to';
+/** `about`'s one word: the speaker's party the creature given it sees. */
 export const ABOUT_PARTY_IN_SIGHT = 'party_in_sight';
 /** `about`'s other word (rpg-project#929): the speaker alone, as a line's
  * success row grants it to a straggler who made their own case. */
@@ -38,10 +40,10 @@ export const HEARD_BY_WITNESSES = 'carriers_who_witnessed';
 /** A state's consequences, as written. */
 export type Outcomes = Record<string, unknown[]>;
 
-/** One recognize entry the studio can say and edit. */
-export interface Recognize {
-  topic: string;
-  holder: string;
+/** One give entry the studio can say and edit. */
+export interface Giving {
+  holding: string;
+  to: string;
   about: string;
   heard: boolean;
 }
@@ -101,36 +103,36 @@ export function outcomesOf(scope: Readonly<SiteScope>, id: string): Outcomes {
   return out;
 }
 
-/** One entry as a recognize the form edits, or undefined for any other
- * shape: another kind, an unknown key, a word that is not text. */
-export function recognizeOf(entry: unknown): Recognize | undefined {
+/** One entry as a give the form edits, or undefined for any other shape:
+ * another kind, an unknown key (the retired `topic` or `holder` among
+ * them), a word that is not text. */
+export function giveOf(entry: unknown): Giving | undefined {
   if (!mapping(entry) || Object.keys(entry).length !== 1) return undefined;
-  const r = entry.recognize;
+  const r = entry.give;
   if (!mapping(r)) return undefined;
   for (const key of Object.keys(r))
-    if (!['topic', 'holder', 'about', 'heard_by'].includes(key))
-      return undefined;
-  const { topic, holder, about } = r;
+    if (!['holding', 'to', 'about', 'heard_by'].includes(key)) return undefined;
+  const { holding, to, about } = r;
   if (
-    typeof topic !== 'string' ||
-    typeof holder !== 'string' ||
+    typeof holding !== 'string' ||
+    typeof to !== 'string' ||
     typeof about !== 'string'
   )
     return undefined;
   if (r.heard_by !== undefined && typeof r.heard_by !== 'string')
     return undefined;
-  return { topic, holder, about, heard: r.heard_by !== undefined };
+  return { holding, to, about, heard: r.heard_by !== undefined };
 }
 
-/** Every topic the site's interactions grant, sorted, each once: the topics
- * a pass or a line may recognise on. */
+/** Every holding the site's interactions give, sorted, each once: the
+ * holdings a pass or a line may ask `holds` of. */
 export function grantedTopics(scope: Readonly<SiteScope>): string[] {
   const topics = new Set<string>();
   for (const id of Object.keys(interactionsOf(scope)))
     for (const list of Object.values(outcomesOf(scope, id)))
       for (const entry of list) {
-        const r = recognizeOf(entry);
-        if (r && r.topic) topics.add(r.topic);
+        const r = giveOf(entry);
+        if (r && r.holding) topics.add(r.holding);
       }
   return [...topics].sort();
 }
@@ -140,27 +142,27 @@ function editEntry(
   outcomes: Outcomes,
   state: string,
   index: number,
-  edit: (recognize: Record<string, unknown>) => Record<string, unknown>
+  edit: (give: Record<string, unknown>) => Record<string, unknown>
 ): Outcomes {
   const list = outcomes[state] ?? [];
   const entry = list[index];
-  if (!mapping(entry) || !mapping(entry.recognize)) return outcomes;
+  if (!mapping(entry) || !mapping(entry.give)) return outcomes;
   const next = [...list];
-  next[index] = { ...entry, recognize: edit({ ...entry.recognize }) };
+  next[index] = { ...entry, give: edit({ ...entry.give }) };
   return { ...outcomes, [state]: next };
 }
 
-/** The outcomes with one recognize's topic set. */
-export function withTopic(
+/** The outcomes with one give's holding set. */
+export function withHolding(
   outcomes: Outcomes,
   state: string,
   index: number,
-  topic: string
+  holding: string
 ): Outcomes {
-  return editEntry(outcomes, state, index, (r) => ({ ...r, topic }));
+  return editEntry(outcomes, state, index, (r) => ({ ...r, holding }));
 }
 
-/** The outcomes with one recognize about the party in sight, or the
+/** The outcomes with one give about the party in sight, or the
  * speaker alone. */
 export function withAbout(
   outcomes: Outcomes,
@@ -171,7 +173,7 @@ export function withAbout(
   return editEntry(outcomes, state, index, (r) => ({ ...r, about }));
 }
 
-/** The outcomes with one recognize heard by the witnessing carriers, or by
+/** The outcomes with one give heard by the witnessing carriers, or by
  * nobody else. */
 export function withHeard(
   outcomes: Outcomes,
@@ -187,18 +189,18 @@ export function withHeard(
   });
 }
 
-/** The outcomes with a recognize added to a state: the spoken-to holder
- * recognises the party in sight on the topic, heard by the witnessing
+/** The outcomes with a give added to a state: the creature spoken to comes
+ * to hold the holding about the party in sight, heard by the witnessing
  * carriers. */
-export function withRecognizeAdded(
+export function withGiveAdded(
   outcomes: Outcomes,
   state: string,
-  topic: string
+  holding: string
 ): Outcomes {
   const entry = {
-    recognize: {
-      topic,
-      holder: HOLDER_SPOKEN_TO,
+    give: {
+      holding,
+      to: TO_SPOKEN_TO,
       about: ABOUT_PARTY_IN_SIGHT,
       heard_by: HEARD_BY_WITNESSES,
     },
@@ -248,19 +250,19 @@ export function setInteractionOutcomes(
 }
 
 // ---------------------------------------------------------------------------
-// ONE OUTCOME IS ONE KIND (rpg-project#975 C): a recognition, an arrest or a
+// ONE OUTCOME IS ONE KIND (rpg-project#975 C): a give, an arrest or a
 // jail (`dungeonspec` `OutcomeSpec`, `ArrestSpec`, `JailSpec`; judged by
 // `interactions.go` `outcomesOf`, `arrestOf` and the engine's
 // `validateOutcomes`):
 //
-//   - recognize: { topic, holder, about, heard_by? }
+//   - give: { holding, to, about, heard_by? }
 //   - arrest: { cell: <region>, area: { regions?: [<region>], cells?: [rows] } }
 //     — the area names its regions or its cells;
 //   - jail: { words, rounds?, escaped?: <fact> } — only in a conversation
 //     that arrests: a jail takes the taken of its own arrest.
 // ---------------------------------------------------------------------------
 
-export const OUTCOME_KINDS = ['recognize', 'arrest', 'jail'] as const;
+export const OUTCOME_KINDS = ['give', 'arrest', 'jail'] as const;
 export type OutcomeKind = (typeof OUTCOME_KINDS)[number];
 
 export interface ArrestShape {
@@ -302,7 +304,7 @@ export function arrests(
 }
 
 /** A new outcome of one kind, started from what the site defines: a
- * recognition of its first topic about the party in sight, witnessed; an
+ * give of its first holding about the party in sight, witnessed; an
  * arrest held in and seized in its first region; a jail with words to
  * write. */
 export function newOutcome(
@@ -310,11 +312,11 @@ export function newOutcome(
   names: { topics: readonly string[]; regions: readonly { id: string }[] }
 ): Record<string, unknown> {
   switch (kind) {
-    case 'recognize':
+    case 'give':
       return {
-        recognize: {
-          topic: names.topics[0] ?? '',
-          holder: HOLDER_SPOKEN_TO,
+        give: {
+          holding: names.topics[0] ?? '',
+          to: TO_SPOKEN_TO,
           about: ABOUT_PARTY_IN_SIGHT,
           heard_by: HEARD_BY_WITNESSES,
         },
@@ -406,15 +408,15 @@ export function jailOf(entry: unknown): JailShape | undefined {
   return jail as unknown as JailShape;
 }
 
-/** One entry's recognition, when the form can show and edit it: the words
- * it offers (holder `spoken_to`; about `party_in_sight` or `speaker`;
- * `heard_by` the witnesses or absent). Anything else is shown as written,
- * never as blank fields. */
-export function editableRecognizeOf(entry: unknown): Recognize | undefined {
-  const r = recognizeOf(entry);
+/** One entry's give, when the form can show and edit it: the words it
+ * offers (to `spoken_to`; about `party_in_sight` or `speaker`; `heard_by`
+ * the witnesses or absent). Anything else is shown as written, never as
+ * blank fields. */
+export function editableGiveOf(entry: unknown): Giving | undefined {
+  const r = giveOf(entry);
   if (!r) return undefined;
-  const raw = (entry as { recognize: Record<string, unknown> }).recognize;
-  if (r.holder !== HOLDER_SPOKEN_TO) return undefined;
+  const raw = (entry as { give: Record<string, unknown> }).give;
+  if (r.to !== TO_SPOKEN_TO) return undefined;
   if (r.about !== ABOUT_PARTY_IN_SIGHT && r.about !== ABOUT_SPEAKER)
     return undefined;
   if (raw.heard_by !== undefined && raw.heard_by !== HEARD_BY_WITNESSES)

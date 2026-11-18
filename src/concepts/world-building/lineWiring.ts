@@ -5,11 +5,13 @@
  * `grammar.go` `optionRequires`, `interactionRequirement`, `optionAdvance`).
  *
  * `requires` is one requirement written as a mapping, or a list of them,
- * every one of which must hold. The author's spelling is kept: a mapping
- * stays a mapping while it holds one, and becomes a list when a second is
+ * every one of which must be true. The author's spelling is kept: a mapping
+ * stays a mapping while it has one, and becomes a list when a second is
  * added; a list stays a list. Each requirement is a fact the speaker knows,
- * a prop they carry, a conversation in one of its states, or the one spoken
- * to recognising them — or `not` one of those.
+ * a prop they carry (`carries`), a conversation in one of its states, or a
+ * holding the one spoken to holds about them (`holds`) — or `not` one of
+ * those. A requirement written in any other key (the retired `recognized`)
+ * is shown and kept as written; the engine names its word.
  *
  * `advance: { interaction, success?, failure? }` steps a conversation on the
  * beat a win (or a plain line) lands, and on the beat a miss lands. At least
@@ -17,6 +19,7 @@
  */
 import type { OptionShape } from './answerTableShape';
 import {
+  isKnownRead,
   requirementsOf,
   requiresRead,
   type OptionRead,
@@ -27,41 +30,43 @@ import type { SiteNames } from './siteNames';
 
 export const REQUIREMENT_KINDS = [
   'fact',
-  'holds',
+  'carries',
   'interaction',
-  'recognized',
+  'holds',
 ] as const;
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 export type RequirementChoice = RequirementKind | `not-${RequirementKind}`;
 
 /** What each requirement's select offers, in order: the plain reads, then
- * their negations. A prop's line is offered no recognition. */
+ * their negations. A prop's line is offered no `holds`: a prop holds
+ * nothing about anybody. */
 export const REQUIREMENT_CHOICES: readonly {
   value: RequirementChoice;
   label: string;
 }[] = [
   { value: 'fact', label: 'The speaker knows a fact' },
-  { value: 'holds', label: 'The speaker carries a prop' },
+  { value: 'carries', label: 'The speaker carries a prop' },
   { value: 'interaction', label: 'A conversation is in a state' },
-  { value: 'recognized', label: 'The one spoken to recognises the speaker' },
+  { value: 'holds', label: 'The one spoken to holds a holding' },
   { value: 'not-fact', label: 'Unless the speaker knows a fact' },
-  { value: 'not-holds', label: 'Unless the speaker carries a prop' },
+  { value: 'not-carries', label: 'Unless the speaker carries a prop' },
   { value: 'not-interaction', label: 'Unless a conversation is in a state' },
-  {
-    value: 'not-recognized',
-    label: 'Unless the one spoken to recognises the speaker',
-  },
+  { value: 'not-holds', label: 'Unless the one spoken to holds a holding' },
 ];
 
-function kindOf(read: OptionRead): RequirementKind {
+/** The kind a read is; a read in a key the studio does not edit is named
+ * by its own key ("recognized"), so the select can show it as written. */
+function kindOf(read: OptionRead): string {
+  if (!isKnownRead(read)) return Object.keys(read)[0] ?? '';
   if ('fact' in read) return 'fact';
-  if ('holds' in read) return 'holds';
+  if ('carries' in read) return 'carries';
   if ('interaction' in read) return 'interaction';
-  return 'recognized';
+  return 'holds';
 }
 
-/** Which choice a requirement is. */
-export function choiceOf(r: OptionRequirement): RequirementChoice {
+/** Which choice a requirement is: one of {@link REQUIREMENT_CHOICES}, or —
+ * for a read the studio does not edit — its own key, kept as written. */
+export function choiceOf(r: OptionRequirement): string {
   const kind = kindOf(requiresRead(r));
   return 'not' in r ? `not-${kind}` : kind;
 }
@@ -69,7 +74,7 @@ export function choiceOf(r: OptionRequirement): RequirementChoice {
 /** The requirement a choice starts as. The same read negated or not keeps
  * what it names; another kind starts from what the site defines: its first
  * holdable prop, its first conversation in that conversation's first state,
- * its first topic. */
+ * its first holding. */
 export function requirementFor(
   choice: RequirementChoice,
   was: OptionRequirement | undefined,
@@ -88,8 +93,8 @@ export function requirementFor(
         // until one is typed) only on a site that mentions none.
         read = { fact: names.facts[0] ?? '' };
         break;
-      case 'holds':
-        read = { holds: holdable[0] ?? '' };
+      case 'carries':
+        read = { carries: holdable[0] ?? '' };
         break;
       case 'interaction': {
         const first = names.conversations[0];
@@ -101,8 +106,8 @@ export function requirementFor(
         };
         break;
       }
-      case 'recognized':
-        read = { recognized: names.topics[0] ?? '' };
+      case 'holds':
+        read = { holds: names.topics[0] ?? '' };
         break;
     }
   return negated ? { not: read } : read;
