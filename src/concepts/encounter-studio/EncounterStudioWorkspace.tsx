@@ -907,7 +907,7 @@ function StudioSurface({
   const run = useRunWatch(watch, session.document.draft);
   /** One step from the Layout (rpg-project#1006): offered at the live step
    * only, from the seat's cell as the record last put it. */
-  const studioStep = useStudioStep(watch);
+  const studioStep = useStudioStep(watch, run.view.steps.length);
   const layoutSteps = layoutStepsOf(watch, run, studioStep);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
@@ -1823,7 +1823,8 @@ function StudioSurface({
                             onSelect: run.setSelected,
                             steps: layoutSteps,
                             said: saidThisStep,
-                            tried: studioStep.tried,
+                            // A refusal belongs to the Live step.
+                            tried: run.step === null ? studioStep.tried : null,
                           }
                         : undefined
                     }

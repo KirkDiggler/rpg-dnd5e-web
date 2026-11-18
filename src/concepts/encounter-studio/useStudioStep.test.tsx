@@ -15,6 +15,7 @@ vi.mock('@/api/client', () => ({ sessionClient: { move: hoisted.moveFn } }));
 import type { RunView } from './runView';
 import {
   layoutStepsOf,
+  RECORD_WAIT_MS,
   STEP_STARTED_A_FIGHT,
   TRIED_MARK_MS,
   useStudioStep,
@@ -141,6 +142,86 @@ describe('useStudioStep', () => {
     act(() => result.current.step({ q: 1, r: 0 }));
     await waitFor(() => expect(result.current.fight).toBe(true));
     expect(result.current.refusal).toBe(STEP_STARTED_A_FIGHT);
+  });
+
+  it('a step that moved holds the latch until the record shows it', async () => {
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 } }],
+      stopReason: '',
+    });
+    const { result, rerender } = renderHook(
+      ({ progress }) => useStudioStep(WATCH, progress),
+      { initialProps: { progress: 3 } }
+    );
+    await act(async () => result.current.step({ q: 1, r: 0 }));
+    // Answered, but the record has not caught up: still busy, and a
+    // second click from the stale cell sends nothing.
+    expect(result.current.busy).toBe(true);
+    act(() => result.current.step({ q: 2, r: 0 }));
+    expect(hoisted.moveFn).toHaveBeenCalledOnce();
+    rerender({ progress: 4 });
+    expect(result.current.busy).toBe(false);
+    act(() => result.current.step({ q: 2, r: 0 }));
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('a lost record beat never locks stepping: the latch frees after a short wait', async () => {
+    vi.useFakeTimers();
+    try {
+      hoisted.moveFn.mockResolvedValue({
+        steps: [{ position: { x: 1, y: 0 } }],
+        stopReason: '',
+      });
+      const { result } = renderHook(() => useStudioStep(WATCH, 3));
+      await act(async () => result.current.step({ q: 1, r: 0 }));
+      expect(result.current.busy).toBe(true);
+      act(() => vi.advanceTimersByTime(RECORD_WAIT_MS));
+      expect(result.current.busy).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a late answer for a run no longer watched is dropped', async () => {
+    let answer: (value: unknown) => void = () => {};
+    hoisted.moveFn.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+    );
+    const { result, rerender } = renderHook(
+      ({ watch }) => useStudioStep(watch),
+      {
+        initialProps: { watch: WATCH },
+      }
+    );
+    act(() => result.current.step({ q: 1, r: 0 }));
+    rerender({ watch: { session: 'run-2', member: 'hero' } });
+    await act(async () => answer({ steps: [], stopReason: 'x' }));
+    expect(result.current.refusal).toBeNull();
+    expect(result.current.tried).toBeNull();
+  });
+
+  it('a late refusal for a run no longer watched is dropped', async () => {
+    let refuse: (err: unknown) => void = () => {};
+    hoisted.moveFn.mockReturnValue(
+      new Promise((_, reject) => {
+        refuse = reject;
+      })
+    );
+    const { result, rerender } = renderHook(
+      ({ watch }) => useStudioStep(watch),
+      {
+        initialProps: { watch: WATCH },
+      }
+    );
+    act(() => result.current.step({ q: 1, r: 0 }));
+    rerender({ watch: { session: 'run-2', member: 'hero' } });
+    await act(async () =>
+      refuse(new ConnectError('move: not your turn', Code.FailedPrecondition))
+    );
+    expect(result.current.refusal).toBeNull();
+    expect(result.current.fight).toBe(false);
   });
 
   it('sends nothing when no run is watched', () => {

@@ -70,6 +70,9 @@ export function StudioWatch({
     [feed, member, upTo]
   );
   const shownStep = steps[at];
+  /** A step's refusal belongs to the Live step: stepped back in history,
+   * the panel shows that step's record only. */
+  const live = step === null ? stepping : undefined;
   /** Every line said up to the shown step, newest last, from every speaker
    * the record has. */
   const said = useMemo(() => speechOf(feed.rows, upTo), [feed.rows, upTo]);
@@ -145,16 +148,16 @@ export function StudioWatch({
             Stepping…
           </p>
         )}
-        {stepping?.refusal && (
+        {live?.refusal && (
           <p
             className="es-watch-refusal"
             role="alert"
             data-testid="watch-step-refusal"
           >
-            Your step was stopped: {stepping.refusal}
+            Your step was stopped: {live.refusal}
           </p>
         )}
-        {stepping?.fight && (
+        {live?.fight && (
           <p className="es-help" role="status" data-testid="watch-step-fight">
             {FIGHT_MOVES_IN_THE_GAME}
             {onPlayInGame ? ' Press Play in the game above.' : ''}

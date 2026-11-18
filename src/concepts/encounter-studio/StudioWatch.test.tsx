@@ -213,6 +213,18 @@ describe('StudioWatch: one step from the Layout (rpg-project#1006)', () => {
     expect(screen.queryByTestId('watch-step-fight')).toBeNull();
   });
 
+  it('a Live refusal is not shown while stepped back in history', () => {
+    render(
+      <Stepped stepping={{ busy: false, refusal: 'Blocked.', fight: true }} />
+    );
+    expect(screen.getByTestId('watch-step-refusal')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByTestId('watch-step-refusal')).toBeNull();
+    expect(screen.queryByTestId('watch-step-fight')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    expect(screen.getByTestId('watch-step-refusal')).toBeTruthy();
+  });
+
   it('a fight says moves in a fight are made in the game, beside Play in the game', () => {
     render(
       <Stepped

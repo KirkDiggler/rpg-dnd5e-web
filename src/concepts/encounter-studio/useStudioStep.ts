@@ -57,7 +57,20 @@ export interface StudioStep {
 /** How long the Layout marks the hex a refused step tried. */
 export const TRIED_MARK_MS = 3000;
 
-export function useStudioStep(watch: WatchedRun | null): StudioStep {
+/** How long a step that moved holds the latch waiting for the record to
+ * show it, before stepping frees anyway (a lost beat never locks it). */
+export const RECORD_WAIT_MS = 1500;
+
+/**
+ * `progress` is how far the run's record has come: the number of party
+ * steps it holds (`run.view.steps.length`). A step that moved holds the
+ * latch until that changes, so the next step is offered around the cell
+ * the record now puts the seat on, never the stale one.
+ */
+export function useStudioStep(
+  watch: WatchedRun | null,
+  progress = 0
+): StudioStep {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [fight, setFight] = useState(false);
@@ -70,6 +83,24 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
   /** The latch itself: a ref, so two clicks before a render still send
    * one move. */
   const inFlight = useRef(false);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  /** The progress a moved step waits to see change; null when none waits. */
+  const [waitingFrom, setWaitingFrom] = useState<number | null>(null);
+  const release = useCallback((): void => {
+    inFlight.current = false;
+    setBusy(false);
+    setWaitingFrom(null);
+  }, []);
+  useEffect(() => {
+    if (waitingFrom === null) return;
+    if (progress !== waitingFrom) {
+      release();
+      return;
+    }
+    const timer = setTimeout(release, RECORD_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [waitingFrom, progress, release]);
   const key = watch ? `${watch.session}\u0000${watch.member}` : '';
   const current = useRef(key);
   current.current = key;
@@ -88,7 +119,9 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
       setFight(false);
       setTried(null);
       const sent = key;
+      const sentProgress = progressRef.current;
       void (async () => {
+        let hold = false;
         try {
           const response = await sessionClient.move({
             session: watch.session,
@@ -109,18 +142,22 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
             setRefusal((said) => said ?? STEP_STARTED_A_FIGHT);
             setFight(true);
           }
+          // It moved: hold the latch until the record shows it, unless it
+          // already does.
+          hold =
+            response.steps.length > 0 && progressRef.current === sentProgress;
         } catch (err) {
           if (current.current !== sent) return;
           setRefusal(formatMoveError(err));
           setTried(cell);
           setFight(isTurnClockMoveRefusal(err));
         } finally {
-          inFlight.current = false;
-          setBusy(false);
+          if (hold) setWaitingFrom(sentProgress);
+          else release();
         }
       })();
     },
-    [watch, key]
+    [watch, key, release]
   );
 
   return { step, busy, refusal, fight, tried };
