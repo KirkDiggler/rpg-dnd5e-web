@@ -20,6 +20,7 @@ import { InteractiveCharacterSheet } from './character/creation/InteractiveChara
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
+import { BackToStudio } from './components/game/BackToStudio';
 import { GameErrorBoundary } from './components/game/GameErrorBoundary';
 import { GameView } from './components/game/GameView';
 import {
@@ -572,15 +573,7 @@ function AppContent() {
               if (resumeEncounterId) rememberFailedResume(resumeEncounterId);
             }}
           >
-            {studioReturn && studioReturn.session === resumeEncounterId && (
-              <button
-                type="button"
-                onClick={handleBackToStudio}
-                className="fixed top-2 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded border bg-black/70 text-white text-sm"
-              >
-                Back to the studio
-              </button>
-            )}
+            {studioReturn && <BackToStudio onBack={handleBackToStudio} />}
             <GameView
               characterId={
                 lobbyCharacterId ?? resumedLobbyCharacter.characterId
