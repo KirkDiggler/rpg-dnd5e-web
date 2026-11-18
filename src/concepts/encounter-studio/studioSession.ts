@@ -211,6 +211,16 @@ export interface LayoutRoutePick {
   onPick(cell: RoomHexCell): void;
 }
 
+/** Watching a run (rpg-project#1004): the record's members drawn over the
+ * Layout, and where a click goes. Absent is the ordinary Layout. */
+export interface LayoutWatching {
+  members: readonly import('./runView').RunMember[];
+  names?: ReadonlyMap<string, string>;
+  selectedId: string | null;
+  /** A click on a member's glyph. */
+  onSelect(id: string): void;
+}
+
 export interface LayoutViewportProps {
   draft: Readonly<RoomDraft>;
   tool: LayoutTool;
@@ -251,6 +261,9 @@ export interface LayoutViewportProps {
    * every other tool, and the route picked so far is drawn as a numbered
    * loop. Absent is the ordinary Layout. */
   routePick?: LayoutRoutePick;
+  /** Watching a run: the live overlay, and a click selects a member ahead
+   * of every tool. */
+  watching?: LayoutWatching;
   /** Select-tool click off the workspace floor selects nothing. */
   onClearSelection?(): void;
   /** Placed creatures, props and the party start, drawn and selectable

@@ -59,6 +59,7 @@ import {
   type LayoutBounds,
 } from './layoutGeometry';
 import { LayoutViewport as LayoutViewportUnderTest } from './LayoutViewport';
+import { foldRun } from './runView';
 import type {
   LayoutFrame,
   LayoutViewportProps,
@@ -2506,5 +2507,82 @@ describe('the ceiling fixture on the render path', () => {
     const longest = Math.max(...counts);
     expect(longest).toBe(15);
     expect(longest).toBeLessThanOrEqual(MAX_WALL_PIECES_PER_WALL);
+  });
+});
+
+describe('Layout watching a run (rpg-project#1004)', () => {
+  const run = foldRun(
+    {
+      creatures: [{ id: 'gate-1', cell: { q: 0, r: 0 } }],
+      partyStart: { q: 1, r: 1 },
+      self: 'hero',
+    },
+    [
+      {
+        id: '1',
+        at: 1n,
+        act: 'move:1',
+        beat: 'moved',
+        fields: { beat: 'moved', member: 'gate-1', position: { x: 3, y: 2 } },
+      },
+      {
+        id: '2',
+        at: 1n,
+        act: 'move:1',
+        beat: 'state',
+        fields: {
+          beat: 'state',
+          member: 'gate-1',
+          from: 'posted',
+          to: 'alert',
+          reason: 'heard a step',
+        },
+      },
+    ]
+  );
+
+  it('draws each member at the cell the record moved it to, labelled with its state', () => {
+    render(
+      <LayoutViewport
+        {...props({ tool: 'select' })}
+        watching={{
+          members: Object.values(run.members),
+          selectedId: null,
+          onSelect: vi.fn(),
+        }}
+      />
+    );
+    const glyph = document.querySelector('[data-run-member="gate-1"]')!;
+    expect(glyph.getAttribute('data-run-cell')).toBe('3,2');
+    const label = document.querySelector('[data-run-label="gate-1"]')!;
+    expect(label.textContent).toContain('alert');
+    // The party, at its start until it moves.
+    expect(
+      document
+        .querySelector('[data-run-member="hero"]')!
+        .getAttribute('data-run-cell')
+    ).toBe('1,1');
+  });
+
+  it('a click on a member selects it and edits nothing', () => {
+    const onSelect = vi.fn<(id: string) => void>();
+    const onSelectHex = vi.fn<(cell: RoomHexCell) => void>();
+    const input = props({ tool: 'select' });
+    render(
+      <LayoutViewport
+        {...input}
+        onSelectHex={onSelectHex}
+        watching={{
+          members: Object.values(run.members),
+          selectedId: null,
+          onSelect,
+        }}
+      />
+    );
+    const circle = document.querySelector('[data-run-member="gate-1"] circle')!;
+    fireEvent.pointerDown(circle, { pointerId: 7, button: 0 });
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('gate-1');
+    expect(onSelectHex).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
   });
 });
