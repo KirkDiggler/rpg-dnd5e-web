@@ -5,6 +5,7 @@
  * in state, so a commit shows as the form re-reads it.
  */
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,7 +14,7 @@ import {
 } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exportDraftYaml, readDraftYaml } from './draftFile';
+import { readDraftYaml } from './draftFile';
 import { castleMachinesReadBack } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import {
@@ -24,7 +25,7 @@ import {
   transitionsOf,
   type Node,
 } from './machineEdit';
-import { STUDIO_ROOT } from './MachineStateEdit';
+import { MachineStateEdit, STUDIO_ROOT } from './MachineStateEdit';
 import { RevealProvider } from './reveal';
 import { StudioBehaviours } from './StudioBehaviours';
 
@@ -41,9 +42,12 @@ function studio() {
     return true;
   });
   let scopeNow = read.scope;
+  let setOutside: (scope: typeof read.scope) => void = () => {};
+  const rejected: string[] = [];
   function Harness() {
     const [scope, setScope] = useState(read.scope);
     scopeNow = scope;
+    setOutside = setScope;
     return (
       <StudioBehaviours
         document={{ draft: read.draft, scope }}
@@ -54,10 +58,18 @@ function studio() {
         }}
         focus={GATE}
         onSelect={vi.fn()}
-        onCommitDefinition={(id, definition) => {
-          const ok = commit(id, definition);
-          setScope((was) => setBehaviorDefinition(was, id, definition));
-          return ok;
+        onCommitDefinition={(id, edit) => {
+          // As the session does: the edit runs inside the commit, on the
+          // document as it is, and a throw is a rejected edit.
+          try {
+            const definition = edit(definitionOf(scopeNow, id)!);
+            const ok = commit(id, definition);
+            setScope(setBehaviorDefinition(scopeNow, id, definition));
+            return ok;
+          } catch (error) {
+            rejected.push((error as Error).message);
+            return false;
+          }
         }}
       />
     );
@@ -72,8 +84,18 @@ function studio() {
   return {
     commit,
     last: () => commits.at(-1)!,
-    saved: () =>
-      exportDraftYaml({ draft: read.draft, scope: scopeNow }, read.key),
+    rejected,
+    /** Change the document from outside the form, as an Undo does. */
+    outside: (edit: (definition: Node) => Node) =>
+      act(() =>
+        setOutside(
+          setBehaviorDefinition(
+            scopeNow,
+            GATE,
+            edit(definitionOf(scopeNow, GATE)!)
+          )
+        )
+      ),
   };
 }
 
@@ -90,7 +112,7 @@ const openEdit = () => {
 
 describe('a marked box opens Read back and Edit', () => {
   it('Read back is the default; Edit lists the state’s steps', () => {
-    const { commit, saved } = studio();
+    const { commit } = studio();
     expect(screen.queryByRole('tab', { name: 'Edit' })).toBeNull();
     markAlert();
     expect(
@@ -118,10 +140,9 @@ describe('a marked box opens Read back and Edit', () => {
     // Its anchor is kept and said as the engine says the step.
     expect(steps[3]!.textContent).toContain('Kept as written: its other acts');
     expect(steps[3]!.textContent).toContain('In the state `alert`');
-    // Opening Edit and changing nothing commits nothing: the file is
-    // byte-identical.
+    // Opening Edit and changing nothing commits nothing, so the file stays
+    // byte-identical (machineEdit.test.ts round-trips the castle itself).
     expect(commit).not.toHaveBeenCalled();
-    expect(saved()).toBe(served);
   });
 
   it('turn and approached are offered as beats', () => {
@@ -242,3 +263,52 @@ function castleRead() {
 function castleScope() {
   return castleRead().scope;
 }
+
+describe('a state that is gone (rpg-project#996 review)', () => {
+  const withoutAlert = (definition: Node): Node => {
+    const recipe = definition.recipe as Node;
+    const states = { ...(recipe.states as Node) };
+    delete states.alert;
+    return { ...definition, recipe: { ...recipe, states } };
+  };
+
+  it('after an Undo takes the marked state away, Edit offers nothing to edit', () => {
+    const { outside, commit, rejected } = studio();
+    openEdit();
+    expect(screen.getByRole('button', { name: 'Add a step' })).toBeTruthy();
+    outside(withoutAlert);
+    expect(screen.queryByRole('tab', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add a step' })).toBeNull();
+    expect(commit).not.toHaveBeenCalled();
+    expect(rejected).toEqual([]);
+  });
+
+  it('an edit the helper refuses is a rejected edit, never a throw', () => {
+    // The form drawn while alert was declared; the document has since lost
+    // it. The edit runs inside the commit, so its refusal is the session's.
+    const definition = definitionOf(castleScope(), GATE)!;
+    const rejected: string[] = [];
+    render(
+      <MachineStateEdit
+        routine={GATE}
+        state="alert"
+        definition={definition}
+        readBack={null}
+        readBackIsCurrent={false}
+        onCommit={(edit) => {
+          try {
+            edit(withoutAlert(definition));
+            return true;
+          } catch (error) {
+            rejected.push((error as Error).message);
+            return false;
+          }
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add a step' }));
+    expect(rejected).toEqual([
+      'recipe.states.alert: the recipe declares no such state',
+    ]);
+  });
+});

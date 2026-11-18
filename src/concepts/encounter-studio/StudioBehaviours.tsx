@@ -33,7 +33,7 @@ import { useMemo, useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { MachineDrawing } from './MachineDrawing';
-import { definitionOf, type Node } from './machineEdit';
+import { definitionOf, statesOf } from './machineEdit';
 import {
   boxName,
   layoutMachine,
@@ -43,7 +43,7 @@ import {
   pieceName,
   statementsOfMark,
 } from './machineLayout';
-import { MachineStateEdit } from './MachineStateEdit';
+import { MachineStateEdit, type DefinitionEdit } from './MachineStateEdit';
 import { machineOf } from './machineView';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
@@ -73,7 +73,7 @@ export function StudioBehaviours({
   onOpenFact?(id: string, hub?: string): void;
   /** Set one behaviour definition whole, one undoable commit
    * (rpg-project#996). Without it the pane has no Edit tab. */
-  onCommitDefinition?(id: string, definition: Node): boolean;
+  onCommitDefinition?(id: string, edit: DefinitionEdit): boolean;
 }): React.JSX.Element {
   const said = readBack.readBack;
   const machine = useMemo(() => {
@@ -112,7 +112,16 @@ export function StudioBehaviours({
   const [editing, setEditing] = useState<string | null>(null);
   const definition = focus ? definitionOf(document.scope, focus) : undefined;
   const editable =
-    markedBox && definition && onCommitDefinition && focus ? markedBox : null;
+    markedBox &&
+    definition &&
+    onCommitDefinition &&
+    focus &&
+    // A state the file no longer declares (an Undo, an outside change) has
+    // nothing to edit: its box is the read-back's until the engine checks
+    // again, so it offers Read back alone.
+    statesOf(definition).includes(markedBox.state.id)
+      ? markedBox
+      : null;
   const editOpen = editable !== null && editing === `${focus}|${mark}`;
   const groups: ReadBackGroup[] = (said?.sections ?? []).flatMap((section) =>
     section.groups.filter((group) => group.about?.kind === ROUTINE)
@@ -242,7 +251,7 @@ export function StudioBehaviours({
                     definition={definition}
                     readBack={said}
                     readBackIsCurrent={readBack.readBackIsCurrent}
-                    onCommit={(next) => onCommitDefinition(focus, next)}
+                    onCommit={(edit) => onCommitDefinition(focus, edit)}
                     onJump={onJump}
                   />
                 </div>

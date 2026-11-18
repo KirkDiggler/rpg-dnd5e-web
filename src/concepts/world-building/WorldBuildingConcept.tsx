@@ -20,7 +20,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { setBehaviorDefinition } from '../encounter-studio/machineEdit';
+import {
+  definitionOf,
+  setBehaviorDefinition,
+} from '../encounter-studio/machineEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5136,15 +5139,25 @@ export function WorldBuildingConcept({
                 }
               ),
               commitBehaviorDefinition: guardSnapshotIntent(
-                (id: string, definition: Record<string, unknown>): boolean => {
+                (
+                  id: string,
+                  edit: (
+                    definition: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
                   const current = roomHistoryRef.current.present;
                   try {
+                    const definition = definitionOf(current.scope, id);
+                    if (!definition)
+                      throw new Error(
+                        `behaviorDefinitions.${id}: this site authors no such behaviour`
+                      );
                     return commitRoomDocument({
                       ...current,
                       scope: setBehaviorDefinition(
                         current.scope,
                         id,
-                        definition
+                        edit(definition)
                       ),
                     });
                   } catch (error) {

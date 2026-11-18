@@ -49,6 +49,8 @@ export const STUDIO_ROOT = 'encounter-studio';
 /** The panel class whose label and input styles a pane's controls wear
  * (worldBuilding.css `.wb-panel …`). */
 const PANEL = 'wb-panel';
+/** One edit of a behaviour definition, run on the document's own copy. */
+export type DefinitionEdit = (definition: Node) => Node;
 const STAYS = '';
 const NONE = '';
 /** A new row, as the Bundles page makes one. */
@@ -78,7 +80,11 @@ export function MachineStateEdit({
   definition: Node;
   readBack: ReadBack | null;
   readBackIsCurrent: boolean;
-  onCommit(definition: Node): boolean;
+  /** Commit one edit of the definition. The edit runs inside the commit,
+   * on the document as it is then, so a helper's refusal (a state no longer
+   * declared, a name taken) is the session's rejected edit, said where any
+   * rejected edit is. */
+  onCommit(edit: DefinitionEdit): boolean;
   onJump?(target: RefusalTarget): void;
 }): React.JSX.Element {
   const steps = transitionsOf(definition, state);
@@ -86,10 +92,10 @@ export function MachineStateEdit({
   const lists = tableKeysOf(definition);
   const [listOpen, setListOpen] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
-  const setSteps = (next: unknown[]): boolean =>
-    onCommit(withTransitions(definition, state, next));
+  const setSteps = (edit: (steps: unknown[]) => unknown[]): boolean =>
+    onCommit((d) => withTransitions(d, state, edit(transitionsOf(d, state))));
   const setStep = (index: number, step: unknown): boolean =>
-    setSteps(steps.map((s, i) => (i === index ? step : s)));
+    setSteps((all) => all.map((s, i) => (i === index ? step : s)));
   return (
     <div ref={root} className="es-machine-edit" data-state={state}>
       <h3>Steps in {state}</h3>
@@ -198,7 +204,9 @@ export function MachineStateEdit({
                 type="button"
                 className="wb-danger"
                 aria-label={`Remove ${name}`}
-                onClick={() => setSteps(steps.filter((_, i) => i !== index))}
+                onClick={() =>
+                  setSteps((all) => all.filter((_, i) => i !== index))
+                }
               >
                 Remove
               </button>
@@ -214,17 +222,20 @@ export function MachineStateEdit({
           );
         })}
       </ol>
-      <button
-        type="button"
-        onClick={() => setSteps([...steps, newStep(STATE_BEATS[0])])}
-      >
-        Add a step
-      </button>
-      <NewName
-        what="state"
-        taken={states}
-        onAdd={(name) => onCommit(withStateAdded(definition, name))}
-      />
+      <div className="es-machine-actions">
+        <button
+          type="button"
+          className="es-machine-add-step"
+          onClick={() => setSteps((all) => [...all, newStep(STATE_BEATS[0])])}
+        >
+          Add a step
+        </button>
+        <NewName
+          what="state"
+          taken={states}
+          onAdd={(name) => onCommit((d) => withStateAdded(d, name))}
+        />
+      </div>
       {listOpen !== null && (
         <ListDialog
           routine={routine}
@@ -237,9 +248,11 @@ export function MachineStateEdit({
           host={root.current?.closest(`.${STUDIO_ROOT}`) ?? null}
         />
       )}
-      <button type="button" onClick={() => setListOpen('')}>
-        Make a list
-      </button>
+      <div className="es-machine-lists">
+        <button type="button" onClick={() => setListOpen('')}>
+          Make a list
+        </button>
+      </div>
     </div>
   );
 }
@@ -332,7 +345,7 @@ function ListDialog({
   /** The list shown; empty when there is none yet to show. */
   listKey: string;
   definition: Node;
-  onCommit(definition: Node): boolean;
+  onCommit(edit: DefinitionEdit): boolean;
   onChoose(key: string): void;
   onClose(): void;
   onJump?(target: RefusalTarget): void;
@@ -348,7 +361,7 @@ function ListDialog({
   }, []);
   const rows = tableRowsOf(definition, listKey) as AnswerEntryShape[];
   const commitRows = (next: unknown[]) =>
-    onCommit(withTableRows(definition, listKey, next));
+    onCommit((d) => withTableRows(d, listKey, next));
   const move = (index: number, by: number) => {
     const next = [...rows];
     const [row] = next.splice(index, 1);
@@ -483,7 +496,7 @@ function ListDialog({
             what="list"
             taken={tableKeysOf(definition)}
             onAdd={(name) => {
-              const ok = onCommit(withListAdded(definition, name));
+              const ok = onCommit((d) => withListAdded(d, name));
               if (ok) onChoose(name);
               return ok;
             }}
