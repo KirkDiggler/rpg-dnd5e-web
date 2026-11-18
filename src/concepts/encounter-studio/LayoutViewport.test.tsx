@@ -2638,6 +2638,37 @@ describe('Layout watching a run (rpg-project#1004)', () => {
       expect(onStep).toHaveBeenCalledExactlyOnceWith({ q: 1, r: 2 });
     });
 
+    it('a creature that spoke this step carries a speech mark: the words cut short, the whole line its name', () => {
+      const words =
+        'Whoa there, buddy. Can I help you? The gate is shut till morning.';
+      const line = `Guard shouts to Aldric: “${words}”`;
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={{
+            ...watching(),
+            said: new Map([['gate-1', { line, words }]]),
+          }}
+        />
+      );
+      const mark = screen.getByRole('img', { name: line });
+      expect(mark.getAttribute('data-run-said')).toBe('gate-1');
+      const shown = mark.querySelector('text')!.textContent!;
+      expect(shown.endsWith('…')).toBe(true);
+      expect(words.startsWith(shown.slice(0, -1))).toBe(true);
+      expect(document.querySelector('[data-run-said="hero"]')).toBeNull();
+    });
+
+    it('marks the hex a refused step tried', () => {
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={{ ...watching(), tried: { q: 2, r: 1 } }}
+        />
+      );
+      expect(document.querySelector('[data-run-tried="2,1"]')).not.toBeNull();
+    });
+
     it('offers no steps when none are given', () => {
       render(
         <LayoutViewport {...props({ tool: 'select' })} watching={watching()} />

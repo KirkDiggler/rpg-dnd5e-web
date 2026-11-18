@@ -16,6 +16,7 @@ import type { RunView } from './runView';
 import {
   layoutStepsOf,
   STEP_STARTED_A_FIGHT,
+  TRIED_MARK_MS,
   useStudioStep,
 } from './useStudioStep';
 
@@ -40,6 +41,7 @@ describe('useStudioStep', () => {
     });
     expect(result.current.refusal).toBeNull();
     expect(result.current.fight).toBe(false);
+    expect(result.current.tried).toBeNull();
   });
 
   it('ignores a second step while the first is in flight', async () => {
@@ -79,6 +81,22 @@ describe('useStudioStep', () => {
       )
     );
     expect(result.current.fight).toBe(false);
+    expect(result.current.tried).toEqual({ q: 1, r: 0 });
+  });
+
+  it('the tried hex is marked briefly, then cleared', async () => {
+    vi.useFakeTimers();
+    try {
+      hoisted.moveFn.mockResolvedValue({ steps: [], stopReason: 'Blocked.' });
+      const { result } = renderHook(() => useStudioStep(WATCH));
+      await act(async () => result.current.step({ q: 1, r: 0 }));
+      expect(result.current.tried).toEqual({ q: 1, r: 0 });
+      act(() => vi.advanceTimersByTime(TRIED_MARK_MS));
+      expect(result.current.tried).toBeNull();
+      expect(result.current.refusal).toBe('Blocked.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a step stopped short says why (a short walk is an answer)', async () => {

@@ -1426,6 +1426,8 @@ export function LayoutViewport({
           names={watching.names}
           selectedId={watching.selectedId}
           steps={watching.steps}
+          said={watching.said}
+          tried={watching.tried}
           transform={transform}
           worldTransform={worldTransform}
         />

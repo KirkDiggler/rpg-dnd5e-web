@@ -75,6 +75,7 @@ import {
 } from './refusalJump';
 import { RevealContextProvider } from './reveal';
 import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
+import { saidInStep } from './runSpeech';
 import {
   useRunWatch,
   watchUnavailableReason,
@@ -946,6 +947,11 @@ function StudioSurface({
     if (watch && seatName) names.set(watch.member, seatName);
     return names;
   }, [placementNames, watch, seatName]);
+  /** What each member said in the shown step: the speech marks. */
+  const saidThisStep = useMemo(
+    () => saidInStep(run.feed.rows, run.from, run.upTo, watchNames),
+    [run.feed.rows, run.from, run.upTo, watchNames]
+  );
   /** A refusal's noun, in words, for its jump button. */
   const refusalNounName = (target: RefusalTarget): string => {
     switch (target.kind) {
@@ -1816,6 +1822,8 @@ function StudioSurface({
                             selectedId: run.selected,
                             onSelect: run.setSelected,
                             steps: layoutSteps,
+                            said: saidThisStep,
+                            tried: studioStep.tried,
                           }
                         : undefined
                     }

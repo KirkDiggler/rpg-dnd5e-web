@@ -2359,3 +2359,21 @@
 .es-watch h4 {
   margin: 0;
 }
+/* One step from the Layout (rpg-project#1006): a stopped step is said
+   where it cannot be missed; who held the way, beside it. */
+.es-watch .es-watch-refusal {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+  font-weight: 600;
+}
+.es-watch .es-watch-barred {
+  margin: 0;
+  color: #fed7aa;
+}
+.es-watch .es-watch-said {
+  margin: 0;
+  padding-left: 1.2rem;
+}

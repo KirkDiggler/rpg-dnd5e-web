@@ -207,7 +207,7 @@ describe('StudioWatch: one step from the Layout (rpg-project#1006)', () => {
         }}
       />
     );
-    expect(screen.getByTestId('watch-step-refusal').textContent).toBe(
+    expect(screen.getByTestId('watch-step-refusal').textContent).toContain(
       'move destination: cell is not walkable'
     );
     expect(screen.queryByTestId('watch-step-fight')).toBeNull();
@@ -229,5 +229,65 @@ describe('StudioWatch: one step from the Layout (rpg-project#1006)', () => {
     expect(
       screen.getByRole('button', { name: 'Play in the game' })
     ).toBeTruthy();
+  });
+});
+
+describe('StudioWatch: what was said and who held the way (rpg-project#1006)', () => {
+  const said: RecordRow[] = [
+    row('1', 'move:1', 'moved', { member: 'hero', position: { x: 2, y: 2 } }),
+    row('2', 'move:1', 'speech', {
+      utterance: 'u1',
+      speaker: 'gate-1',
+      to: 'hero',
+      words: 'Easy there, friend.',
+      loudness: 'speak',
+    }),
+    row('3', 'move:2', 'barred', {
+      mover: 'hero',
+      barrier: 'gate-1',
+      door: 'gate',
+      verb: 'open',
+    }),
+    row('4', 'move:2', 'speech', {
+      utterance: 'u2',
+      speaker: 'gate-2',
+      words: 'Halt!',
+      loudness: 'shout',
+    }),
+  ];
+  const names = new Map([['gate-1', 'Guard']]);
+  function Said(): React.JSX.Element {
+    const run = useRunFold(WATCH, draft, { rows: said, notice: undefined });
+    return (
+      <StudioWatch
+        watch={WATCH}
+        run={run}
+        readBack={null}
+        names={names}
+        onStop={vi.fn()}
+      />
+    );
+  }
+  const lines = () =>
+    [...screen.getByTestId('watch-said').querySelectorAll('li')].map(
+      (li) => li.textContent
+    );
+
+  it('lists every speaker’s lines, newest last, with nothing selected', () => {
+    render(<Said />);
+    expect(lines()).toEqual([
+      'Guard says to hero: “Easy there, friend.”',
+      'Gate-2 shouts: “Halt!”',
+    ]);
+    expect(screen.getByTestId('watch-barred').textContent).toBe(
+      'Guard (gate-1) holds this door (open)'
+    );
+  });
+
+  it('at a past step, only what had been said by then, and that step’s bumps', () => {
+    render(<Said />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(lines()).toEqual(['Guard says to hero: “Easy there, friend.”']);
+    expect(screen.queryByTestId('watch-barred')).toBeNull();
   });
 });

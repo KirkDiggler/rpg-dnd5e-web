@@ -49,12 +49,24 @@ export interface StudioStep {
   refusal: string | null;
   /** The last step met the turn clock: a fight is on. */
   fight: boolean;
+  /** The cell a refused or stopped step tried, marked briefly
+   * (`TRIED_MARK_MS`); null otherwise. */
+  tried: RoomHexCell | null;
 }
+
+/** How long the Layout marks the hex a refused step tried. */
+export const TRIED_MARK_MS = 3000;
 
 export function useStudioStep(watch: WatchedRun | null): StudioStep {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [fight, setFight] = useState(false);
+  const [tried, setTried] = useState<RoomHexCell | null>(null);
+  useEffect(() => {
+    if (!tried) return;
+    const timer = setTimeout(() => setTried(null), TRIED_MARK_MS);
+    return () => clearTimeout(timer);
+  }, [tried]);
   /** The latch itself: a ref, so two clicks before a render still send
    * one move. */
   const inFlight = useRef(false);
@@ -64,6 +76,7 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
   useEffect(() => {
     setRefusal(null);
     setFight(false);
+    setTried(null);
   }, [key]);
 
   const step = useCallback(
@@ -73,6 +86,7 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
       setBusy(true);
       setRefusal(null);
       setFight(false);
+      setTried(null);
       const sent = key;
       void (async () => {
         try {
@@ -87,7 +101,10 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
           if (current.current !== sent) return;
           // A short walk is an answer, not an error (MoveResponse): a
           // stopped step says why in `stopReason`.
-          if (response.stopReason) setRefusal(response.stopReason);
+          if (response.stopReason) {
+            setRefusal(response.stopReason);
+            setTried(cell);
+          }
           if (response.formed) {
             setRefusal((said) => said ?? STEP_STARTED_A_FIGHT);
             setFight(true);
@@ -95,6 +112,7 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
         } catch (err) {
           if (current.current !== sent) return;
           setRefusal(formatMoveError(err));
+          setTried(cell);
           setFight(isTurnClockMoveRefusal(err));
         } finally {
           inFlight.current = false;
@@ -105,7 +123,7 @@ export function useStudioStep(watch: WatchedRun | null): StudioStep {
     [watch, key]
   );
 
-  return { step, busy, refusal, fight };
+  return { step, busy, refusal, fight, tried };
 }
 
 /** The steps the Layout offers: at the live step only (`step` null), and

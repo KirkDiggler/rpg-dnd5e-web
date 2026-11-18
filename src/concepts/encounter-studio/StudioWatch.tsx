@@ -28,7 +28,8 @@ import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useMemo } from 'react';
 import { MachineDrawing } from './MachineDrawing';
-import { rowsAbout } from './runView';
+import { barredLine, runSpeechLine } from './runSpeech';
+import { barredOf, rowsAbout, speechOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
 import { FIGHT_MOVES_IN_THE_GAME, type StudioStep } from './useStudioStep';
 
@@ -69,6 +70,14 @@ export function StudioWatch({
     [feed, member, upTo]
   );
   const shownStep = steps[at];
+  /** Every line said up to the shown step, newest last, from every speaker
+   * the record has. */
+  const said = useMemo(() => speechOf(feed.rows, upTo), [feed.rows, upTo]);
+  /** This step's own bumps: who held the way. */
+  const barred = useMemo(
+    () => barredOf(feed.rows, upTo, run.from),
+    [feed.rows, upTo, run.from]
+  );
   return (
     <aside
       className="es-watch wb-panel"
@@ -96,22 +105,6 @@ export function StudioWatch({
             ? 'At Live, click a marked hex next to your character to step there; the map moves when the run’s record says so. Or move in the game, then press Back to the studio there.'
             : 'Move your character in the game, then press Back to the studio there; the map replays what you played.'}
         </p>
-        {stepping?.busy && (
-          <p className="es-help" role="status" data-testid="watch-step-busy">
-            Stepping…
-          </p>
-        )}
-        {stepping?.refusal && (
-          <p className="es-help" role="alert" data-testid="watch-step-refusal">
-            {stepping.refusal}
-          </p>
-        )}
-        {stepping?.fight && (
-          <p className="es-help" role="status" data-testid="watch-step-fight">
-            {FIGHT_MOVES_IN_THE_GAME}
-            {onPlayInGame ? ' Press Play in the game above.' : ''}
-          </p>
-        )}
       </header>
       <nav className="es-buttons es-watch-steps" aria-label="Steps of the run">
         <button
@@ -142,6 +135,55 @@ export function StudioWatch({
             : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`}
         </span>
       </nav>
+      <section
+        className="es-watch-this-step"
+        aria-label="What happened this step"
+        data-testid="watch-this-step"
+      >
+        {stepping?.busy && (
+          <p className="es-help" role="status" data-testid="watch-step-busy">
+            Stepping…
+          </p>
+        )}
+        {stepping?.refusal && (
+          <p
+            className="es-watch-refusal"
+            role="alert"
+            data-testid="watch-step-refusal"
+          >
+            Your step was stopped: {stepping.refusal}
+          </p>
+        )}
+        {stepping?.fight && (
+          <p className="es-help" role="status" data-testid="watch-step-fight">
+            {FIGHT_MOVES_IN_THE_GAME}
+            {onPlayInGame ? ' Press Play in the game above.' : ''}
+          </p>
+        )}
+        {barred.map((b) => (
+          <p
+            key={b.index}
+            className="es-watch-barred"
+            data-testid="watch-barred"
+          >
+            {barredLine(b, names)}
+          </p>
+        ))}
+      </section>
+      <section aria-label="What was said" data-testid="watch-said">
+        <h4>What was said</h4>
+        {said.length === 0 ? (
+          <p className="es-help">Nothing said yet.</p>
+        ) : (
+          <ol className="es-watch-said">
+            {said.map((line) => (
+              <li key={line.utterance} data-utterance={line.utterance}>
+                {runSpeechLine(line, names)}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       {run.agedOut && (
         <p className="es-help" role="status" data-testid="watch-aged-out">
           Earlier steps are no longer in the record; showing the earliest step

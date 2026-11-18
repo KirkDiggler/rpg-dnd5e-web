@@ -14,8 +14,14 @@
  * on a creature in one of them selects the creature. Each is a focusable
  * button ("Step to q, r") that Enter or Space also takes. The step only
  * asks the server; the seat's glyph moves when the record says it did.
+ * A refused step's hex is marked briefly (`data-run-tried`).
+ *
+ * SPEECH: a member that spoke in the shown step carries a small bubble over
+ * its glyph with the line cut short; the whole line is its accessible name
+ * and title.
  */
 import { axialNeighbors } from '@/author/hexOffset';
+import type { RoomHexCell } from '../world-building/workspaceGeometry';
 import {
   layoutCellCenter,
   layoutCellCorners,
@@ -23,15 +29,23 @@ import {
   type LayoutTransform,
 } from './layoutGeometry';
 import type { RunMember } from './runView';
-import type { LayoutSteps } from './studioSession';
+import type { LayoutSteps, RunSaid } from './studioSession';
 
 const RING = 0.55;
+/** How much of a line the speech mark shows before it is cut short. */
+const SPEECH_MARK_CHARS = 32;
+
+function shorten(line: string, max: number): string {
+  return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
+}
 
 export function LayoutRunOverlay({
   members,
   names,
   selectedId,
   steps,
+  said,
+  tried,
   transform,
   worldTransform,
 }: {
@@ -40,6 +54,10 @@ export function LayoutRunOverlay({
   names?: ReadonlyMap<string, string>;
   selectedId: string | null;
   steps?: LayoutSteps;
+  /** The shown step's line by member id. */
+  said?: ReadonlyMap<string, RunSaid>;
+  /** The hex a refused step tried. */
+  tried?: RoomHexCell | null;
   transform: LayoutTransform;
   worldTransform?: string;
 }): React.JSX.Element {
@@ -97,6 +115,20 @@ export function LayoutRunOverlay({
                 </g>
               );
             })}
+          </g>
+        )}
+        {tried && (
+          <g data-run-tried={`${tried.q},${tried.r}`} pointerEvents="none">
+            <polygon
+              points={layoutCellCorners(tried)
+                .map((p) => `${p.x},${p.z}`)
+                .join(' ')}
+              fill="#ef4444"
+              fillOpacity={0.25}
+              stroke="#ef4444"
+              strokeWidth={2.5}
+              vectorEffect="non-scaling-stroke"
+            />
           </g>
         )}
         {placed.map((member) => {
@@ -167,6 +199,51 @@ export function LayoutRunOverlay({
             </text>
           );
         })}
+        {said &&
+          placed.map((member) => {
+            const spoken = said.get(member.id);
+            if (!spoken) return null;
+            const line = spoken.line;
+            const point = worldToClient(
+              layoutCellCenter(member.cell!),
+              transform
+            );
+            if (!point) return null;
+            const x = point.x - transform.bounds.left;
+            const y = point.y - transform.bounds.top - RING * transform.scale;
+            const short = shorten(spoken.words ?? line, SPEECH_MARK_CHARS);
+            const width = short.length * 6.2 + 12;
+            return (
+              <g
+                key={`said-${member.id}`}
+                data-run-said={member.id}
+                role="img"
+                aria-label={line}
+              >
+                <title>{line}</title>
+                <rect
+                  x={x - width / 2}
+                  y={y - 24}
+                  width={width}
+                  height={18}
+                  rx={6}
+                  fill="#fef9c3"
+                  stroke="#101923"
+                  strokeWidth={1}
+                />
+                <text
+                  x={x}
+                  y={y - 11}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fill="#101923"
+                  style={{ userSelect: 'none' }}
+                >
+                  {short}
+                </text>
+              </g>
+            );
+          })}
       </g>
     </>
   );
