@@ -1,3 +1,4 @@
+import { useGetCharacter } from '@/api/hooks';
 import { useAuthoringGate } from '@/author/useAuthoringGate';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
@@ -166,6 +167,12 @@ interface EncounterStudioWorkspaceProps {
    * World Builder receives. A mount without it has no route into play, so
    * Play is unavailable as it is without a character. */
   onPlay?: (encounterId: string, characterId: string) => void;
+  /** A run the studio was watching before this mount: the game hands the
+   * tab back here (rpg-project#1004). */
+  initialWatch?: WatchedRun | null;
+  /** Routes this tab to the game on a watched run, remembering it for the
+   * way back (App's handlePlayWatched). */
+  onPlayWatched?: (encounterId: string, characterId: string) => void;
 }
 interface StudioSurfaceProps {
   session: EncounterStudioSession;
@@ -180,6 +187,8 @@ interface StudioSurfaceProps {
   onBack?: () => void;
   characterId: string | null;
   onPlay?: (encounterId: string, characterId: string) => void;
+  initialWatch?: WatchedRun | null;
+  onPlayWatched?: (encounterId: string, characterId: string) => void;
   /** Where the studio remembers this draft's last saved key (S6-T7). */
   storage: KeyValueStorage;
 }
@@ -198,6 +207,8 @@ function StudioSurface({
   onBack,
   characterId,
   onPlay,
+  initialWatch = null,
+  onPlayWatched,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
   const navId = useId();
@@ -541,7 +552,7 @@ function StudioSurface({
   /** Watch a run (rpg-project#1004): the same launch as Play, but the
    * started run is watched here instead of entered. The intent is set by
    * the button pressed, and read when the launch hands its session over. */
-  const [watch, setWatch] = useState<WatchedRun | null>(null);
+  const [watch, setWatch] = useState<WatchedRun | null>(initialWatch);
   const watchIntent = useRef(false);
   const enterWatch = useRef<(run: WatchedRun) => void>(() => {});
   const capability = useMemo<RoomPublishingCapability>(
@@ -917,6 +928,15 @@ function StudioSurface({
     () => documentPlacementNames(session.document),
     [session.document]
   );
+  /** The watched seat by its character's name, the creatures by theirs
+   * (the placements' display names); an id only when there is none. */
+  const seatCharacter = useGetCharacter(watch?.member ?? '');
+  const seatName = seatCharacter.data?.name;
+  const watchNames = useMemo(() => {
+    const names = new Map(placementNames);
+    if (watch && seatName) names.set(watch.member, seatName);
+    return names;
+  }, [placementNames, watch, seatName]);
   /** A refusal's noun, in words, for its jump button. */
   const refusalNounName = (target: RefusalTarget): string => {
     switch (target.kind) {
@@ -1783,7 +1803,7 @@ function StudioSurface({
                       watch
                         ? {
                             members: Object.values(run.view.members),
-                            names: placedEditing.names,
+                            names: watchNames,
                             selectedId: run.selected,
                             onSelect: run.setSelected,
                           }
@@ -1808,8 +1828,13 @@ function StudioSurface({
                       watch={watch}
                       run={run}
                       readBack={readBack.readBack}
-                      names={placedEditing.names}
+                      names={watchNames}
                       onStop={() => setWatch(null)}
+                      onPlayInGame={
+                        onPlayWatched
+                          ? () => onPlayWatched(watch.session, watch.member)
+                          : undefined
+                      }
                     />
                   )}
                 </div>
@@ -2123,6 +2148,8 @@ export function EncounterStudioWorkspace({
   onBack,
   characterId = null,
   onPlay,
+  initialWatch = null,
+  onPlayWatched,
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [home, setHome] = useState<StudioHome>('build');
   const [view, setView] = useState<EncounterStudioView>('layout');
@@ -2163,6 +2190,8 @@ export function EncounterStudioWorkspace({
         onBack={leave}
         characterId={characterId}
         onPlay={onPlay}
+        initialWatch={initialWatch}
+        onPlayWatched={onPlayWatched}
         storage={publicationStorage}
       />
     ),
@@ -2174,6 +2203,8 @@ export function EncounterStudioWorkspace({
       leave,
       characterId,
       onPlay,
+      initialWatch,
+      onPlayWatched,
       publicationStorage,
     ]
   );

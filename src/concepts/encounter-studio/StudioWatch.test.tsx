@@ -14,7 +14,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft } from '../world-building/roomDraft';
 import { castleMachinesReadBack } from './fixtures/engineReadBack';
 import {
-  gameUrlOf,
   useRunFold,
   WATCH_DEV_ONLY_SENTENCE,
   watchUnavailableReason,
@@ -54,7 +53,15 @@ const draft = createRoomDraft(
   'room'
 );
 
-function Harness({ selected }: { selected: string }): React.JSX.Element {
+function Harness({
+  selected,
+  names,
+  onPlayInGame = vi.fn(),
+}: {
+  selected: string;
+  names?: ReadonlyMap<string, string>;
+  onPlayInGame?: () => void;
+}): React.JSX.Element {
   const run = useRunFold(WATCH, draft, feed);
   if (run.selected !== selected) run.setSelected(selected);
   return (
@@ -62,8 +69,9 @@ function Harness({ selected }: { selected: string }): React.JSX.Element {
       watch={WATCH}
       run={run}
       readBack={castleMachinesReadBack()}
+      names={names}
       onStop={vi.fn()}
-      openGame={vi.fn()}
+      onPlayInGame={onPlayInGame}
     />
   );
 }
@@ -99,22 +107,32 @@ describe('StudioWatch', () => {
   });
 });
 
-describe('watch availability and the game tab', () => {
+describe('StudioWatch names and the game', () => {
+  it('says a creature by its name, its id only when it has none', () => {
+    render(
+      <Harness selected="gate-1" names={new Map([['gate-1', 'Gate guard']])} />
+    );
+    expect(
+      screen.getByRole('region', { name: 'Creature Gate guard' })
+    ).toBeTruthy();
+    cleanup();
+    render(<Harness selected="gate-1" />);
+    expect(
+      screen.getByRole('region', { name: 'Creature gate-1' })
+    ).toBeTruthy();
+  });
+
+  it('Play in the game hands this tab to the game for the watched run', () => {
+    const onPlayInGame = vi.fn();
+    render(<Harness selected="gate-1" onPlayInGame={onPlayInGame} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Play in the game' }));
+    expect(onPlayInGame).toHaveBeenCalledOnce();
+  });
+});
+
+describe('watch availability', () => {
   it('is development only, and says why elsewhere', () => {
     expect(watchUnavailableReason('development')).toBeNull();
     expect(watchUnavailableReason('production')).toBe(WATCH_DEV_ONLY_SENTENCE);
-  });
-
-  it('opens the app as the same dev player and nothing else', () => {
-    expect(
-      gameUrlOf({
-        origin: 'https://x.test',
-        pathname: '/',
-        search: '?concept=encounter-studio&playerId=alice',
-      })
-    ).toBe('https://x.test/?playerId=alice');
-    expect(
-      gameUrlOf({ origin: 'https://x.test', pathname: '/', search: '' })
-    ).toBe('https://x.test/');
   });
 });

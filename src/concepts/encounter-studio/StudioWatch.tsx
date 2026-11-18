@@ -8,12 +8,13 @@
  * the studio only draws what the record says it did (`foldRun`). Nothing is
  * simulated here.
  *
- * DRIVING THE PARTY is done in the game, in a second tab, on the same run:
+ * DRIVING THE PARTY is done in the game, in THIS tab, on the same run:
  * the game's Move needs its whole interaction stack (the atlas path index,
  * the turn clock's declaration, the walk's reconciliation), so the studio
- * does not grow a second move client. "Open the game" opens the app in a
- * new tab, where resume-after-refresh drops the operator's seat straight
- * into this running encounter.
+ * does not grow a second move client. "Play in the game" routes this tab
+ * to the game by Play's own path (`App.handlePlayAuthored`), and the game's
+ * "Back to the studio" returns here watching the same run, its record
+ * replayed from the start so Back and Forward cover what was just played.
  *
  * DEV MODE ONLY: the record is the diagnostic stream the server serves only
  * in development. Elsewhere the control is disabled and says why.
@@ -24,12 +25,7 @@ import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/auth
 import { useMemo } from 'react';
 import { MachineDrawing } from './MachineDrawing';
 import { rowsAbout } from './runView';
-import {
-  gameUrlOf,
-  machinesRunBy,
-  type RunWatch,
-  type WatchedRun,
-} from './runWatch';
+import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
 
 export function StudioWatch({
   watch,
@@ -37,14 +33,16 @@ export function StudioWatch({
   readBack,
   names,
   onStop,
-  openGame = () => window.open(gameUrlOf(window.location), '_blank'),
+  onPlayInGame,
 }: {
   watch: WatchedRun;
   run: RunWatch;
   readBack: ReadBack | null;
   names?: ReadonlyMap<string, string>;
   onStop(): void;
-  openGame?: () => void;
+  /** Routes this tab to the game on the watched run; absent when the
+   * studio has no route into the game. */
+  onPlayInGame?: () => void;
 }): React.JSX.Element {
   const { view, step, setStep, feed, upTo, selected } = run;
   const steps = view.steps;
@@ -76,15 +74,18 @@ export function StudioWatch({
           The engine runs it; this map draws its record.
         </p>
         <div className="es-buttons">
-          <button type="button" onClick={openGame}>
-            Open the game for this run
-          </button>
+          {onPlayInGame && (
+            <button type="button" onClick={onPlayInGame}>
+              Play in the game
+            </button>
+          )}
           <button type="button" onClick={onStop}>
             Stop watching
           </button>
         </div>
         <p className="es-help">
-          Move your character in the game tab; the map follows here.
+          Move your character in the game, then press Back to the studio there;
+          the map replays what you played.
         </p>
       </header>
       <nav className="es-buttons es-watch-steps" aria-label="Steps of the run">
@@ -124,11 +125,11 @@ export function StudioWatch({
       {!member ? (
         <p className="es-help">
           {feed.rows.length === 0
-            ? 'No record beats yet. Move in the game tab to start the clock.'
+            ? 'No record beats yet. Play in the game to start the clock.'
             : 'Select a creature on the map to see its machine and why it changed.'}
         </p>
       ) : (
-        <section aria-label={`Creature ${member.id}`}>
+        <section aria-label={`Creature ${names?.get(member.id) ?? member.id}`}>
           <h4>
             {names?.get(member.id) ?? member.id}
             {member.state && (

@@ -29,18 +29,6 @@ export interface WatchedRun {
   member: string;
 }
 
-/** The app in a new tab, as the same player: resume-after-refresh takes
- * the seat into the running encounter. A deep link would hold the view, so
- * only the dev player override is carried. */
-export function gameUrlOf(
-  location: Pick<Location, 'origin' | 'pathname' | 'search'>
-): string {
-  const playerId = new URLSearchParams(location.search).get('playerId');
-  return `${location.origin}${location.pathname}${
-    playerId ? `?playerId=${encodeURIComponent(playerId)}` : ''
-  }`;
-}
-
 export interface RunWatch {
   feed: RecordFeedSnapshot;
   view: RunView;

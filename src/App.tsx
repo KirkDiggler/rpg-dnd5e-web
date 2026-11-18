@@ -20,7 +20,12 @@ import { InteractiveCharacterSheet } from './character/creation/InteractiveChara
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
+import { GameErrorBoundary } from './components/game/GameErrorBoundary';
 import { GameView } from './components/game/GameView';
+import {
+  isFailedResume,
+  rememberFailedResume,
+} from './components/game/resumeFailure';
 import { SeatNotice } from './components/game/SeatNotice';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
@@ -283,6 +288,8 @@ function AppContent() {
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
       if (resumedLobbyCharacter.loading || resumeIdentityError) return;
+      // A run whose game view already failed to render stays on Home.
+      if (isFailedResume(myActiveLobby.data.encounterId)) return;
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
     } else if (myActiveLobby.data.lobbyId) {
@@ -366,6 +373,7 @@ function AppContent() {
   };
 
   const handleBackToHome = () => {
+    setStudioReturn(null);
     setCurrentCharacterId(null);
     setLobbyCharacterId(null);
     setResumeEncounterId(null);
@@ -404,6 +412,21 @@ function AppContent() {
     setLobbyCharacterId(characterId);
     setResumeEncounterId(encounterId);
     setCurrentView('lobby');
+  };
+
+  /** Watch a run (rpg-project#1004): the studio watching a run hands this
+   * tab to the game on the SAME run, by Play's own path, and remembers the
+   * run so the game can hand the tab back to the studio watching it. */
+  const [studioReturn, setStudioReturn] = useState<{
+    session: string;
+    member: string;
+  } | null>(null);
+  const handlePlayWatched = (encounterId: string, characterId: string) => {
+    setStudioReturn({ session: encounterId, member: characterId });
+    handlePlayAuthored(encounterId, characterId);
+  };
+  const handleBackToStudio = () => {
+    setCurrentView('encounter-studio');
   };
 
   // Carousel selection handler
@@ -541,14 +564,34 @@ function AppContent() {
           </motion.div>
         ) : currentView === 'lobby' &&
           (lobbyCharacterId || resumeEncounterId || resumeLobbyId) ? (
-          <GameView
-            characterId={lobbyCharacterId ?? resumedLobbyCharacter.characterId}
-            playerId={playerId || 'test-player'}
+          <GameErrorBoundary
+            key={resumeEncounterId ?? resumeLobbyId ?? lobbyCharacterId ?? ''}
             onBack={handleLeaveGameToHome}
-            initialEncounterId={resumeEncounterId ?? undefined}
-            initialLobbyId={resumeLobbyId ?? undefined}
-            compositionSource={compositionSource}
-          />
+            onBackToStudio={studioReturn ? handleBackToStudio : undefined}
+            onError={() => {
+              if (resumeEncounterId) rememberFailedResume(resumeEncounterId);
+            }}
+          >
+            {studioReturn && studioReturn.session === resumeEncounterId && (
+              <button
+                type="button"
+                onClick={handleBackToStudio}
+                className="fixed top-2 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded border bg-black/70 text-white text-sm"
+              >
+                Back to the studio
+              </button>
+            )}
+            <GameView
+              characterId={
+                lobbyCharacterId ?? resumedLobbyCharacter.characterId
+              }
+              playerId={playerId || 'test-player'}
+              onBack={handleLeaveGameToHome}
+              initialEncounterId={resumeEncounterId ?? undefined}
+              initialLobbyId={resumeLobbyId ?? undefined}
+              compositionSource={compositionSource}
+            />
+          </GameErrorBoundary>
         ) : currentView === 'world-settings' ? (
           <WorldAccessSettings
             key={`${compositionIdentity}:${playerId}`}
@@ -573,6 +616,8 @@ function AppContent() {
               onBack={handleBackToHome}
               characterId={selectedType === 'character' ? selectedId : null}
               onPlay={handlePlayAuthored}
+              initialWatch={studioReturn}
+              onPlayWatched={handlePlayWatched}
             />
           ) : (
             <section className="p-8" aria-label="Encounter Studio unavailable">

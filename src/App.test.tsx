@@ -84,6 +84,7 @@ vi.mock('./api/auth', () => ({
 vi.mock('./api/hooks', () => ({
   useListCharacters: () => ({ data: [] }),
   useListDrafts: () => ({ data: [] }),
+  useGetCharacter: () => ({ data: null, loading: false, error: null }),
 }));
 
 vi.mock('./api/useDevPlayerIdAuth', () => ({
