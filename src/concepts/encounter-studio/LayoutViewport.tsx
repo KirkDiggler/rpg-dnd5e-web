@@ -60,6 +60,7 @@ import {
 import { MAX_WORLD_COORD } from '../world-building/worldBounds';
 import { LayoutGroundOverlay } from './LayoutGroundOverlay';
 import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
+import { LayoutRunOverlay } from './LayoutRunOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { regionOverview } from './overviewColours';
@@ -312,6 +313,7 @@ export function LayoutViewport({
   frameTarget,
   routePick,
   places,
+  watching,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -852,6 +854,18 @@ export function LayoutViewport({
     const cell = world ? cellAtWorldPoint(world) : null;
     if (cell) routePick.onPick(cell);
   };
+  /** Watching a run (rpg-project#1004): in the CAPTURE phase, a left click
+   * on a member's glyph selects it; nothing else edits the draft. */
+  const watchDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    if (!watching || event.button !== 0 || event.isPrimary === false) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const target = event.target instanceof Element ? event.target : null;
+    const id = target
+      ?.closest('[data-run-member]')
+      ?.getAttribute('data-run-member');
+    if (id) watching.onSelect(id);
+  };
   const pointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const active = gestureRef.current;
     if (active && active.pointerId !== event.pointerId) return;
@@ -1181,7 +1195,9 @@ export function LayoutViewport({
       viewBox={
         transform && bounds ? `0 0 ${bounds.width} ${bounds.height}` : undefined
       }
-      onPointerDownCapture={routePick ? routePickDown : undefined}
+      onPointerDownCapture={
+        routePick ? routePickDown : watching ? watchDown : undefined
+      }
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
@@ -1394,6 +1410,15 @@ export function LayoutViewport({
       )}
       {transform && places && (
         <PlacesOverlay draft={draft} transform={transform} places={places} />
+      )}
+      {transform && watching && (
+        <LayoutRunOverlay
+          members={watching.members}
+          names={watching.names}
+          selectedId={watching.selectedId}
+          transform={transform}
+          worldTransform={worldTransform}
+        />
       )}
       {transform && routePick && (
         <LayoutRouteOverlay
