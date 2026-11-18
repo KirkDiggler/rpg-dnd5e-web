@@ -47,11 +47,17 @@ export const REQUIREMENT_CHOICES: readonly {
   { value: 'fact', label: 'The speaker knows a fact' },
   { value: 'carries', label: 'The speaker carries a prop' },
   { value: 'interaction', label: 'A conversation is in a state' },
-  { value: 'holds', label: 'The one spoken to holds a holding' },
+  {
+    value: 'holds',
+    label: 'The one spoken to holds this about the speaker',
+  },
   { value: 'not-fact', label: 'Unless the speaker knows a fact' },
   { value: 'not-carries', label: 'Unless the speaker carries a prop' },
   { value: 'not-interaction', label: 'Unless a conversation is in a state' },
-  { value: 'not-holds', label: 'Unless the one spoken to holds a holding' },
+  {
+    value: 'not-holds',
+    label: 'Unless the one spoken to holds this about the speaker',
+  },
 ];
 
 /** The kind a read is; a read in a key the studio does not edit is named

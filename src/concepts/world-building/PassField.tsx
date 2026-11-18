@@ -66,7 +66,7 @@ export function PassField({
         >
           <option value="fact">a walker who knows a fact (password)</option>
           <option value="holds">
-            a walker the holder holds a holding about
+            a walker the post's holder holds this about
           </option>
         </select>
       </label>
