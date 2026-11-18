@@ -15,9 +15,11 @@ import {
 } from './engineReadBack';
 import { placeName } from './placeName';
 import { targetOfPath, type RefusalTarget } from './refusalJump';
+import { RevealDiv } from './RevealDiv';
 import { keyOfPath } from './revealKey';
 import type { StudioReadBack } from './studioPublishing';
 import { StudioSection } from './StudioSection';
+import type { RevealKey } from './useReveal';
 
 export interface ReadBackProps {
   document: Readonly<RoomDraftDocument>;
@@ -34,6 +36,23 @@ export interface ReadBackProps {
    * (rpg-project#973), or null when the studio cannot: the pointer is then
    * text. */
   wayOpener?(wayId: string): (() => void) | null;
+  /** A drawing beside the sentences (a behaviour's machine,
+   * rpg-project#995): the statements its marked box or arrow stands for,
+   * said first, and which statements can be marked on it. */
+  drawing?: ReadBackDrawing;
+}
+
+export interface ReadBackDrawing {
+  /** What the marked thing is, for the heading over its sentences. */
+  markedName: string | null;
+  marked: readonly ReadBackStatement[];
+  /** Whether a statement has a mark on the drawing. */
+  canMark(statement: ReadBackStatement): boolean;
+  /** Mark the statement's box or arrow on the drawing. */
+  onMark(statement: ReadBackStatement): void;
+  /** The key the marked sentences register under, so marking from the
+   * drawing lands on them (the reveal contract). */
+  markedKey: RevealKey;
 }
 
 export const STALE_READ_BACK_SENTENCE =
@@ -80,6 +99,7 @@ export function ReadBack({
   onJump,
   onOpenFact,
   wayOpener,
+  drawing,
 }: ReadBackProps): React.JSX.Element {
   const { readBack, readBackIsCurrent, unavailable } = state;
   const [chosenView, setChosenView] = useState<ReadBackView>(rememberedView);
@@ -115,6 +135,7 @@ export function ReadBack({
     onJump,
     onOpenFact,
     wayOpener,
+    drawing,
   };
   return (
     <div className="es-context-panel">
@@ -146,6 +167,28 @@ export function ReadBack({
           <p role="status" className="es-help es-readback-notice">
             {readBackIsCurrent ? NOTHING_SAID_SENTENCE : NOT_YET_NAMED_SENTENCE}
           </p>
+        )}
+        {drawing && drawing.marked.length > 0 && (
+          <RevealDiv
+            revealKey={drawing.markedKey}
+            role="group"
+            aria-label="Marked on the drawing"
+            className="es-readback-marked"
+          >
+            {drawing.markedName && (
+              <p className="es-help">{drawing.markedName}</p>
+            )}
+            <ol className="es-readback-statements">
+              {drawing.marked.map((statement, at) => (
+                <Statement
+                  key={at}
+                  statement={statement}
+                  {...statementProps}
+                  drawing={undefined}
+                />
+              ))}
+            </ol>
+          </RevealDiv>
         )}
         {foldedView ? (
           <>
@@ -275,6 +318,7 @@ function Statement({
   onJump,
   onOpenFact,
   wayOpener,
+  drawing,
 }: {
   statement: ReadBackStatement;
   document: Readonly<RoomDraftDocument>;
@@ -290,6 +334,7 @@ function Statement({
    * (rpg-project#973), or null when the studio cannot: the pointer is then
    * text. */
   wayOpener?(wayId: string): (() => void) | null;
+  drawing?: ReadBackDrawing;
 }): React.JSX.Element {
   const seen = new Set<string>();
   const links: React.JSX.Element[] = [];
@@ -366,8 +411,25 @@ function Statement({
         </button>
       </CopyPathGroup>
     );
+  if (drawing?.canMark(statement))
+    links.push(
+      <button
+        key="drawing"
+        type="button"
+        className="es-link es-readback-ref"
+        data-role="drawing"
+        aria-label={`Mark on the drawing: ${place}`}
+        onClick={() => drawing.onMark(statement)}
+      >
+        On the drawing
+      </button>
+    );
   return (
-    <li className="es-readback-statement" data-kind={statement.kind}>
+    <li
+      className="es-readback-statement"
+      data-kind={statement.kind}
+      data-marked={drawing?.marked.includes(statement) || undefined}
+    >
       <p>{statement.sentence}</p>
       {links.length > 0 && <div className="es-readback-links">{links}</div>}
     </li>

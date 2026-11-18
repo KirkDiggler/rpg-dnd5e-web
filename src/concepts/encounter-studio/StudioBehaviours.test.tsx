@@ -14,8 +14,13 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readDraftYaml } from './draftFile';
-import { castleRoutinesReadBack } from './fixtures/engineReadBack';
+import {
+  castleMachinesReadBack,
+  castleRoutinesReadBack,
+} from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
+import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
+import { RevealProvider } from './reveal';
 import { StudioBehaviours } from './StudioBehaviours';
 import type { StudioReadBack } from './studioPublishing';
 
@@ -153,5 +158,232 @@ describe('StudioBehaviours', () => {
         .getAllByRole('listitem')
         .map((item) => item.dataset.routine)
     ).toHaveLength(10);
+  });
+
+  describe('the machine (rpg-project#995)', () => {
+    const machines = (): StudioReadBack => ({
+      readBack: castleMachinesReadBack(),
+      readBackIsCurrent: true,
+      unavailable: null,
+    });
+    const drawing = () =>
+      within(panel()).getByRole('group', {
+        name: 'The machine of gate-1-policy',
+      });
+    const marked = () =>
+      within(panel()).queryByRole('group', { name: 'Marked on the drawing' });
+
+    it('draws the selected behaviour above the list, which stays', () => {
+      render(
+        <StudioBehaviours
+          document={castle}
+          readBack={machines()}
+          focus="gate-1-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      const states = within(drawing())
+        .getAllByRole('button')
+        .filter((mark) => mark.dataset.state)
+        .map((mark) => mark.dataset.state);
+      expect(states).toEqual(
+        expect.arrayContaining([
+          'posted',
+          'alert',
+          'challenged',
+          'cowed',
+          'turned',
+        ])
+      );
+      expect(
+        within(drawing()).getByRole('button', {
+          name: 'State posted (starts here)',
+        })
+      ).toBeTruthy();
+      expect(
+        within(drawing()).getByRole('button', {
+          name: 'State turned (no way out)',
+        })
+      ).toBeTruthy();
+      const list = within(panel()).getByRole('list', { name: 'Behaviours' });
+      expect(
+        drawing().compareDocumentPosition(list) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
+    it('clicking an arrow marks it and puts its sentences first in the detail', () => {
+      render(
+        <StudioBehaviours
+          document={castle}
+          readBack={machines()}
+          focus="gate-1-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      expect(marked()).toBeNull();
+      const heard = within(drawing()).getByRole('button', {
+        name: 'Step from posted to alert, on heard',
+      });
+      // Its sentence is reachable without a click: hover and a screen
+      // reader's description.
+      const sentence =
+        'In the state `posted`, when Guard (gate-1) hears a sound';
+      expect(heard.querySelector('title')!.textContent).toContain(sentence);
+      expect(heard.getAttribute('aria-description')).toContain(sentence);
+      fireEvent.click(heard);
+      expect(heard.getAttribute('aria-pressed')).toBe('true');
+      expect(heard.dataset.selected).toBe('true');
+      const sentences = within(marked()!)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent ?? '');
+      expect(sentences).toEqual([
+        expect.stringContaining(
+          'In the state `posted`, when Guard (gate-1) hears a sound'
+        ),
+      ]);
+      // The shared step is one mark, its sentences each state's.
+      const turned = within(drawing()).getByRole('button', {
+        name: 'Step from posted, alert or challenged to turned, on fact: guards-turned',
+      });
+      fireEvent.keyDown(turned, { key: 'Enter' });
+      expect(turned.getAttribute('aria-pressed')).toBe('true');
+      expect(heard.getAttribute('aria-pressed')).toBe('false');
+      expect(
+        within(marked()!)
+          .getAllByRole('listitem')
+          .map(
+            (item) => /In the state `(\w+)`/.exec(item.textContent ?? '')?.[1]
+          )
+      ).toEqual(['posted', 'alert', 'challenged']);
+    });
+
+    it('clicking a box shows what the creature does there; a sentence in the list marks its box', () => {
+      render(
+        <StudioBehaviours
+          document={castle}
+          readBack={machines()}
+          focus="gate-1-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      const posted = within(drawing()).getByRole('button', {
+        name: 'State posted (starts here)',
+      });
+      fireEvent.click(posted);
+      expect(posted.getAttribute('aria-pressed')).toBe('true');
+      const said = marked()!.textContent ?? '';
+      expect(said).toContain(
+        'In the state `posted`, Guard (gate-1) listens for'
+      );
+      expect(said).toContain(
+        "In the state `posted`, on Guard (gate-1)'s own time (each round Guard (gate-1) is due, out of a fight), Guard (gate-1) acts from its own `post` rows."
+      );
+      expect(said).toContain('While its routine is in the state `posted`');
+      // From the read-back's list (its Full view): cowed's state sentence
+      // marks cowed.
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Full' }));
+      fireEvent.click(
+        within(panel()).getByRole('button', {
+          name: /^Mark on the drawing: .*in `cowed`$/,
+        })
+      );
+      expect(
+        within(drawing())
+          .getByRole('button', { name: 'State cowed' })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+      expect(posted.getAttribute('aria-pressed')).toBe('false');
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
+    });
+
+    it('a mark is a jump: it lands on the marked sentences, and a sentence lands on its mark', () => {
+      // jsdom has no layout: the landing's scroll has nothing to move.
+      HTMLElement.prototype.scrollIntoView ??= function () {};
+      render(
+        <RevealProvider>
+          <StudioBehaviours
+            document={castle}
+            readBack={machines()}
+            focus="gate-1-policy"
+            onSelect={vi.fn()}
+          />
+        </RevealProvider>
+      );
+      // From the drawing: the marked sentences come into view, focused.
+      fireEvent.click(
+        within(drawing()).getByRole('button', {
+          name: 'Step from posted to alert, on heard',
+        })
+      );
+      const group = marked()!;
+      expect(group.dataset.revealed).toBe('true');
+      expect(document.activeElement).toBe(group);
+      // From a sentence: its box comes into view, focused.
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Full' }));
+      fireEvent.click(
+        within(panel()).getByRole('button', {
+          name: /^Mark on the drawing: .*in `cowed`$/,
+        })
+      );
+      const cowed = within(drawing()).getByRole('button', {
+        name: 'State cowed',
+      });
+      expect(cowed.getAttribute('aria-pressed')).toBe('true');
+      expect(cowed.getAttribute('data-revealed')).toBe('true');
+      expect(document.activeElement).toBe(cowed);
+      localStorage.removeItem(READ_BACK_VIEW_STORAGE_KEY);
+    });
+
+    it('another behaviour draws its own machine, unmarked', () => {
+      const { rerender } = render(
+        <StudioBehaviours
+          document={castle}
+          readBack={machines()}
+          focus="gate-1-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      fireEvent.click(
+        within(drawing()).getByRole('button', {
+          name: 'State posted (starts here)',
+        })
+      );
+      rerender(
+        <StudioBehaviours
+          document={castle}
+          readBack={machines()}
+          focus="captain-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      const captain = within(panel()).getByRole('group', {
+        name: 'The machine of captain-policy',
+      });
+      expect(
+        within(captain).getByRole('button', { name: 'State in-hall' })
+      ).toBeTruthy();
+      expect(marked()).toBeNull();
+    });
+
+    it('a read-back that does not say the shape draws nothing', () => {
+      render(
+        <StudioBehaviours
+          document={castle}
+          readBack={state()}
+          focus="gate-1-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      expect(
+        within(panel()).queryByRole('group', { name: /^The machine of/ })
+      ).toBeNull();
+      expect(
+        within(panel()).queryByRole('button', { name: /^Mark on the drawing/ })
+      ).toBeNull();
+      expect(
+        within(panel()).getByRole('region', { name: 'Read back' }).textContent
+      ).toContain('Routine `gate-1-policy`');
+    });
   });
 });

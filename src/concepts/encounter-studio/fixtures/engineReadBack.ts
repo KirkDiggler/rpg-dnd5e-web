@@ -23,6 +23,7 @@ import {
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import machinesJson from './engineReadBack.machines.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
@@ -68,4 +69,19 @@ export function castleThreadsReadBack(): ReadBack {
  */
 export function castleRoutinesReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(routinesJson) as JsonValue);
+}
+
+/**
+ * THE CASTLE'S MACHINES, WITH THEIR SHAPE (rpg-project#994, #995), recorded
+ * from `rulebooks/dnd5e/encounter` v0.220.0 (the tag rpg-api `dev` pins at
+ * 7a5d8313): `readback.Of` on rpg-api `dev`'s `content/the-mad-king.yaml`,
+ * marshalled with `folded` set to `rb.Folded()`, as the api maps it.
+ * Trimmed to the "Routines" section (every routine row cut but
+ * `gate-1-policy`'s), from "Creatures" each creature's `creature.routine`,
+ * `creature.post` and `creature.blocking` statements, and the folded
+ * "Routines" section. Every kept sentence, connection and entry is the
+ * engine's, unedited.
+ */
+export function castleMachinesReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(machinesJson) as JsonValue);
 }

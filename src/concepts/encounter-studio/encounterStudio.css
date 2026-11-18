@@ -2052,3 +2052,122 @@
 .encounter-studio .es-outcome-add > button {
   justify-self: start;
 }
+
+/* A BEHAVIOUR'S MACHINE (rpg-project#995): boxes and arrows on the panel
+ * colour, in the places marks' look. The chosen mark is drawn heavier in
+ * the text colour; keyboard focus is its own dashed ring. The frame
+ * scrolls sideways when the drawing is wider than the room. */
+.es-machine {
+  flex: none;
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-bg);
+}
+.es-machine-svg {
+  display: block;
+  font:
+    12px system-ui,
+    sans-serif;
+}
+.es-machine-state,
+.es-machine-step {
+  cursor: pointer;
+}
+.es-machine-state:focus,
+.es-machine-step:focus {
+  outline: none;
+}
+.es-machine-state:focus-visible .es-machine-box {
+  stroke: var(--wb-text);
+  stroke-dasharray: 4 3;
+}
+.es-machine-step:focus-visible .es-machine-label {
+  text-decoration: underline dashed;
+}
+.es-machine-box {
+  fill: var(--wb-panel);
+  stroke: var(--wb-border);
+  stroke-width: 1.4;
+}
+.es-machine-state:is([data-final], [data-no-way-out]) .es-machine-box {
+  stroke: var(--es-warning-text);
+}
+.es-machine-state:is(:hover, [data-selected]) .es-machine-box {
+  stroke: var(--wb-accent);
+  stroke-width: 2.5;
+}
+.es-machine-title {
+  fill: var(--wb-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.es-machine-line {
+  fill: var(--wb-text);
+}
+.es-machine-line[data-muted] {
+  fill: var(--wb-muted);
+}
+.es-machine-pill rect {
+  fill: var(--wb-bg);
+  stroke: var(--wb-accent);
+}
+.es-machine-pill text {
+  fill: var(--wb-accent);
+  font-size: 10px;
+  font-family: var(--es-font-mono, monospace);
+}
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) rect {
+  stroke: var(--es-warning-text);
+}
+.es-machine-pill:is([data-pill='final'], [data-pill='no-way-out']) text {
+  fill: var(--es-warning-text);
+}
+.es-machine-stroke {
+  fill: none;
+  stroke: var(--wb-muted);
+  stroke-width: 1.3;
+}
+.es-machine-bracket {
+  stroke-dasharray: 4 3;
+}
+.es-machine-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+}
+.es-machine-arrowhead {
+  fill: var(--wb-muted);
+}
+/* A halo in the background colour keeps a label readable where a stroke
+ * crosses it. */
+.es-machine-label,
+.es-machine-caption {
+  paint-order: stroke;
+  stroke: var(--wb-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.es-machine-label {
+  fill: var(--wb-text);
+}
+.es-machine-caption {
+  fill: var(--wb-muted);
+  font-size: 11px;
+}
+.es-machine-step:is(:hover, [data-selected]) .es-machine-stroke {
+  stroke: var(--wb-accent);
+  stroke-width: 2.2;
+}
+.es-machine-step:is(:hover, [data-selected]) .es-machine-label {
+  fill: var(--wb-accent);
+}
+.es-readback-marked {
+  border-left: 3px solid var(--wb-accent);
+  padding-left: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.encounter-studio .es-readback-statement[data-marked] {
+  background: var(--es-revealed-tint, transparent);
+}
