@@ -1,5 +1,5 @@
 # SYNCED FIXTURE (rpg-project#857, #1005): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the bytes rpg-api content/the-mad-king.yaml carries
-# at commit 79bcc525aa540767ba8bea7f684bfbc0429d3b8d, git blob b196ca3eb2fd7712f3fd23f1866c4755ccfec7a1.
+# at rulebooks/dnd5e/encounter/v0.221.0 (main 490a8987), git blob b196ca3eb2fd7712f3fd23f1866c4755ccfec7a1.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,

@@ -1247,7 +1247,7 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
     );
     const button = screen.getByTestId('session-combat-hold-heirloom');
     // The button says what the thing IS; the request says which one.
-    expect(button.textContent).toContain('Pick up the reliquary');
+    expect(button.textContent).toContain('Hold the reliquary');
     fireEvent.click(button);
     expect(onHold).toHaveBeenCalledWith('heirloom');
   });

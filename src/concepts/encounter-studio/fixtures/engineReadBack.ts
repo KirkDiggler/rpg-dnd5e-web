@@ -18,9 +18,9 @@
  * text is the engine's, unedited.
  *
  * THE HOLDING WORDS (rpg-project#1005). In every pinned file below, each
- * sentence, entry text and path the rename changed is re-taken from rpg-toolkit
- * 79bcc525 (`readback.Of` with `folded` as `rb.Folded()`, on the castle at that
- * commit): the old engine's read-back and the new one's, on the castle before
+ * sentence, entry text and path the rename changed is re-taken from
+ * `rulebooks/dnd5e/encounter` v0.221.0 (rpg-toolkit 79bcc525, the same tree;
+ * `readback.Of` with `folded` as `rb.Folded()`, on the castle at the tag): the old engine's read-back and the new one's, on the castle before
  * and after the rename, align string for string, and each string that differs
  * replaced its old form here. Strings the rename did not touch are as recorded.
  */
