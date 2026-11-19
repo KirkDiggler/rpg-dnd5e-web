@@ -86,12 +86,15 @@ export interface RunView {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-/** The member a beat is about, when it names one. */
+/** The member a beat is about, when it names one. `mover` is a `barred`
+ * beat's: a refused step writes no `moved`, and is still the party's act
+ * (rpg-project#1006). */
 export function memberOfRow(row: RecordRow): string {
   const f = row.fields;
   if (!f) return '';
   return (
     str(f.member) ||
+    str(f.mover) ||
     str(f.actor) ||
     str(f.creature) ||
     str(f.listener) ||
@@ -263,4 +266,93 @@ function rolesLabel(roles: Readonly<Record<string, string>>): string {
   const entries = Object.entries(roles);
   if (entries.length === 1) return entries[0]![1];
   return entries.map(([role, state]) => `${role}: ${state}`).join(' · ');
+}
+
+/** One spoken thing in the run (rpg-project#1006 follow-up): the toolkit's
+ * `speech` beat, written once per group of members who perceived the same
+ * parts, every version carrying the same `utterance` id. The record is
+ * unfiltered, so the fullest version (words and speaker) stands for the
+ * line; the fold invents no part no version carries. */
+export interface RunSpeech {
+  utterance: string;
+  /** The row index of the line's first version: its place in the run. */
+  index: number;
+  speaker?: string;
+  to?: string;
+  words?: string;
+  /** `whisper`, `speak`, `shout` or `scream`, as the beat says it. */
+  loudness: string;
+  hops?: number;
+}
+
+/** Every line said in rows [from, upTo), oldest first, one per utterance. */
+export function speechOf(
+  rows: readonly RecordRow[],
+  upTo: number = rows.length,
+  from = 0
+): RunSpeech[] {
+  const lines = new Map<string, RunSpeech>();
+  const fullness = (s: RunSpeech): number =>
+    (s.words !== undefined ? 2 : 0) + (s.speaker ? 1 : 0);
+  const limit = Math.max(0, Math.min(upTo, rows.length));
+  for (let i = Math.max(0, from); i < limit; i++) {
+    const row = rows[i]!;
+    const f = row.fields;
+    if (row.beat !== 'speech' || !f) continue;
+    const utterance = str(f.utterance) || row.id;
+    const version: RunSpeech = {
+      utterance,
+      index: i,
+      speaker: str(f.speaker) || undefined,
+      to: str(f.to) || undefined,
+      words: typeof f.words === 'string' ? f.words : undefined,
+      loudness: str(f.loudness),
+      hops: typeof f.hops === 'number' ? f.hops : undefined,
+    };
+    const held = lines.get(utterance);
+    if (!held) lines.set(utterance, version);
+    else if (fullness(version) > fullness(held))
+      lines.set(utterance, { ...version, index: held.index });
+  }
+  return [...lines.values()].sort((a, b) => a.index - b.index);
+}
+
+/** A player's attempt stopped by a body: the toolkit's `barred` beat. A
+ * step names the cell it was refused into; a door verb its door and verb. */
+export interface RunBarred {
+  index: number;
+  mover: string;
+  barrier: string;
+  cell?: RoomHexCell;
+  door?: string;
+  verb?: string;
+}
+
+/** Every `barred` beat in rows [from, upTo), oldest first. */
+export function barredOf(
+  rows: readonly RecordRow[],
+  upTo: number = rows.length,
+  from = 0
+): RunBarred[] {
+  const out: RunBarred[] = [];
+  const limit = Math.max(0, Math.min(upTo, rows.length));
+  for (let i = Math.max(0, from); i < limit; i++) {
+    const row = rows[i]!;
+    const f = row.fields;
+    if (row.beat !== 'barred' || !f) continue;
+    out.push({
+      index: i,
+      mover: str(f.mover),
+      barrier: str(f.barrier),
+      cell: studioCellOf(f.cell) ?? undefined,
+      door: str(f.door) || undefined,
+      verb: str(f.verb) || undefined,
+    });
+  }
+  return out;
+}
+
+/** The first row of step `at`: where the step's own beats begin. */
+export function stepStartOf(steps: readonly RunStep[], at: number): number {
+  return at > 0 ? (steps[at - 1]?.through ?? 0) : 0;
 }

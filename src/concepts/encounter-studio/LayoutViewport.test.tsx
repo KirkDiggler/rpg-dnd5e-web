@@ -62,6 +62,7 @@ import { LayoutViewport as LayoutViewportUnderTest } from './LayoutViewport';
 import { foldRun } from './runView';
 import type {
   LayoutFrame,
+  LayoutSteps,
   LayoutViewportProps,
   RoomHexCell,
   StructuralWall,
@@ -2584,5 +2585,126 @@ describe('Layout watching a run (rpg-project#1004)', () => {
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('gate-1');
     expect(onSelectHex).not.toHaveBeenCalled();
     expect(input.onCommit).not.toHaveBeenCalled();
+  });
+
+  describe('one step from the Layout (rpg-project#1006)', () => {
+    const watching = (
+      steps?: LayoutSteps,
+      onSelect = vi.fn<(id: string) => void>()
+    ) => ({
+      members: Object.values(run.members),
+      selectedId: null,
+      onSelect,
+      steps,
+    });
+
+    it('marks the hexes next to the seat as named steps; a click on one steps there and moves nothing', () => {
+      const onStep = vi.fn<(cell: RoomHexCell) => void>();
+      const input = props({ tool: 'select' });
+      render(
+        <LayoutViewport
+          {...input}
+          watching={watching({ from: { q: 1, r: 1 }, busy: false, onStep })}
+        />
+      );
+      const step = screen.getByRole('button', { name: 'Step to 2, 1' });
+      expect(screen.getByRole('button', { name: 'Step to 1, 0' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Step to 3, 3' })).toBeNull();
+      fireEvent.pointerDown(step.querySelector('polygon')!, {
+        pointerId: 7,
+        button: 0,
+      });
+      expect(onStep).toHaveBeenCalledExactlyOnceWith({ q: 2, r: 1 });
+      // The studio moves no marker: the seat stays where the record put it.
+      expect(
+        document
+          .querySelector('[data-run-member="hero"]')!
+          .getAttribute('data-run-cell')
+      ).toBe('1,1');
+      expect(input.onCommit).not.toHaveBeenCalled();
+    });
+
+    it('a step is a keyboard button: Enter takes it', () => {
+      const onStep = vi.fn<(cell: RoomHexCell) => void>();
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={watching({ from: { q: 1, r: 1 }, busy: false, onStep })}
+        />
+      );
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Step to 1, 2' }), {
+        key: 'Enter',
+      });
+      expect(onStep).toHaveBeenCalledExactlyOnceWith({ q: 1, r: 2 });
+    });
+
+    it('a creature that spoke this step carries a speech mark: the words cut short, the whole line its name', () => {
+      const words =
+        'Whoa there, buddy. Can I help you? The gate is shut till morning.';
+      const line = `Guard shouts to Aldric: “${words}”`;
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={{
+            ...watching(),
+            said: new Map([['gate-1', { line, words }]]),
+          }}
+        />
+      );
+      const mark = screen.getByRole('img', { name: line });
+      expect(mark.getAttribute('data-run-said')).toBe('gate-1');
+      const shown = mark.querySelector('text')!.textContent!;
+      expect(shown.endsWith('…')).toBe(true);
+      expect(words.startsWith(shown.slice(0, -1))).toBe(true);
+      expect(document.querySelector('[data-run-said="hero"]')).toBeNull();
+    });
+
+    it('marks the hex a refused step tried', () => {
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={{ ...watching(), tried: { q: 2, r: 1 } }}
+        />
+      );
+      expect(document.querySelector('[data-run-tried="2,1"]')).not.toBeNull();
+    });
+
+    it('offers no steps when none are given', () => {
+      render(
+        <LayoutViewport {...props({ tool: 'select' })} watching={watching()} />
+      );
+      expect(document.querySelector('[data-run-step]')).toBeNull();
+    });
+
+    it('a click on a creature standing on a step hex selects it instead of stepping', () => {
+      const onStep = vi.fn<(cell: RoomHexCell) => void>();
+      const onSelect = vi.fn<(id: string) => void>();
+      // gate-1 stands at 3,2; the seat beside it at 2,2.
+      render(
+        <LayoutViewport
+          {...props({ tool: 'select' })}
+          watching={watching(
+            { from: { q: 2, r: 2 }, busy: false, onStep },
+            onSelect
+          )}
+        />
+      );
+      expect(screen.getByRole('button', { name: 'Step to 3, 2' })).toBeTruthy();
+      fireEvent.pointerDown(
+        document.querySelector('[data-run-member="gate-1"] circle')!,
+        { pointerId: 7, button: 0 }
+      );
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith('gate-1');
+      expect(onStep).not.toHaveBeenCalled();
+      // The creature is painted over the step hex (later in the SVG), so
+      // the pointer lands on the creature, not the step under it.
+      const stepHex = document.querySelector('[data-run-step="3,2"]')!;
+      const creature = document.querySelector('[data-run-member="gate-1"]')!;
+      expect(stepHex.contains(creature)).toBe(false);
+      expect(
+        stepHex.compareDocumentPosition(creature) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
   });
 });
