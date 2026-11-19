@@ -24,9 +24,11 @@ import type { RecordRow } from '@/components/session/recordFeed';
 import {
   foldRun,
   speechOf,
+  stepSightOf,
   stepStartOf,
   type RunStart,
   type RunStep,
+  type StepSight,
 } from './runView';
 
 /** What a member did in one step, as the record says it. */
@@ -50,13 +52,25 @@ export interface TimelineCell {
   stateChanged: boolean;
   /** What it did differs in kind from the last step it did something. */
   didChanged: boolean;
+  /** Each other role's state in force when the step ended, by role id
+   * (`role_state`, rpg-project#1016); absent when it has none. */
+  roles?: Readonly<Record<string, string>>;
+  /** The roles a `role_state` beat moved in this step. */
+  rolesChanged?: readonly string[];
+  /** Its sight came or went this step: the `sighted` beats naming it as
+   * observer with `gained` or `lost`. */
+  sight?: StepSight;
 }
 
 export interface TimelineRow {
   id: string;
   party: boolean;
   cells: readonly TimelineCell[];
-  /** Its state or what it did changed kind at least once in the run. */
+  /** Its other roles (`role_state`), in the order the record first names
+   * them: one extra band each. Empty for a creature with none. */
+  roles: readonly string[];
+  /** Its state, a role's state, its sight, or what it did changed kind at
+   * least once in the run. */
   changed: boolean;
 }
 
@@ -280,9 +294,15 @@ export function timelineOf(
   /** Members a `state` beat moved in each step: a recorded transition is a
    * change even when no earlier state was known. */
   const transitions: Set<string>[] = [];
+  /** Each step's other roles' states, and the roles moved in it. */
+  const roleStates: Map<string, Record<string, string>>[] = [];
+  const roleMoves: Map<string, string[]>[] = [];
+  const roleOrder = new Map<string, string[]>();
+  const sights: Map<string, StepSight>[] = [];
   steps.forEach((step, index) => {
     const view = foldRun(start, rows, step.through);
     const stepStates = new Map<string, string | undefined>();
+    const stepRoles = new Map<string, Record<string, string>>();
     for (const member of Object.values(view.members)) {
       if (!cells.has(member.id)) {
         cells.set(member.id, []);
@@ -290,8 +310,24 @@ export function timelineOf(
       }
       if (member.party) party.add(member.id);
       stepStates.set(member.id, member.state);
+      if (member.roleStates) {
+        const known = roleOrder.get(member.id) ?? [];
+        const now: Record<string, string> = {};
+        for (const [role, rs] of Object.entries(member.roleStates)) {
+          now[role] = rs.state;
+          if (!known.includes(role)) known.push(role);
+        }
+        roleOrder.set(member.id, known);
+        stepRoles.set(member.id, now);
+      }
     }
     states.push(stepStates);
+    roleStates.push(stepRoles);
+    const stepSight = new Map<string, StepSight>();
+    for (const s of stepSightOf(rows, step.through, stepStartOf(steps, index)))
+      if (s.gained.length > 0 || s.lost.length > 0)
+        stepSight.set(s.observer, s);
+    sights.push(stepSight);
     const did = didIn(rows, stepStartOf(steps, index), step.through, step);
     for (const id of did.keys())
       if (!cells.has(id)) {
@@ -300,12 +336,20 @@ export function timelineOf(
       }
     dids.push(did);
     const moved = new Set<string>();
+    const roleMoved = new Map<string, string[]>();
     for (let i = stepStartOf(steps, index); i < step.through; i++) {
       const r = rows[i]!;
       const id = str(r.fields?.member);
       if (r.beat === 'state' && id && str(r.fields?.to)) moved.add(id);
+      const role = str(r.fields?.role);
+      if (r.beat === 'role_state' && id && role && str(r.fields?.to)) {
+        const list = roleMoved.get(id) ?? [];
+        if (!list.includes(role)) list.push(role);
+        roleMoved.set(id, list);
+      }
     }
     transitions.push(moved);
+    roleMoves.push(roleMoved);
   });
   const timelineRows: TimelineRow[] = order.map((id) => {
     let lastKind = '';
@@ -322,9 +366,34 @@ export function timelineOf(
       if (did?.kind) lastKind = did.kind;
       if (didChanged || transitioned || (stateChanged && prior !== undefined))
         changed = true;
-      return { step: index, state, did, stateChanged, didChanged };
+      const cell: TimelineCell = {
+        step: index,
+        state,
+        did,
+        stateChanged,
+        didChanged,
+      };
+      const roles = roleStates[index]!.get(id);
+      if (roles) cell.roles = roles;
+      const rolesChanged = roleMoves[index]!.get(id);
+      if (rolesChanged) {
+        cell.rolesChanged = rolesChanged;
+        changed = true;
+      }
+      const sight = sights[index]!.get(id);
+      if (sight) {
+        cell.sight = sight;
+        changed = true;
+      }
+      return cell;
     });
-    return { id, party: party.has(id), cells: row, changed };
+    return {
+      id,
+      party: party.has(id),
+      cells: row,
+      roles: roleOrder.get(id) ?? [],
+      changed,
+    };
   });
   timelineRows.sort((a, b) => Number(b.party) - Number(a.party));
   return { steps, rows: timelineRows };
@@ -353,11 +422,37 @@ export interface StateSegment {
 }
 
 export function stateSegments(cells: readonly TimelineCell[]): StateSegment[] {
+  return segmentsBy(cells, (cell) => cell.state);
+}
+
+/** One other role's band along a row (rpg-project#1016): a new segment
+ * where its state differs, or where a `role_state` beat moved it (a solid
+ * edge, even back into the same state). */
+export function roleSegments(
+  cells: readonly TimelineCell[],
+  role: string
+): (StateSegment & { edge: boolean })[] {
+  const out: (StateSegment & { edge: boolean })[] = [];
+  for (const cell of cells) {
+    const state = cell.roles?.[role];
+    const moved = cell.rolesChanged?.includes(role) ?? false;
+    const last = out[out.length - 1];
+    if (last && last.state === state && !moved) last.length++;
+    else out.push({ state, from: cell.step, length: 1, edge: moved });
+  }
+  return out;
+}
+
+function segmentsBy(
+  cells: readonly TimelineCell[],
+  of: (cell: TimelineCell) => string | undefined
+): StateSegment[] {
   const out: StateSegment[] = [];
   for (const cell of cells) {
+    const state = of(cell);
     const last = out[out.length - 1];
-    if (last && last.state === cell.state) last.length++;
-    else out.push({ state: cell.state, from: cell.step, length: 1 });
+    if (last && last.state === state) last.length++;
+    else out.push({ state, from: cell.step, length: 1 });
   }
   return out;
 }
