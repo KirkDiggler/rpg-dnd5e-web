@@ -210,10 +210,18 @@ function baseOf(token: string, source: string): unknown {
 /** The document's bytes. A draft read from a file writes that file back with
  * only the studio's changes spliced in (`spliceYaml`); a draft the studio
  * made writes the canonical encoding. */
+import {
+  captureDoorFramePresentations,
+  pinnedFrameMaterials,
+} from './doorFrameCapture';
+
 export function encodeSingleRoomDungeon(
   input: EncodeSingleRoomDungeonInput
 ): string {
-  const canonical = encodeCanonical(input);
+  const canonical = encodeCanonical({
+    ...input,
+    draft: captureDoorFramePresentations(input.draft, pinnedFrameMaterials()),
+  });
   const token = input.draft.sourceRef;
   // A lost file is the caller's to announce (`dungeonSourceLost`): the
   // publish panels ask before this canonical encoding is saved.

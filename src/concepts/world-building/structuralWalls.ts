@@ -22,6 +22,12 @@ const APPEARANCE_KEYS = [
 const BLOCKER_KEYS = ['footprint', 'blocksMovement', 'blocksLineOfSight'];
 const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'];
 
+import {
+  copyDoorFramePresentation,
+  type DoorFramePresentation,
+  type WallFrameSpan,
+} from '@/rendering/doorFramePresentation';
+
 /** One opening's optional attached door: a stable identity and a catalog
  * appearance. THERE IS NO STORED POSE — the owning opening resolves the
  * placement — and no `scene.items` entry. A bound door's state lives ONLY at
@@ -30,7 +36,11 @@ const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'];
  * ABSENCE IS A BARE OPENING, not a hidden or open door. A present `door`
  * requires a matching `doorBindings` entry (`{}` means initially open). */
 export interface StructuralWallOpening extends WallOpeningGeometry {
-  door?: { id: string; assetRef: string };
+  door?: {
+    id: string;
+    assetRef: string;
+    framePresentation?: DoorFramePresentation;
+  };
 }
 
 /** One authored wall, not an inventory of repeated visual or blocking pieces. */
@@ -61,8 +71,10 @@ export interface StructuralWall extends WallGeometry {
  * or player-content permission answer. */
 export type StructuralWallSurface = Pick<
   StructuralWall,
-  'id' | 'label' | 'line' | 'openings' | 'appearance'
->;
+  'id' | 'label' | 'line' | 'appearance'
+> & {
+  openings: readonly (StructuralWallOpening & { frameSpan?: WallFrameSpan })[];
+};
 
 function numberAt(value: unknown, path: string, positive = false): number {
   if (
@@ -176,10 +188,28 @@ export function validateStructuralWalls(input: {
             throw new Error(
               `${at}.door.assetRef: unknown door asset ${doorAssetRef}`
             );
-          door = carryUnknownKeys(doorShape, ['id', 'assetRef'], {
-            id: doorId,
-            assetRef: doorAssetRef,
-          });
+          const framePresentation = copyDoorFramePresentation(
+            doorShape.framePresentation,
+            `${at}.door.framePresentation`
+          );
+          const width = numberAt(opening.width, `${at}.width`, true);
+          if (
+            framePresentation &&
+            (framePresentation.span.before < width / 2 ||
+              framePresentation.span.after < width / 2)
+          )
+            throw Error(
+              `${at}.door.framePresentation.span: must enclose the clear opening.`
+            );
+          door = carryUnknownKeys(
+            doorShape,
+            ['id', 'assetRef', 'framePresentation'],
+            {
+              id: doorId,
+              assetRef: doorAssetRef,
+              ...(framePresentation ? { framePresentation } : {}),
+            }
+          );
         }
         return carryUnknownKeys(opening, ['id', 'position', 'width', 'door'], {
           id: claim(opening.id, `${at}.id`),
@@ -263,6 +293,20 @@ export function validateStructuralWalls(input: {
         wall.line.end.z - wall.line.start.z
       );
       wallSolidIntervals({ wall, extent: { start: 0, end: length } });
+      const visualOpenings = wall.openings.map((opening) => {
+        const span = opening.door?.framePresentation?.span;
+        return span
+          ? {
+              ...opening,
+              position: opening.position + (span.after - span.before) / 2,
+              width: span.before + span.after,
+            }
+          : opening;
+      });
+      wallSolidIntervals({
+        wall: { ...wall, openings: visualOpenings },
+        extent: { start: 0, end: length },
+      });
     } catch (error) {
       throw new Error(
         `${location}: ${error instanceof Error ? error.message : String(error)}`

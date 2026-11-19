@@ -3,6 +3,7 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
   type WorldBuildingCatalogEntry,
 } from './catalog';
+import { doorwayVisualWall, type DoorRepeatGuide } from './doorwayPlacement';
 import type { RoomDraft } from './roomDraft';
 import { attachDoorToOpening } from './structuralDoorEditing';
 import {
@@ -35,6 +36,8 @@ export type StudioDoorPreview =
       readonly position: number;
       readonly width: number;
       readonly clamped: boolean;
+      readonly snapped?: boolean;
+      readonly repeatGuide?: DoorRepeatGuide;
     }
   | {
       readonly valid: false;
@@ -49,6 +52,10 @@ export interface StudioDoorEditing {
   readonly options: readonly StudioDoorAppearanceOption[];
   readonly selectedTarget: StudioDoorTarget | null;
   readonly preview: StudioDoorPreview | null;
+  readonly repeatSnap?: {
+    enabled: boolean;
+    setEnabled(enabled: boolean): boolean;
+  };
   setAsset(ref: string | null): boolean;
   setActive(active: boolean): boolean;
   select(target: StudioDoorTarget | null): boolean;
@@ -64,9 +71,12 @@ export interface StudioDoorEditing {
 export function studioDoorAssetWidth(entry: WorldBuildingCatalogEntry): number {
   if (entry.source !== 'generated')
     throw new Error('Door placement requires a generated complete assembly.');
-  if (entry.asset.tags.includes('wall-opening'))
+  if (
+    entry.asset.tags.includes('wall-opening') &&
+    (!entry.asset.wallOpening || !entry.asset.surfaces?.length)
+  )
     throw new Error(
-      'This doorway requires aperture-anchor fitting; complete-assembly bounds are not its opening.'
+      'This doorway requires verified aperture-anchor fitting and fixed masonry targets.'
     );
   const roles = entry.asset.roles ?? [];
   const leaves = roles.filter((role) => role.role === 'leaf');
@@ -87,7 +97,12 @@ export function studioDoorAssetWidth(entry: WorldBuildingCatalogEntry): number {
     )
   )
     throw new Error('Door assembly dimensions must be finite and positive.');
-  return entry.asset.boundsMeters[0];
+  if (
+    entry.asset.wallOpening &&
+    leaves[0]!.door !== entry.asset.wallOpening.openingId
+  )
+    throw new Error('Door leaf group does not match its verified aperture.');
+  return entry.asset.wallOpening?.widthMeters ?? entry.asset.boundsMeters[0];
 }
 export function studioDoorOptions(): StudioDoorAppearanceOption[] {
   return WORLD_BUILDING_CATALOG.flatMap((entry) => {
@@ -145,6 +160,7 @@ export function clampDoorPosition(
 }
 function assertDoorGeometry(wall: StructuralWall): void {
   wallSolidIntervals({ wall, extent: { start: 0, end: wallLength(wall) } });
+  doorwayVisualWall(wall);
 }
 export function createStudioDoor(
   wall: StructuralWall,

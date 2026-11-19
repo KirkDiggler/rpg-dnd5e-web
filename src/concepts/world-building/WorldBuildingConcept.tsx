@@ -71,7 +71,9 @@ import {
   stillNamedRefusal,
 } from './documentReferences';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
+import { captureDoorFramePresentations } from './doorFrameCapture';
 import { DoorStates } from './DoorStates';
+import { placeDoorFrame } from './doorwayPlacement';
 import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import { setInteractionApproach } from './interactionApproach';
@@ -218,7 +220,6 @@ import {
   type StudioArrangeTarget,
 } from './studioArrange';
 import {
-  clampDoorPosition,
   createStudioDoor,
   doorAlongWall,
   doorPreviewIds,
@@ -436,6 +437,7 @@ export function WorldBuildingConcept({
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [doorAssetRef, setDoorAssetRef] = useState<string | null>(null);
+  const [doorRepeatSnap, setDoorRepeatSnap] = useState(false);
   const [previewDoor, setPreviewDoor] = useState<StudioDoorPreview | null>(
     null
   );
@@ -865,6 +867,8 @@ export function WorldBuildingConcept({
     return false;
   }, []);
 
+  const materialCatalog = useWorldMaterialCatalog();
+
   /** The only room edit insertion seam. Existing policy forms can author
    * incomplete drafts (e.g. an intel record before its fact is entered).
    * Ordinary edits protect shape, rectangular bounds and serialized size;
@@ -890,15 +894,20 @@ export function WorldBuildingConcept({
         const scene = validateScene(candidate.draft.scene, {
           horizontalLimit: MAX_WORLD_COORD,
         });
+        const captured = captureDoorFramePresentations(
+          { ...candidate.draft, scene },
+          materialCatalog.catalog,
+          roomHistoryRef.current.present.draft
+        );
         const draft = {
-          ...candidate.draft,
+          ...captured,
           scene,
           room: {
-            ...candidate.draft.room,
-            ...(candidate.draft.room.walls
+            ...captured.room,
+            ...(captured.room.walls
               ? {
                   walls: validateStructuralWalls({
-                    value: candidate.draft.room.walls,
+                    value: captured.room.walls,
                     horizontalLimit: MAX_WORLD_COORD,
                     itemIds: new Set(scene.items.map((item) => item.id)),
                   }),
@@ -946,6 +955,7 @@ export function WorldBuildingConcept({
       activateStudioTarget,
       studioPresentation,
       editGeneration,
+      materialCatalog.catalog,
       refuseWhilePublishing,
       rejectEdit,
       selectedIds,
@@ -3710,7 +3720,6 @@ export function WorldBuildingConcept({
     () => resolveRegions(roomDraft),
     [roomDraft]
   );
-  const materialCatalog = useWorldMaterialCatalog();
   const groundCatalog = useGroundCatalog();
   const requireAvailableGround = (ref: string | null): void => {
     if (ref === null) return;
@@ -4055,6 +4064,49 @@ export function WorldBuildingConcept({
       studioTargetKey(activeStudioTargetRef.current) === capturedTargetKey,
     [roomTool, selectionRevision, capturedTargetKey]
   );
+  const doorPlacementPose = useCallback(
+    (
+      wall: StructuralWall,
+      position: number,
+      width: number,
+      assetRef: string
+    ) => {
+      const spans = roomFinishes.spans.filter(
+        (span) => span.wallId === wall.id
+      );
+      const chart = (
+        spans.find((span) => span.side === 'positive-z') ?? spans[0]
+      )?.chart;
+      return placeDoorFrame(
+        wall,
+        position,
+        width,
+        assetRef,
+        doorRepeatSnap,
+        chart
+      );
+    },
+    [roomFinishes, doorRepeatSnap]
+  );
+  const captureDoorWall = useCallback(
+    (wall: StructuralWall): StructuralWall => {
+      const next = {
+        ...roomDraft,
+        room: {
+          ...roomDraft.room,
+          walls: roomDraft.room.walls!.map((current) =>
+            current.id === wall.id ? wall : current
+          ),
+        },
+      };
+      return captureDoorFramePresentations(
+        next,
+        materialCatalog.catalog,
+        roomDraft
+      ).room.walls!.find((current) => current.id === wall.id)!;
+    },
+    [roomDraft, materialCatalog.catalog]
+  );
   const placementCandidate = useCallback(
     (wallId: string, point: WorldPoint): StudioDoorPreview => {
       const wall = roomDraft.room.walls?.find((wall) => wall.id === wallId);
@@ -4064,7 +4116,12 @@ export function WorldBuildingConcept({
         : undefined;
       if (!entry) throw new Error('Choose a complete door appearance first.');
       const width = studioDoorAssetWidth(entry);
-      const pose = clampDoorPosition(wall, doorAlongWall(wall, point), width);
+      const pose = doorPlacementPose(
+        wall,
+        doorAlongWall(wall, point),
+        width,
+        entry.ref
+      );
       const ids = doorPreviewIds(wall, [
         ...roomDraft.scene.items.map((item) => item.id),
         ...roomDraft.scene.groups.map((group) => group.id),
@@ -4080,11 +4137,13 @@ export function WorldBuildingConcept({
         ]),
         ...Object.keys(roomDraft.room.doorBindings ?? {}),
       ]);
-      const next = createStudioDoor(wall, {
-        ...ids,
-        assetRef: entry.ref,
-        position: pose.position,
-      });
+      const next = captureDoorWall(
+        createStudioDoor(wall, {
+          ...ids,
+          assetRef: entry.ref,
+          position: pose.position,
+        })
+      );
       return {
         valid: true,
         purpose: 'placement',
@@ -4094,7 +4153,7 @@ export function WorldBuildingConcept({
         ...pose,
       };
     },
-    [roomDraft, doorAssetRef]
+    [roomDraft, doorAssetRef, doorPlacementPose, captureDoorWall]
   );
   const showDoorPlacement = useCallback(
     (wallId: string, point: WorldPoint): boolean => {
@@ -4135,8 +4194,15 @@ export function WorldBuildingConcept({
         return false;
       try {
         const { wall, opening } = requireStudioDoor(roomDraft, target);
-        const pose = clampDoorPosition(wall, position, opening.width);
-        const next = editStudioDoor(wall, target, { position: pose.position });
+        const pose = doorPlacementPose(
+          wall,
+          position,
+          opening.width,
+          opening.door!.assetRef
+        );
+        const next = captureDoorWall(
+          editStudioDoor(wall, target, { position: pose.position })
+        );
         setPreviewDoor({
           valid: true,
           purpose: 'move',
@@ -4167,6 +4233,8 @@ export function WorldBuildingConcept({
       refuseWhilePublishing,
       roomDraft,
       rejectEdit,
+      doorPlacementPose,
+      captureDoorWall,
     ]
   );
   const cancelDoorPreview = useCallback((): void => {
@@ -4179,6 +4247,15 @@ export function WorldBuildingConcept({
     selectedTarget:
       activeStudioTarget?.kind === 'door' ? activeStudioTarget : null,
     preview: previewDoor,
+    repeatSnap: {
+      enabled: doorRepeatSnap,
+      setEnabled: (enabled) => {
+        if (!doorContextCurrent() || refuseWhilePublishing()) return false;
+        cancelTransients();
+        setDoorRepeatSnap(enabled);
+        return true;
+      },
+    },
     setAsset: (ref): boolean => {
       if (!doorContextCurrent() || refuseWhilePublishing()) return false;
       if (ref !== null && !doorOptions.some((option) => option.ref === ref))
@@ -4253,7 +4330,12 @@ export function WorldBuildingConcept({
         return false;
       try {
         const { wall, opening } = requireStudioDoor(roomDraft, target);
-        const pose = clampDoorPosition(wall, position, opening.width);
+        const pose = doorPlacementPose(
+          wall,
+          position,
+          opening.width,
+          opening.door!.assetRef
+        );
         const accepted = commitDoorWall(
           editStudioDoor(wall, target, { position: pose.position })
         );
@@ -4348,7 +4430,14 @@ export function WorldBuildingConcept({
           doorBindings: roomDraft.room.doorBindings,
           selectedWallId,
           previewWall,
-          onWallTransformPreview: setPreviewWall,
+          onWallTransformPreview: (wall) => {
+            try {
+              setPreviewWall(wall ? captureDoorWall(wall) : null);
+            } catch (error) {
+              setPreviewWall(null);
+              rejectEdit(error);
+            }
+          },
           onWallTransformCommit: editWall,
           wallSnapEnabled,
           onWallGesture: createWallFromGesture,
@@ -4539,8 +4628,14 @@ export function WorldBuildingConcept({
               studioTargetKey(activeStudioTargetRef.current) &&
             selectionRevisionRef.current === selectionRevision &&
             (!next || activeStudioTargetRef.current.id === next.id)))
-      )
-        setPreviewWall(next);
+      ) {
+        try {
+          setPreviewWall(next ? captureDoorWall(next) : null);
+        } catch (error) {
+          setPreviewWall(null);
+          rejectEdit(error);
+        }
+      }
     },
     [
       roomMode,
@@ -4549,6 +4644,8 @@ export function WorldBuildingConcept({
       isStudio,
       capturedTargetKey,
       selectionRevision,
+      captureDoorWall,
+      rejectEdit,
     ]
   );
   const viewportProps: WorldBuildingViewportProps =

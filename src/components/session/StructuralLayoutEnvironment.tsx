@@ -170,6 +170,8 @@ export function StructuralLayoutEnvironment({
                 doorId={unit.id}
                 assetRef={unit.assetRef}
                 pose={unit.pose}
+                framePresentation={unit.framePresentation}
+                requireFramePresentation
                 state={state}
                 remembered={remembered}
                 onClick={clickable ? () => onDoorClick(unit.id) : undefined}
