@@ -184,8 +184,9 @@ interface EncounterStudioWorkspaceProps {
   /** Routes this tab to the game on a watched run, remembering it for the
    * way back (App's handlePlayWatched). */
   onPlayWatched?: (encounterId: string, characterId: string) => void;
-  /** The studio stopped watching: the game's way back is retired. */
-  onWatchEnded?: () => void;
+  /** The studio stopped watching this run: the game's way back is
+   * retired. */
+  onWatchEnded?: (run: WatchedRun) => void;
   /** The studio started watching a run (App remembers it across a reload,
    * rpg-project#1008). */
   onWatchStarted?: (run: WatchedRun) => void;
@@ -208,7 +209,7 @@ interface StudioSurfaceProps {
   onPlay?: (encounterId: string, characterId: string) => void;
   initialWatch?: WatchedRun | null;
   onPlayWatched?: (encounterId: string, characterId: string) => void;
-  onWatchEnded?: () => void;
+  onWatchEnded?: (run: WatchedRun) => void;
   onWatchStarted?: (run: WatchedRun) => void;
   onWatchLost?: (run: WatchedRun) => void;
   /** Where the studio remembers this draft's last saved key (S6-T7). */
@@ -935,7 +936,7 @@ function StudioSurface({
     if (watch) setFreed((was) => new Set(was).add(watch.session));
     setWatch(null);
     watchLeave.clearRefusal();
-    onWatchEnded?.();
+    if (watch) onWatchEnded?.(watch);
   };
   /** Leaves the watched run, then stops watching. False when the leave was
    * refused: the refusal is shown and the watch stays until the operator

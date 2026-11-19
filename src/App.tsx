@@ -280,6 +280,10 @@ function AppContent() {
     myActiveLobby.data?.encounterId ? myActiveLobby.data.lobbyId : '',
     playerId ?? ''
   );
+  /** Watched runs this load already settled (stopped, or handed to Home
+   * because the studio could not reopen them): the resume never takes
+   * them into the game (rpg-project#1008). */
+  const watchSettled = useRef(new Set<string>());
   const resumeLoading =
     myActiveLobby.loading ||
     Boolean(myActiveLobby.data?.encounterId && resumedLobbyCharacter.loading);
@@ -295,9 +299,14 @@ function AppContent() {
       return; // setup/deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
+      // Decide once, on final inputs: the seat lookup first, as every resume.
+      if (resumedLobbyCharacter.loading) return;
       // A run this tab was WATCHING from the studio goes back to the studio
-      // watching it, never into the game (rpg-project#1008). Any other run
+      // watching it, never into the game (rpg-project#1008). A watch this
+      // load already ended, or handed to Home because the studio could not
+      // reopen it, is never resumed into the game either. Any other run
       // resumes as below.
+      if (watchSettled.current.has(myActiveLobby.data.encounterId)) return;
       const watched = watchingOf(
         playerId ?? '',
         myActiveLobby.data.encounterId
@@ -307,7 +316,7 @@ function AppContent() {
         setCurrentView('encounter-studio');
         return;
       }
-      if (resumedLobbyCharacter.loading || resumeIdentityError) return;
+      if (resumeIdentityError) return;
       // The load right after this run's game view failed to render stays on
       // Home, once, and says so with a Resume control.
       if (skipResumeOnce(playerId ?? '', myActiveLobby.data.encounterId)) {
@@ -317,9 +326,13 @@ function AppContent() {
       setStudioReturn(null);
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
-    } else if (myActiveLobby.data.lobbyId) {
-      setResumeLobbyId(myActiveLobby.data.lobbyId);
-      setCurrentView('lobby');
+    } else {
+      // No running encounter: a watched run this tab remembers is gone.
+      forgetWatching(playerId ?? '');
+      if (myActiveLobby.data.lobbyId) {
+        setResumeLobbyId(myActiveLobby.data.lobbyId);
+        setCurrentView('lobby');
+      }
     }
   }, [
     myActiveLobby.data,
@@ -669,12 +682,14 @@ function AppContent() {
               onPlay={handlePlayAuthored}
               initialWatch={studioReturn}
               onPlayWatched={handlePlayWatched}
-              onWatchEnded={() => {
+              onWatchEnded={(run) => {
+                watchSettled.current.add(run.session);
                 setStudioReturn(null);
                 forgetWatching(playerId ?? '');
               }}
               onWatchStarted={(run) => rememberWatching(playerId ?? '', run)}
               onWatchLost={(run) => {
+                watchSettled.current.add(run.session);
                 forgetWatching(playerId ?? '');
                 setStudioReturn(null);
                 setWatchNotReopened({

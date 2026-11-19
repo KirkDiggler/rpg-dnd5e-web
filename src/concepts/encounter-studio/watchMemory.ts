@@ -11,7 +11,8 @@
  * Per tab (sessionStorage): another tab never watched the run. Keyed by
  * player, so a different sign-in in the same tab does not inherit it.
  * Cleared when the watch ends (Stop watching, leaving the studio), when
- * the studio cannot reopen it, and when a load finds the run gone.
+ * the studio cannot reopen it, and when a load's resume lookup finds no
+ * running encounter for the player.
  */
 import type { WatchedRun } from './runWatch';
 

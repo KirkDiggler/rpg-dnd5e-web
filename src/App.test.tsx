@@ -527,9 +527,14 @@ describe('App running-encounter resume', () => {
       encounterId: 'enc-1',
       lobbyStatus: 2,
     };
+    // As the real lookup: loading on the render the run arrives, then
+    // resolved by StreamLobby's snapshot.
+    hoisted.lobbyCharacter.loading = true;
+    const { rerender } = render(<App />);
+    expect(screen.queryByTestId('game-view')).toBeNull();
     hoisted.lobbyCharacter.characterId = 'char-alice';
-
-    render(<App />);
+    hoisted.lobbyCharacter.loading = false;
+    rerender(<App />);
 
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.characterId).toBe('char-alice');
@@ -1080,7 +1085,12 @@ describe('App reload while watching a run from the studio (rpg-project#1008)', (
       member: 'char-alice',
       room: 'room-1',
     });
-    render(<App />);
+    hoisted.lobbyCharacter.characterId = undefined;
+    hoisted.lobbyCharacter.loading = true;
+    const { rerender } = render(<App />);
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    hoisted.lobbyCharacter.loading = false;
+    rerender(<App />);
     expect(await screen.findByTestId('studio-watch')).toBeTruthy();
     expect(
       screen.getByRole('region', { name: 'Encounter Studio workspace' })
@@ -1107,6 +1117,52 @@ describe('App reload while watching a run from the studio (rpg-project#1008)', (
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.encounterId).toBe('enc-1');
+  });
+
+  it('a mismatched draft stays on Home with the notice after the seat lookup resolves, never the game', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'test-player',
+      session: 'enc-1',
+      member: 'char-alice',
+      room: 'another-draft',
+    });
+    hoisted.lobbyCharacter.characterId = undefined;
+    hoisted.lobbyCharacter.loading = true; // the render the run arrives on
+    const { rerender } = render(<App />);
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    hoisted.lobbyCharacter.loading = false; // StreamLobby's snapshot
+    rerender(<App />);
+    expect(
+      await screen.findByText(/The run you were watching is still open/)
+    ).toBeTruthy();
+    // A later pass of the resume (any input change) still does not take the
+    // run into the game.
+    hoisted.activeLobby.data = { ...hoisted.activeLobby.data! };
+    rerender(<App />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByTestId('game-view')).toBeNull();
+    expect(screen.getByText('Home View')).toBeTruthy();
+  });
+
+  it('a load with no running encounter drops a leftover watched mark', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'test-player',
+      session: 'enc-1',
+      member: 'char-alice',
+      room: 'room-1',
+    });
+    hoisted.activeLobby.data = {
+      lobbyId: '',
+      encounterId: '',
+      lobbyStatus: 0,
+    };
+    render(<App />);
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem('rpg.studio.watching')).toBeNull()
+    );
+    expect(screen.getByText('Home View')).toBeTruthy();
   });
 
   it('a run that was not started by a watch resumes in the game as before', async () => {

@@ -264,19 +264,41 @@ describe('Stop watching leaves the run (rpg-project#1008)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('a second Watch a run leaves the first run before it starts the next', async () => {
+  it('a second Watch a run waits for the first run to be left before it starts the next', async () => {
     fakes.starts = ['run-1', 'run-2'];
     const onWatchStarted = vi.fn();
     mount({ onWatchStarted });
     await watchStarts();
     expect(fakes.exit).not.toHaveBeenCalled();
+    // The leave answers only when the test says so.
+    let answerExit!: () => void;
+    fakes.exit.mockImplementationOnce(
+      (request: { session: string }) =>
+        new Promise((resolve) => {
+          answerExit = () => {
+            fakes.order.push(`exit ${request.session}`);
+            resolve({});
+          };
+        })
+    );
     fireEvent.click(watchButton());
+    await waitFor(() =>
+      expect(fakes.exit).toHaveBeenCalledWith({
+        session: 'run-1',
+        member: HERO,
+      })
+    );
+    // Give a launch that did not wait every chance to start.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(fakes.startCalls).toBe(1);
+    await act(async () => answerExit());
     await waitFor(() =>
       expect(onWatchStarted).toHaveBeenLastCalledWith(
         expect.objectContaining({ session: 'run-2', member: HERO })
       )
     );
-    expect(fakes.exit).toHaveBeenCalledWith({ session: 'run-1', member: HERO });
     expect(fakes.order).toEqual(['start', 'exit run-1', 'start']);
   });
 
