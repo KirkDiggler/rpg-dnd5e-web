@@ -110,3 +110,55 @@ describe('StudioWatchTimeline', () => {
     expect(members()).toContain('gate-1');
   });
 });
+
+describe('StudioWatchTimeline: why you stopped (rpg-project#1011)', () => {
+  const held: RecordRow[] = [
+    ...rows,
+    row('8', 'move:5', 'barred', {
+      mover: 'hero',
+      barrier: 'gate-1',
+      cell: { x: 5, y: 0 },
+    }),
+    row('9', 'move:5', 'addressed', {
+      interaction: 'gate',
+      member: 'hero',
+      guard: 'gate-1',
+    }),
+  ];
+  function Held({ shown }: { shown: RecordRow[] }): React.JSX.Element {
+    const run = useRunFold(WATCH, draft, { rows: shown, notice: undefined });
+    return (
+      <StudioWatchTimeline
+        watch={WATCH}
+        run={run}
+        draft={draft}
+        names={new Map([['gate-1', 'Guard']])}
+        refusal="Guard holds the way."
+      />
+    );
+  }
+
+  it('says the stop, who held the way and who addressed whom; the next step clears it', () => {
+    const { rerender } = render(<Held shown={held} />);
+    const banner = screen.getByTestId('timeline-stop-banner');
+    expect(banner.textContent).toContain('Stopped: Guard holds the way.');
+    expect(banner.textContent).toContain('Guard (gate-1) blocks the way');
+    expect(banner.textContent).toContain('Guard (gate-1) addressed hero');
+    rerender(
+      <Held
+        shown={[
+          ...held,
+          row('10', 'move:6', 'moved', {
+            member: 'hero',
+            position: { x: 6, y: 0 },
+          }),
+        ]}
+      />
+    );
+    // The Live refusal is the caller's to clear on the next step; the
+    // record's lines belong to the step they were written in.
+    expect(
+      screen.getByTestId('timeline-stop-banner').textContent
+    ).not.toContain('blocks the way');
+  });
+});

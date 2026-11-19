@@ -2554,3 +2554,33 @@
   background: var(--wb-accent);
   pointer-events: none;
 }
+/* The operator's look (rpg-project#1011): the header, the step controls
+   and why the step stopped stay in view; the sections below scroll. */
+.es-watch .es-watch-fixed {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.es-watch-stop {
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+.es-watch .es-watch-trace > summary .es-watch-expand {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+}
+/* The trace, expanded: most of the screen, scrolling inside. */
+.es-dialog.es-dialog-trace {
+  width: 85vw;
+  height: 85vh;
+  max-height: 85vh;
+}
+.es-dialog-trace .es-dialog-trace-steps {
+  flex: none;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--wb-border, #33504d);
+}

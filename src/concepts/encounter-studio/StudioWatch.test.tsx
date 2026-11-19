@@ -9,7 +9,13 @@ import type {
   RecordFeedSnapshot,
   RecordRow,
 } from '@/components/session/recordFeed';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft } from '../world-building/roomDraft';
 import { castleMachinesReadBack } from './fixtures/engineReadBack';
@@ -347,5 +353,36 @@ describe('StudioWatch layout (rpg-project#1006)', () => {
     expect(onResize).toHaveBeenLastCalledWith(616);
     fireEvent.doubleClick(edge);
     expect(onResize).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('StudioWatch: the trace has room (rpg-project#1011)', () => {
+  it('Expand opens the trace with the step controls; Escape closes it and focus returns', () => {
+    render(<Harness selected="gate-1" />);
+    const expand = screen.getByTestId('watch-trace-expand');
+    expand.focus();
+    fireEvent.click(expand);
+    const dialog = screen.getByTestId('watch-trace-dialog');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.textContent).toContain('Back');
+    expect(screen.getByTestId('watch-trace-step').textContent).toContain(
+      'Live'
+    );
+    // The trace itself, inside the pop-up.
+    expect(within(dialog).getByLabelText('Filter by beat')).toBeTruthy();
+    expect(within(dialog).getByRole('list', { name: 'Record' })).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByTestId('watch-trace-dialog')).toBeNull();
+    expect(document.activeElement).toBe(expand);
+  });
+
+  it('the Back in the pop-up walks the run', () => {
+    render(<Harness selected="gate-1" />);
+    fireEvent.click(screen.getByTestId('watch-trace-expand'));
+    const dialog = screen.getByTestId('watch-trace-dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
+    expect(screen.getByTestId('watch-trace-step').textContent).not.toContain(
+      'Live'
+    );
   });
 });

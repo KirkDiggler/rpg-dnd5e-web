@@ -314,6 +314,11 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** WHILE WATCHING the inspector is closed so the map and the watch panel
+   * get its width (rpg-project#1011, the operator's look), and has its own
+   * open state: the author's own (`sidebarOpen`) is untouched, so it is
+   * back as it was when the watch ends. A watch starts with it closed. */
+  const [watchInspector, setWatchInspector] = useState(false);
   /** The inspector's width (rpg-project#979): the viewer's own, kept in the
    * browser, clamped to half the workspace as the window changes. */
   const [inspectorWidth, setInspectorWidth] = useState(
@@ -586,6 +591,13 @@ function StudioSurface({
       ? initialWatch
       : null
   );
+  const watching = watch !== null;
+  useEffect(() => setWatchInspector(false), [watching]);
+  const inspectorOpen = watching ? watchInspector : sidebarOpen;
+  const toggleInspector = (): void =>
+    watching
+      ? setWatchInspector((open) => !open)
+      : setSidebarOpen((open) => !open);
   /** A remembered watch of another draft is not drawn over this one; App
    * hears so once and falls back to Home (rpg-project#1008). */
   const lostWatch = useRef(watch === null ? initialWatch : null);
@@ -1234,7 +1246,7 @@ function StudioSurface({
       aria-label="Encounter Studio workspace"
       data-home={home}
       data-inspector={
-        !(spatial && sidebarOpen)
+        !(spatial && inspectorOpen)
           ? undefined
           : inspectorDocks(workspaceWidth, view)
             ? 'docked'
@@ -1746,10 +1758,10 @@ function StudioSurface({
           {spatial && (
             <button
               type="button"
-              aria-expanded={sidebarOpen}
+              aria-expanded={inspectorOpen}
               aria-controls="studio-sidebar"
               aria-keyshortcuts="N"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              onClick={toggleInspector}
             >
               Inspector (N)
             </button>
@@ -1852,10 +1864,10 @@ function StudioSurface({
         </div>
         <div className="es-context-layer">
           <StudioSidebar
-            open={spatial && sidebarOpen}
+            open={spatial && inspectorOpen}
             section={section}
             onSectionChange={changeSection}
-            onToggle={() => setSidebarOpen((open) => !open)}
+            onToggle={toggleInspector}
             keyboardEnabled={spatial}
             compact={home === 'build'}
             resize={
@@ -2047,6 +2059,7 @@ function StudioSurface({
                     run={run}
                     draft={session.document.draft}
                     names={watchNames}
+                    refusal={studioStep.refusal}
                   />
                 )}
                 <LayoutFooter draft={session.document.draft} />

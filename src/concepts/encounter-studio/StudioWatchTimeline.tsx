@@ -26,6 +26,8 @@ import {
   type TimelineCell,
 } from './runTimeline';
 import type { RunWatch, WatchedRun } from './runWatch';
+import { stopLinesOf } from './watchStop';
+import { WatchStopBanner } from './WatchStopBanner';
 
 /** One step's width in px. */
 export const TIMELINE_CELL = 72;
@@ -35,13 +37,23 @@ export function StudioWatchTimeline({
   run,
   draft,
   names,
+  refusal,
 }: {
+  /** The Live step's own refusal or stop sentence (the Move answer). */
+  refusal?: string | null;
   watch: WatchedRun;
-  run: Pick<RunWatch, 'feed' | 'step' | 'setStep' | 'selected' | 'setSelected'>;
+  run: Pick<
+    RunWatch,
+    'feed' | 'step' | 'setStep' | 'selected' | 'setSelected' | 'from' | 'upTo'
+  >;
   draft: Readonly<RoomDraft>;
   names?: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   const { feed, step, setStep, selected, setSelected } = run;
+  const stops = useMemo(
+    () => stopLinesOf(feed.rows, run.from, run.upTo, names),
+    [feed.rows, run.from, run.upTo, names]
+  );
   const start = useMemo(
     () => ({
       creatures: draft.room.monsterDeclarations.map((m) => ({
@@ -121,6 +133,11 @@ export function StudioWatchTimeline({
           Band: machine state · mark: what it did · solid edge: state changed ·
           dashed edge: what it did changed
         </span>
+        <WatchStopBanner
+          refusal={step === null ? refusal : null}
+          lines={stops}
+          testId="timeline-stop-banner"
+        />
         {agedOut && (
           <span
             className="es-help"
