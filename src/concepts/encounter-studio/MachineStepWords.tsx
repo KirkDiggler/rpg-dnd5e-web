@@ -30,7 +30,7 @@ import {
   startingValue,
   whenOfRows,
   whenShapeOf,
-  withArg,
+  withArgAndDependents,
   withNegated,
   type ArgKind,
   type StepChoices,
@@ -96,12 +96,16 @@ function CommitInput({
   onCommit(text: string): void;
 }) {
   const [text, setText] = useState(value);
+  // A number input commits only a whole number: a cleared or fractional
+  // field keeps the document's value and shows as invalid until fixed.
+  const valid = type !== 'number' || /^-?\d+$/.test(text.trim());
   const commit = () => {
-    if (text.trim() !== value) onCommit(text.trim());
+    if (valid && text.trim() !== value) onCommit(text.trim());
   };
   return (
     <input
       aria-label={label}
+      aria-invalid={!valid || undefined}
       type={type}
       value={text}
       list={list}
@@ -417,7 +421,7 @@ export function StepConditions({
     );
   const nodes = shape.rows.map((r) => r.node);
   const write = (next: unknown[]) =>
-    onStep(withStepWhen(step, whenOfRows(shape.form, next)));
+    onStep(withStepWhen(step, whenOfRows(shape.form, next, shape.rows.length)));
   const setRow = (i: number, node: unknown) =>
     write(nodes.map((n, k) => (k === i ? node : n)));
   const leaves = leafWordsOf(words);
@@ -498,7 +502,13 @@ export function StepConditions({
                     setRow(
                       i,
                       withNegated(
-                        withArg(row.word, row.leaf, arg, value),
+                        withArgAndDependents(
+                          row.word,
+                          row.leaf,
+                          arg,
+                          value,
+                          choices
+                        ),
                         row.negated
                       )
                     )
@@ -625,7 +635,9 @@ export function StepActs({
                     onSet={(value) =>
                       write(
                         acts.map((a, k) =>
-                          k === row.index ? withArg(word, a, arg, value) : a
+                          k === row.index
+                            ? withArgAndDependents(word, a, arg, value, choices)
+                            : a
                         )
                       )
                     }

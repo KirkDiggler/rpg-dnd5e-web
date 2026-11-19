@@ -21,7 +21,14 @@ import {
   machineWordsV225,
 } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
-import { stepRefusalsOf } from './machineEdit';
+import {
+  definitionOf,
+  setBehaviorDefinition,
+  stepRefusalsOf,
+  transitionsOf,
+  withTransitions,
+  type Node,
+} from './machineEdit';
 import { STUDIO_ROOT } from './MachineStateEdit';
 import { RevealProvider } from './reveal';
 import { StudioBehaviours } from './StudioBehaviours';
@@ -32,9 +39,19 @@ const GATE = 'gate-1-policy';
 const AT = `behaviorDefinitions.${GATE}.recipe.states`;
 const NOWHERE = 'to "nowhere-at-all" is not a state of the recipe';
 
-function studio(refusals: { path: string; message: string }[], words = true) {
+function studio(
+  refusals: { path: string; message: string }[],
+  words = true,
+  edit?: (definition: Node) => Node
+) {
   const read = readDraftYaml(served);
   if (!read.ok) throw new Error(read.refusal);
+  if (edit)
+    read.scope = setBehaviorDefinition(
+      read.scope,
+      GATE,
+      edit(definitionOf(read.scope, GATE)!)
+    );
   render(
     <div className={STUDIO_ROOT}>
       <RevealProvider>
@@ -219,5 +236,33 @@ describe('marked from an arrow', () => {
     expect(
       within(revealed).getByLabelText<HTMLSelectElement>(/^What fires/).value
     ).toBe('barred');
+  });
+});
+
+describe('the drawing is the last that compiled', () => {
+  it('after an earlier step is removed, the refusal marks the box, not the arrow now at that index', () => {
+    // alert without its first step: the current alert[3] is the time →
+    // posted step, which the drawing has at alert[4]; the drawing's
+    // alert[3] is barred → challenged.
+    studio(
+      [
+        {
+          path: `${AT}.alert.transitions[3].when.rounds`,
+          message: 'bad rounds',
+        },
+      ],
+      true,
+      (d) => withTransitions(d, 'alert', transitionsOf(d, 'alert').slice(1))
+    );
+    expect(arrowOf('alert', 'barred').hasAttribute('data-refused')).toBe(false);
+    expect(boxOf('alert').hasAttribute('data-refused')).toBe(true);
+    expect(boxOf('alert').querySelector('title')!.textContent).toContain(
+      'Refused: bad rounds'
+    );
+    openEdit('alert');
+    expect(
+      screen.getByLabelText('alert step 4 condition 1').closest('li')!
+        .textContent
+    ).toContain('Refused: bad rounds');
   });
 });

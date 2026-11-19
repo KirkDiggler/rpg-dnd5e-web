@@ -39,6 +39,7 @@ import {
   statesOf,
   stepRefusalsOf,
   transitionPath,
+  transitionsOf,
 } from './machineEdit';
 import {
   boxName,
@@ -175,8 +176,26 @@ export function StudioBehaviours({
   if (machine && focus)
     for (const r of stepRefusals) {
       const path = transitionPath(focus, r.state, r.index);
+      // The drawing is the last read-back that compiled; the refusal's
+      // index is the current text's. The arrow is marked only while the
+      // drawn step at that path is still the document's (same beat, same
+      // target); else the state's box is.
+      const written = definition
+        ? (transitionsOf(definition, r.state)[r.index] as
+            | { on?: unknown; to?: unknown }
+            | undefined)
+        : undefined;
       const piece = machine.layout.pieces.find((p) =>
-        p.steps.some((step) => step.statement.path === path)
+        p.steps.some(
+          (step) =>
+            step.statement.path === path &&
+            written !== undefined &&
+            step.beat === written.on &&
+            step.to ===
+              (typeof written.to === 'string' && written.to !== r.state
+                ? written.to
+                : null)
+        )
       );
       const box = machine.layout.boxes.find((b) => b.state.id === r.state);
       const id = piece?.id ?? box?.id;

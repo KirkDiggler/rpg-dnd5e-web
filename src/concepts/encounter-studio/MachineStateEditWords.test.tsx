@@ -174,8 +174,9 @@ describe('a flat condition is edited row by row', () => {
     fireEvent.click(
       screen.getByRole('button', { name: `Remove ${ROUNDS} condition 1` })
     );
+    // Back to one condition: written bare.
     expect(step(4).when).toEqual({
-      all: [{ fact: expect.objectContaining({ op: 'eq' }) }],
+      fact: expect.objectContaining({ op: 'eq' }),
     });
   });
 
@@ -355,5 +356,59 @@ describe('each step is a card', () => {
     expect(summary.textContent).toContain('time passes');
     expect(summary.textContent).toContain('3 rounds');
     expect(summary.textContent).toContain('→ posted');
+  });
+});
+
+describe('review fixes', () => {
+  it('a cleared or fractional number keeps the document’s value and shows invalid', () => {
+    const { commits } = edit(WORDS);
+    const n = screen.getByLabelText<HTMLInputElement>(
+      `${ROUNDS} condition 1 n`
+    );
+    fireEvent.change(n, { target: { value: '' } });
+    fireEvent.blur(n);
+    expect(n.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.change(n, { target: { value: '2.5' } });
+    fireEvent.blur(n);
+    expect(commits).toEqual([]);
+    fireEvent.change(n, { target: { value: '4' } });
+    fireEvent.blur(n);
+    expect(n.hasAttribute('aria-invalid')).toBe(false);
+    expect((transitionsOf(commits.at(-1)!, 'alert')[4] as Node).when).toEqual({
+      rounds: { op: 'gte', n: 4 },
+    });
+  });
+
+  it('a set whose flag changes takes the new flag’s starting value', () => {
+    const start = gate();
+    const recipe = start.recipe as Node;
+    const { step } = edit(WORDS, 'alert', {
+      ...start,
+      recipe: { ...recipe, bag: { alarmed: false, count: 0 } },
+    });
+    fireEvent.change(select(`Add an act to ${BARRED}`), {
+      target: { value: 'set' },
+    });
+    expect((step(3).do as Node[])[2]).toEqual({
+      set: { key: 'alarmed', value: true },
+    });
+    fireEvent.change(select(`${BARRED} act 2 id`), {
+      target: { value: 'count' },
+    });
+    expect((step(3).do as Node[])[2]).toEqual({
+      set: { key: 'count', value: 0 },
+    });
+  });
+
+  it('removing back to one condition writes the bare condition', () => {
+    const { step } = edit(WORDS);
+    fireEvent.change(select(`Add a condition to ${ROUNDS}`), {
+      target: { value: 'fact:' },
+    });
+    expect(step(4).when).toHaveProperty('all');
+    fireEvent.click(
+      screen.getByRole('button', { name: `Remove ${ROUNDS} condition 2` })
+    );
+    expect(step(4).when).toEqual({ rounds: { op: 'gte', n: 3 } });
   });
 });

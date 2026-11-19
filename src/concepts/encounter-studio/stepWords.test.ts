@@ -411,3 +411,15 @@ describe('a made-up word works with no code of its own', () => {
     expect(actRowsOf(words, [act], -1)[0]!.word?.word).toBe('shout');
   });
 });
+
+describe('one condition is written bare, unless the file wrote all of one', () => {
+  const x = { rounds: { op: 'gte', n: 3 } };
+  const y = { scope: { within: 2 } };
+  it('the rule', () => {
+    expect(whenOfRows('one', [x])).toBe(x);
+    expect(whenOfRows('all', [x], 2)).toBe(x);
+    expect(whenOfRows('all', [x], 1)).toEqual({ all: [x] });
+    expect(whenOfRows('one', [x, y])).toEqual({ all: [x, y] });
+    expect(whenOfRows('all', [], 1)).toBeUndefined();
+  });
+});

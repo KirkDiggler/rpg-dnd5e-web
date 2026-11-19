@@ -328,15 +328,52 @@ export function whenShapeOf(words: MachineWords, when: unknown): WhenShape {
   return { kind: 'flat', form: nodes ? 'all' : 'one', rows };
 }
 
-/** A flat `when` written back from its rows' nodes: none when empty; one
- * node as one node unless the file wrote an `all`; else an `all`. */
+/** A flat `when` written back from its rows' nodes: none when empty; two
+ * or more as an `all`; one as the bare node, unless the file wrote it as an
+ * `all` of one (`was` is how many nodes the file wrote) and the count has
+ * not changed, so an untouched `all: [x]` keeps its bytes. */
 export function whenOfRows(
   form: 'none' | 'one' | 'all',
-  nodes: readonly unknown[]
+  nodes: readonly unknown[],
+  was = form === 'all' ? -1 : nodes.length
 ): unknown {
   if (nodes.length === 0) return undefined;
-  if (form !== 'all' && nodes.length === 1) return nodes[0];
+  if (nodes.length === 1 && !(form === 'all' && was === 1)) return nodes[0];
   return { [ALL]: [...nodes] };
+}
+
+/** The node with `arg` set, and every input whose kind is that arg's thing
+ * (`kind_of`, the value of a `set` whose flag it names) reset to that
+ * thing's starting value when the thing changed: a value of the old flag's
+ * kind would be refused. Unknown start: the value is cleared to its kind's
+ * plain value. */
+export function withArgAndDependents(
+  word: StepWord,
+  node: unknown,
+  arg: MachineArg,
+  value: unknown,
+  choices: Pick<StepChoices, 'flagKind' | 'flagStart'>
+): Node {
+  let next = withArg(word, node, arg, value);
+  if (argValue(word, node, arg) === value) return next;
+  for (const dep of word.args.filter((a) => a.kindOf === arg.name)) {
+    const named = typeof value === 'string' ? value : '';
+    const start = choices.flagStart(named);
+    const kind = kindOfArg(word, dep, next, choices.flagKind);
+    next = withArg(
+      word,
+      next,
+      dep,
+      start !== undefined
+        ? start
+        : kind === 'int'
+          ? 0
+          : kind === 'bool'
+            ? false
+            : ''
+    );
+  }
+  return next;
 }
 
 /** A row's node with its polarity set: the leaf, or `not` over it. */
@@ -406,6 +443,8 @@ export interface StepChoices {
   of(arg: MachineArg): { options: string[]; closed: boolean } | null;
   /** The kind a flag of this machine is declared with, or null. */
   flagKind(flag: string): ArgKind | null;
+  /** The value a flag of this machine starts as, or undefined. */
+  flagStart(flag: string): unknown;
   /** The machine declares flags (its bag, or the engine's `routine.flag`). */
   hasFlags: boolean;
 }
@@ -474,6 +513,16 @@ export function stepChoicesOf(
         return kindOfValue(JSON.parse(literal));
       } catch {
         return null;
+      }
+    },
+    flagStart(flag) {
+      if (Object.hasOwn(bagged, flag)) return bagged[flag];
+      const literal = declared.get(flag);
+      if (literal === undefined) return undefined;
+      try {
+        return JSON.parse(literal) as unknown;
+      } catch {
+        return undefined;
       }
     },
     hasFlags: flags.length > 0,

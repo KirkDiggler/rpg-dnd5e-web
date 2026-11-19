@@ -21,6 +21,8 @@ Slice [rpg-project#1018](https://github.com/KirkDiggler/rpg-project/issues/1018)
 - With no words the editor keeps `STATE_BEATS` as its fallback list; the constant's other user is the states dialect parser in `world-building/creatureStates.ts` — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 - A refused edit stays committed, as before; the drawing is the last read-back that compiled, so a refusal of a step it does not draw marks its state's box — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 
+- From the review of `86062dc8`: a refused step marks its arrow only while the drawn step at that path has the document's beat and target, else its state's box; step marks wait while a check is out; a number input commits only a whole number; a `set` whose flag changes takes that flag's starting value; one condition is written bare unless the file wrote `all` of one and the count is unchanged — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463#pullrequestreview-5975560358).
+
 ## Found
 
 - Beat words carry `written.part = on` and their open part's arg says `goes: open` with no `field`; the beat's own spelling is `on`'s value, which the arg contract does not name — [proto v0.1.282 MachineWritten](https://github.com/KirkDiggler/rpg-api-protos/blob/v0.1.282/dnd5e/api/authoring/v1alpha1/service.proto).
@@ -28,6 +30,8 @@ Slice [rpg-project#1018](https://github.com/KirkDiggler/rpg-project/issues/1018)
 - A label template for a dropdown has no slot-free form for open words (`{id} is done`); the editor shows the slot as "…" — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 
 ## Mistaken
+
+- The refusal marks matched the last compiled drawing by step index alone, so after removing an earlier step the wrong arrow was marked; no test removed a step before refusing one; the reviewer's probe is now a test (mutant fails) — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463#pullrequestreview-5975560358).
 
 - The first cut repeated "This machine declares no flags" under every step and made each step three rows tall, so the pane showed two steps; seen on the live stack by the lead, not by a test — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 
