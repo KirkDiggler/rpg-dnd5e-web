@@ -8,7 +8,12 @@
  *
  *   {"schema":1,"kind":"run","format":1,"saved_at":…,"session":…,
  *    "member":…,"member_name":…,"dungeon":{"key":…,"name":…},
- *    "snapshot":{…}}
+ *    "snapshot":{…},"scene_content":{…}}
+ *
+ * `scene_content` (rpg-project#1017) is the run's own identity, copied from
+ * its record's `scene_content` beat in the record's field names; absent for
+ * a run recorded before the beat (and in every file saved before this
+ * slice, which open exactly as before: format 1 still).
  *
  * The SNAPSHOT is what drawing the run needs besides its beats, as the
  * draft said it when the run was saved: every creature's id, name,
@@ -41,6 +46,12 @@ import type { GetRecordResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e
 import type { RoomDraft } from '../world-building/roomDraft';
 import type { RoomHexCell } from '../world-building/workspaceGeometry';
 import { machineOf } from './machineView';
+import {
+  identityJson,
+  identityOfJson,
+  runIdentityOf,
+  type RunIdentity,
+} from './runIdentity';
 import type { RunDraft } from './runWatch';
 
 /** The header's own version: a reader refuses a format it does not know. */
@@ -79,6 +90,9 @@ export interface SavedRunHeader {
   snapshot: SavedRunSnapshot;
   /** Why the file does not hold the whole run; absent when it does. */
   incomplete?: string;
+  /** The run's `scene_content` (rpg-project#1017); absent when its record
+   * carries none. */
+  run?: RunIdentity;
 }
 
 /** A saved run, opened: the header when the file has one (a raw server
@@ -263,6 +277,7 @@ function headerJson(header: SavedRunHeader): Record<string, unknown> {
       layout_hash: s.layoutHash,
       read_back: s.readBack ? toJson(ReadBackSchema, s.readBack) : null,
     },
+    ...(header.run ? { scene_content: identityJson(header.run) } : {}),
   };
 }
 
@@ -341,6 +356,35 @@ export function savedRunFile(
   };
 }
 
+/** The run's identity from the events a save read: their first
+ * `scene_content` beat, or undefined. */
+export function identityOfEvents(
+  events: readonly RecordEvent[]
+): RunIdentity | undefined {
+  const decoder = new TextDecoder();
+  for (const event of events) {
+    if (event.beat !== 'scene_content') continue;
+    try {
+      const fields: unknown = JSON.parse(decoder.decode(event.fieldsJson));
+      if (isRecordObject(fields))
+        return (
+          runIdentityOf([
+            {
+              id: event.id,
+              at: event.at,
+              act: event.act,
+              beat: event.beat,
+              fields,
+            },
+          ]) ?? undefined
+        );
+    } catch {
+      // Unreadable fields name nothing.
+    }
+  }
+  return undefined;
+}
+
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const cellOf = (v: unknown): RoomHexCell | undefined =>
   isRecordObject(v) && typeof v.q === 'number' && typeof v.r === 'number'
@@ -366,6 +410,9 @@ export function headerOf(raw: Record<string, unknown>): SavedRunHeader {
     ...(str(raw.member_name) ? { memberName: str(raw.member_name) } : {}),
     dungeon: { key: str(dungeon.key), name: str(dungeon.name) },
     ...(str(raw.incomplete) ? { incomplete: str(raw.incomplete) } : {}),
+    ...(isRecordObject(raw.scene_content)
+      ? { run: identityOfJson(raw.scene_content) }
+      : {}),
     snapshot: {
       creatures: creatures.flatMap((c) => {
         if (!isRecordObject(c)) return [];
