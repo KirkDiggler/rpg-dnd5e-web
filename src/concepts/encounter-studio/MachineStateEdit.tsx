@@ -16,13 +16,15 @@
  * refusals show where they show today.
  */
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AnswerEntryShape } from '../world-building/answerTableShape';
 import { isUseEntry } from '../world-building/answerTableShape';
 import { STATE_BEATS } from '../world-building/creatureStates';
 import { AnswerEntryRow, EntryList } from '../world-building/SitePolicies';
 import {
+  firstPickAt,
+  machineStepKey,
   newNameRefusal,
   newStep,
   statesOf,
@@ -40,8 +42,19 @@ import {
   withTableRows,
   withTransitions,
   type Node,
+  type StepRefusal,
 } from './machineEdit';
+import {
+  BeatField,
+  Refused,
+  StepActs,
+  StepConditions,
+} from './MachineStepWords';
+import { beatLabel, machineOf, stayLabel } from './machineView';
+import type { MachineWords } from './machineWords';
 import type { RefusalTarget } from './refusalJump';
+import { RevealLi } from './RevealDiv';
+import { stepChoicesOf } from './stepWords';
 
 /** The studio root's class: its control and font styles are scoped under
  * it, so the pop-up is rendered inside it (encounterStudio.css). */
@@ -52,6 +65,10 @@ const PANEL = 'wb-panel';
 /** One edit of a behaviour definition, run on the document's own copy. */
 export type DefinitionEdit = (definition: Node) => Node;
 const STAYS = '';
+const stepNode = (step: unknown): Node =>
+  step !== null && typeof step === 'object' && !Array.isArray(step)
+    ? (step as Node)
+    : {};
 const NONE = '';
 /** A new row, as the Bundles page makes one. */
 const NEW_ROW: AnswerEntryShape = { when: { enemy: 'none' }, hold: {} };
@@ -74,6 +91,8 @@ export function MachineStateEdit({
   readBackIsCurrent,
   onCommit,
   onJump,
+  words = null,
+  refusals = [],
 }: {
   routine: string;
   state: string;
@@ -86,7 +105,22 @@ export function MachineStateEdit({
    * rejected edit is. */
   onCommit(edit: DefinitionEdit): boolean;
   onJump?(target: RefusalTarget): void;
+  /** The engine's machine words (`useMachineWords`): with them the step's
+   * beat, condition and acts are offered and written from the table
+   * (rpg-project#1018); without them the editor is as before. */
+  words?: MachineWords | null;
+  /** The engine's refusals of this state's steps (rpg-project#1018): each
+   * is shown on its step's row, on the condition or act it names where
+   * the row shows one. */
+  refusals?: readonly StepRefusal[];
 }): React.JSX.Element {
+  const choices = words ? stepChoicesOf(definition, readBack, routine) : null;
+  // The drawn machine, for each card's one-line summary; only while the
+  // read-back is this draft's, so a step's index still names it.
+  const view = useMemo(
+    () => (readBack && readBackIsCurrent ? machineOf(readBack, routine) : null),
+    [readBack, readBackIsCurrent, routine]
+  );
   const steps = transitionsOf(definition, state);
   const states = statesOf(definition);
   const lists = tableKeysOf(definition);
@@ -118,25 +152,83 @@ export function MachineStateEdit({
           const sentence = readBackIsCurrent
             ? sentenceAt(readBack, transitionPath(routine, state, index))
             : undefined;
+          const refusedHere = refusals.filter((r) => r.index === index);
+          // Its one line in the engine's words, as its arrow or box line
+          // says it, so the card is found from the drawing.
+          const drawn = view?.steps.find(
+            (st) => st.statement.path === transitionPath(routine, state, index)
+          );
+          const summary = drawn
+            ? drawn.to !== null
+              ? `${beatLabel(drawn, words)} → ${drawn.to}`
+              : stayLabel(drawn, words)
+            : null;
+          // A refusal the row shows no part for (the step itself, its beat,
+          // its target, its pick; or any, without words) is said on the row.
+          const pickAt = firstPickAt(
+            Array.isArray(stepNode(raw).do)
+              ? (stepNode(raw).do as unknown[])
+              : []
+          );
+          const stepLevel = refusedHere.filter((r) => {
+            if (!words) return true;
+            if (r.rest === '.when' || r.rest.startsWith('.when.')) return false;
+            const act = /^\.do\[(\d+)\]/.exec(r.rest);
+            return !act || Number(act[1]) === pickAt;
+          });
           return (
-            <li key={index} className="es-machine-step" data-step={index}>
-              <label>
-                <span>On</span>
-                <select
-                  aria-label={`What fires ${name}`}
-                  value={step.on}
-                  onChange={(e) =>
-                    setStep(index, withStepOn(raw, e.target.value))
+            <RevealLi
+              key={index}
+              revealKey={machineStepKey(routine, state, index)}
+              className="es-machine-step"
+              data-step={index}
+              data-refused={refusedHere.length ? '' : undefined}
+            >
+              <div className="es-machine-step-head">
+                <span className="es-machine-step-name">Step {index + 1}</span>
+                {summary && (
+                  <span className="es-machine-step-summary" data-summary="">
+                    {summary}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="wb-danger"
+                  aria-label={`Remove ${name}`}
+                  onClick={() =>
+                    setSteps((all) => all.filter((_, i) => i !== index))
                   }
                 >
-                  {step.on === '' && <option value="">(none)</option>}
-                  {beats.map((beat) => (
-                    <option key={beat} value={beat}>
-                      {beat}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  Remove step
+                </button>
+              </div>
+              {words && choices ? (
+                <BeatField
+                  words={words}
+                  on={step.on}
+                  name={name}
+                  choices={choices}
+                  onChange={(on) => setStep(index, withStepOn(raw, on))}
+                />
+              ) : (
+                <label>
+                  <span>On</span>
+                  <select
+                    aria-label={`What fires ${name}`}
+                    value={step.on}
+                    onChange={(e) =>
+                      setStep(index, withStepOn(raw, e.target.value))
+                    }
+                  >
+                    {step.on === '' && <option value="">(none)</option>}
+                    {beats.map((beat) => (
+                      <option key={beat} value={beat}>
+                        {beat}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <span>Then</span>
                 <select
@@ -204,25 +296,65 @@ export function MachineStateEdit({
                   setStep(index, withStepReason(raw, reason))
                 }
               />
-              <button
-                type="button"
-                className="wb-danger"
-                aria-label={`Remove ${name}`}
-                onClick={() =>
-                  setSteps((all) => all.filter((_, i) => i !== index))
-                }
-              >
-                Remove
-              </button>
-              {kept && (
-                <p className="es-help es-machine-kept" data-kept="">
-                  Kept as written: {step.guarded ? 'its condition' : ''}
-                  {step.guarded && step.otherActs > 0 ? ' and ' : ''}
-                  {step.otherActs > 0 ? 'its other acts' : ''}.{' '}
-                  {sentence ?? 'The engine says it once the file is checked.'}
-                </p>
+              {words && choices && (
+                <span className="es-machine-adds">
+                  <StepConditions
+                    show="add"
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    sentence={sentence}
+                    choices={choices}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                  <StepActs
+                    show="add"
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    choices={choices}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                </span>
               )}
-            </li>
+              {words && choices ? (
+                <>
+                  <StepConditions
+                    show="rows"
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    sentence={sentence}
+                    choices={choices}
+                    refusals={refusedHere}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                  <StepActs
+                    show="rows"
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    choices={choices}
+                    refusals={refusedHere}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                </>
+              ) : (
+                kept && (
+                  <p className="es-help es-machine-kept" data-kept="">
+                    Kept as written: {step.guarded ? 'its condition' : ''}
+                    {step.guarded && step.otherActs > 0 ? ' and ' : ''}
+                    {step.otherActs > 0 ? 'its other acts' : ''}.{' '}
+                    {sentence ?? 'The engine says it once the file is checked.'}
+                  </p>
+                )
+              )}
+              <Refused list={stepLevel} />
+            </RevealLi>
           );
         })}
       </ol>
@@ -230,7 +362,12 @@ export function MachineStateEdit({
         <button
           type="button"
           className="es-machine-add-step"
-          onClick={() => setSteps((all) => [...all, newStep(STATE_BEATS[0])])}
+          onClick={() =>
+            setSteps((all) => [
+              ...all,
+              newStep(words?.beats[0]?.word ?? STATE_BEATS[0]),
+            ])
+          }
         >
           Add a step
         </button>
