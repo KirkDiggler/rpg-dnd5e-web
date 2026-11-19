@@ -17,8 +17,22 @@
  * player's sight is still here. The filtered act stream players receive is
  * not read and not widened.
  *
- * WHERE A CREATURE BEGINS is the draft's placement (`startingCell`), since
- * `joined` carries no cell; the party begins at the draft's party start.
+ * WHERE A MEMBER BEGINS is the record's own `joined_at` beat
+ * (rpg-project#1017; rpg-toolkit encounter `BeatJoinedAt`, {member, cell}):
+ * one per member seated at setup, written right after `scene_content`, and
+ * one right after each later `joined`, so a late joiner appears when it
+ * joins. Its `cell` is the same canvas `spatial.Position` a `moved` beat's
+ * `position` is. A reserve enters through `arrived` {id, kind, cell}
+ * (reserve.go `appendArrivedBeat`), with no `joined_at`.
+ *
+ * A record that carries `scene_content` comes from an engine that writes
+ * `joined_at` (the beat is written first, before every setup `joined_at`),
+ * so the RECORD places everyone: a member is on the map only from its
+ * `joined_at` or `arrived`, and a reserve or a joiner not yet arrived is not
+ * drawn at all. Only a record with no `scene_content` (an older engine, or a
+ * capture that starts mid-run) begins each member the record does not place
+ * where the draft (or a saved run's snapshot) placed it, as before: a
+ * creature at its `startingCell`, the party at the party start.
  *
  * ONE CELL CONVERSION (`studioCellOf`): the record's `{x, y}` is the
  * dungeon-absolute axial cell (the toolkit's `HexCellAt` output; the
@@ -41,7 +55,8 @@ export function studioCellOf(position: unknown): RoomHexCell | null {
 }
 
 export interface RunStart {
-  /** The draft's creatures and their starting cells. */
+  /** The draft's creatures and their starting cells: where a creature the
+   * record writes no `joined_at` for begins. */
   creatures: readonly { id: string; cell: RoomHexCell }[];
   /** The draft's party start, where a joined player begins. */
   partyStart?: RoomHexCell;
@@ -183,6 +198,12 @@ export function foldRun(
   upTo: number = rows.length
 ): RunView {
   const party = partyOf(rows, start.self);
+  /** Members the record itself places (`joined_at`, anywhere in the run):
+   * none of them takes the draft's cell; each appears at its own beat. */
+  const placed = placedByRecord(rows);
+  /** A record with `scene_content` places everyone: no draft cell at all. */
+  const recordPlaces = rows.some((row) => row.beat === 'scene_content');
+  const fromDraft = (id: string): boolean => !recordPlaces && !placed.has(id);
   /** `fromBeat`: the state came from a `state` beat, which a later
    * decision's roles never overwrite. */
   type Folding = RunMember & { fromBeat?: boolean };
@@ -193,7 +214,9 @@ export function foldRun(
       m = {
         id,
         cell:
-          party.has(id) && start.partyStart ? { ...start.partyStart } : null,
+          party.has(id) && start.partyStart && fromDraft(id)
+            ? { ...start.partyStart }
+            : null,
         party: party.has(id),
         roles: {},
       };
@@ -201,13 +224,17 @@ export function foldRun(
     }
     return m;
   };
-  for (const creature of start.creatures)
+  for (const creature of start.creatures) {
+    if (!fromDraft(creature.id)) continue;
     members.set(creature.id, {
       id: creature.id,
       cell: { ...creature.cell },
       party: false,
       roles: {},
     });
+  }
+  // The watched seat is a party member from the start; when the record
+  // places it, it is drawn from its `joined_at` on.
   if (start.self) member(start.self);
 
   const limit = Math.max(0, Math.min(upTo, rows.length));
@@ -219,6 +246,14 @@ export function foldRun(
       case 'joined': {
         const id = str(f.member);
         if (id) member(id);
+        break;
+      }
+      case 'joined_at': {
+        // rpg-toolkit encounter `BeatJoinedAt`: {member, cell}, the cell in
+        // the frame `moved` writes.
+        const id = str(f.member);
+        const cell = studioCellOf(f.cell);
+        if (id && cell) member(id).cell = cell;
         break;
       }
       case 'moved': {
@@ -323,6 +358,17 @@ export function foldRun(
     out[id] = plain;
   }
   return { members: out, steps: stepsOf(rows, start.self) };
+}
+
+/** Every member a `joined_at` beat places. */
+function placedByRecord(rows: readonly RecordRow[]): Set<string> {
+  const placed = new Set<string>();
+  for (const row of rows) {
+    if (row.beat !== 'joined_at' || !row.fields) continue;
+    const id = str(row.fields.member);
+    if (id && studioCellOf(row.fields.cell)) placed.add(id);
+  }
+  return placed;
 }
 
 const strings = (v: unknown): string[] =>

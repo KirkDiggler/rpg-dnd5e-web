@@ -147,11 +147,14 @@ function kindParts(kind: string): { base: string; instance: string }[] {
 
 /**
  * Whether two steps' kinds are the same kind of doing: the same `word
- * selector` parts, and the same role where BOTH carry one. The toolkit
- * writes an inline `behavior_decision.selection` from the pick before it is
- * qualified (behavior_trace.go, `appendPickBeat` qualifies only its own
- * copy), so a suppressed repeat hold reads `hold` beside the `answered`
- * `hold (duty)` the step before; that is the same hold, not a change.
+ * selector` parts, and the same role where BOTH carry one. An engine
+ * before rpg-project#1001 item 11 wrote the inline
+ * `behavior_decision.selection` from the pick before it was qualified, so a
+ * suppressed repeat hold reads `hold` beside the `answered` `hold (duty)`
+ * the step before; that is the same hold, not a change. A newer engine
+ * qualifies both, and they compare as equal strings do. The one-sided
+ * match STAYS for the runs saved before (rpg-project#1017): without it an
+ * old saved run would show a change at every repeated hold.
  */
 export function sameKind(a: string, b: string): boolean {
   const left = kindParts(a);
