@@ -93,8 +93,13 @@ function idsOf(items: readonly Json[]): (string | number)[] | null {
  * Which old item each new item is, as `[oldIndex, newIndex]` pairs in new
  * order: by `id` when both lists carry unique ids, else by the longest common
  * subsequence of equal items, with the items between two matches paired in
- * order (an edited item between two unchanged ones is the same item). An old
- * item in no pair was removed; a new item in no pair was added.
+ * order (an edited item between two unchanged ones is the same item). Before
+ * that in-order pairing, a new item outside the common order that equals an
+ * old one outside it is that item, moved (rpg-project#998: a swap matches
+ * only one of the two rows in common order; the other only moved, and keeps
+ * its own text). Without ids, a row that moved AND changed in one write is
+ * read as one removed and one added. An old item in no pair was removed; a
+ * new item in no pair was added.
  */
 export function alignItems(
   base: readonly Json[],
@@ -124,15 +129,33 @@ export function alignItems(
     else if (lcs[i + 1][j] >= lcs[i][j + 1]) i++;
     else j++;
   }
-  const pairs: [number, number][] = [];
+  // An item outside the common order that equals one on the other side
+  // only moved (rpg-project#998). Paired first, so the in-order pairing of
+  // the items left between two matches never reads a move as an edit.
+  const usedOld = new Set(anchors.map(([i]) => i));
+  const usedNew = new Set(anchors.map(([, j]) => j));
+  const pairs: [number, number][] = [...anchors];
+  for (let j = 0; j < m; j++) {
+    if (usedNew.has(j)) continue;
+    for (let i = 0; i < n; i++)
+      if (!usedOld.has(i) && sameValue(base[i], current[j])) {
+        usedOld.add(i);
+        usedNew.add(j);
+        pairs.push([i, j]);
+        break;
+      }
+  }
   let [pi, pj] = [0, 0];
   for (const [ai, aj] of [...anchors, [n, m] as [number, number]]) {
-    for (let k = 0; k < Math.min(ai - pi, aj - pj); k++)
-      pairs.push([pi + k, pj + k]);
-    if (ai < n) pairs.push([ai, aj]);
+    const olds: number[] = [];
+    const news: number[] = [];
+    for (let i = pi; i < ai; i++) if (!usedOld.has(i)) olds.push(i);
+    for (let j = pj; j < aj; j++) if (!usedNew.has(j)) news.push(j);
+    for (let k = 0; k < Math.min(olds.length, news.length); k++)
+      pairs.push([olds[k], news[k]]);
     [pi, pj] = [ai + 1, aj + 1];
   }
-  return pairs;
+  return pairs.sort((x, y) => x[1] - y[1]);
 }
 
 /** The pairs whose old indices rise with the new ones, longest first: the
@@ -189,6 +212,36 @@ export function mergeValue(own: Json, base: Json, current: Json): Json {
     });
   }
   return current;
+}
+
+/** A moved item that also changed: its own text (`own`, its lines at
+ * column `dash`, comments included) with the change spliced in, so its
+ * comments and the layout of what did not change stay; null when that text
+ * does not stand alone (an alias to an anchor elsewhere, a line written left
+ * of the dash). */
+function movedItemEdited(
+  own: string,
+  dash: number,
+  base: Json,
+  current: Json
+): string | null {
+  const pad = ' '.repeat(dash);
+  const lines = own.split('\n');
+  if (lines.some((line) => line.trim() !== '' && !line.startsWith(pad)))
+    return null;
+  try {
+    return spliceYaml(
+      `${lines.map((line) => line.slice(dash)).join('\n')}\n`,
+      [base],
+      [current]
+    )
+      .replace(/\n$/, '')
+      .split('\n')
+      .map((line) => (line === '' ? line : pad + line))
+      .join('\n');
+  } catch {
+    return null;
+  }
 }
 
 export function spliceYaml(source: string, base: Json, current: Json): string {
@@ -462,25 +515,40 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
     if (!changesShape) return;
     const dash = column(seq.range![0]);
+    const spans = items.map((item) => itemSpan(item!, dash));
     for (let i = 0; i < b.length; i++) {
       if (stableOld.has(i)) continue;
-      const item = items[i]!;
-      edit(
-        commentsAbove(lineStart(item.range![0]) + dash, dash),
-        throughLine(endOf(item)),
-        ''
-      );
+      const span = spans[i];
+      if (span) edit(span.start, span.end, '');
+      else
+        edit(
+          commentsAbove(lineStart(items[i]!.range![0]) + dash, dash),
+          throughLine(endOf(items[i]!)),
+          ''
+        );
     }
+    /** The new item's lines, without a final newline. A moved item is its
+     * own source text (rpg-project#998): its comment lines, its layout and
+     * quoting, byte for byte when it only moved; when it also changed, its
+     * text with that change spliced in. A new item is written fresh. */
     const itemText = (j: number) => {
       const from = movedFrom.get(j);
-      const value =
-        from === undefined
-          ? c[j]
-          : mergeValue(ownValue(items[from]!), b[from], c[j]);
-      return `${' '.repeat(dash)}${block([value], dash)}`;
+      const fresh = (value: Json) =>
+        `${' '.repeat(dash)}${block([value], dash)}`;
+      if (from === undefined) return fresh(c[j]);
+      const span = spans[from];
+      const merged = () =>
+        fresh(mergeValue(ownValue(items[from]!), b[from], c[j]));
+      if (!span) return merged();
+      const own = source.slice(span.start, span.end).replace(/\n$/, '');
+      if (sameValue(b[from], c[j])) return own;
+      const edited = movedItemEdited(own, dash, b[from], c[j]);
+      return edited ?? `${source.slice(span.start, span.dash)}${merged()}`;
     };
-    // Each new item goes after the steady item before it, or before the first.
-    const firstSteady = items[steady[0][0]]!;
+    // Each new item goes after the steady item before it, or before the
+    // first. After an item means after its span's last line, so the comment
+    // lines that close it stay with it.
+    const firstSteady = steady[0][0];
     for (let j = 0; j < c.length; j++) {
       if (stableNew.has(j)) continue;
       let before = -1;
@@ -490,13 +558,48 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
           break;
         }
       if (before === -1) {
-        const at = commentsAbove(lineStart(firstSteady.range![0]) + dash, dash);
+        const at =
+          spans[firstSteady]?.start ??
+          commentsAbove(lineStart(items[firstSteady]!.range![0]) + dash, dash);
         edit(at, at, `${itemText(j)}\n`);
       } else {
-        const at = lineEnd(endOf(items[before]!));
+        const span = spans[before];
+        const at = span
+          ? source[span.end - 1] === '\n'
+            ? span.end - 1
+            : span.end
+          : lineEnd(endOf(items[before]!));
         edit(at, at, `\n${itemText(j)}`);
       }
     }
+  }
+
+  /**
+   * A block sequence item's own source text (rpg-project#998), as offsets:
+   * `start`, the first of the comment lines directly above its dash, written
+   * at the dash's column — a blank line, or a line that is not such a
+   * comment, ends the run, so a comment above the list's key, or one set off
+   * from the first item by a blank line, is the list's and stays; `dash`,
+   * the start of the dash's line; `end`, past the newline of its last line
+   * (a comment on that line included), and past any comment lines directly
+   * below it indented deeper than the dash, which close it. Null when the
+   * dash does not start its line (`- - a`).
+   */
+  function itemSpan(
+    item: Node,
+    dash: number
+  ): { start: number; dash: number; end: number } | null {
+    if (!item.range) return null;
+    const line = lineStart(item.range[0]);
+    const at = line + dash;
+    if (source.slice(line, at).trim() !== '' || source[at] !== '-') return null;
+    let end = throughLine(endOf(item));
+    while (end < source.length) {
+      const next = source.slice(end, lineEnd(end));
+      if (!/^\s*#/.test(next) || next.search(/\S/) <= dash) break;
+      end = throughLine(end);
+    }
+    return { start: commentsAbove(at, dash), dash: line, end };
   }
 
   walk(document.contents as Node, base, current, false);
