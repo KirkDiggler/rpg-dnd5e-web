@@ -6,7 +6,13 @@
  * flow and compact (`- - 3`), and through `spliceYaml` moves each row up and
  * down, removes it, adds it back, and edits one scalar in it. Every write must
  * parse to exactly the intended document, leave every byte outside the edited
- * list unchanged, and (for a move) keep the same comment lines.
+ * list unchanged, and (for a move) keep the same comment lines. Maps and
+ * scalars are walked the same way.
+ *
+ * CI runs a fixed sample (about 90 s). SPLICE_PROBE=all runs everything:
+ * every list, map, key and scalar, the deep sweep split by part of the
+ * castle, printing progress every 250 writes. It takes about 90 minutes on a
+ * laptop: every write is checked by a full parse of the castle (~65 ms).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -495,7 +501,8 @@ const SCALARS: Json[] = ['text', 42, true, null, '', '42', 'true', 1.5, 'a: b'];
  * bytes. */
 function* scalarCasesOf(
   source: string,
-  pick: (index: number) => Json[]
+  pick: (index: number) => Json[],
+  where: (path: Path) => boolean = () => true
 ): Generator<Case> {
   const document = parseDocument(source);
   const own = parse(source) as Json;
@@ -512,7 +519,7 @@ function* scalarCasesOf(
       const bytes = ownedBytes(source, node);
       node.items.forEach((item, i) => visit(item as Node, [...path, i], bytes));
     }
-    if (isScalar(node) && node.range && path.length > 0) {
+    if (isScalar(node) && node.range && path.length > 0 && where(path)) {
       const old = at(own, path);
       const head = lineStart(source, node.range[0]);
       let tail = source.indexOf('\n', node.range[1]);
@@ -543,13 +550,23 @@ function* scalarCasesOf(
 }
 
 /** Run every write the probe makes and list what went wrong. */
-function failuresOf(cases: Iterable<Case>, strict = false) {
+function failuresOf(
+  cases: Iterable<Case>,
+  strict = false,
+  progress?: { label: string; about: number }
+) {
   const failures: string[] = [];
   let writes = 0;
+  const started = performance.now();
   for (const c of cases) {
     writes++;
     const problem = check(c, strict);
     if (problem) failures.push(`${c.label}: ${problem}`);
+    // A long run says where it is (SPLICE_PROBE=all).
+    if (progress && writes % 250 === 0)
+      process.stderr.write(
+        `[splice probe] ${progress.label}: ${writes} of about ${progress.about} writes, ${failures.length} failing, ${Math.round((performance.now() - started) / 1000)} s\n`
+      );
   }
   return { writes, failures };
 }
@@ -570,6 +587,34 @@ const sampledMaps = new Set(
     .map((map) => map.path.join('.'))
 );
 const sampledMap = (map: MapAt) => sampledMaps.has(map.path.join('.'));
+
+/** The parts of the castle the deep sweep runs one by one: its big
+ * sections each on their own, everything else together. */
+const SECTIONS = [
+  'behaviorDefinitions',
+  'room.room.monsterBindings',
+  'room.room.walls',
+  'room.room.regions',
+  'room.room.monsterDeclarations',
+  'room.scene',
+  'templates',
+  'bundles',
+  'factions',
+  'dispositions',
+  'interactions',
+  'the rest',
+];
+function sectionOf(path: Path): string {
+  const name = path.join('.');
+  return (
+    SECTIONS.find(
+      (section) => name === section || name.startsWith(`${section}.`)
+    ) ?? 'the rest'
+  );
+}
+/** One part's limit: the slowest measured (behaviorDefinitions) takes about
+ * 15 minutes; four times that, under setTimeout's ceiling. */
+const DEEP_TIMEOUT = 3_600_000;
 
 describe('every castle list writes back through the splice (rpg-project#1014)', () => {
   it('finds the compact ground-paint rows the castle writes', () => {
@@ -729,29 +774,56 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
     expect(failures).toEqual([]);
   }, 300_000);
 
-  it.runIf(everything)(
-    'every key of every map removed and added back, every map emptied and given a first key',
-    () => {
-      const maps = failuresOf(
-        mapCasesOf(
-          served,
-          () => true,
-          () => true
-        )
-      );
-      expect(maps.failures).toEqual([]);
-    },
-    10_800_000
-  );
-
-  it.runIf(everything)(
-    'every scalar replaced by every type',
-    () => {
-      const scalars = failuresOf(scalarCasesOf(served, () => SCALARS));
-      expect(scalars.failures).toEqual([]);
-    },
-    10_800_000
-  );
+  // THE DEEP SWEEP, one test per part of the castle and kind (maps,
+  // scalars), so a failure names where it is and each part finishes on its
+  // own. With the full parse on every write, the whole SPLICE_PROBE=all run
+  // takes about 90 minutes on a laptop (see the header).
+  for (const section of SECTIONS) {
+    const inSection = (path: Path) => sectionOf(path) === section;
+    it.runIf(everything)(
+      `${section}: every key of every map removed and added back, every map emptied and given a first key`,
+      () => {
+        const maps = mapsOf(served).filter((map) => inSection(map.path));
+        const about = maps.reduce(
+          (sum, map) => sum + 2 * map.node.items.length + 2,
+          0
+        );
+        const { failures } = failuresOf(
+          mapCasesOf(
+            served,
+            (map) => inSection(map.path),
+            (map) => inSection(map.path),
+            (map) => inSection(map.path)
+          ),
+          false,
+          { label: `${section} maps`, about }
+        );
+        expect(failures).toEqual([]);
+      },
+      DEEP_TIMEOUT
+    );
+    it.runIf(everything)(
+      `${section}: every scalar replaced by every type`,
+      () => {
+        const { failures } = failuresOf(
+          scalarCasesOf(served, () => SCALARS, inSection),
+          false,
+          {
+            label: `${section} scalars`,
+            about:
+              pathsOf(parse(served) as Json).filter(
+                ([path, value]) =>
+                  path.length > 0 &&
+                  (value === null || typeof value !== 'object') &&
+                  inSection(path)
+              ).length * SCALARS.length,
+          }
+        );
+        expect(failures).toEqual([]);
+      },
+      DEEP_TIMEOUT
+    );
+  }
 });
 
 /** A seeded generator (mulberry32): the same sample on every run. */

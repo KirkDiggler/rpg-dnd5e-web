@@ -88,7 +88,10 @@ unchanged.
   (`assertSourceWritable`). A refused write leaves the document, the saved
   draft and undo as they were, and the notice reads "The studio could not
   write this change safely, so nothing was changed." with the reason. A map or
-  list whose every entry goes is written `{}` or `[]` on its key's line. New
+  list whose every entry goes is written `{}` or `[]` on its key's line. The castle probe (`yamlSpliceCastleProbe.test.ts`) runs a fixed
+  sample in CI (about 90 s); `SPLICE_PROBE=all` writes every list, map, key
+  and scalar through it, one test per part of the castle, and takes about
+  90 minutes. New
   room starts a document with no file.
 - **The file survives a reload.** The file text is kept in storage beside the
   draft (`DUNGEON_SOURCE_STORAGE_KEY`, `dungeonSources.ts`), and in memory for
