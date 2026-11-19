@@ -24,7 +24,16 @@
  * engine adds later can never merge two different steps.
  *
  * This module reads those connections, the statements' `kind`, and the
- * routine their path is set under, and nothing else: it never reads a sentence or the file to place
+ * routine their path is set under, and nothing else
+ *
+ * A STEP'S WHOLE CONDITION (rpg-project#1015, encounter v0.225.0): every
+ * condition its `when` reads is a `{condition, <word>, asks}` connection
+ * with its value (`is`), comparison (`op`), polarity hint (`negated`) and
+ * place (`at`). Two steps gather into one arrow only when those are the
+ * same, in order. An engine that sends no condition connections keeps the
+ * reads above, as before; one that does says through them what the
+ * wakes-on, claim and topic reads said, so those are not said twice.
+ * The words a label is said in are the engine's (`machineWords.ts`): it never reads a sentence or the file to place
  * or connect anything. A read-back without the shape (an older engine), or
  * with a shape that does not hold together (a step from or to a state the
  * routine does not say), gives no machine at all: the studio draws nothing
@@ -34,6 +43,17 @@ import type {
   ReadBack,
   ReadBackStatement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  actWords,
+  beatWords,
+  compareAt,
+  conditionWordOf,
+  conditionWords,
+  type MachineWords,
+  type StepCondition,
+} from './machineWords';
+
+export type { StepCondition } from './machineWords';
 
 const ROUTINE = 'routine';
 const KIND_ROUTINE = 'routine';
@@ -72,12 +92,23 @@ const ROLE_ASKS = 'asks';
 /** The roles that say a wake's place in its machine. Every other
  * connection on a wake is something its condition reads. */
 const SHAPE_ROLES = new Set([ROLE_FROM, ROLE_TO, ROLE_ON, ROLE_PICKS]);
+/** One condition a step's `when` reads (encounter v0.225.0). */
+const CONDITION = 'condition';
+/** Between a beat's words and its condition's, and between the parts of a
+ * staying step's line. */
+const SEP = ' · ';
 
 /** One connection a step's condition reads, as the engine says it. */
 export interface StepRead {
   kind: string;
   id: string;
   role: string;
+  /** A condition connection's value, comparison, polarity and place;
+   * empty on every other. */
+  is?: string;
+  op?: string;
+  negated?: boolean;
+  at?: string;
 }
 
 /** One step of the machine: one `routine.wake`. */
@@ -104,6 +135,9 @@ export interface MachineStep {
    * topic it asks about the one heard, and any the drawing does not yet
    * know. */
   reads: StepRead[];
+  /** Its whole condition, as its `condition` connections say it, in `at`
+   * order; empty from an engine that sends none. */
+  conditions: StepCondition[];
 }
 
 /** A creature's post or blocking that holds while the machine is in a
@@ -143,6 +177,7 @@ export interface MachineEdge {
   wakesOn: { kind: string; id: string }[];
   claims: string[];
   reads: StepRead[];
+  conditions: StepCondition[];
   steps: MachineStep[];
 }
 
@@ -227,7 +262,20 @@ export function machineOf(
       claims: connected(statement, CLAIM, ROLE_ASKS),
       reads: statement.connects
         .filter((c) => !SHAPE_ROLES.has(c.role))
-        .map((c) => ({ kind: c.kind, id: c.id, role: c.role })),
+        .map((c) =>
+          c.kind === CONDITION
+            ? {
+                kind: c.kind,
+                id: c.id,
+                role: c.role,
+                is: c.is,
+                op: c.op,
+                negated: c.negated,
+                at: c.at,
+              }
+            : { kind: c.kind, id: c.id, role: c.role }
+        ),
+      conditions: conditionsOf(statement),
     });
   }
   for (const step of steps)
@@ -276,6 +324,34 @@ export function machineOf(
   };
 }
 
+/** A step's condition connections, each once, in `at` order (the engine's
+ * order among equals). */
+function conditionsOf(statement: ReadBackStatement): StepCondition[] {
+  const seen = new Set<string>();
+  const out: StepCondition[] = [];
+  for (const c of statement.connects) {
+    if (c.kind !== CONDITION) continue;
+    const condition = {
+      id: c.id,
+      is: c.is,
+      op: c.op,
+      negated: c.negated,
+      at: c.at,
+    };
+    const key = conditionKey(condition);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(condition);
+  }
+  return out
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => compareAt(a.c.at, b.c.at) || a.i - b.i)
+    .map(({ c }) => c);
+}
+
+const conditionKey = (c: StepCondition): string =>
+  JSON.stringify([c.id, c.is, c.op, c.negated, c.at]);
+
 const wakesKey = (step: Pick<MachineStep, 'wakesOn'>): string =>
   step.wakesOn
     .map((w) => `${w.kind} ${w.id}`)
@@ -288,10 +364,15 @@ const wakesKey = (step: Pick<MachineStep, 'wakesOn'>): string =>
  * edge id is the one it always had. */
 const otherReadsKey = (step: Pick<MachineStep, 'reads'>): string =>
   step.reads
-    .filter((r) => r.role !== ROLE_WAKES_ON)
+    .filter((r) => r.role !== ROLE_WAKES_ON && r.kind !== CONDITION)
     .map((r) => `${r.role} ${r.kind} ${r.id}`)
     .sort()
     .join(',');
+
+/** The whole condition, in order: id, value, comparison, polarity and
+ * place of each. Empty for a step that has none. */
+const conditionsKey = (step: Pick<MachineStep, 'conditions'>): string =>
+  step.conditions.map(conditionKey).join(',');
 
 /** Moving steps gathered by beat, target, reads and picks, in the order
  * their first step is said. Any part that differs keeps two steps apart. */
@@ -300,9 +381,11 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
   for (const step of steps) {
     if (step.to === null) continue;
     const others = otherReadsKey(step);
+    const whole = conditionsKey(step);
     const id =
       `${step.beat}>${step.to}>${wakesKey(step)}>${step.picks.join(',')}` +
-      (others ? `>${others}` : '');
+      (others ? `>${others}` : '') +
+      (whole ? `>when ${whole}` : '');
     const edge = edges.get(id);
     if (edge) {
       if (!edge.from.includes(step.from)) edge.from.push(step.from);
@@ -316,6 +399,7 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
         wakesOn: step.wakesOn,
         claims: step.claims,
         reads: step.reads,
+        conditions: step.conditions,
         steps: [step],
       });
   }
@@ -342,30 +426,128 @@ const readWords = (r: StepRead): string =>
       ? r.id
       : `${r.kind} ${r.id}`;
 
-/** A step's words for a label: the beat it fires on and what its
- * condition reads, from connections alone, in the engine's order
- * (`on fact: guards-turned`, `on heard: claim failed, topic admitted`). */
-export function beatLabel(step: Pick<MachineStep, 'beat' | 'reads'>): string {
-  const reads = step.reads.map(readWords).join(', ');
-  return reads ? `on ${step.beat}: ${reads}` : `on ${step.beat}`;
+/** What a label is made from: a step or an edge. */
+export type Labelled = Pick<MachineStep, 'beat' | 'reads'> &
+  Partial<Pick<MachineStep, 'conditions'>>;
+
+/** The thing a beat that takes one is about: the step's one `wakes-on`
+ * read of the beat's own kind (`{fact, guards-turned, wakes-on}` on a
+ * `fact` beat). */
+const thingOf = (step: Labelled): string | undefined => {
+  const own = step.reads.filter(
+    (r) => r.role === ROLE_WAKES_ON && r.kind === step.beat
+  );
+  return own.length === 1 ? own[0]!.id : undefined;
+};
+
+/** What a step's label says after its beat: its condition (still to be
+ * worded) and every read the drawing does not know, or, from an engine that
+ * sends no condition connections, its reads as before. With words, the
+ * beat's filled thing is not said again: the wakes-on read it came from,
+ * and the one condition that asks that same thing be known. */
+function partsOf(
+  step: Labelled,
+  words: MachineWords | null
+): { conditions: StepCondition[]; reads: string[] } {
+  const conditions = step.conditions ?? [];
+  const thing = words ? thingOf(step) : undefined;
+  if (!conditions.length)
+    return {
+      conditions: [],
+      reads: step.reads
+        .filter((r) => !(thing && r.role === ROLE_WAKES_ON && r.id === thing))
+        .map(readWords),
+    };
+  const reads = step.reads
+    .filter(
+      (r) => r.kind !== CONDITION && !KNOWN_READS.has(`${r.role} ${r.kind}`)
+    )
+    .map(readWords);
+  if (!thing || !words) return { conditions, reads };
+  const named = conditions.findIndex((c) => {
+    const found = conditionWordOf(words, c.id);
+    return (
+      found !== null &&
+      found.word.open === step.beat &&
+      found.open === thing &&
+      c.is === 'true' &&
+      !c.negated
+    );
+  });
+  return {
+    conditions:
+      named < 0 ? conditions : conditions.filter((_, i) => i !== named),
+    reads,
+  };
+}
+
+const wordsOf = (step: Labelled, words: MachineWords | null): string[] => {
+  const { conditions, reads } = partsOf(step, words);
+  const whole = conditionWords(words, conditions);
+  return [...(whole ? [whole] : []), ...reads];
+};
+
+/** The beat's own words: the engine's label, or `on <beat>` without
+ * words for it. */
+const beatOf = (step: Labelled, words: MachineWords | null): string =>
+  (words && beatWords(words, step.beat, thingOf(step))) || `on ${step.beat}`;
+
+/** A step's words for a label. With the engine's words: the beat's plain
+ * label, then its whole condition (`hears something · it was a claim that
+ * failed and has noted admitted about them`). Without them, the
+ * connections' ids as before (`on fact: guards-turned`). */
+export function beatLabel(
+  step: Labelled,
+  words: MachineWords | null = null
+): string {
+  const parts = wordsOf(step, words);
+  if (!words || !beatWords(words, step.beat))
+    return parts.length
+      ? `on ${step.beat}: ${parts.join(', ')}`
+      : `on ${step.beat}`;
+  return [beatOf(step, words), ...parts].join(SEP);
 }
 
 /** A step's label when its full one does not fit: the beat, and how many
- * reads its condition has beyond it (`on heard +2`), so a cut label still
+ * conditions it has beyond it (`hears something +2`), so a cut label still
  * shows it has a condition. The full label is the mark's tooltip. */
 export function shortBeatLabel(
-  step: Pick<MachineStep, 'beat' | 'reads'>
+  step: Labelled,
+  words: MachineWords | null = null
 ): string {
-  return step.reads.length
-    ? `on ${step.beat} +${step.reads.length}`
-    : `on ${step.beat}`;
+  const beat =
+    words && beatWords(words, step.beat)
+      ? beatOf(step, words)
+      : `on ${step.beat}`;
+  const { conditions, reads } = partsOf(step, words);
+  const n = conditions.length + reads.length;
+  return n ? `${beat} +${n}` : beat;
 }
 
-/** A staying step's line inside its box: its beat and the tables it picks
- * from (`on time: picks post`). */
-export function stayLabel(step: MachineStep): string {
+/** A staying step's line inside its box: its label and the lists it acts
+ * from, in the engine's words (`time passes · acts from the post list`),
+ * or as before (`on time: picks post`). */
+export function stayLabel(
+  step: MachineStep,
+  words: MachineWords | null = null
+): string {
+  return stayParts(step, words).join(SEP);
+}
+
+/** A staying step's line in its parts, for a box too narrow for it whole:
+ * its label, then each list it acts from in the engine's words. Without
+ * the words for them, one part as before (`on time: picks post`). */
+export function stayParts(
+  step: MachineStep,
+  words: MachineWords | null = null
+): string[] {
+  const picked = words
+    ? step.picks.map((id) => actWords(words, 'pick', { id }))
+    : [];
+  if (words && picked.length && picked.every((p) => p !== null))
+    return [beatLabel(step, words), ...(picked as string[])];
   const picks = step.picks.length ? `: picks ${step.picks.join(', ')}` : '';
-  return `${beatLabel(step)}${picks}`;
+  return [`${beatLabel(step, words)}${picks}`];
 }
 
 /** A hold's line inside its box: the creature, and what its statement

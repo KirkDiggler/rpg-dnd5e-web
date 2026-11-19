@@ -45,6 +45,7 @@ import {
 } from './machineLayout';
 import { MachineStateEdit, type DefinitionEdit } from './MachineStateEdit';
 import { machineOf } from './machineView';
+import type { MachineWords } from './machineWords';
 import { ReadBack, STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
@@ -63,6 +64,7 @@ export function StudioBehaviours({
   onJump,
   onOpenFact,
   onCommitDefinition,
+  machineWords = null,
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -74,15 +76,18 @@ export function StudioBehaviours({
   /** Set one behaviour definition whole, one undoable commit
    * (rpg-project#996). Without it the pane has no Edit tab. */
   onCommitDefinition?(id: string, edit: DefinitionEdit): boolean;
+  /** The engine's machine words (`useMachineWords`), for the drawing's
+   * plain labels; null draws its ids as before (rpg-project#1015). */
+  machineWords?: MachineWords | null;
 }): React.JSX.Element {
   const said = readBack.readBack;
   const machine = useMemo(() => {
     if (!said || !focus) return null;
     const view = machineOf(said, focus);
     if (!view) return null;
-    const layout = layoutMachine(view);
+    const layout = layoutMachine(view, machineWords);
     return { layout, markOf: markOfStatement(layout) };
-  }, [said, focus]);
+  }, [said, focus, machineWords]);
   // The mark belongs to the behaviour it was made on; another behaviour
   // starts unmarked.
   const [chosenMark, setChosenMark] = useState<{

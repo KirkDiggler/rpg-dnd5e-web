@@ -92,7 +92,7 @@ describe('machineOf', () => {
       expect(edge.from).not.toContain(edge.to);
       for (const step of edge.steps) expect(step.to).toBe(edge.to);
     }
-    expect(state('posted').stays.map(stayLabel)).toEqual(
+    expect(state('posted').stays.map((step) => stayLabel(step))).toEqual(
       expect.arrayContaining([
         'on approached: picks approached',
         'on time: picks post',
@@ -413,12 +413,18 @@ describe('a step that asks about a heard claim', () => {
 
   it.each([
     ['as pinned', castleMachinesReadBack, 'on heard +1'],
-    ['at v0.222.2', castleMachinesWithClaimReadBack, 'on heard +2'],
+    [
+      'at v0.222.2',
+      castleMachinesWithClaimReadBack,
+      'on heard: claim failed, topic admitted',
+    ],
   ])(
-    'a cut label still shows the step has a condition, %s',
+    'a label is drawn whole, or cut to its beat and a count, %s',
     (_, castle, drawn) => {
-      // The captain's row cannot hold the lie step's full label at the
-      // studio's width; its drawn words say how many reads it has.
+      // As pinned, the lie step's label fits a gap but not the captain's
+      // row: cut, it says how many reads it has. At v0.222.2 it is wider
+      // than any gap can be (rpg-project#1015): it takes a lane, where it
+      // is drawn whole.
       const layout = layoutMachine(captain(castle()));
       const piece = layout.pieces.find((p) =>
         p.steps.some((st) => st.statement.path === LIE)
