@@ -8,6 +8,7 @@ import type {
   ReadBackConnection,
   ReadBackStatement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   castleMachinesReadBack,
@@ -15,7 +16,13 @@ import {
   castleMachinesWithClaimReadBack,
   machineWordsV225,
 } from './fixtures/engineReadBack';
-import { layoutMachine, overlapsOf, strokeFaultsOf } from './machineLayout';
+import {
+  layoutMachine,
+  overlapsOf,
+  strokeFaultsOf,
+  textRect,
+  type MachineLayout,
+} from './machineLayout';
 import {
   beatLabel,
   machineOf,
@@ -27,6 +34,33 @@ import { conditionWords } from './machineWords';
 import { machinesRunBy } from './runWatch';
 
 const WORDS = machineWordsV225();
+
+/** Every stroke end, label and caption that lies outside the drawing. */
+const outsideOf = (layout: MachineLayout): string[] => {
+  const out: string[] = [];
+  const inside = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x <= layout.width && y <= layout.height;
+  for (const piece of layout.pieces) {
+    for (const sg of piece.segments)
+      if (!inside(sg.x1, sg.y1) || !inside(sg.x2, sg.y2))
+        out.push(`${piece.id} stroke ${JSON.stringify(sg)}`);
+    for (const [name, text, size] of [
+      ['label', piece.label, 12],
+      ['caption', piece.caption, 11],
+    ] as const) {
+      if (!text) continue;
+      const r = textRect(text, size);
+      if (!inside(r.x, r.y) || !inside(r.x + r.w, r.y + r.h))
+        out.push(`${piece.id} ${name} ${JSON.stringify(r)}`);
+    }
+  }
+  for (const box of layout.boxes) {
+    const r = box.rect;
+    if (!inside(r.x, r.y) || !inside(r.x + r.w, r.y + r.h))
+      out.push(`${box.id} ${JSON.stringify(r)}`);
+  }
+  return out;
+};
 const LIE =
   'behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]';
 const HEARD =
@@ -364,6 +398,9 @@ describe('the castle’s ten machines in plain words', () => {
         expect(overlapsOf(layout), id).toEqual([]);
         expect(strokeFaultsOf(layout), id).toEqual([]);
         expect(layout.width, id).toBeLessThanOrEqual(1100);
+        // Every stroke and every label lies inside the drawing's own
+        // width and height: nothing is clipped at its edges.
+        expect(outsideOf(layout), id).toEqual([]);
         for (const edge of view!.edges)
           expect(
             layout.pieces.some((p) => p.edge === edge),
@@ -509,5 +546,19 @@ describe('the watch’s drawings', () => {
     expect(said(null)).toContain(
       'on heard: heard.claim failed, noted:admitted'
     );
+  });
+});
+
+describe('the drawing’s frame', () => {
+  it('shows the whole drawing’s height: it caps no height, so no lane below the last row is cut off', () => {
+    // The captain's machine in plain words is 708 tall; a frame capped at
+    // 60vh cut its lowest lane at the bottom edge (look at 70eb264c).
+    const studioCss = readFileSync(
+      'src/concepts/encounter-studio/encounterStudio.css',
+      'utf8'
+    );
+    const rule = /\n\.es-machine\s*\{([^}]*)\}/.exec(studioCss)![1]!;
+    expect(rule).not.toMatch(/max-height/);
+    expect(rule).toMatch(/overflow-x:\s*auto/);
   });
 });

@@ -2057,10 +2057,11 @@
  * colour, in the places marks' look. The chosen mark is drawn heavier in
  * the text colour; keyboard focus is its own dashed ring. The frame
  * scrolls sideways when the drawing is wider than the room. */
+/* The whole drawing's height shows (rpg-project#1015: plain words make a
+   machine taller); only a drawing wider than the room scrolls, sideways. */
 .es-machine {
   flex: none;
-  overflow: auto;
-  max-height: 60vh;
+  overflow-x: auto;
   border: 1px solid var(--wb-border);
   border-radius: 6px;
   background: var(--wb-bg);
