@@ -286,8 +286,10 @@ describe('a repeated hold (review on rpg-dnd5e-web#1456)', () => {
     // Why the workaround stays (rpg-project#1017): files saved before item
     // 11 carry `hold` beside `hold (duty)`; a strict comparison would mark
     // a change at every suppressed repeat hold of an old run.
-    expect('hold (duty)' === 'hold').toBe(false);
-    expect(sameKind('hold (duty)', 'hold')).toBe(true);
+    const answeredKind: string = 'hold (duty)';
+    const inlineKind: string = 'hold';
+    expect(answeredKind === inlineKind).toBe(false);
+    expect(sameKind(answeredKind, inlineKind)).toBe(true);
   });
 
   it('compares roles only where both sides carry one', () => {
