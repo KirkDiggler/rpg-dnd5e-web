@@ -348,3 +348,160 @@ describe('the splicer’s edges (rpg-project#857 review)', () => {
     expect(parse(aliasOnly)).toEqual({ base: { hp: 1 }, x: { hp: 5 } });
   });
 });
+
+describe('a row carries its own comment (rpg-project#998)', () => {
+  /** A list as the castle writes one: a comment above the key (the list's),
+   * a hand-edit comment over a flow-style row, a commented middle row with a
+   * comment on its last line and a closing comment under it. */
+  const source = `# the list's own comment
+rows:
+  # Hand edit (A): why the first row is here.
+  - when: [{fact: a}, {enemy: none}]
+    toward: {at: {q: 1, r: 2}}
+  - say: "B, quoted"
+  # Hand edit (C): why the third row is here,
+  # in two lines.
+  - {say: C, loud: true} # C's own line comment
+    # C's closing note
+  - say: D
+after: 1
+`;
+  const A = {
+    when: [{ fact: 'a' }, { enemy: 'none' }],
+    toward: { at: { q: 1, r: 2 } },
+  };
+  const B = { say: 'B, quoted' };
+  const C = { say: 'C', loud: true };
+  const D = { say: 'D' };
+  const rowsA =
+    '  # Hand edit (A): why the first row is here.\n  - when: [{fact: a}, {enemy: none}]\n    toward: {at: {q: 1, r: 2}}\n';
+  const rowB = '  - say: "B, quoted"\n';
+  const rowsC =
+    "  # Hand edit (C): why the third row is here,\n  # in two lines.\n  - {say: C, loud: true} # C's own line comment\n    # C's closing note\n";
+  const rowD = '  - say: D\n';
+  const head = "# the list's own comment\nrows:\n";
+  const tail = 'after: 1\n';
+  const to = (rows: unknown[]) =>
+    spliceYaml(source, { rows: [A, B, C, D], after: 1 }, { rows, after: 1 });
+
+  it('the castle-shaped list is the rows in order', () => {
+    expect(source).toBe(head + rowsA + rowB + rowsC + rowD + tail);
+  });
+
+  it('a commented row moves down and back up as its own text', () => {
+    const down = to([B, A, C, D]);
+    expect(down).toBe(head + rowB + rowsA + rowsC + rowD + tail);
+    expect(
+      spliceYaml(
+        down,
+        { rows: [B, A, C, D], after: 1 },
+        { rows: [A, B, C, D], after: 1 }
+      )
+    ).toBe(source);
+  });
+
+  it('to the top, to the bottom, and across a commented neighbour', () => {
+    expect(to([C, A, B, D])).toBe(head + rowsC + rowsA + rowB + rowD + tail);
+    expect(to([B, C, D, A])).toBe(head + rowB + rowsC + rowD + rowsA + tail);
+    expect(to([A, B, D, C])).toBe(head + rowsA + rowB + rowD + rowsC + tail);
+    expect(to([D, B, C, A])).toBe(head + rowD + rowB + rowsC + rowsA + tail);
+  });
+
+  it('removing a row takes its own comments; its neighbours keep theirs', () => {
+    expect(to([A, B, D])).toBe(head + rowsA + rowB + rowD + tail);
+    expect(to([B, C, D])).toBe(head + rowB + rowsC + rowD + tail);
+  });
+
+  it('adding a row leaves the comments of the rows it lands beside', () => {
+    const E = { say: 'E' };
+    expect(to([A, B, E, C, D])).toBe(
+      head + rowsA + rowB + '  - say: E\n' + rowsC + rowD + tail
+    );
+    expect(to([A, B, C, E, D])).toBe(
+      head + rowsA + rowB + rowsC + '  - say: E\n' + rowD + tail
+    );
+    expect(to([E, A, B, C, D])).toBe(
+      head + '  - say: E\n' + rowsA + rowB + rowsC + rowD + tail
+    );
+  });
+
+  it('editing a row in place keeps its comment and the layout of what did not change', () => {
+    expect(to([A, B, { ...C, loud: false }, D])).toBe(
+      head +
+        rowsA +
+        rowB +
+        rowsC.replace('loud: true', 'loud: false') +
+        rowD +
+        tail
+    );
+  });
+
+  it('a row moved and edited keeps its comment and layout, with the edit spliced into its own text (rows with ids)', () => {
+    const withIds = `places:
+  # Hand edit: the post.
+  - {id: post, at: {q: 1, r: 2}} # by the gate
+  - id: hall
+    at: {q: 3, r: 4}
+  - id: gate
+    at: {q: 5, r: 6}
+`;
+    const [post, hall, gate] = [
+      { id: 'post', at: { q: 1, r: 2 } },
+      { id: 'hall', at: { q: 3, r: 4 } },
+      { id: 'gate', at: { q: 5, r: 6 } },
+    ];
+    // `post` is the row that moves, and it is the row that changes.
+    expect(
+      spliceYaml(
+        withIds,
+        { places: [post, hall, gate] },
+        { places: [hall, gate, { ...post, at: { q: 9, r: 2 } }] }
+      )
+    ).toBe(`places:
+  - id: hall
+    at: {q: 3, r: 4}
+  - id: gate
+    at: {q: 5, r: 6}
+  # Hand edit: the post.
+  - {id: post, at: {q: 9, r: 2}} # by the gate
+`);
+  });
+
+  it('of two identical rows, the commented one carries its comment past another row', () => {
+    const twins =
+      'rows:\n  # about the first\n  - use: dasher\n  - use: pursuer\n  - use: dasher\n';
+    const X = { use: 'dasher' };
+    const Y = { use: 'pursuer' };
+    expect(spliceYaml(twins, { rows: [X, Y, X] }, { rows: [Y, X, X] })).toBe(
+      'rows:\n  - use: pursuer\n  # about the first\n  - use: dasher\n  - use: dasher\n'
+    );
+    const down =
+      'rows:\n  - use: dasher\n  - use: pursuer\n  # about the second\n  - use: dasher\n';
+    expect(spliceYaml(down, { rows: [X, Y, X] }, { rows: [X, X, Y] })).toBe(
+      'rows:\n  - use: dasher\n  # about the second\n  - use: dasher\n  - use: pursuer\n'
+    );
+  });
+
+  it('a comment set off from the first row by a blank line is the list’s and stays', () => {
+    const listed = 'rows:\n  # about the list\n\n  - say: a\n  - say: b\n';
+    expect(
+      spliceYaml(
+        listed,
+        { rows: [{ say: 'a' }, { say: 'b' }] },
+        { rows: [{ say: 'b' }, { say: 'a' }] }
+      )
+    ).toBe('rows:\n  # about the list\n\n  - say: b\n  - say: a\n');
+    expect(
+      spliceYaml(
+        listed,
+        { rows: [{ say: 'a' }, { say: 'b' }] },
+        { rows: [{ say: 'b' }] }
+      )
+    ).toBe('rows:\n  # about the list\n\n  - say: b\n');
+  });
+
+  it('an unchanged list writes the source byte for byte', () => {
+    expect(to([A, B, C, D])).toBe(source);
+    expect(parse(to([D, C, B, A]))).toEqual({ rows: [D, C, B, A], after: 1 });
+  });
+});
