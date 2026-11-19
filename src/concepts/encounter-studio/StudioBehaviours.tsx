@@ -151,7 +151,11 @@ export function StudioBehaviours({
       ? null
       : STALE_READ_BACK_SENTENCE;
   return (
-    <section className="es-behaviours wb-panel" aria-label="Behaviours">
+    <section
+      className="es-behaviours wb-panel"
+      aria-label="Behaviours"
+      data-drawn={machine && focus ? '' : undefined}
+    >
       <h2>Behaviours</h2>
       {notice && (
         <p role="status" className="es-help es-readback-notice">

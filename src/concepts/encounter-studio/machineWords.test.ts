@@ -561,4 +561,23 @@ describe('the drawing’s frame', () => {
     expect(rule).not.toMatch(/max-height/);
     expect(rule).toMatch(/overflow-x:\s*auto/);
   });
+
+  it('a drawn behaviour’s section grows with its drawing, and the list and detail keep a usable height', () => {
+    const studioCss = readFileSync(
+      'src/concepts/encounter-studio/encounterStudio.css',
+      'utf8'
+    );
+    const section =
+      /\[data-layout='list-detail'\] > \.es-behaviours\[data-drawn\]\s*\{([^}]*)\}/.exec(
+        studioCss
+      )![1]!;
+    // It does not shrink to the panel: the panel scrolls as one.
+    expect(section).toMatch(/flex:\s*1 0 auto/);
+    expect(section).not.toMatch(/(^|[^-])height/);
+    const below =
+      /\.es-behaviours\[data-drawn\] > \.es-machine ~ \.es-list-detail[^{]*\{([^}]*)\}/.exec(
+        studioCss
+      )![1]!;
+    expect(below).toMatch(/min-height:\s*26rem/);
+  });
 });

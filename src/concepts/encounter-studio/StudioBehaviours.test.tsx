@@ -408,6 +408,8 @@ describe('StudioBehaviours', () => {
       const drawing = within(panel()).getByRole('group', {
         name: 'The machine of captain-policy',
       });
+      // A drawn behaviour's section grows with its drawing (its CSS).
+      expect(panel().dataset.drawn).toBe('');
       const lie = within(drawing).getByRole('button', {
         name: 'Step from in-hall to back-to-gate, hears something · it was a claim that failed and has noted admitted about them',
       });
