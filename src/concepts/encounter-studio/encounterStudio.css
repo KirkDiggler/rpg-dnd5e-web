@@ -2057,10 +2057,22 @@
  * colour, in the places marks' look. The chosen mark is drawn heavier in
  * the text colour; keyboard focus is its own dashed ring. The frame
  * scrolls sideways when the drawing is wider than the room. */
+/* A drawn behaviour (rpg-project#1015): the drawing shows whole, so the
+   section grows with it and the panel scrolls as one; the list and detail
+   below keep a usable height of their own and scroll inside it, as on any
+   list-and-detail screen. */
+.es-encounter-panel[data-layout='list-detail'] > .es-behaviours[data-drawn] {
+  flex: 1 0 auto;
+}
+.es-behaviours[data-drawn] > .es-machine ~ .es-list-detail:not([data-stacked]) {
+  flex: 1 1 26rem;
+  min-height: 26rem;
+}
+/* The whole drawing's height shows (rpg-project#1015: plain words make a
+   machine taller); only a drawing wider than the room scrolls, sideways. */
 .es-machine {
   flex: none;
-  overflow: auto;
-  max-height: 60vh;
+  overflow-x: auto;
   border: 1px solid var(--wb-border);
   border-radius: 6px;
   background: var(--wb-bg);
@@ -2406,7 +2418,10 @@
   height: auto;
 }
 .es-watch-machine-scroll .es-machine {
-  overflow-x: auto;
+  /* The watch keeps its own frame: a tall machine scrolls inside it, as
+     before rpg-project#1015 uncapped the Behaviours drawing. */
+  max-height: 60vh;
+  overflow: auto;
 }
 .es-watch h3,
 .es-watch h4 {

@@ -42,16 +42,21 @@
  */
 import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {
+  GetMachineWordsResponseSchema,
   ReadBackSchema,
   ReadBackStatementSchema,
+  type GetMachineWordsResponse,
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
+import machines225Json from './engineReadBack.machines225.json?raw';
+import machines228Json from './engineReadBack.machines228.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
+import machineWordsJson from './machineWords.v0.225.0.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(castleJson) as JsonValue);
@@ -141,4 +146,52 @@ export function castleMachinesWithClaimReadBack(): ReadBack {
     });
   if (!replaced) throw new Error(`no statement at ${step.path} to replace`);
   return readBack;
+}
+
+/**
+ * THE CASTLE'S MACHINES WITH EVERY STEP'S WHOLE CONDITION (rpg-project#1015,
+ * #1001 items 12 and 16), recorded at rpg-api `dev` e0fe69a8 (encounter
+ * v0.225.0, protos v0.1.282): a throwaway test in rpg-api's authoring
+ * handler package ran `readback.Of` on `content/the-mad-king.yaml` and
+ * mapped it with the handler's own `readBackToProto(rb, rb.Folded())`,
+ * marshalled with `protojson` (proto field names): the read-back as the
+ * wire carries it. Trimmed as `castleMachinesReadBack` is: the "Routines"
+ * section (every routine row cut but `gate-1-policy`'s), from "Creatures"
+ * each creature's `creature.routine`, `creature.post` and
+ * `creature.blocking` statements, and the folded "Routines" section. Every
+ * kept sentence, connection and entry is the engine's, unedited.
+ *
+ * A second file beside the v0.220.0 one, not in its place: that one is the
+ * shape an engine with no condition connections sends, which the drawing
+ * still falls back to and the watch's tests pin.
+ */
+export function castleMachinesV225ReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(machines225Json) as JsonValue);
+}
+
+/**
+ * THE ENGINE'S MACHINE WORDS (rpg-project#1015), recorded the same way:
+ * the handler's own `machineWordsToProto(encounter.MachineWords(),
+ * "v0.225.0")`, marshalled with `protojson`: the answer `GetMachineWords`
+ * gives at encounter v0.225.0. Unedited.
+ */
+export function machineWordsV225(): GetMachineWordsResponse {
+  return fromJson(
+    GetMachineWordsResponseSchema,
+    JSON.parse(machineWordsJson) as JsonValue
+  );
+}
+
+/**
+ * THE CASTLE'S MACHINES WITH EVERY ACT OF A STEP (rpg-project#1015, #1001
+ * item 4), recorded the same way as `castleMachinesV225ReadBack` at rpg-api
+ * `dev` abf88ba5 (encounter v0.228.0, protos unchanged at v0.1.282) and
+ * trimmed the same way. Each step's acts are `{act, <word>, does, is?, at}`
+ * connections beside the unchanged `to` and `picks` edges. The castle
+ * declares no flag, so it has no `routine.flag` statement and no `flag`
+ * connection. The `GetMachineWords` answer at v0.228.0 is the v0.225.0
+ * one but for its `encounter_version`. Unedited.
+ */
+export function castleMachinesV228ReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(machines228Json) as JsonValue);
 }
