@@ -14,8 +14,8 @@
  * draft said it when the run was saved: every creature's id, name,
  * starting cell and the routines it runs; the party start; a hash of the
  * map (rooms and walls) to say when the open draft's map differs; and the
- * excerpt of the engine's read-back the machine drawings read (the routine
- * groups whole, and every creature's `creature.routine`, `creature.post`
+ * excerpt of the engine's read-back the machine drawings read (each routine
+ * group's head and `routine*` statements, and every creature's `creature.routine`, `creature.post`
  * and `creature.blocking` statements). The map itself is the open draft's.
  *
  * The record is read whole from the server (`GetRecord` paged from the
@@ -96,11 +96,23 @@ const CREATURE_KINDS = new Set([
 ]);
 
 /** The part of a read-back the machine drawings read (`machineOf`,
- * `machinesRunBy`): every routine group whole, and the creatures'
- * routine, post and blocking statements in one group about nothing. */
+ * `machinesRunBy`): each routine group's head and `routine*` statements,
+ * and the creatures' routine, post and blocking statements in one group
+ * about nothing. */
 export function readBackExcerpt(readBack: ReadBack): ReadBack {
   const groups = readBack.sections.flatMap((s) => s.groups);
-  const routines = groups.filter((g) => g.about?.kind === ROUTINE);
+  // A routine group keeps its head (whose `runs` names who runs it) and
+  // its own `routine*` statements; the hub repeats under it are dropped.
+  const routines = groups
+    .filter((g) => g.about?.kind === ROUTINE)
+    .map((g) =>
+      create(ReadBackGroupSchema, {
+        ...g,
+        statements: g.statements.filter(
+          (st, i) => i === 0 || st.kind.startsWith(ROUTINE)
+        ),
+      })
+    );
   const creatures = groups
     .filter((g) => g.about?.kind !== ROUTINE)
     .flatMap((g) => g.statements.filter((st) => CREATURE_KINDS.has(st.kind)));
