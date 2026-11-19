@@ -13,8 +13,19 @@ import {
   castleMachinesWithClaimReadBack,
   castleRoutinesReadBack,
 } from './fixtures/engineReadBack';
-import { layoutMachine, overlapsOf, strokeFaultsOf } from './machineLayout';
-import { beatLabel, machineOf, shortBeatLabel, stayLabel } from './machineView';
+import {
+  layoutMachine,
+  overlapsOf,
+  pieceName,
+  strokeFaultsOf,
+} from './machineLayout';
+import {
+  alsoOf,
+  beatLabel,
+  machineOf,
+  shortBeatLabel,
+  stayLabel,
+} from './machineView';
 
 const gate = () => {
   const view = machineOf(castleMachinesReadBack(), 'gate-1-policy');
@@ -481,7 +492,7 @@ describe('a step that asks about a heard claim', () => {
     expect(beatLabel(edge)).toBe('on heard: claim failed, topic admitted');
   });
 
-  it('a connection the drawing does not know keeps two steps apart and shows', () => {
+  it('a connection the drawing does not know keeps two steps apart, is not drawn, and is in the hover text', () => {
     const { readBack, lie, twin } = withTwin((c) => {
       c.push({ kind: 'weather', id: 'rain', role: 'needs' });
     });
@@ -489,15 +500,24 @@ describe('a step that asks about a heard claim', () => {
     expect(edgeWith(lie)).not.toBe(edgeWith(twin));
     expect(edgeWith(lie).from).toEqual(['in-hall']);
     expect(edgeWith(twin).from).toEqual(['ready']);
-    expect(beatLabel(edgeWith(twin))).toBe(
-      'on heard: claim failed, topic admitted, needs weather rain'
-    );
+    // The same visible words and count as without it (rpg-project#1015).
+    expect(beatLabel(edgeWith(twin))).toBe(beatLabel(edgeWith(lie)));
+    expect(shortBeatLabel(edgeWith(twin))).toBe(shortBeatLabel(edgeWith(lie)));
     expect(beatLabel(edgeWith(lie))).toBe(
       'on heard: claim failed, topic admitted'
     );
+    // Listed raw, after "also:", where someone who looks finds it.
+    const layout = layoutMachine(captain(readBack));
+    const pieceOf = (st: ReadBackStatement) =>
+      layout.pieces.find((p) => p.steps.some((x) => x.statement === st))!;
+    const piece = pieceOf(twin);
+    expect(piece.label.full).not.toMatch(/weather/);
+    expect(piece.also).toEqual(['needs weather rain']);
+    expect(pieceName(piece)).toMatch(/; also: needs weather rain$/);
+    expect(pieceOf(lie).also).toEqual([]);
   });
 
-  it('a role the drawing does not know is said with its role', () => {
+  it('a role the drawing does not know is never read as one it knows', () => {
     // A polarity role the engine might add: never read as `claim held`.
     const { readBack, lie, twin } = withTwin((c) => {
       c.find((x) => x.kind === 'claim')!.role = 'asks-not';
@@ -505,15 +525,14 @@ describe('a step that asks about a heard claim', () => {
     });
     const edgeWith = edgesOf(readBack);
     expect(edgeWith(lie)).not.toBe(edgeWith(twin));
-    expect(beatLabel(edgeWith(twin))).toBe(
-      'on heard: asks-not claim held, topic admitted'
-    );
+    expect(beatLabel(edgeWith(twin))).toBe('on heard: topic admitted');
+    expect(alsoOf(edgeWith(twin))).toEqual(['asks-not claim held']);
     // A known role on a kind it never carries is not known either.
-    expect(
-      beatLabel({
-        beat: 'fact',
-        reads: [{ kind: 'prop', id: 'lever', role: 'wakes-on' }],
-      })
-    ).toBe('on fact: wakes-on prop lever');
+    const lever = {
+      beat: 'fact',
+      reads: [{ kind: 'prop', id: 'lever', role: 'wakes-on' }],
+    };
+    expect(beatLabel(lever)).toBe('on fact');
+    expect(alsoOf(lever)).toEqual(['wakes-on prop lever']);
   });
 });

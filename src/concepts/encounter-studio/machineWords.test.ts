@@ -20,6 +20,7 @@ import {
 import {
   layoutMachine,
   overlapsOf,
+  pieceName,
   strokeFaultsOf,
   textRect,
   type MachineLayout,
@@ -883,5 +884,65 @@ describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => 
     expect(beatLabel(step, WORDS)).not.toMatch(/warned/);
     // The split it makes is not invisible: the short form counts it.
     expect(shortBeatLabel(step, WORDS)).toBe('hears something +3');
+  });
+});
+
+describe('a connection the drawing does not know (the next engine’s)', () => {
+  /** The lie step said again from `ready`, alike but for `change`. */
+  const twins = (change: (c: ReadBackConnection[]) => void) => {
+    const readBack = castleMachinesV228ReadBack();
+    const lie = wakeAt(readBack, LIE);
+    const group = readBack.sections
+      .flatMap((s) => s.groups)
+      .find((g) => g.statements.includes(lie))!;
+    const twin: ReadBackStatement = {
+      ...lie,
+      path: lie.path.replace('in-hall.transitions[1]', 'ready.transitions[9]'),
+      connects: lie.connects.map((c) =>
+        c.role === 'from' ? { ...c, id: 'ready' } : { ...c }
+      ),
+    };
+    change(twin.connects);
+    group.statements.push(twin);
+    const layout = layoutMachine(machineOf(readBack, 'captain-policy')!, WORDS);
+    const of = (st: ReadBackStatement) =>
+      layout.pieces.find((p) => p.steps.some((s) => s.statement === st))!;
+    return { lie: of(lie), twin: of(twin) };
+  };
+  const who = (c: ReadBackConnection[]) => {
+    c.push({
+      ...c[0]!,
+      kind: 'who',
+      id: 'heard',
+      role: 'about',
+      is: '',
+      op: '',
+      negated: false,
+      at: '',
+    });
+  };
+
+  it('draws the same words and count as without it, in the engine’s words', () => {
+    const { lie, twin } = twins(who);
+    expect(twin.label.full).toBe(lie.label.full);
+    expect(twin.label.full).toBe(
+      'hears something · it was a claim that failed and has noted admitted about them'
+    );
+    expect(shortBeatLabel(twin.edge, WORDS)).toBe('hears something +2');
+  });
+
+  it('keeps two steps that differ in it apart', () => {
+    const { lie, twin } = twins(who);
+    expect(twin.edge).not.toBe(lie.edge);
+    expect(twin.from).toEqual(['ready']);
+    expect(lie.from).toEqual(['in-hall']);
+  });
+
+  it('is listed raw at the end of the mark’s hover text', () => {
+    const { twin } = twins(who);
+    expect(twin.also).toEqual(['about who heard']);
+    expect(pieceName(twin)).toBe(
+      'Step from ready to back-to-gate, hears something · it was a claim that failed and has noted admitted about them; also: about who heard'
+    );
   });
 });

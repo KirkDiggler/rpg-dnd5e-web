@@ -15,6 +15,7 @@ import type {
   MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
+  alsoText,
   boxName,
   machineMarkKey,
   pieceName,
@@ -154,7 +155,11 @@ function Box({
       aria-label={boxName(box)}
       {...choose}
     >
-      <title>{box.statements.map((st) => st.sentence).join('\n')}</title>
+      <title>
+        {[...box.statements.map((st) => st.sentence), alsoText(box.also)]
+          .filter(Boolean)
+          .join('\n')}
+      </title>
       <rect
         className="es-machine-box"
         x={rect.x}
@@ -236,13 +241,21 @@ function Piece({
       tabIndex={0}
       aria-pressed={selected}
       aria-label={pieceName(piece)}
-      aria-description={piece.steps
-        .map((step) => step.statement.sentence)
+      aria-description={[
+        ...piece.steps.map((step) => step.statement.sentence),
+        alsoText(piece.also),
+      ]
+        .filter(Boolean)
         .join(' ')}
       {...choose}
     >
       <title>
-        {piece.steps.map((step) => step.statement.sentence).join('\n')}
+        {[
+          ...piece.steps.map((step) => step.statement.sentence),
+          alsoText(piece.also),
+        ]
+          .filter(Boolean)
+          .join('\n')}
       </title>
       <path className="es-machine-hit" d={all} />
       {piece.strokes && (

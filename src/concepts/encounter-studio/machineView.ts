@@ -545,6 +545,25 @@ const KNOWN_READS = new Set([
   `${ROLE_ASKS} topic`,
 ]);
 
+/** A connection the drawing does not know: not a shape role, condition,
+ * act or flag, and not a wakes-on or asks read it understands. It keeps
+ * two steps apart (the grouping key) but is not drawn: an engine release
+ * that adds one changes nothing visible until the studio learns to say it
+ * (rpg-project#1015). */
+const unknownRead = (r: StepRead): boolean =>
+  r.kind !== CONDITION && !KNOWN_READS.has(`${r.role} ${r.kind}`);
+
+/** The connections a step's mark lists raw after "also:" in its hover
+ * text: every one the drawing does not know, as `role kind id`. */
+export function alsoOf(step: Pick<MachineStep, 'reads'>): string[] {
+  return step.reads
+    .filter(unknownRead)
+    .map((r) => `${r.role} ${r.kind} ${r.id}`);
+}
+
+/** The lead of the raw list in a mark's hover text. */
+export const ALSO_WORDS = 'also:';
+
 /** One read's words: a known wakes-on read is its id (`guards-turned`), a
  * known asks read its kind and id (`claim failed`), and any other read its
  * role, kind and id (`asks-not claim held`), so a role the drawing does
@@ -633,13 +652,14 @@ function partsOf(
   words: MachineWords | null
 ): { conditions: StepCondition[]; reads: string[] } {
   const conditions = step.conditions ?? [];
+  // A connection the drawing does not know is never drawn (it is listed
+  // after "also:" in the mark's hover text, `alsoOf`).
   if (!conditions.length)
-    return { conditions: [], reads: step.reads.map(readWords) };
-  const reads = step.reads
-    .filter(
-      (r) => r.kind !== CONDITION && !KNOWN_READS.has(`${r.role} ${r.kind}`)
-    )
-    .map(readWords);
+    return {
+      conditions: [],
+      reads: step.reads.filter((r) => !unknownRead(r)).map(readWords),
+    };
+  const reads: string[] = [];
   const thing = thingOf(step, words);
   return {
     conditions: thing

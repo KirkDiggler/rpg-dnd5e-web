@@ -29,6 +29,8 @@
 import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   actValueOf,
+  ALSO_WORDS,
+  alsoOf,
   beatLabel,
   holdLabel,
   shortBeatLabel,
@@ -108,6 +110,9 @@ export interface LaidBox {
   /** Every statement the box stands for: the state's, its staying steps'
    * and its holds'. */
   statements: ReadBackStatement[];
+  /** What its staying steps connect that the drawing does not know, raw:
+   * in its hover text only. */
+  also: string[];
 }
 
 export interface LaidPiece {
@@ -129,6 +134,9 @@ export interface LaidPiece {
   caption: LaidText | null;
   /** Every stroke above as an axis-aligned segment, for the checks. */
   segments: Segment[];
+  /** What its steps connect that the drawing does not know, raw
+   * (`role kind id`): in its hover text only, never drawn. */
+  also: string[];
 }
 
 /** One straight stroke, horizontal or vertical. */
@@ -720,6 +728,7 @@ export function layoutMachine(
         from: piece.from,
         to: piece.to,
         steps: piece.steps,
+        also: alsoOfSteps(piece.steps),
         strokes: '',
         bracket: null,
         arrow: `M ${x1} ${ly} H ${x2 + (forward ? -2 : 2)}`,
@@ -763,6 +772,7 @@ export function layoutMachine(
         from: piece.from,
         to: piece.to,
         steps: piece.steps,
+        also: alsoOfSteps(piece.steps),
         strokes: [...leads, run].filter(Boolean).join(' '),
         bracket: piece.from.length > 1 ? `M ${lo} ${laneY} H ${hi}` : null,
         arrow: `M ${end.x} ${laneY} V ${into}`,
@@ -939,6 +949,7 @@ export function layoutMachine(
             statement: line.statement,
           };
         }),
+        also: alsoOfSteps(state.stays),
         statements: [
           state.statement,
           ...state.holds.map((hold) => hold.statement),
@@ -1032,12 +1043,22 @@ export function boxName(box: LaidBox): string {
   return `State ${box.state.id}${marks.length ? ` (${marks.join(', ')})` : ''}`;
 }
 
+/** Every unknown connection of some steps, each once, raw. */
+export const alsoOfSteps = (steps: readonly MachineStep[]): string[] => [
+  ...new Set(steps.flatMap((step) => alsoOf(step))),
+];
+
+/** The raw list a mark's hover and aria text ends with, or empty. */
+export const alsoText = (also: readonly string[]): string =>
+  also.length ? `${ALSO_WORDS} ${also.join(', ')}` : '';
+
 export function pieceName(piece: LaidPiece): string {
   const from =
     piece.from.length > 1
       ? `${piece.from.slice(0, -1).join(', ')} or ${piece.from.at(-1)}`
       : piece.from[0];
-  return `Step from ${from} to ${piece.to}, ${piece.label.full}`;
+  const also = alsoText(piece.also);
+  return `Step from ${from} to ${piece.to}, ${piece.label.full}${also ? `; ${also}` : ''}`;
 }
 
 const span = (a: number, b: number): [number, number] =>
