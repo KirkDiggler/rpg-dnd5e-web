@@ -410,3 +410,23 @@ describe('Watch a run while the character is seated elsewhere (rpg-project#1008)
     expect(screen.queryByTestId('seat-notice')).toBeNull();
   });
 });
+
+describe('Watching gives the map the inspector’s width (rpg-project#1011)', () => {
+  it('collapses the inspector while watching and restores it after', async () => {
+    fakes.starts = ['run-1'];
+    mount();
+    const inspector = () =>
+      screen.getByRole('button', { name: 'Inspector (N)' });
+    await waitFor(() =>
+      expect(watchButton().hasAttribute('disabled')).toBe(false)
+    );
+    const before = inspector().getAttribute('aria-expanded');
+    await watchStarts();
+    expect(inspector().getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(panel().getByRole('button', { name: 'Stop watching' }));
+    await waitFor(() =>
+      expect(screen.queryByTestId('studio-watch')).toBeNull()
+    );
+    expect(inspector().getAttribute('aria-expanded')).toBe(before);
+  });
+});

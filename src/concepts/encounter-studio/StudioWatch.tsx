@@ -33,9 +33,10 @@ import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MachineDrawing } from './MachineDrawing';
-import { barredLine, runSpeechLine } from './runSpeech';
-import { barredOf, rowsAbout, speechOf } from './runView';
+import { runSpeechLine } from './runSpeech';
+import { rowsAbout, speechOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
+import { StudioDialog } from './StudioDialog';
 import { FIGHT_MOVES_IN_THE_GAME, type StudioStep } from './useStudioStep';
 import {
   clampWatchWidth,
@@ -44,6 +45,7 @@ import {
   WATCH_WIDTH_STEP,
   watchDefaultWidth,
 } from './watchPanel';
+import { stopLinesOf } from './watchStop';
 
 export function StudioWatch({
   watch,
@@ -104,10 +106,50 @@ export function StudioWatch({
   /** Every line said up to the shown step, newest last, from every speaker
    * the record has. */
   const said = useMemo(() => speechOf(feed.rows, upTo), [feed.rows, upTo]);
-  /** This step's own bumps: who held the way. */
-  const barred = useMemo(
-    () => barredOf(feed.rows, upTo, run.from),
-    [feed.rows, upTo, run.from]
+  /** This step's own stops, from the record: who held the way (`barred`)
+   * and who addressed whom (`addressed`). */
+  const stops = useMemo(
+    () => stopLinesOf(feed.rows, run.from, upTo, names),
+    [feed.rows, upTo, run.from, names]
+  );
+  const [traceOpen, setTraceOpen] = useState(false);
+  /** A selected creature's section comes into view without hunting. */
+  const creatureRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!member?.id) return;
+    creatureRef.current?.scrollIntoView?.({
+      block: 'start',
+      behavior: 'smooth',
+    });
+  }, [member?.id]);
+  const stepLine = `${step === null ? 'Live · ' : ''}${
+    at === 0 || !shownStep
+      ? 'the start'
+      : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`
+  }`;
+  const stepControls = (testId: string) => (
+    <nav className="es-buttons es-watch-steps" aria-label="Steps of the run">
+      <button type="button" disabled={at <= 0} onClick={() => setStep(at - 1)}>
+        Back
+      </button>
+      <button
+        type="button"
+        disabled={step === null || at >= last}
+        onClick={() => setStep(at + 1 >= last ? null : at + 1)}
+      >
+        Forward
+      </button>
+      <button
+        type="button"
+        aria-pressed={step === null}
+        onClick={() => setStep(null)}
+      >
+        Live
+      </button>
+      <span role="status" className="es-help" data-testid={testId}>
+        {stepLine}
+      </span>
+    </nav>
   );
   const seatName = names?.get(watch.member) ?? watch.member;
   const memberName = member ? (names?.get(member.id) ?? member.id) : '';
@@ -118,7 +160,7 @@ export function StudioWatch({
       data-testid="studio-watch"
     >
       {onResize && <WatchResize width={width} onResize={onResize} />}
-      <div className="es-watch-top">
+      <div className="es-watch-fixed">
         <header className="es-watch-header">
           <h3>Watching a run · {seatName}</h3>
           <div className="es-buttons">
@@ -157,38 +199,7 @@ export function StudioWatch({
             </p>
           </details>
         </header>
-        <nav
-          className="es-buttons es-watch-steps"
-          aria-label="Steps of the run"
-        >
-          <button
-            type="button"
-            disabled={at <= 0}
-            onClick={() => setStep(at - 1)}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            disabled={step === null || at >= last}
-            onClick={() => setStep(at + 1 >= last ? null : at + 1)}
-          >
-            Forward
-          </button>
-          <button
-            type="button"
-            aria-pressed={step === null}
-            onClick={() => setStep(null)}
-          >
-            Live
-          </button>
-          <span role="status" className="es-help" data-testid="watch-step">
-            {step === null ? 'Live · ' : ''}
-            {at === 0 || !shownStep
-              ? 'the start'
-              : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`}
-          </span>
-        </nav>
+        {stepControls('watch-step')}
         <section
           className="es-watch-this-step"
           aria-label="What happened this step"
@@ -214,16 +225,14 @@ export function StudioWatch({
               {onPlayInGame ? ' Press Play in the game above.' : ''}
             </p>
           )}
-          {barred.map((b) => (
-            <p
-              key={b.index}
-              className="es-watch-barred"
-              data-testid="watch-barred"
-            >
-              {barredLine(b, names)}
+          {stops.map((line, i) => (
+            <p key={i} className="es-watch-barred" data-testid="watch-barred">
+              {line}
             </p>
           ))}
         </section>
+      </div>
+      <div className="es-watch-top">
         {run.agedOut && (
           <p className="es-help" role="status" data-testid="watch-aged-out">
             Earlier steps are no longer in the record; showing the earliest step
@@ -264,6 +273,7 @@ export function StudioWatch({
           </p>
         ) : (
           <details
+            ref={creatureRef}
             className="es-watch-section"
             open
             aria-label={`Creature ${memberName}`}
@@ -319,10 +329,41 @@ export function StudioWatch({
           data-testid="watch-trace"
         >
           <summary>
-            <h4>Trace</h4>
+            <h4>Trace</h4>{' '}
+            <button
+              type="button"
+              className="es-watch-expand"
+              onClick={(e) => {
+                e.preventDefault();
+                setTraceOpen(true);
+              }}
+              data-testid="watch-trace-expand"
+            >
+              Expand
+            </button>
           </summary>
           <RecordPanel feed={memberFeed} />
         </details>
+      )}
+      {member && traceOpen && (
+        <StudioDialog
+          title={`Trace of ${memberName}`}
+          onClose={() => setTraceOpen(false)}
+          host={
+            typeof document === 'undefined'
+              ? null
+              : document.querySelector('.encounter-studio')
+          }
+          className="es-dialog-trace"
+          testId="watch-trace-dialog"
+        >
+          <div className="es-dialog-trace-steps">
+            {stepControls('watch-trace-step')}
+          </div>
+          <div className="es-dialog-body wb-panel">
+            <RecordPanel feed={memberFeed} />
+          </div>
+        </StudioDialog>
       )}
     </aside>
   );

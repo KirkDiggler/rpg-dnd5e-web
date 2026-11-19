@@ -2430,3 +2430,157 @@
   margin: 0;
   padding-left: 1.2rem;
 }
+/* Watch a run S4 (rpg-project#1011): the timeline strip under the map,
+   across its full width. One row per creature, one 72px cell per step.
+   Cell rules are scoped under .es-timeline so the shell's generic button
+   rules (.wb-shell button: padding, font size, raised background) do not
+   override them and cover the state band. */
+.es-timeline {
+  flex: 0 0 auto;
+  max-height: 38vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--wb-bg);
+  border-top: 1px solid var(--wb-border);
+  min-width: 0;
+}
+.es-timeline-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+}
+.es-timeline-header h4 {
+  margin: 0;
+}
+.es-timeline-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+.es-timeline-grid {
+  position: relative;
+}
+.es-timeline-row {
+  display: flex;
+  height: 34px;
+  border-bottom: 1px solid rgba(60, 86, 102, 0.4);
+}
+.es-timeline-row-selected .es-timeline-name {
+  color: var(--wb-accent);
+  font-weight: 600;
+}
+.es-timeline-name {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex: 0 0 160px;
+  width: 160px;
+  box-sizing: border-box;
+  padding: 0 0.4rem;
+  line-height: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--wb-bg);
+  border-right: 1px solid var(--wb-border);
+}
+.es-timeline-track {
+  position: relative;
+  flex: 0 0 auto;
+}
+.es-timeline-band {
+  position: absolute;
+  z-index: 1;
+  top: 1px;
+  height: 15px;
+  border-left: 2px solid rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  box-sizing: border-box;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 15px;
+  color: #f8fafc;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.es-timeline .es-timeline-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 18px 1px 0;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--wb-text);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(60, 86, 102, 0.25);
+  border-radius: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.es-timeline .es-timeline-cell:hover,
+.es-timeline .es-timeline-cell:focus-visible {
+  background: rgba(131, 230, 207, 0.12);
+  outline: none;
+}
+.es-timeline .es-timeline-cell-state-edge {
+  border-left: 3px solid #f8fafc;
+}
+.es-timeline .es-timeline-cell-did-edge {
+  border-left: 2px dashed #fbbf24;
+}
+.es-timeline .es-timeline-cell-state-edge.es-timeline-cell-did-edge {
+  border-left: 3px double #fbbf24;
+}
+.es-timeline .es-timeline-cell-current {
+  background: rgba(131, 230, 207, 0.08);
+}
+.es-timeline-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  z-index: 2;
+  background: var(--wb-accent);
+  pointer-events: none;
+}
+/* The operator's look (rpg-project#1011): the header, the step controls
+   and why the step stopped stay in view; the sections below scroll. */
+.es-watch .es-watch-fixed {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.es-watch-stop {
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+.es-watch .es-watch-trace > summary .es-watch-expand {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+}
+/* The trace, expanded: most of the screen, scrolling inside. */
+.es-dialog.es-dialog-trace {
+  width: 85vw;
+  height: 85vh;
+  max-height: 85vh;
+}
+.es-dialog-trace .es-dialog-trace-steps {
+  flex: none;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--wb-border, #33504d);
+}
