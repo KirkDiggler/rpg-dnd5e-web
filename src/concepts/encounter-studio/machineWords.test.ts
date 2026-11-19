@@ -834,6 +834,7 @@ describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => 
       ['warned', 'false'],
     ]);
     const layout = layoutMachine(view, WORDS);
+    expect(layout.memory.map((m) => m.flag)).toEqual([null, 'warned']);
     expect(layout.memory.map((m) => m.text)).toEqual([
       'Remembers',
       'warned: false',

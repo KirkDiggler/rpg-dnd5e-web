@@ -161,6 +161,8 @@ export interface MachineLayout {
 export interface LaidMemory extends LaidText {
   /** The flag's `routine.flag` statement; null for the strip's word. */
   statement: ReadBackStatement | null;
+  /** The flag's name; null for the strip's word. */
+  flag: string | null;
 }
 
 export const MEMORY_WORDS = 'Remembers';
@@ -560,7 +562,11 @@ export function layoutMachine(
   if (view.flags.length) {
     let mx = MARGIN;
     let my = MARGIN + 13;
-    const put = (text: string, statement: ReadBackStatement | null): void => {
+    const put = (
+      text: string,
+      statement: ReadBackStatement | null,
+      flag: string | null
+    ): void => {
       const w = estimate(text, CHAR.line);
       if (mx > MARGIN && mx + w > STUDIO_W - MARGIN) {
         mx = MARGIN;
@@ -574,14 +580,16 @@ export function layoutMachine(
         w,
         anchor: 'start',
         statement,
+        flag,
       });
       mx += w + 16;
     };
-    put(MEMORY_WORDS, null);
+    put(MEMORY_WORDS, null, null);
     for (const flag of view.flags)
       put(
         `${flag.name}: ${actValueOf(flag.is)?.text ?? ''}`.trim(),
-        flag.statement
+        flag.statement,
+        flag.name
       );
   }
   const memoryH = memory.length

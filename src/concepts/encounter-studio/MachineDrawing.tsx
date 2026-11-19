@@ -86,7 +86,7 @@ export function MachineDrawing({
                 key={i}
                 className="es-machine-line"
                 data-muted={m.statement ? undefined : true}
-                data-flag={m.statement ? m.text.split(':')[0] : undefined}
+                data-flag={m.flag ?? undefined}
                 x={m.x}
                 y={m.y}
               >
