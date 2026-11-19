@@ -127,6 +127,7 @@ import { StudioTabBar } from './StudioTabBar';
 import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
 import { StudioWatch } from './StudioWatch';
+import { StudioWatchTimeline } from './StudioWatchTimeline';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
@@ -1911,6 +1912,14 @@ function StudioSurface({
                     />
                   )}
                 </div>
+                {watch && (
+                  <StudioWatchTimeline
+                    watch={watch}
+                    run={run}
+                    draft={session.document.draft}
+                    names={watchNames}
+                  />
+                )}
                 <LayoutFooter draft={session.document.draft} />
               </div>
             </div>
