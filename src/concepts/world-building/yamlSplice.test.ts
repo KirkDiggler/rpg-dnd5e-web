@@ -1,7 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
-import { mergeValue, sameValue, spliceYaml } from './yamlSplice';
+import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
+import {
+  checkWrite,
+  mergeValue,
+  sameValue,
+  spliceInternals,
+  spliceYaml,
+  UNSAFE_WRITE,
+  UnsafeWriteError,
+} from './yamlSplice';
 
 /** `base` is what the studio read (the source without the keys it does not
  * author); `edit` turns it into what the studio writes now. The splice must
@@ -503,5 +512,569 @@ after: 1
   it('an unchanged list writes the source byte for byte', () => {
     expect(to([A, B, C, D])).toBe(source);
     expect(parse(to([D, C, B, A]))).toEqual({ rows: [D, C, B, A], after: 1 });
+  });
+});
+
+describe('the write guard: a write must read back as the edit meant (rpg-project#1014)', () => {
+  const file = `# the file
+key: castle
+cells:
+  - r: 1
+    q: [[2, 3]] # a run
+  - { r: 2, q: [[0, 1]] }
+note: "kept"
+`;
+  const own = parse(file);
+  /** The guard over `out`, as written for the edit `edit`. */
+  const guard = (out: string, edit: (v: never) => void = () => {}) => {
+    const current = structuredClone(own);
+    edit(current as never);
+    return () => checkWrite(own, own, current, out);
+  };
+  const refused = (run: () => unknown, reason: RegExp) => {
+    let error: unknown;
+    try {
+      run();
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(UnsafeWriteError);
+    const message = (error as Error).message;
+    expect(message.startsWith(`${UNSAFE_WRITE} `)).toBe(true);
+    expect(message.slice(UNSAFE_WRITE.length + 1)).toMatch(reason);
+  };
+
+  it('passes a write that differs only in comments, quoting, flow or block, and key order', () => {
+    const restyled = `note: kept
+cells:
+  - q:
+      - - 2
+        - 3
+    r: 1
+  # a comment the edit did not write
+  - r: 2
+    q: [[0, 1]]
+key: 'castle'
+`;
+    expect(guard(restyled)()).toBe(restyled);
+  });
+
+  it('refuses text that does not parse, naming the line', () => {
+    refused(
+      guard(`${file}- [ unclosed\n`),
+      /^The file it would write does not parse at line \d+\.$/
+    );
+  });
+
+  it('refuses a changed value, a dropped key, a reordered list and a changed type, naming where', () => {
+    refused(
+      guard(file.replace('[[2, 3]]', '[[2, 4]]')),
+      /reads cells\[0\]\.q\[0\]\[1\] differently/
+    );
+    refused(
+      guard(file.replace('note: "kept"\n', '')),
+      /reads note differently/
+    );
+    refused(
+      guard(file.replace('[[2, 3]]', '[[3, 2]]')),
+      /reads cells\[0\]\.q\[0\]\[0\] differently/
+    );
+    refused(
+      guard(file.replace('r: 1', 'r: "1"')),
+      /reads cells\[0\]\.r differently/
+    );
+    refused(
+      guard(file.replace('r: 1', 'r:')),
+      /reads cells\[0\]\.r differently/
+    );
+  });
+
+  it('refuses a write that lost the edit: the file unchanged', () => {
+    refused(
+      guard(file, (v: { key: string }) => {
+        v.key = 'mine';
+      }),
+      /reads key differently/
+    );
+  });
+
+  it('holds the keys the studio does not author: the intended value is the file’s own with the edit applied', () => {
+    const base = structuredClone(own);
+    delete base.note;
+    const current = structuredClone(base);
+    current.key = 'mine';
+    const out = file.replace('key: castle', 'key: mine');
+    expect(checkWrite(own, base, current, out)).toBe(out);
+    refused(
+      () => checkWrite(own, base, current, out.replace('note: "kept"\n', '')),
+      /reads note differently/
+    );
+  });
+
+  it('the castle round-trips byte for byte when nothing changed', () => {
+    const castle = parse(served);
+    expect(spliceYaml(served, castle, structuredClone(castle))).toBe(served);
+  });
+});
+
+describe('a compact list, `- - a`, takes every edit (rpg-project#1014)', () => {
+  // The castle's ground paint: each row of `q` is a run written as a list
+  // that starts on the row's own dash.
+  const file = `paint:
+  - r: -5
+    q:
+      - - 2
+        - 3
+  - r: -4
+    q:
+      - - 1
+        - 2
+      - - 5
+        - 6
+after: 1
+`;
+  const own = parse(file);
+  const to = (edit: (q: number[][][]) => void) => {
+    const current = structuredClone(own);
+    edit(current.paint.map((row: { q: number[][] }) => row.q));
+    return spliceYaml(file, own, current);
+  };
+
+  it('a row moved within the run keeps the run’s style', () => {
+    expect(to((q) => q[0][0].reverse())).toBe(
+      file.replace('      - - 2\n        - 3\n', '      - - 3\n        - 2\n')
+    );
+  });
+
+  it('an edited first value', () => {
+    expect(
+      to((q) => {
+        q[0][0][0] = 3;
+      })
+    ).toBe(file.replace('- - 2\n', '- - 3\n'));
+    expect(
+      to((q) => {
+        q[0][0][0] = 1;
+      })
+    ).toBe(file.replace('- - 2\n', '- - 1\n'));
+  });
+
+  it('the first value removed: the next takes the dash line', () => {
+    expect(to((q) => q[0][0].shift())).toBe(
+      file.replace('      - - 2\n        - 3\n', '      - - 3\n')
+    );
+  });
+
+  it('a value added at the front, in the middle and at the end', () => {
+    expect(to((q) => q[0][0].unshift(1))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 1\n        - 2\n        - 3\n'
+      )
+    );
+    expect(to((q) => q[0][0].splice(1, 0, 9))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 2\n        - 9\n        - 3\n'
+      )
+    );
+    expect(to((q) => q[0][0].push(4))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 2\n        - 3\n        - 4\n'
+      )
+    );
+  });
+
+  it('whole runs move, go and come back as their own text', () => {
+    const swapped = to((q) => q[1].reverse());
+    expect(swapped).toBe(
+      file.replace(
+        '      - - 1\n        - 2\n      - - 5\n        - 6\n',
+        '      - - 5\n        - 6\n      - - 1\n        - 2\n'
+      )
+    );
+    expect(to((q) => q[1].shift())).toBe(
+      file.replace('      - - 1\n        - 2\n', '')
+    );
+  });
+
+  it('a run whose values are maps keeps their lines under the moved value', () => {
+    const maps = `q:
+  - - a: 1
+      b: 2
+    - c: 3
+      d: 4
+`;
+    const before = parse(maps);
+    const current = structuredClone(before);
+    current.q[0].reverse();
+    expect(spliceYaml(maps, before, current)).toBe(`q:
+  - - c: 3
+      d: 4
+    - a: 1
+      b: 2
+`);
+  });
+
+  it('a comment inside the run that the shared line cannot hold: the run is written whole, and the comment of a row that stays is set above it', () => {
+    const commented = `q:
+  - - 2
+    # three
+    - 3
+`;
+    const before = parse(commented);
+    const shift = structuredClone(before);
+    shift.q[0].shift();
+    expect(spliceYaml(commented, before, shift)).toBe(
+      'q:\n  # three\n  - - 3\n'
+    );
+    const swap = structuredClone(before);
+    swap.q[0].reverse();
+    expect(spliceYaml(commented, before, swap)).toBe(
+      'q:\n  # three\n  - - 3\n    - 2\n'
+    );
+    // The comment of a removed row goes with it.
+    const pop = structuredClone(before);
+    pop.q[0] = [7];
+    expect(parse(spliceYaml(commented, before, pop))).toEqual(pop);
+  });
+});
+
+describe('an emptied map is `{}`, an emptied list `[]` (rpg-project#1014 review)', () => {
+  const write = (file: string, edit: (v: never) => void) => {
+    const own = parse(file);
+    const current = structuredClone(own);
+    edit(current as never);
+    return spliceYaml(file, own, current);
+  };
+
+  it('a block map or list that loses every entry is written on its key’s line, and nothing else moves', () => {
+    expect(
+      write('# top\na:\n  x: 1 # one\n  y: 2\nb: 2\n', (v: { a: object }) => {
+        v.a = {};
+      })
+    ).toBe('# top\na: {}\nb: 2\n');
+    expect(
+      write('a:\n  - 1\n  - 2\nb: 2\n', (v: { a: unknown[] }) => {
+        v.a = [];
+      })
+    ).toBe('a: []\nb: 2\n');
+    expect(
+      write('top:\n  a:\n    x: 1\n  b: 2\n', (v: { top: { a: object } }) => {
+        v.top.a = {};
+      })
+    ).toBe('top:\n  a: {}\n  b: 2\n');
+    expect(
+      write(
+        'rows:\n  - a: 1\n    b: 2\n  - c: 3\n',
+        (v: { rows: object[] }) => {
+          v.rows[0] = {};
+        }
+      )
+    ).toBe('rows:\n  - {}\n  - c: 3\n');
+  });
+
+  it('the first key or item goes into `{}`, `[]`, a `key:` with no value, and a missing key', () => {
+    const add = (file: string, value: unknown) =>
+      write(file, (v: { a: unknown }) => {
+        v.a = value;
+      });
+    expect(add('a: {}\nb: 2\n', { x: 1 })).toBe('a: {x: 1}\nb: 2\n');
+    expect(add('a: []\nb: 2\n', [1])).toBe('a: [1]\nb: 2\n');
+    expect(add('a:\nb: 2\n', { x: 1 })).toBe('a: { x: 1 }\nb: 2\n');
+    expect(add('b: 2\n', { x: 1 })).toBe('b: 2\na:\n  x: 1\n');
+  });
+
+  it('a block map or list turned into a scalar, or into text over several lines, is written from its key’s line', () => {
+    const file =
+      'list:\n  - id: a\n    # note\n    cell:\n      q: 1\n    after: 2\n';
+    const to = (value: unknown) =>
+      write(file, (v: { list: Record<string, unknown>[] }) => {
+        v.list[0].cell = value;
+      });
+    expect(to(3)).toBe(file.replace('cell:\n      q: 1\n', 'cell: 3\n'));
+    expect(to('multi\nline')).toBe(
+      file.replace('cell:\n      q: 1\n', 'cell: |-\n      multi\n      line\n')
+    );
+  });
+
+  it('a file that already holds `{}`, `[]` and `key:` takes an edit elsewhere, byte for byte', () => {
+    const file = 'm: {}\nl: []\nn:\ns: ""\nb: 2\n';
+    expect(
+      write(file, (v: { b: number }) => {
+        v.b = 3;
+      })
+    ).toBe(file.replace('b: 2', 'b: 3'));
+  });
+});
+
+describe('the guard is in the real write path, and fails closed (rpg-project#1014 review)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const file = 'a:\n  x: 1\n  y: [1, 2]\nb: two\n';
+  const own = parse(file);
+  const edited = { ...structuredClone(own), b: 'three' };
+  const refusal = (run: () => unknown) => {
+    try {
+      run();
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnsafeWriteError);
+      return (error as Error).message;
+    }
+    throw new Error('the write was not refused');
+  };
+
+  it('a writer that loses the edit, garbles the text or writes elsewhere is refused by spliceYaml itself', () => {
+    const real = spliceInternals.text;
+    const faulty = (fault: (out: string) => string) =>
+      vi
+        .spyOn(spliceInternals, 'text')
+        .mockImplementation((source, document, base, current) => {
+          const written = real(source, document, base, current);
+          return { ...written, out: fault(written.out) };
+        });
+    faulty((out) => out.replace('three', 'two'));
+    expect(refusal(() => spliceYaml(file, own, edited))).toMatch(
+      /reads b differently/
+    );
+    faulty((out) => `${out}- [ unclosed\n`);
+    expect(refusal(() => spliceYaml(file, own, edited))).toMatch(
+      /does not parse/
+    );
+    faulty((out) => out.replace('x: 1', 'x: 9'));
+    expect(refusal(() => spliceYaml(file, own, edited))).toMatch(
+      /reads a\.x differently/
+    );
+    vi.restoreAllMocks();
+    expect(spliceYaml(file, own, edited)).toBe(
+      file.replace('b: two', 'b: three')
+    );
+  });
+
+  it('a writer that throws is a refusal, not an error the caller might swallow', () => {
+    vi.spyOn(spliceInternals, 'text').mockImplementation(() => {
+      throw new TypeError('boom');
+    });
+    expect(refusal(() => spliceYaml(file, own, edited))).toMatch(
+      /could not finish: boom/
+    );
+  });
+
+  it('a write whose alias lost its anchor is refused, not thrown as a ReferenceError', () => {
+    const anchored = 'rows:\n  - &a { x: 1 }\n  - { y: *a }\n';
+    const before = parse(anchored);
+    expect(
+      refusal(() =>
+        spliceYaml(anchored, before, { rows: [before.rows[1], before.rows[0]] })
+      )
+    ).toMatch(/cannot be read back/);
+  });
+});
+
+/** The one edit that turns `source` into `out`: what a writer that reports
+ * its edits honestly would say. */
+function honestEdit(source: string, out: string) {
+  let head = 0;
+  while (
+    head < source.length &&
+    head < out.length &&
+    source[head] === out[head]
+  )
+    head++;
+  let tail = 0;
+  while (
+    tail < source.length - head &&
+    tail < out.length - head &&
+    source[source.length - 1 - tail] === out[out.length - 1 - tail]
+  )
+    tail++;
+  return {
+    start: head,
+    end: source.length - tail,
+    text: out.slice(head, out.length - tail),
+    order: 0,
+  };
+}
+
+describe('a write that reads right line by line but wrong in its place is refused (rpg-project#1014 reviews)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  /** `spliceYaml` over a writer that writes `out` for the edit, and says
+   * so honestly. */
+  const writes = (
+    source: string,
+    edit: (value: never) => void,
+    out: string
+  ) => {
+    const own = parse(source);
+    const current = structuredClone(own);
+    edit(current as never);
+    vi.spyOn(spliceInternals, 'text').mockReturnValue({
+      out,
+      edits: [honestEdit(source, out)],
+    });
+    return () => spliceYaml(source, own, current);
+  };
+  const refused = (run: () => unknown) => expect(run).toThrow(UnsafeWriteError);
+  type M = { m: Record<string, unknown> };
+
+  it('a `key: scalar` line written deeper than its key re-parents, joins a block scalar, or breaks the file', () => {
+    refused(
+      writes(
+        'm:\n  a:\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  a:\n    x: 5\n'
+      )
+    );
+    refused(
+      writes(
+        'm:\n  s: |\n    text\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  s: |\n    text\n    x: 5\n'
+      )
+    );
+    refused(
+      writes(
+        'm:\n  s: hello\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  s: hello\n    x: 5\n'
+      )
+    );
+  });
+
+  it('edited lines that lose their last newline join the next line', () => {
+    refused(
+      writes(
+        'k:\n  a: 1\n  b: 2\nj: 3\n',
+        (v: { k: Record<string, number> }) => {
+          v.k.b = 5;
+        },
+        'k:\n  a: 1\n  b: 5j: 3\n'
+      )
+    );
+  });
+
+  it('a list at its key’s own column rewritten as a map joins the parent’s keys', () => {
+    const source = 'o:\n  k:\n  - a\n  - b\n  j: 1\n';
+    refused(
+      writes(
+        source,
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = { x: 5 };
+        },
+        'o:\n  k:\n  x: 5\n  j: 1\n'
+      )
+    );
+    refused(
+      writes(
+        source,
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = { j: 9 };
+        },
+        'o:\n  k:\n  j: 9\n  j: 1\n'
+      )
+    );
+  });
+
+  it('a block list rewritten as a map is refused', () => {
+    refused(
+      writes(
+        'o:\n  k:\n    - a\n    - b\n  j: 1\n',
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = ['a', 'c'];
+        },
+        'o:\n  k:\n    x: a\n  j: 1\n'
+      )
+    );
+  });
+
+  it('a line that opens a block scalar takes the deeper lines after it', () => {
+    refused(
+      writes(
+        'm:\n  x: 1\n      # note\n  y: 2\n',
+        (v: M) => {
+          // What `x: |` reads as alone: the line passes on its own.
+          v.m.x = '';
+        },
+        'm:\n  x: |\n      # note\n  y: 2\n'
+      )
+    );
+  });
+
+  it('a sound write passes', () => {
+    const source = 'm:\n  a:\n  x: 2\n  s: |\n    text\n  list:\n    - 1\n';
+    expect(
+      writes(
+        source,
+        (v: M) => {
+          v.m.x = 5;
+        },
+        source.replace('x: 2', 'x: 5')
+      )()
+    ).toBe(source.replace('x: 2', 'x: 5'));
+  });
+});
+
+describe('removing a row’s first key keeps the row (rpg-project#1014 second review)', () => {
+  type L = { list: Record<string, unknown>[] };
+  const write = (source: string, edit: (v: L) => void) => {
+    const own = parse(source);
+    const current = structuredClone(own);
+    edit(current);
+    return spliceYaml(source, own, current);
+  };
+
+  it('the next key moves up onto the dash line; the row’s other lines stay', () => {
+    expect(
+      write('list:\n  - id: a\n    x: 1 # one\n    y: 2\n  - id: b\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - x: 1 # one\n    y: 2\n  - id: b\n');
+  });
+
+  it('the comment above the key that moves up is set above the dash', () => {
+    expect(
+      write('list:\n  - id: a\n    # about x\n    x: 1\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  # about x\n  - x: 1\n');
+  });
+
+  it('the first two keys go, a key is added before the one that moves up, and the only key goes', () => {
+    expect(
+      write('list:\n  - id: a\n    x: 1\n    y: 2\n', (v) => {
+        delete v.list[0].id;
+        delete v.list[0].x;
+      })
+    ).toBe('list:\n  - y: 2\n');
+    expect(
+      write('list:\n  - id: a\n    x: 1\n', (v) => {
+        delete v.list[0].id;
+        v.list[0] = { w: 0, ...v.list[0] };
+      })
+    ).toBe('list:\n  - w: 0\n    x: 1\n');
+    expect(
+      write('list:\n  - id: a\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - {}\n');
+  });
+
+  it('in a compact row (`- - id: a`) and before a nested list', () => {
+    expect(
+      write('q:\n  - - id: a\n      x: 1\n', (v) => {
+        delete (v as unknown as { q: Record<string, unknown>[][] }).q[0][0].id;
+      })
+    ).toBe('q:\n  - - x: 1\n');
+    expect(
+      write('list:\n  - id: a\n    x:\n      - 1\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - x:\n      - 1\n');
   });
 });

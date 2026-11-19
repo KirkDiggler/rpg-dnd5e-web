@@ -73,7 +73,26 @@ unchanged.
   its items before it is edited: by `id`, else by the longest common
   subsequence, so a delete, an insert or a reorder moves no item's fields onto
   another. An edit inside an anchored value is not shared with its aliases:
-  each alias the edit did not reach is written out as the value it had.
+  each alias the edit did not reach is written out as the value it had. A
+  compact list that starts on its parent's dash (`- - 3`) takes the same
+  edits; its first remaining row keeps the shared line.
+- **A write is checked before it is kept (rpg-project#1014).** The splice
+  parses its own output and compares it with the file's value with the edit
+  applied (`checkWrite`): lists in order, every key, every scalar and its type
+  count; key order, comments and layout do not. Numbers compare as numbers, so
+  `1` and `1.0` (an int and a float to the engine) are not told apart; the
+  splice writes numbers as the encoder renders them and never makes that
+  change. The whole write is always parsed. Anything that goes wrong while writing
+  or checking is a refusal too. Every room edit commits through
+  `commitRoomDocument`, which first asks the file to take the edit
+  (`assertSourceWritable`). A refused write leaves the document, the saved
+  draft and undo as they were, and the notice reads "The studio could not
+  write this change safely, so nothing was changed." with the reason. A map or
+  list whose every entry goes is written `{}` or `[]` on its key's line. The castle probe (`yamlSpliceCastleProbe.test.ts`) runs a fixed
+  sample in CI (about 90 s); `SPLICE_PROBE=all` writes every list, map, key
+  and scalar through it, one test per part of the castle, and takes about
+  90 minutes. New
+  room starts a document with no file.
 - **The file survives a reload.** The file text is kept in storage beside the
   draft (`DUNGEON_SOURCE_STORAGE_KEY`, `dungeonSources.ts`), and in memory for
   the few most recently used files. A draft whose file is in neither says so
