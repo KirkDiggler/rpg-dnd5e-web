@@ -12,7 +12,7 @@ export function projectDoorFrameFinishes(input: {
   catalog: WorldMaterialCatalog | null;
   elevation: number;
 }): NonNullable<WorldAssetModelProps['surfacePlans']> {
-  return input.frame.faceFinishes.map((face) => {
+  return input.frame.faceFinishes.flatMap((face) => {
     const material = input.catalog?.materials.find(
       (row) => row.ref === face.materialRef
     );
@@ -24,18 +24,18 @@ export function projectDoorFrameFinishes(input: {
       (binding) =>
         binding.side === face.side && binding.family === material.family
     );
-    if (targets?.length !== 1)
+    if (!targets?.length)
       throw Error('Captured doorway has no compatible fixed masonry target.');
     const repeat = surfaceRepeatSceneUnits(material);
-    return {
+    return targets.map((target) => ({
       material,
       chart: {
-        surfaceId: targets[0].id,
+        surfaceId: target.id,
         phase: face.phaseU * repeat[0],
         direction: face.side === 'positive-z' ? 1 : -1,
         elevation: input.elevation,
         repeat,
       },
-    };
+    }));
   });
 }

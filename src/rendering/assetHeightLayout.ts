@@ -55,7 +55,9 @@ export function planAssetHeight({
     }
     case 'fixed':
       if (targetHeight !== nativeHeight)
-        throw new Error('Requested height differs from the fixed asset.');
+        throw new Error(
+          `Requested height differs from the fixed asset (${nativeHeight}); received ${targetHeight}.`
+        );
       return { height: nativeHeight, scaleY: 1, rows: [] };
     case 'repeat-above': {
       const { baseHeight, rowHeight, node } = profile;
@@ -70,7 +72,9 @@ export function planAssetHeight({
       )
         throw new Error('Repeat profile disagrees with the native height.');
       if (targetHeight < baseHeight)
-        throw new Error('Requested height is below the fixed region.');
+        throw new Error(
+          `Requested height is below the fixed region (${baseHeight}); received ${targetHeight}.`
+        );
       const remaining = targetHeight - baseHeight;
       // Preserve the existing above-row policy: nearest whole courses, with
       // the residual shared by those courses, never by the opening below.

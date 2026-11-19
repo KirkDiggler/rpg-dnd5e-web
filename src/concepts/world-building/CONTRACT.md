@@ -207,9 +207,10 @@ walls and door bindings.
 
 ### Supported automatic visual corners
 
-Only catalog appearances declaring `wall-miter-90` opt into the plain-wall fit.
-The enrolled appearance is an explicit choice, not a silent replacement of older
-Castle walls. Two shared authored endpoints, perpendicular directions, matching
+Catalog appearances declaring `wall-body-fit` use the shared body/plane fitter
+for explicit size and finish charts. Only `wall-miter-90` additionally opts into
+automatic corner joining; adding height/finish support does not silently opt an
+existing appearance into a different corner policy. Two shared authored endpoints, perpendicular directions, matching
 authored height/thickness/elevation and solid terminal pieces longer than their
 depth allow a common miter. Junctions, opening conflicts, unequal dimensions and
 unsupported appearances retain unfitted art with a selected-wall explanation.

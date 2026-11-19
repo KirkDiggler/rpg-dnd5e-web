@@ -253,6 +253,7 @@ import {
   resolveWallFaceFinish,
 } from './wallFinishProjection';
 import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
+import { assertWallHeightEdit } from './wallHeightEdits';
 import { MAX_WORLD_COORD } from './worldBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -901,6 +902,16 @@ export function WorldBuildingConcept({
         const scene = validateScene(candidate.draft.scene, {
           horizontalLimit: MAX_WORLD_COORD,
         });
+        if (
+          !complete &&
+          candidate.draft.sourceRef ===
+            roomHistoryRef.current.present.draft.sourceRef
+        )
+          assertWallHeightEdit({
+            walls: candidate.draft.room.walls ?? [],
+            previousWalls:
+              roomHistoryRef.current.present.draft.room.walls ?? [],
+          });
         const captured = captureDoorFramePresentations(
           { ...candidate.draft, scene },
           materialCatalog.catalog,

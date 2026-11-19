@@ -99,7 +99,13 @@ describe('structural fit uses catalog runtime dimensions exactly once', () => {
         assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
       },
     };
-    const wallWithOpening = { ...wall, openings: [opening] };
+    // The fixed opening is about 2.138 units tall; a two-unit target would
+    // squash it. Fit a valid taller wall and leave the opening unchanged.
+    const wallWithOpening = {
+      ...wall,
+      appearance: { ...wall.appearance, height: 3 },
+      openings: [opening],
+    };
     const view = await ReactThreeTestRenderer.create(
       <FittedDoorSurface
         doorId={opening.door.id}
@@ -116,7 +122,7 @@ describe('structural fit uses catalog runtime dimensions exactly once', () => {
     );
     const size = measured.getSize(new THREE.Vector3());
     expect(size.x).toBeCloseTo(2, 5);
-    expect(size.y).toBeCloseTo(2, 5);
+    expect(size.y).toBeCloseTo(3, 5);
     expect(size.z).toBeCloseTo(0.25, 5);
     expect(measured.getCenter(new THREE.Vector3()).x).toBeCloseTo(4, 5);
     expect(measured.min.y).toBeCloseTo(DUNGEON_SURFACE_Y + 0.2, 5);

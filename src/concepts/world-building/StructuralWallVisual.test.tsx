@@ -1,3 +1,5 @@
+import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
+import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import type { ReactElement, ReactNode } from 'react';
@@ -14,45 +16,57 @@ const modelState = vi.hoisted(() => ({
   pending: new Promise<never>(() => {}),
 }));
 
-const loadedScene = new THREE.Group();
-loadedScene.add(
-  new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial()
-  )
-);
-// Named door role nodes so the shared leaf can resolve frame/leaf/above and
-// expose an actual swing. The wall asset declares no roles, so these are inert
-// for the repeated wall pieces.
-for (const name of [
-  'Door_Frame',
-  'Door_Left',
-  'Door_Right',
-  'Door_Wall_Above',
-]) {
-  const node = new THREE.Group();
-  node.name = name;
-  const isLeaf = name === 'Door_Left' || name === 'Door_Right';
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(isLeaf ? 0.98 : 1, isLeaf ? 2.5 : 1, 0.1),
-    new THREE.MeshStandardMaterial()
-  );
-  if (isLeaf) {
-    // An upright side-hinged panel, not an axis-ambiguous square at its center.
-    node.position.x = name === 'Door_Left' ? -0.5 : 0.5;
-    mesh.position.set(name === 'Door_Left' ? 0.49 : -0.49, 1.25, 0);
-  }
-  node.add(mesh);
-  loadedScene.add(node);
+const loadedScenes = new Map<string, THREE.Group>();
+function loadedScene(url: string): THREE.Group {
+  const cached = loadedScenes.get(url);
+  if (cached) return cached;
+  const asset = Object.values(GENERATED_WORLD_ASSETS).find(
+    (a) => a.url === url.split('?')[0]
+  )!;
+  const [width, height, depth] = asset.boundsMeters.map(
+    (n) => n / SYNTY_SCALE
+  ) as [number, number, number];
+  const scene = new THREE.Group();
+  const add = (name: string, w: number, h: number, d: number, y: number) => {
+    const node = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial()
+    );
+    node.name = name;
+    node.position.y = y;
+    scene.add(node);
+    return node;
+  };
+  if (asset.heightFit?.mode === 'repeat-above') {
+    const base = asset.heightFit.baseHeight / SYNTY_SCALE;
+    const row = asset.heightFit.rowHeight / SYNTY_SCALE;
+    add('Door_Frame', width, base, depth, base / 2);
+    add('Door_Wall_Above', width, row, depth, base + row / 2);
+    for (const [name, sign] of [
+      ['Door_Left', 1],
+      ['Door_Right', -1],
+    ] as const) {
+      const leaf = add(name, width / 2, base * 0.9, depth / 4, base * 0.45);
+      leaf.position.x = (-sign * width) / 2;
+      leaf.geometry.translate((sign * width) / 4, 0, 0);
+    }
+  } else add('Body', width, height, depth, height / 2);
+  loadedScenes.set(url, scene);
+  return scene;
+}
+function measuredHeight(root: THREE.Object3D): number {
+  root.updateWorldMatrix(true, true);
+  return new THREE.Box3().setFromObject(root, true).getSize(new THREE.Vector3())
+    .y;
 }
 
 vi.mock('@react-three/drei', () => ({
   Html: ({ children }: { children: ReactNode }) => (
     <group name="html-test-probe" userData={{ content: children }} />
   ),
-  useGLTF: () => {
+  useGLTF: (url: string) => {
     if (modelState.mode === 'pending') throw modelState.pending;
-    return { scene: loadedScene };
+    return { scene: loadedScene(url) };
   },
 }));
 
@@ -61,8 +75,6 @@ const DOOR_ASSET = 'dnd5e:env:dark-fortress:wall_door_double_01';
 const DOOR_BOUNDS_METERS = [
   1.8749944567680359, 2.2550519014766905, 0.2637633271515371,
 ] as const;
-// Provider-measured asset height, metres (generated catalog, 45_wall_01).
-const ASSET_HEIGHT_M = 2.258652985095978;
 
 function wall(overrides: Partial<StructuralWall> = {}): StructuralWall {
   return {
@@ -156,9 +168,8 @@ describe('StructuralWallVisual', () => {
     ).toHaveLength(0);
   });
 
-  it('owns the full exact height fit on the parent, unbounded by the prop clamp', async () => {
+  it('delegates exact height to the shared fitter without parent Y scaling', async () => {
     modelState.mode = 'loaded';
-    const expected = (height: number) => height / ASSET_HEIGHT_M;
     const tall = await ReactThreeTestRenderer.create(
       <StructuralWallVisual
         walls={[
@@ -178,8 +189,8 @@ describe('StructuralWallVisual', () => {
     const tallPiece = tall.scene.findByProps({
       name: 'structural-wall-piece-wall-1-0-0',
     });
-    expect(tallPiece.props.scale[1]).toBeCloseTo(expected(20));
-    expect(tallPiece.props.scale[1]).toBeGreaterThan(4);
+    expect(tallPiece.props.scale[1]).toBe(1);
+    expect(measuredHeight(tallPiece.instance)).toBeCloseTo(20);
     await tall.unmount();
 
     const short = await ReactThreeTestRenderer.create(
@@ -201,8 +212,9 @@ describe('StructuralWallVisual', () => {
     const shortPiece = short.scene.findByProps({
       name: 'structural-wall-piece-wall-1-0-0',
     });
-    expect(shortPiece.props.scale[1]).toBeCloseTo(expected(0.1));
-    expect(shortPiece.props.scale[1]).toBeLessThan(0.25);
+    expect(shortPiece.props.scale[1]).toBe(1);
+    expect(measuredHeight(shortPiece.instance)).toBeCloseTo(0.1);
+    await short.unmount();
   });
 
   it('adds the floor lift exactly once, at the authored elevation and never scaled', async () => {
@@ -368,9 +380,10 @@ describe('StructuralWallVisual', () => {
     expect(doorGroup).toBeTruthy();
     expect(doorGroup.props.position[0]).toBeCloseTo(7);
     expect(doorGroup.props.userData.open).toBe(false);
-    const [widthM, heightM, depthM] = DOOR_BOUNDS_METERS;
+    const [widthM, , depthM] = DOOR_BOUNDS_METERS;
     expect(doorGroup.props.scale[0]).toBeCloseTo(2 / widthM);
-    expect(doorGroup.props.scale[1]).toBeCloseTo(3 / heightM);
+    expect(doorGroup.props.scale[1]).toBe(1);
+    expect(measuredHeight(doorGroup.instance)).toBeCloseTo(3);
     expect(doorGroup.props.scale[2]).toBeCloseTo(0.3 / depthM);
     // Exactly one unscaled floor lift, at the authored elevation.
     const scaleY = doorGroup.props.scale[1] as number;
