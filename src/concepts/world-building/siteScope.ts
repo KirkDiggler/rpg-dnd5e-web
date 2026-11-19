@@ -752,7 +752,8 @@ export function validateSiteEndings(value: unknown): SiteEnding[] {
 
 /** A leave ending's `if` (`grammar.endingIf`): `{ down }`, `{ fact }` or `{
  * stance }`, or `{ not: }` one of them, never a `not` of a `not`. Any other
- * form the predicate grammar names — `round`, `holds`, `left` — is refused
+ * form the predicate grammar names — `round`, `carries`, `noted`, the
+ * retired `holds`, `left` — is refused
  * in the engine's sentence naming it. Whether a `down` names a placed
  * monster, or a stance's factions exist, is the engine's at Save & Play. */
 function validateEndingIf(value: unknown, path: string): PredicateDoc {
@@ -764,7 +765,13 @@ function validateEndingIf(value: unknown, path: string): PredicateDoc {
         fail(`${path}.not`, NOT_OF_NOT_REFUSAL);
       return { not: validateEndingIf(inner, `${path}.not`) };
     }
-    if (form === 'round' || form === 'holds' || form === 'left')
+    if (
+      form === 'round' ||
+      form === 'holds' ||
+      form === 'carries' ||
+      form === 'noted' ||
+      form === 'left'
+    )
       fail(path, ENDING_SENTENCES.ifWrongForm(form));
   }
   return validatePredicate(value, path);

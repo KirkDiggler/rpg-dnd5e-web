@@ -1,9 +1,9 @@
 /**
  * A PLACE IN THE FILE, IN WORDS (rpg-project#983). The engine and the
  * server name places by path (`room.room.monsterBindings.gate-1.options[1]
- * .failure[0].recognize`); an author reads them as words from the dialect's
+ * .failure[0].give`); an author reads them as words from the dialect's
  * own grammar and the draft: "gate-1 · line `straggler` · on a miss ·
- * recognize". The thing comes first by its id, then each place inside it,
+ * give". The thing comes first by its id, then each place inside it,
  * ids in code style. It names a LOCATION only — never what runs there. A
  * shape it does not know falls back to its last two segments in words.
  */

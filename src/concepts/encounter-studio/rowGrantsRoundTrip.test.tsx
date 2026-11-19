@@ -1,14 +1,14 @@
 /**
  * A ROW'S GRANT AND A LINE'S LOUDNESS, FROM THE FORM (rpg-project#975 A).
- * A line's success or failure row grants one thing — a topic recognised
- * (`recognize`), a record told (`tells`) or a relocation (`relocate`) — and
+ * A line's success or failure row grants one thing — a topic given
+ * (`give`), a record told (`tells`) or a relocation (`relocate`) — and
  * a line, a row and a heard voice carry a loudness. Each is authored through
  * the form on the castle and written back as the exact YAML the engine
  * reads; the castle still downloads byte for byte unedited, and editing one
  * of them changes no other key's bytes.
  *
  * What the engine refuses the form cannot write: one grant per row (one
- * select), no recognition on a prop's line (not offered), grants only on a
+ * select), no give on a prop's line (not offered), grants only on a
  * line's verdict rows (a table row has no Grants), `heard_by` only on a line
  * that names a conversation, a done line has no loudness, a heard loudness
  * only on a voice.
@@ -124,7 +124,7 @@ const grants = (label: string) =>
   screen.getByLabelText(`Grants for ${label} entry`) as HTMLSelectElement;
 
 describe('the castle still downloads byte for byte', () => {
-  it('unedited, with its tells, relocates, recognitions and loudnesses', () => {
+  it('unedited, with its tells, relocates, gives and loudnesses', () => {
     const result = read(served);
     expect(
       exportDraftYaml({ draft: result.draft, scope: result.scope }, result.key)
@@ -189,10 +189,10 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     );
   });
 
-  it('a recognition: topic, about, holder written as the engine reads it; witnesses only on a line that names a conversation', () => {
+  it('a give: topic, about, to written as the engine reads it; witnesses only on a line that names a conversation', () => {
     const result = read(served);
     const { last } = editor(result, 'scullion', 'creature');
-    fireEvent.change(grants(row), { target: { value: 'recognize' } });
+    fireEvent.change(grants(row), { target: { value: 'give' } });
     let { index, option } = last();
     cleanup();
     const after = read(saveWith(result, 'scullion', 'creature', index, option));
@@ -201,7 +201,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     expect(
       (
         screen.getByLabelText(
-          `Also held by the conversation’s carriers who witness it, for ${row} entry`
+          `Also given to the conversation’s carriers who witness it, for ${row} entry`
         ) as HTMLInputElement
       ).disabled
     ).toBe(true);
@@ -220,20 +220,20 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     expect(saved).toBe(
       served.replace(
         '                tells: kitchen-way\n',
-        '                recognize:\n' +
+        '                give:\n' +
           '                  topic: kitchen-friend\n' +
-          '                  holder: spoken_to\n' +
+          '                  to: spoken_to\n' +
           '                  about: speaker\n'
       )
     );
   });
 
-  it('the gate guard’s recognition reads as written, its witnesses checked (its line names the gate)', () => {
+  it('the gate guard’s give reads as written, its witnesses checked (its line names the gate)', () => {
     const result = read(served);
     editor(result, 'gate-1', 'creature');
     // gate-1's second line (`straggler`) grants on both verdicts.
     const label = 'line 2 of gate-1 success';
-    expect(grants(label).value).toBe('recognize');
+    expect(grants(label).value).toBe('give');
     expect(
       (screen.getByLabelText(`Topic for ${label} entry`) as HTMLInputElement)
         .value
@@ -243,31 +243,31 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
         .value
     ).toBe('speaker');
     const heard = screen.getByLabelText(
-      `Also held by the conversation’s carriers who witness it, for ${label} entry`
+      `Also given to the conversation’s carriers who witness it, for ${label} entry`
     ) as HTMLInputElement;
     expect(heard.disabled).toBe(false);
     expect(heard.checked).toBe(true);
   });
 
-  it('a new recognition on a line that requires a conversation can be witnessed: friends-inside', () => {
+  it('a new give on a line that requires a conversation can be witnessed: friends-inside', () => {
     const result = read(served);
     const options = result.draft.room.monsterBindings!['gate-1']!.options!;
     const at = options.findIndex((o) => o.id === 'friends-inside');
     const label = `line ${at + 1} of gate-1 success`;
     const { last } = editor(result, 'gate-1', 'creature');
-    fireEvent.change(grants(label), { target: { value: 'recognize' } });
+    fireEvent.change(grants(label), { target: { value: 'give' } });
     const witnesses = screen.getByLabelText(
-      `Also held by the conversation’s carriers who witness it, for ${label} entry`
+      `Also given to the conversation’s carriers who witness it, for ${label} entry`
     ) as HTMLInputElement;
     expect(witnesses.disabled).toBe(false);
     fireEvent.click(witnesses);
     const { option } = last();
     expect(option.success![0]).toMatchObject({
-      recognize: { heard_by: 'carriers_who_witnessed' },
+      give: { heard_by: 'carriers_who_witnessed' },
     });
   });
 
-  it('a prop’s line offers no recognition (a prop holds nothing about anybody); its relocate reads as written', () => {
+  it('a prop’s line offers no give (a prop holds nothing about anybody); its relocate reads as written', () => {
     const result = read(served);
     editor(result, 'grate', 'prop');
     const label = 'line 1 of grate success';
@@ -359,8 +359,8 @@ describe('a loudness, from the form (rpg-project#975 A)', () => {
     const { index, option } = last();
     expect(saveWith(result, 'scullion', 'creature', index, option)).toBe(
       served.replace(
-        "            say: There's a coin in it if you know a way out of here.\n            requires:\n              holds: purse\n            success:\n              - say: The grate by the hearth.",
-        "            say: There's a coin in it if you know a way out of here.\n            loudness: shout\n            requires:\n              holds: purse\n            success:\n              - say: The grate by the hearth."
+        "            say: There's a coin in it if you know a way out of here.\n            requires:\n              carries: purse\n            success:\n              - say: The grate by the hearth.",
+        "            say: There's a coin in it if you know a way out of here.\n            loudness: shout\n            requires:\n              carries: purse\n            success:\n              - say: The grate by the hearth."
       )
     );
   });

@@ -161,7 +161,7 @@ export function dispositionLine(
 
 /** What turns a pair, after its head: one step reads "until …; then
  * neutral." as it always did; a list of steps (rpg-project#717) reads each
- * step and its turn, the first that holds winning. */
+ * step and its turn, the first that is true winning. */
 function untilText(
   disposition: Readonly<SiteDisposition>,
   document: Readonly<RoomDraftDocument>
@@ -190,7 +190,7 @@ export function untilTextIn(
   const turns = steps.map(
     (step) => `once ${clause(step)}, ${turnsTo(disposition.stance, step.then)}`
   );
-  return `: ${turns.join('; ')} — the first of these that holds wins.`;
+  return `: ${turns.join('; ')} — the first of these that is true wins.`;
 }
 
 /** One ending as the clause after "The run ends when …" (rpg-project#716):

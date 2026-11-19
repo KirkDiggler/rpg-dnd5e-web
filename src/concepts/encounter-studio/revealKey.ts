@@ -12,7 +12,7 @@ import { placeName } from './placeName';
 import type { RefusalTarget } from './refusalJump';
 import type { RevealKey } from './useReveal';
 
-/** `options[1].failure[0].recognize` back from segments. */
+/** `options[1].failure[0].give` back from segments. */
 export function partOf(rest: readonly Segment[]): string | undefined {
   let out = '';
   for (const segment of rest)

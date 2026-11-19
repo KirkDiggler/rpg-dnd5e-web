@@ -13,12 +13,12 @@
 import { useContext, useId } from 'react';
 import { RevealDiv } from '../encounter-studio/RevealDiv';
 import {
+  GIVE_ABOUT,
+  GIVE_HEARD_BY,
   grantOf,
   LOUDNESSES,
-  RECOGNITION_ABOUT,
-  RECOGNITION_HEARD_BY,
+  withGive,
   withGrant,
-  withRecognition,
   withRelocation,
   withTells,
   type GrantingRow,
@@ -219,19 +219,19 @@ export function RelocationFields({
   );
 }
 
-/** A RECOGNITION's fields: the topic held, who holds it (the one spoken to,
- * the only word), whom it is about, and whether the witnessing carriers of
- * the conversation hold it too. A line's row grants one; a conversation's
- * outcome writes one. */
-export function RecognitionFields({
+/** A GIVE's fields (`give:`, rpg-project#1005): the topic given, to whom
+ * (the one spoken to, the only word), whom it is about, and whether the
+ * witnessing carriers of the conversation come to note it too. A line's row
+ * gives one; a conversation's outcome writes one. */
+export function GiveFields({
   label,
-  recognize,
+  give,
   canBeWitnessed,
   onChange,
 }: {
   /** What the controls are named for: "<field> for <label>". */
   label: string;
-  recognize: { topic: string; about: string; heard_by?: string };
+  give: { topic: string; about: string; heard_by?: string };
   /** Whether there are carriers to witness it (a line naming a
    * conversation, or a conversation's own outcome). */
   canBeWitnessed: boolean;
@@ -247,7 +247,7 @@ export function RecognitionFields({
           aria-label={`Topic for ${label}`}
           list={topicsId}
           placeholder="a topic, or a new one"
-          value={recognize.topic}
+          value={give.topic}
           onChange={(event) => onChange({ topic: event.target.value })}
         />
         <datalist id={topicsId}>
@@ -257,8 +257,8 @@ export function RecognitionFields({
         </datalist>
       </label>
       <label>
-        <span>Held by</span>
-        <select aria-label={`Held by for ${label}`} value="spoken_to" disabled>
+        <span>Given to</span>
+        <select aria-label={`Given to for ${label}`} value="spoken_to" disabled>
           <option value="spoken_to">The one spoken to</option>
         </select>
       </label>
@@ -266,39 +266,40 @@ export function RecognitionFields({
         <span>About</span>
         <select
           aria-label={`About for ${label}`}
-          value={recognize.about}
+          value={give.about}
           onChange={(event) => onChange({ about: event.target.value })}
         >
           <option value="party_in_sight">The speaker’s party in sight</option>
           <option value="speaker">The speaker</option>
-          {!(RECOGNITION_ABOUT as readonly string[]).includes(
-            recognize.about
-          ) && <option value={recognize.about}>{recognize.about}</option>}
+          {!(GIVE_ABOUT as readonly string[]).includes(give.about) && (
+            <option value={give.about}>{give.about}</option>
+          )}
         </select>
       </label>
       <label className="wb-check">
         <input
           type="checkbox"
-          aria-label={`Also held by the conversation’s carriers who witness it, for ${label}`}
-          checked={recognize.heard_by === RECOGNITION_HEARD_BY}
-          disabled={!canBeWitnessed && recognize.heard_by === undefined}
+          aria-label={`Also given to the conversation’s carriers who witness it, for ${label}`}
+          checked={give.heard_by === GIVE_HEARD_BY}
+          disabled={!canBeWitnessed && give.heard_by === undefined}
           onChange={(event) => onChange({ heard: event.target.checked })}
         />
-        <span>Also held by the conversation’s carriers who witness it</span>
+        <span>Also given to the conversation’s carriers who witness it</span>
       </label>
     </>
   );
 }
 
 const GRANT_LABELS: Record<RowGrant, string> = {
-  recognize: 'Recognition',
+  give: 'Gives a topic',
   tells: 'Record',
   relocate: 'Relocation',
 };
 
-/** A line's verdict row's grant: Nothing, or ONE of a recognition, a record
- * told or a relocation. Not on a table row (the caller offers it only on a
- * line's row); no recognition on a prop's line. */
+/** A line's verdict row's grant: Nothing, or ONE of a topic given, a
+ * record told or a relocation. Not on a table row (the caller offers it only
+ * on a line's row); no give on a prop's line. A row still written in the
+ * retired `recognize:` (rpg-project#1005) is said so and kept as written. */
 export function RowGrantFields({
   label,
   row,
@@ -321,9 +322,10 @@ export function RowGrantFields({
   const grant = grantOf(row);
   const offered: RowGrant[] = isProp
     ? ['tells', 'relocate']
-    : ['recognize', 'tells', 'relocate'];
+    : ['give', 'tells', 'relocate'];
   const named = `${label} entry`;
-  const recognize = row.recognize;
+  const give = row.give;
+  const retired = (row as Record<string, unknown>).recognize;
   const relocate: RelocationShape | undefined = row.relocate;
   return (
     <div className="wb-entry-grant">
@@ -363,16 +365,22 @@ export function RowGrantFields({
           )}
         </select>
       </label>
-      {grant === 'recognize' && recognize && (
+      {grant === undefined && retired !== undefined && (
+        <p className="wb-help" aria-label={`Written as recognize in ${named}`}>
+          Written as <code>recognize</code>, kept as written: the engine reads{' '}
+          <code>give</code> now.
+        </p>
+      )}
+      {grant === 'give' && give && (
         <RevealDiv
-          path={at ? `${at}.recognize` : undefined}
+          path={at ? `${at}.give` : undefined}
           className="wb-entry-grant-fields"
         >
-          <RecognitionFields
+          <GiveFields
             label={named}
-            recognize={recognize}
+            give={give}
             canBeWitnessed={namesConversation}
-            onChange={(patch) => onCommit(withRecognition(row, patch))}
+            onChange={(patch) => onCommit(withGive(row, patch))}
           />
         </RevealDiv>
       )}

@@ -105,34 +105,34 @@ describe('creature state recipe — dungeonspec/states.go', () => {
       'boolean',
     ],
     [
-      { initial: 'posted', posted: { holds: { at: [] } } },
-      '.posted.holds.door',
+      { initial: 'posted', posted: { post: { at: [] } } },
+      '.posted.post.door',
       'names the door',
     ],
     [
-      { initial: 'posted', posted: { holds: { door: 'gate', against: 'in' } } },
-      '.posted.holds.against',
+      { initial: 'posted', posted: { post: { door: 'gate', against: 'in' } } },
+      '.posted.post.against',
       'both, entering or leaving',
     ],
     [
       {
         initial: 'posted',
-        posted: { holds: { door: 'gate', at: [{ q: 1 }] } },
+        posted: { post: { door: 'gate', at: [{ q: 1 }] } },
       },
-      '.posted.holds.at[0].r',
+      '.posted.post.at[0].r',
       'whole number',
     ],
     [
       {
         initial: 'posted',
-        posted: { holds: { door: 'gate', at: { q: 1, r: 2 } } },
+        posted: { post: { door: 'gate', at: { q: 1, r: 2 } } },
       },
-      '.posted.holds.at',
+      '.posted.post.at',
       'list',
     ],
     [
-      { initial: 'posted', posted: { holds: { door: 'gate', pass: 3 } } },
-      '.posted.holds.pass',
+      { initial: 'posted', posted: { post: { door: 'gate', pass: 3 } } },
+      '.posted.post.pass',
       'text',
     ],
     [
@@ -141,9 +141,9 @@ describe('creature state recipe — dungeonspec/states.go', () => {
       'holds no post',
     ],
     [
-      { initial: 'down', down: { terminal: true, holds: { door: 'gate' } } },
-      '.down.holds',
-      'holds no post',
+      { initial: 'down', down: { terminal: true, post: { door: 'gate' } } },
+      '.down.post',
+      'keeps no post',
     ],
   ])('refuses malformed recipe %# at its field', (value, path, words) => {
     expect(() => validateStates(value, 'guard.states')).toThrow(path as string);
@@ -171,7 +171,7 @@ describe('a state’s post (rpg-project#836, #852, #857)', () => {
     initial: 'posted',
     posted: {
       blocks: true,
-      holds: {
+      post: {
         door: 'gate-wall-door',
         at: [
           { q: -3, r: 7 },
@@ -182,10 +182,10 @@ describe('a state’s post (rpg-project#836, #852, #857)', () => {
       },
       transitions: [{ on: 'heard', within: 6, to: 'alert' }],
     },
-    alert: { blocks: true, holds: { door: 'gate-wall-door' } },
+    alert: { blocks: true, post: { door: 'gate-wall-door' } },
   };
 
-  it('reads blocks and holds in the author’s key order', () => {
+  it('reads blocks and post in the author’s key order', () => {
     const states = validateStates(posted, 'gate-1.states');
     expect(states).toEqual(posted);
     expect(JSON.stringify(states)).toBe(JSON.stringify(posted));
@@ -193,11 +193,8 @@ describe('a state’s post (rpg-project#836, #852, #857)', () => {
 
   it.each(['both', 'entering', 'leaving'])('accepts against: %s', (against) => {
     expect(
-      validateStates(
-        { initial: 'p', p: { holds: { door: 'd', against } } },
-        's'
-      )
-    ).toEqual({ initial: 'p', p: { holds: { door: 'd', against } } });
+      validateStates({ initial: 'p', p: { post: { door: 'd', against } } }, 's')
+    ).toEqual({ initial: 'p', p: { post: { door: 'd', against } } });
   });
 
   it('a terminal state may say blocks: false, which holds nothing', () => {
@@ -205,13 +202,13 @@ describe('a state’s post (rpg-project#836, #852, #857)', () => {
     expect(validateStates(down, 's')).toEqual(down);
   });
 
-  it('keeps a state field it does not read, and a holds field, as written and in place', () => {
+  it('keeps a state field it does not read, and a post field, as written and in place', () => {
     const future = {
       initial: 'posted',
       posted: {
         blocks: true,
         watches: { door: 'postern', every: 2 },
-        holds: { door: 'gate', challenge: ['who goes there'], against: 'both' },
+        post: { door: 'gate', challenge: ['who goes there'], against: 'both' },
         transitions: [{ on: 'time' }],
       },
     };
@@ -228,7 +225,7 @@ describe('the codec carries what it does not read (rpg-project#857)', () => {
     const future = {
       initial: 'posted',
       posted: {
-        holds: { door: 'gate', at: [{ q: 1, r: 2, level: 1 }] },
+        post: { door: 'gate', at: [{ q: 1, r: 2, level: 1 }] },
         transitions: [
           { on: 'time', surprise: true, to: 'posted', escort: 'x' },
         ],
@@ -239,7 +236,7 @@ describe('the codec carries what it does not read (rpg-project#857)', () => {
   });
 
   it('reads an empty against as both, as the server does, and keeps the word', () => {
-    const empty = { initial: 'p', p: { holds: { door: 'd', against: '' } } };
+    const empty = { initial: 'p', p: { post: { door: 'd', against: '' } } };
     expect(validateStates(empty, 's')).toEqual(empty);
   });
 });

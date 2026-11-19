@@ -118,7 +118,8 @@ export const ENDING_SENTENCES = Object.freeze({
   /** A leave ending with no `outcome`. */
   leaveNeedsOutcome: (): string =>
     'an ending on leaving says what leaving means: `outcome: success` or `outcome: failure`',
-  /** An `if` of a form it cannot be (`round`, `holds`, `left`). */
+  /** An `if` of a form it cannot be (`round`, `carries`, `noted`, `holds`,
+   * `left`). */
   ifWrongForm: (form: string): string =>
     "an ending's `if` is { down: <placement id> }, { fact: <id> } or " +
     '{ stance: { between: [a, b], is: hostile|neutral|allied } }, or { not: } one of them, ' +

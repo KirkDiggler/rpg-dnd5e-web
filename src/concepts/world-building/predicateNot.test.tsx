@@ -79,9 +79,9 @@ describe('the not predicate is read and written', () => {
         .requires
     ).toEqual({ not: { fact: 'caught' } });
     expect(
-      validateOptions(line({ not: { holds: 'purse' } }), 'options', false)[0]!
+      validateOptions(line({ not: { carries: 'purse' } }), 'options', false)[0]!
         .requires
-    ).toEqual({ not: { holds: 'purse' } });
+    ).toEqual({ not: { carries: 'purse' } });
     expect(() =>
       validateOptions(line({ not: { not: { fact: 'x' } } }), 'options', false)
     ).toThrow(`options[0].requires.not: ${NOT_OF_NOT_REFUSAL}`);
@@ -282,8 +282,10 @@ describe('the requires picker offers “unless”', () => {
       not: { fact: 'caught-in-kitchen' },
     });
 
-    fireEvent.change(picker, { target: { value: 'not-holds' } });
-    expect(latest?.options?.[0]?.requires).toEqual({ not: { holds: 'table' } });
+    fireEvent.change(picker, { target: { value: 'not-carries' } });
+    expect(latest?.options?.[0]?.requires).toEqual({
+      not: { carries: 'table' },
+    });
 
     fireEvent.change(picker, { target: { value: 'fact' } });
     expect(latest?.options?.[0]?.requires).toEqual({ fact: '' });

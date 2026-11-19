@@ -8,7 +8,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import {
-  optionHoldsRefusal,
+  optionCarriesRefusal,
   validateAnswerTable,
   validateOptions,
   type AnswerTableShape,
@@ -1296,9 +1296,9 @@ function validateMonsterBindings(
     //
     // OPTIONS ARE JUDGED HERE IN THE ENGINE'S WORDS (rpg-project#569): every
     // refusal an option can earn about itself is one `validateOptions` copies
-    // from `dungeonspec`. Whether a `requires: { holds }` names a prop somebody
-    // can pick up is asked once the room's props are in hand
-    // (`requireOptionHoldings`).
+    // from `dungeonspec`. Whether a `requires: { carries }` names a prop
+    // somebody can pick up is asked once the room's props are in hand
+    // (`requireOptionCarries`).
     if (Object.hasOwn(block, 'options'))
       parsed.options = validateOptions(
         block.options,
@@ -1367,11 +1367,11 @@ function validatePropBindingOptions(
   return out;
 }
 
-/** Every `requires: { holds }` on a creature's or a prop's lines names a
+/** Every `requires: { carries }` on a creature's or a prop's lines names a
  * placed prop somebody can pick up — refused otherwise in the engine's own
  * sentences. The universe is the engine's `roomProps`: every declared prop,
  * holdable when its binding says so. */
-function requireOptionHoldings(
+function requireOptionCarries(
   propDeclarations: Record<string, RoomPropDeclaration>,
   monsterBindings: Record<string, RoomMonsterBinding> | undefined,
   propBindings: Record<string, RoomPropBinding> | undefined
@@ -1387,12 +1387,12 @@ function requireOptionHoldings(
       if (option.requires === undefined) continue;
       const requires = option.requires;
       for (const [i, one] of requirementsOf(requires).entries()) {
-        // A `not` of a holding names its prop one level down (rpg-project#719).
+        // A `not` of carrying names its prop one level down (rpg-project#719).
         const read = requiresRead(one);
-        if (!('holds' in read)) continue;
-        const refusal = optionHoldsRefusal(read.holds, props);
+        if (!('carries' in read)) continue;
+        const refusal = optionCarriesRefusal(read.carries, props);
         const at = `${requirementPath(requires, i)}.${
-          'not' in one ? 'not.holds' : 'holds'
+          'not' in one ? 'not.carries' : 'carries'
         }`;
         if (refusal)
           throw new Error(`${owner} options[${index}].${at}: ${refusal}`);
@@ -1650,7 +1650,7 @@ function validateDraft(value: unknown, picked: readonly string[]): RoomDraft {
   // A LINE GATED ON HOLDING A PROP needs the prop to be placed and holdable —
   // the engine's `optionRequires`, asked here because this is the first place
   // both the lines and the room's props are in hand.
-  requireOptionHoldings(propDeclarations, monsterBindings, propBindings);
+  requireOptionCarries(propDeclarations, monsterBindings, propBindings);
   // A BOUND DOOR REQUIRES ITS STATE. An opening that carries a `door` owns a
   // `doorBindings` entry; absence is a bare opening, never a hidden or open
   // door. This is the ONE owner-specific shape rule, and it applies ONLY to

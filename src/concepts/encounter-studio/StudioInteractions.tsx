@@ -9,7 +9,7 @@ import {
   ABOUT_PARTY_IN_SIGHT,
   arrestOf,
   arrests,
-  editableRecognizeOf,
+  editableGiveOf,
   HEARD_BY_WITNESSES,
   jailOf,
   jails,
@@ -35,7 +35,7 @@ import { fromRows, rowCellCount } from '../world-building/regionRuns';
 import type { RoomCellRow, RoomHexCell } from '../world-building/roomDraft';
 import { useLatest, useRoutePicking } from '../world-building/routePicking';
 import {
-  RecognitionFields,
+  GiveFields,
   RegionField,
   RoundsField,
   WordsField,
@@ -75,9 +75,10 @@ export function StudioInteractions({
         </p>
         <p>
           What follows the conversation entering a state is authored here once,
-          whichever line got it there. A recognition makes the creature the line
-          was said to recognise the speaker’s party he sees, on a topic; a
-          post’s pass or a line’s requirement can then ask for that topic.
+          whichever line got it there. A give: the creature the line was said to
+          comes to note the topic about the speaker’s party it sees; a post’s
+          pass or a line’s requirement can then ask whether it has{' '}
+          <code>noted</code> it.
         </p>
       </AboutPanel>
       {ids.length === 0 ? (
@@ -195,7 +196,7 @@ function ApproachField({
 }
 
 const KIND_LABELS: Record<OutcomeKind, string> = {
-  recognize: 'Recognises',
+  give: 'Gives a topic',
   arrest: 'Arrests',
   jail: 'Jails',
 };
@@ -203,7 +204,7 @@ const KIND_LABELS: Record<OutcomeKind, string> = {
 /**
  * One conversation's outcomes (rpg-project#928, #975 C): for each state it
  * enters, what follows — each entry ONE kind, chosen like a row's grant: it
- * recognises, arrests or jails. A form, not a sentence: what an arrest does
+ * gives a topic, arrests or jails. A form, not a sentence: what an arrest does
  * is the engine's read-back (here and in the places view's arrest passage).
  *
  * An arrest and a jail are a relocation reached from a conversation (R33),
@@ -232,7 +233,7 @@ function OutcomesField({
   const names = useContext(SiteNamesContext);
   const picking = useRoutePicking();
   const [adding, setAdding] = useState(states[0] ?? '');
-  const [addingKind, setAddingKind] = useState<OutcomeKind>('recognize');
+  const [addingKind, setAddingKind] = useState<OutcomeKind>('give');
   const entered = Object.keys(outcomes);
   const siteRegions = names.regions.map((region) => region.id);
   const canJail = arrests(outcomes);
@@ -240,7 +241,7 @@ function OutcomesField({
   // Jails is chosen only beside an arrest: the add control's kind falls back
   // when the conversation no longer arrests (rpg-project#975 C review).
   const addKind: OutcomeKind =
-    addingKind === 'jail' && !canJail ? 'recognize' : addingKind;
+    addingKind === 'jail' && !canJail ? 'give' : addingKind;
   // A PICK OUTLIVES THE RENDER THAT ARMED IT (`useLatest`): Done writes the
   // picked cells through this section's newest outcomes and commit.
   const applyCells = useLatest(
@@ -266,7 +267,7 @@ function OutcomesField({
             // An entry the form cannot fully read is shown as written: never
             // a crash, never blank fields (rpg-project#975 C review).
             const editable =
-              (written === 'recognize' && editableRecognizeOf(entry)) ||
+              (written === 'give' && editableGiveOf(entry)) ||
               (written === 'arrest' && arrestOf(entry)) ||
               (written === 'jail' && jailOf(entry));
             const kind = editable ? written : undefined;
@@ -322,8 +323,7 @@ function OutcomesField({
                 </RevealLi>
               );
             const jailOffered = arrests(outcomes, { state, index });
-            const recognize =
-              kind === 'recognize' ? editableRecognizeOf(entry) : undefined;
+            const give = kind === 'give' ? editableGiveOf(entry) : undefined;
             const arrest = arrestOf(entry);
             const jail = jailOf(entry);
             const seizedCells = arrest?.area.cells ?? [];
@@ -364,15 +364,15 @@ function OutcomesField({
                   {remove}
                 </div>
                 <div className="es-outcome-fields">
-                  {kind === 'recognize' && (
-                    <RecognitionFields
+                  {kind === 'give' && (
+                    <GiveFields
                       label={label}
-                      recognize={
-                        recognize
+                      give={
+                        give
                           ? {
-                              topic: recognize.topic,
-                              about: recognize.about,
-                              heard_by: recognize.heard
+                              topic: give.topic,
+                              about: give.about,
+                              heard_by: give.heard
                                 ? HEARD_BY_WITNESSES
                                 : undefined,
                             }

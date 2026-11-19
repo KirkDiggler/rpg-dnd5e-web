@@ -1,15 +1,15 @@
 /**
  * A LINE'S WIRING, FROM THE FORM (rpg-project#975 B). A line requires a list
- * of things, every one of which must hold — a fact the speaker knows, a prop
- * they carry, a conversation in one of its states, the one spoken to
- * recognising them, or `not` one of those — and it may advance a
+ * of things, every one of which must be true — a fact the speaker knows, a
+ * prop they carry (`carries`), a conversation in one of its states, a topic
+ * the one spoken to holds about them (`holds`), or `not` one of those — and it may advance a
  * conversation: the beat a win steps it on, and the beat a miss does. Each
  * is authored through the form on the castle and written back as the exact
  * YAML the engine reads; editing one changes no other key's bytes.
  *
  * What the engine refuses the form cannot write: a conversation state or a
  * beat the recipe does not declare (offered from the recipe), a state list
- * left empty (the last state cannot be unticked), recognition on a prop's
+ * left empty (the last state cannot be unticked), `holds` on a prop's
  * line (not offered), a miss beat on a plain line (not offered), an advance
  * with no beat (a conversation starts with its first beat).
  */
@@ -116,7 +116,7 @@ const field = <T extends HTMLElement>(label: string): T =>
   screen.getByLabelText(label) as T;
 
 describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
-  it('gate-1’s `vouch` reads as written: a conversation in a state, and a recognition', () => {
+  it('gate-1’s `vouch` reads as written: a conversation in a state, and a topic noted', () => {
     editor(read(served), 'gate-1');
     expect(field<HTMLSelectElement>('Line 1 requires for gate-1').value).toBe(
       'interaction'
@@ -134,7 +134,7 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
         .checked
     ).toBe(false);
     expect(field<HTMLSelectElement>('Line 1 requires 2 for gate-1').value).toBe(
-      'recognized'
+      'noted'
     );
     expect(
       field<HTMLInputElement>('Line 1 requires topic 2 for gate-1').value
@@ -176,10 +176,10 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     expect(saved).toBe(
       served.replace(
         "            say: There's a coin in it if you know a way out of here.\n" +
-          '            requires:\n              holds: purse\n',
+          '            requires:\n              carries: purse\n',
         "            say: There's a coin in it if you know a way out of here.\n" +
           '            requires:\n' +
-          '              - holds: purse\n' +
+          '              - carries: purse\n' +
           '              - interaction:\n' +
           '                  id: front-gate\n' +
           '                  in:\n' +
@@ -188,12 +188,12 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     );
   });
 
-  it('a recognition requirement offers the topics the file mentions; Unless negates it', () => {
+  it('a noted requirement offers the topics the file mentions; Unless negates it', () => {
     const { saved } = steps(
       'scullion',
       () =>
         fireEvent.change(field('Line 1 requires for scullion'), {
-          target: { value: 'not-recognized' },
+          target: { value: 'not-noted' },
         }),
       () =>
         fireEvent.change(field('Line 1 requires topic for scullion'), {
@@ -203,11 +203,11 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     expect(saved).toBe(
       served.replace(
         "            say: There's a coin in it if you know a way out of here.\n" +
-          '            requires:\n              holds: purse\n',
+          '            requires:\n              carries: purse\n',
         "            say: There's a coin in it if you know a way out of here.\n" +
           '            requires:\n' +
           '              not:\n' +
-          '                recognized: turned-away\n'
+          '                noted: turned-away\n'
       )
     );
   });
@@ -222,19 +222,20 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
     );
     expect(saved).toBe(
       served.replace(
-        '                  in: [admitted]\n              - recognized: admitted\n            success:\n              - say: Right you are.',
+        '                  in: [admitted]\n              - noted: admitted\n            success:\n              - say: Right you are.',
         '                  in: [admitted]\n            success:\n              - say: Right you are.'
       )
     );
   });
 
-  it('a prop’s line is never offered a recognition: a prop holds nothing about anybody', () => {
+  it('a prop’s line is never offered `holds`: a prop holds nothing about anybody', () => {
     editor(read(served), 'grate', 'prop');
     const offered = [
       ...field<HTMLSelectElement>('Line 1 requires for grate').options,
     ].map((option) => option.value);
-    expect(offered).not.toContain('recognized');
-    expect(offered).not.toContain('not-recognized');
+    expect(offered).not.toContain('noted');
+    expect(offered).not.toContain('not-noted');
+    expect(offered).toContain('carries');
     expect(offered).toContain('interaction');
   });
 });
@@ -325,7 +326,7 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
     );
   });
 
-  it('a recognition’s witnesses can be set once the line advances a conversation (part A’s field)', () => {
+  it('a give’s witnesses can be set once the line advances a conversation (part A’s field)', () => {
     const { result } = steps('scullion', () =>
       fireEvent.change(field('Line 1 advances conversation for scullion'), {
         target: { value: 'front-gate' },
@@ -333,11 +334,11 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
     );
     editor(result, 'scullion');
     fireEvent.change(field('Grants for line 1 of scullion success entry'), {
-      target: { value: 'recognize' },
+      target: { value: 'give' },
     });
     expect(
       field<HTMLInputElement>(
-        'Also held by the conversation’s carriers who witness it, for line 1 of scullion success entry'
+        'Also given to the conversation’s carriers who witness it, for line 1 of scullion success entry'
       ).disabled
     ).toBe(false);
   });
@@ -468,9 +469,9 @@ describe('each new field is a place a jump lands on, named in words', () => {
     ).toBe('gate-1 · line `troupe` · advance · failure');
     expect(
       placeName(
-        'room.room.monsterBindings.gate-1.options[0].requires[1].recognized',
+        'room.room.monsterBindings.gate-1.options[0].requires[1].noted',
         doc
       )
-    ).toBe('gate-1 · line `vouch` · requires 2 · recognized');
+    ).toBe('gate-1 · line `vouch` · requires 2 · noted');
   });
 });

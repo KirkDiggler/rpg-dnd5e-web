@@ -4,8 +4,10 @@
  * A form, not a sentence: each label names the field; what the line does is
  * the engine's read-back. Conversations, their states and the beats their
  * recipes listen for are offered from the file (`SiteNamesContext`); a fact
- * and a topic are declared by mention, so each is typed, with the topics
- * the file mentions offered.
+ * and a topic are declared by mention, so each is typed, with the
+ * topics the file mentions offered. A requirement written in a key the
+ * studio does not edit (the retired `recognized` and `holds`) is shown as written and
+ * kept; the engine's refusal names its new word.
  */
 import { useContext, useId } from 'react';
 import { RevealDiv } from '../encounter-studio/RevealDiv';
@@ -24,9 +26,11 @@ import {
   type RequirementChoice,
 } from './lineWiring';
 import {
+  isKnownRead,
   requirementPath,
   requirementsOf,
   requiresRead,
+  writtenRead,
   type OptionRequirement,
   type OptionRequires,
 } from './predicateNot';
@@ -71,20 +75,26 @@ function RequirementFields({
         </datalist>
       </label>
     );
-  if ('holds' in read)
+  if (!isKnownRead(read))
+    return (
+      <span aria-label={label('as written')} className="wb-help">
+        {writtenRead(read)} — kept as written
+      </span>
+    );
+  if ('carries' in read)
     return (
       <label>
-        <span>Prop</span>
+        <span>Carries</span>
         <select
           aria-label={label('prop')}
-          value={read.holds}
+          value={read.carries}
           onChange={(event) =>
-            onChange(withRead(requirement, { holds: event.target.value }))
+            onChange(withRead(requirement, { carries: event.target.value }))
           }
         >
-          {!holdable.includes(read.holds) && (
-            <option value={read.holds}>
-              {read.holds || '(none)'} — nobody can pick it up
+          {!holdable.includes(read.carries) && (
+            <option value={read.carries}>
+              {read.carries || '(none)'} — nobody can pick it up
             </option>
           )}
           {holdable.map((id) => (
@@ -95,7 +105,7 @@ function RequirementFields({
         </select>
       </label>
     );
-  if ('recognized' in read)
+  if ('noted' in read)
     return (
       <label>
         <span>Topic</span>
@@ -103,9 +113,9 @@ function RequirementFields({
           aria-label={label('topic')}
           list={topicsId}
           placeholder="a topic"
-          value={read.recognized}
+          value={read.noted}
           onChange={(event) =>
-            onChange(withRead(requirement, { recognized: event.target.value }))
+            onChange(withRead(requirement, { noted: event.target.value }))
           }
         />
         <datalist id={topicsId}>
@@ -194,7 +204,7 @@ export function RequiresFields({
   const names = useContext(SiteNamesContext);
   const items = requirementsOf(requires);
   const choices = REQUIREMENT_CHOICES.filter(
-    (choice) => !isProp || !choice.value.endsWith('recognized')
+    (choice) => !isProp || !choice.value.endsWith('noted')
   );
   const rows: (OptionRequirement | undefined)[] =
     items.length === 0 ? [undefined] : items;
@@ -204,7 +214,7 @@ export function RequiresFields({
       role="group"
       aria-label={`Line ${line} requirements for ${owner}`}
     >
-      <span>Requires{items.length > 1 ? ' — every one must hold' : ''}</span>
+      <span>Requires{items.length > 1 ? ' — every one must be true' : ''}</span>
       <ol className="wb-requirement-list">
         {rows.map((requirement, index) => {
           const k = index === 0 ? '' : ` ${index + 1}`;
@@ -226,6 +236,13 @@ export function RequiresFields({
                   value={choice}
                   onChange={(event) => {
                     const value = event.target.value as RequirementChoice | '';
+                    // A requirement kept as written is chosen away from,
+                    // never re-chosen into.
+                    if (
+                      value !== '' &&
+                      !REQUIREMENT_CHOICES.some((c) => c.value === value)
+                    )
+                      return;
                     onCommit(
                       setRequirement(
                         requires,
@@ -245,9 +262,9 @@ export function RequiresFields({
                       key={option.value}
                       value={option.value}
                       disabled={
-                        (option.value.endsWith('holds') &&
+                        (option.value.endsWith('carries') &&
                           holdable.length === 0 &&
-                          !choice.endsWith('holds')) ||
+                          !choice.endsWith('carries')) ||
                         // A conversation requirement needs a conversation.
                         (option.value.endsWith('interaction') &&
                           names.conversations.length === 0 &&
