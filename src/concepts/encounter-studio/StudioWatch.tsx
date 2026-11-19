@@ -35,12 +35,12 @@
  * in development. Elsewhere the control is disabled and says why.
  */
 import { RecordPanel } from '@/components/session/combat-experience/RecordPanel';
-import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
+import { type RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MachineDrawing } from './MachineDrawing';
 import { runSpeechLine } from './runSpeech';
-import { rowsAbout, speechOf } from './runView';
+import { rowsAbout, runStateLabel, speechOf, stepSightOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
 import { StudioDialog } from './StudioDialog';
 import { useMachineWords } from './useMachineWords';
@@ -52,6 +52,7 @@ import {
   WATCH_WIDTH_STEP,
   watchDefaultWidth,
 } from './watchPanel';
+import { SIGHT_LINES_SHOWN, sightLinesOf, sightTextOf } from './watchSight';
 import { stopLinesOf } from './watchStop';
 
 export function StudioWatch({
@@ -140,6 +141,20 @@ export function StudioWatch({
     () => stopLinesOf(feed.rows, run.from, upTo, names),
     [feed.rows, upTo, run.from, names]
   );
+  /** This step's sight, from the record's `sighted` beats that name their
+   * observer (rpg-project#1016): who came into and left whose view. */
+  const stepSight = useMemo(
+    () => stepSightOf(feed.rows, upTo, run.from),
+    [feed.rows, upTo, run.from]
+  );
+  const sightLines = useMemo(
+    () => sightLinesOf(stepSight, names),
+    [stepSight, names]
+  );
+  const memberSight = member
+    ? stepSight.find((s) => s.observer === member.id)
+    : undefined;
+  const memberLabel = member ? runStateLabel(member) : '';
   const [traceOpen, setTraceOpen] = useState(false);
   /** A selected creature's section comes into view without hunting. */
   const creatureRef = useRef<HTMLDetailsElement>(null);
@@ -359,6 +374,31 @@ export function StudioWatch({
               {line}
             </p>
           ))}
+          {sightLines.length > 0 &&
+            sightLines.length <= SIGHT_LINES_SHOWN &&
+            sightLines.map((line, i) => (
+              <p key={i} className="es-watch-sight" data-testid="watch-sight">
+                {line}
+              </p>
+            ))}
+          {sightLines.length > SIGHT_LINES_SHOWN && (
+            <details className="es-watch-sight" data-testid="watch-sight-many">
+              <summary>
+                Sight changed for{' '}
+                {
+                  stepSight.filter(
+                    (s) => s.gained.length > 0 || s.lost.length > 0
+                  ).length
+                }{' '}
+                creatures
+              </summary>
+              {sightLines.map((line, i) => (
+                <p key={i} data-testid="watch-sight">
+                  {line}
+                </p>
+              ))}
+            </details>
+          )}
         </section>
       </div>
       <div className="es-watch-top">
@@ -413,16 +453,44 @@ export function StudioWatch({
             <summary>
               <h4>
                 {memberName}
-                {member.state && (
+                {memberLabel && (
                   <>
                     {' '}
-                    · <span data-testid="watch-state">{member.state}</span>
+                    · <span data-testid="watch-state">{memberLabel}</span>
                   </>
                 )}
               </h4>
             </summary>
             {member.lastReason && (
               <p className="es-help">Last change: {member.lastReason}</p>
+            )}
+            {Object.entries(member.roleStates ?? {}).map(([role, rs]) => (
+              <p key={role} className="es-help" data-testid="watch-role">
+                Role <code>{role}</code>
+                {rs.recipe ? (
+                  <>
+                    {' '}
+                    (<code>{rs.recipe}</code>)
+                  </>
+                ) : null}
+                : {rs.state}
+                {rs.reason ? ` · last change: ${rs.reason}` : ''}
+              </p>
+            ))}
+            {member.sees && (
+              <p className="es-help" data-testid="watch-sees">
+                {feed.notice
+                  ? 'Sees, from the steps the record holds: '
+                  : 'Sees: '}
+                {member.sees.length > 0
+                  ? member.sees.map((id) => names?.get(id) ?? id).join(', ')
+                  : 'no one'}
+              </p>
+            )}
+            {memberSight && sightTextOf(memberSight, names) && (
+              <p className="es-help" data-testid="watch-sight-step">
+                This step: {sightTextOf(memberSight, names)}
+              </p>
             )}
             {machines.map((machine) => (
               <div key={machine.routine} data-live-state={machine.live ?? ''}>

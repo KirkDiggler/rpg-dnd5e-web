@@ -2441,6 +2441,10 @@
   margin: 0;
   color: #fed7aa;
 }
+.es-watch .es-watch-sight {
+  margin: 0;
+  color: #bfdbfe;
+}
 .es-watch .es-watch-said {
   margin: 0;
   padding-left: 1.2rem;
@@ -2522,6 +2526,18 @@
   text-overflow: ellipsis;
   border-radius: 2px;
   pointer-events: none;
+}
+.es-timeline-role-band {
+  /* Another role's state (rpg-project#1016): thinner, under the body's. */
+  height: 11px;
+  line-height: 11px;
+  font-size: 9px;
+  font-weight: 500;
+  border-left: 1px solid rgba(255, 255, 255, 0.45);
+  opacity: 0.9;
+}
+.es-timeline-role-band.es-timeline-role-edge {
+  border-left: 3px solid #f8fafc;
 }
 .es-timeline .es-timeline-cell {
   position: absolute;
