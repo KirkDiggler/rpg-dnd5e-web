@@ -145,14 +145,14 @@ describe('S6b: the server castle is a Studio document', () => {
 
 // Copied from rpg-api content/the-mad-king.yaml at be7e83f (the S1c api
 // branch, rpg-project#857): gate-1's posted and alert states carry the post,
-// `blocks` and `holds` with `against` and `pass`. Before #1389 the Studio
+// `blocks` and `post` (`holds` before rpg-project#1005) with `against` and `pass`. Before #1389 the Studio
 // refused this file at `states.posted has an unsupported field: blocks`.
 describe('the served castle’s posts are a Studio document (rpg-project#857)', () => {
   it('imports gate-1’s post and writes it back exactly, in its key order', () => {
     const original = parse(served).room.room.monsterBindings['gate-1'].states;
     expect(original.posted).toMatchObject({
       blocks: true,
-      holds: { door: 'gate-wall-door', against: 'entering' },
+      post: { door: 'gate-wall-door', against: 'entering' },
     });
     const result = read(served);
     const exported = parse(exportDraftYaml(result, result.key));
@@ -173,7 +173,7 @@ describe('the served castle’s posts are a Studio document (rpg-project#857)', 
     const file = parse(served);
     const posted = file.room.room.monsterBindings['gate-1'].states.posted;
     posted.challenges = { after: 2, say: 'Last warning.' };
-    posted.holds.escort = 'gate-2';
+    posted.post.escort = 'gate-2';
     const result = read(stringify(file));
     const exported = parse(exportDraftYaml(result, result.key));
     expect(exported.room.room.monsterBindings['gate-1'].states.posted).toEqual(
@@ -202,7 +202,7 @@ describe('the bump is a Studio word (rpg-project#842)', () => {
     });
     states.challenged = {
       blocks: true,
-      holds: { ...states.posted.holds },
+      post: { ...states.posted.post },
       transitions: [
         { on: 'barred', do: [{ pick: 'challenged' }] },
         { on: 'time', rounds: 3, to: 'posted', reason: 'nothing came of it' },

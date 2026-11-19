@@ -503,7 +503,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `ready`, when Guard Captain (captain) comes to hold a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) holds the topic `admitted` about anyone (Guard Captain (captain) recognises someone as `admitted`), Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `ready`, when Guard Captain (captain) notes a topic about someone, by its own judgement or by hearing it, if Guard Captain (captain) has noted `admitted` about anyone, Guard Captain (captain) moves to the state `in-hall` (“admitted the party; goes in”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]",
               "connects": [
                 {
@@ -638,6 +638,188 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
+              "sentence": "In the state `back-to-gate`, Guard Captain (captain) listens for 6 beats.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `guards-turned`, Guard Captain (captain) moves to the state `turned` (“the garrison turned”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "turned",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) learns a fact, if Guard Captain (captain) knows the fact `gate-cowed`, Guard Captain (captain) moves to the state `cowed` (“stood aside”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "wakes-on"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "cowed",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "fact",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard Captain (captain) sees them and they see Guard Captain (captain), Guard Captain (captain) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard Captain (captain) acts from its own `approached` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[2]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "approached",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, when someone walks into Guard Captain (captain) and its body stops them, Guard Captain (captain) acts from its own `barred` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[3]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "barred",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "barred",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `back-to-gate` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[4]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "back-to-gate",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `back-to-gate`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[5]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "turn",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "time",
+                  "role": "picks"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
               "sentence": "In the state `cowed`, Guard Captain (captain) listens for 3 beats.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.cowed",
               "connects": [
@@ -737,7 +919,7 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `in-hall`, Guard Captain (captain) listens for 3 beats.",
+              "sentence": "In the state `in-hall`, Guard Captain (captain) listens for 4 beats.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall",
               "connects": [
                 {
@@ -784,8 +966,39 @@
                 "kind": "routine",
                 "id": "captain-policy"
               },
-              "sentence": "In the state `in-hall`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `in-hall` rows.",
+              "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "state",
+                  "id": "in-hall",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "back-to-gate",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "heard",
+                  "role": "on"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "captain-policy"
+              },
+              "sentence": "In the state `in-hall`, on Guard Captain (captain)'s own time (each round Guard Captain (captain) is due, out of a fight), Guard Captain (captain) acts from its own `in-hall` rows.",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
               "connects": [
                 {
                   "kind": "state",
@@ -811,7 +1024,7 @@
                 "id": "captain-policy"
               },
               "sentence": "In the state `in-hall`, on Guard Captain (captain)'s turn in a fight, Guard Captain (captain) acts from its own `time` rows.",
-              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+              "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[3]",
               "connects": [
                 {
                   "kind": "state",
@@ -1095,7 +1308,7 @@
                 "kind": "routine",
                 "id": "gate-1-policy"
               },
-              "sentence": "In the state `posted`, when Guard (gate-1) hears a sound, if it happened within 6 cells of Guard (gate-1) and (NOT (what Guard (gate-1) heard was a `voice`), or what Guard (gate-1) heard was a voice at `shout` or louder (a clang, a crash or a boom is at no loudness)), Guard (gate-1) moves to the state `alert` and sets its anchor to this moment (“heard something”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "sentence": "In the state `posted`, when Guard (gate-1) hears a sound (a line a character says is heard at once, as it is said), if it happened within 6 cells of Guard (gate-1) and (NOT (what Guard (gate-1) heard was a `voice`), or what Guard (gate-1) heard was a voice at `shout` or louder (a clang, a crash or a boom is at no loudness)), Guard (gate-1) moves to the state `alert` and sets its anchor to this moment (“heard something”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
               "path": "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]",
               "connects": [
                 {
@@ -3380,10 +3593,12 @@
               "base": "behaviorDefinitions.captain-policy.recipe.states.",
               "items": [
                 {
-                  "text": "In `ready`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
+                  "text": "In `ready`, `back-to-gate`, `cowed` or `in-hall`, on learning a fact, if it knows the fact `guards-turned` → to `turned` (“the garrison turned”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready",
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[0]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[0]",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[0]",
                     "behaviorDefinitions.captain-policy.recipe.states.in-hall",
@@ -3391,27 +3606,30 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
+                  "text": "In `ready` or `back-to-gate`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[1]"
                   ]
                 },
                 {
-                  "text": "In `ready`, on coming to hold a topic about someone (judged or heard), if it holds the topic `admitted` about anyone (it recognises someone as `admitted`) → to `in-hall` (“admitted the party; goes in”).",
+                  "text": "In `ready`, on noting a topic about someone (judged or heard), if it has noted `admitted` about anyone → to `in-hall` (“admitted the party; goes in”).",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]"
                   ]
                 },
                 {
-                  "text": "In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
+                  "text": "In `ready` or `back-to-gate`, when it is the carrier that hails a character (only under the conversation's hail rule) → acts from its `approached` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[2]"
                   ]
                 },
                 {
-                  "text": "In `ready`, when someone walks into it and its body stops them → acts from its `barred` rows.",
+                  "text": "In `ready` or `back-to-gate`, when someone walks into it and its body stops them → acts from its `barred` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]"
+                    "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[4]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[3]"
                   ]
                 },
                 {
@@ -3424,18 +3642,31 @@
                   ]
                 },
                 {
-                  "text": "In `ready`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
+                  "text": "In `ready`, `back-to-gate`, `cowed`, `in-hall` or `turned`, on its turn in a fight → acts from its `time` rows.",
                   "paths": [
                     "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[6]",
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[5]",
                     "behaviorDefinitions.captain-policy.recipe.states.cowed.transitions[2]",
-                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]",
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[3]",
                     "behaviorDefinitions.captain-policy.recipe.states.turned.transitions[1]"
+                  ]
+                },
+                {
+                  "text": "In `back-to-gate`, on its time (out of a fight) → acts from its `back-to-gate` rows.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.back-to-gate.transitions[4]"
+                  ]
+                },
+                {
+                  "text": "In `in-hall`, on hearing a sound (a character's line at once), if what it heard was a claim that failed and it has noted `admitted` about the one it heard (it knows who only by seeing them) → to `back-to-gate` (“an admitted guest lied to him”).",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
                   ]
                 },
                 {
                   "text": "In `in-hall`, on its time (out of a fight) → acts from its `in-hall` rows.",
                   "paths": [
-                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]"
+                    "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]"
                   ]
                 }
               ]
@@ -3449,6 +3680,12 @@
                   "text": "`approached`: says “You there. Nobody passes this gate without my say. Speak.”",
                   "paths": [
                     "behaviorDefinitions.captain-policy.table.approached[0]"
+                  ]
+                },
+                {
+                  "text": "`back-to-gate`: if it knows of no enemy → walks to q -4, r 8.",
+                  "paths": [
+                    "behaviorDefinitions.captain-policy.table.back-to-gate[0]"
                   ]
                 },
                 {
@@ -3552,7 +3789,7 @@
                   ]
                 },
                 {
-                  "text": "In `posted`, on hearing a sound, if it happened within 6 cells of it and (NOT (what it heard was a `voice`), or what it heard was a voice at `shout` or louder (a clang, a crash or a boom is at no loudness)) → to `alert` and sets its anchor (“heard something”).",
+                  "text": "In `posted`, on hearing a sound (a character's line at once), if it happened within 6 cells of it and (NOT (what it heard was a `voice`), or what it heard was a voice at `shout` or louder (a clang, a crash or a boom is at no loudness)) → to `alert` and sets its anchor (“heard something”).",
                   "paths": [
                     "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]"
                   ]

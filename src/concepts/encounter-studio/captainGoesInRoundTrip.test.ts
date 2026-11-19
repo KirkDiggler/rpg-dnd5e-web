@@ -1,9 +1,10 @@
 /**
  * THE CAPTAIN GOES IN; A STRAGGLER IS VOUCHED FOR (rpg-project#929). The
- * served castle carries a line whose success row grants a recognition
- * (`recognize:` on the row, `about: speaker` for a straggler's own case), a
- * line that `requires` a recognition's absence, and the captain's machine
- * woken by `on: topic` and guarded by `topic:admitted` into an `in-hall`
+ * served castle carries a line whose success row gives a topic (`give:`
+ * on the row, `about: speaker` for a straggler's own case; the noted
+ * words, rpg-project#1005), a line that `requires` a topic's absence, and
+ * the captain's machine woken by `on: topic` and guarded by
+ * `noted.anyone:admitted` into an `in-hall`
  * state with its own table row. The studio loads each, writes each back
  * byte for byte. No control edits
  * them: the operator ruled studio editing onto the needs list (2026-11-12).
@@ -32,7 +33,7 @@ function editedFirst(text: string, from: string, to: string): string {
   return text.replace(from, to);
 }
 
-type Row = { say?: string; recognize?: Record<string, unknown> };
+type Row = { say?: string; give?: Record<string, unknown> };
 type Option = {
   id: string;
   requires?: unknown;
@@ -53,9 +54,9 @@ type Parsed = {
   >;
 };
 
-const STRAGGLER_GRANT = `                recognize:
+const STRAGGLER_GRANT = `                give:
                   topic: admitted
-                  holder: spoken_to
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
 `;
@@ -69,31 +70,31 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       expect(Object.keys(byId)).toEqual(
         expect.arrayContaining(['vouch', 'straggler'])
       );
-      expect(byId.vouch.success![0].recognize).toEqual({
+      expect(byId.vouch.success![0].give).toEqual({
         topic: 'admitted',
-        holder: 'spoken_to',
+        to: 'spoken_to',
         about: 'party_in_sight',
         heard_by: 'carriers_who_witnessed',
       });
-      expect(byId.straggler.success![0].recognize).toMatchObject({
+      expect(byId.straggler.success![0].give).toMatchObject({
         about: 'speaker',
       });
       expect(byId.straggler.requires).toContainEqual({
-        not: { recognized: 'admitted' },
+        not: { noted: 'admitted' },
       });
       // ONE TRY (rpg-project#932): a missed case turns the speaker away,
       // and the case asks that the guard not hold it.
-      expect(byId.straggler.failure![0].recognize).toEqual({
+      expect(byId.straggler.failure![0].give).toEqual({
         topic: 'turned-away',
-        holder: 'spoken_to',
+        to: 'spoken_to',
         about: 'speaker',
         heard_by: 'carriers_who_witnessed',
       });
       expect(byId.straggler.requires).toContainEqual({
-        not: { recognized: 'turned-away' },
+        not: { noted: 'turned-away' },
       });
       expect(Object.keys(byId)).toContain('friends-inside');
-      expect(byId['friends-inside'].success![0].recognize).toBeUndefined();
+      expect(byId['friends-inside'].success![0].give).toBeUndefined();
     }
     const captain = doc.behaviorDefinitions['captain-policy'];
     const wake = Object.values(captain.recipe.states)
@@ -101,7 +102,7 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       .find((t) => t.on === 'topic');
     expect(wake).toEqual({
       on: 'topic',
-      when: { fact: { name: 'topic:admitted', op: 'eq', value: true } },
+      when: { fact: { name: 'noted.anyone:admitted', op: 'eq', value: true } },
       to: 'in-hall',
       reason: 'admitted the party; goes in',
     });
@@ -130,20 +131,20 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       '              - say: Never seen you before. Unless one of that lot will speak for you.\n',
     ],
     [
-      'a line that requires recognition, not its absence',
-      '              - not:\n                  recognized: admitted\n',
-      '              - recognized: admitted\n',
+      'a line that requires the topic, not its absence',
+      '              - not:\n                  noted: admitted\n',
+      '              - noted: admitted\n',
     ],
     [
       'the captain woken on another topic',
-      '                  name: topic:admitted\n',
-      '                  name: topic:welcome\n',
+      '                  name: noted.anyone:admitted\n',
+      '                  name: noted.anyone:welcome\n',
     ],
     [
       'the captain’s wake with no guard',
       `              when:
                 fact:
-                  name: topic:admitted
+                  name: noted.anyone:admitted
                   op: eq
                   value: true
               to: in-hall
@@ -161,5 +162,55 @@ describe('a line’s grant and a topic wake load and write back (rpg-project#929
       '                  about: speaker\n                  until: dawn\n'
     );
     roundTrips(text);
+  });
+});
+
+describe('the captain goes back to his gate (rpg-project#1000)', () => {
+  const STEP = `            - on: heard
+              when:
+                all:
+                  - fact:
+                      name: heard.claim
+                      op: eq
+                      value: failed
+                  - fact:
+                      name: noted:admitted
+                      op: eq
+                      value: true
+              to: back-to-gate
+              reason: an admitted guest lied to him
+`;
+  const STATE = '        back-to-gate:\n          transitions:\n';
+  const POST = '          back-to-gate:\n            door: gate-wall-door\n';
+
+  it('the served castle carries the new state, its step and its post, and an unedited download is byte-identical', () => {
+    for (const words of [STEP, STATE, POST])
+      expect(served.split(words)).toHaveLength(2);
+    const doc = parse(served) as Parsed;
+    const captain = doc.behaviorDefinitions['captain-policy'];
+    expect(captain.recipe.states['back-to-gate']).toBeDefined();
+    expect(
+      captain.recipe.states['in-hall'].transitions!.find(
+        (t) => t.on === 'heard'
+      )
+    ).toMatchObject({ to: 'back-to-gate' });
+    roundTrips(served);
+  });
+
+  it('an edit elsewhere keeps the new state, its step and its post byte for byte', () => {
+    const result = read(served);
+    const draft = structuredClone(result.draft);
+    const greet = draft.room.monsterBindings!.captain.options!.find(
+      (o) => o.id === 'greet'
+    )!;
+    greet.say = 'Good evening.';
+    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
+    const left = served.split('\n');
+    expect(saved.split('\n').filter((line, i) => line !== left[i])).toEqual([
+      '            say: Good evening.',
+    ]);
+    for (const words of [STEP, STATE, POST])
+      expect(saved.split(words)).toHaveLength(2);
+    roundTrips(saved);
   });
 });

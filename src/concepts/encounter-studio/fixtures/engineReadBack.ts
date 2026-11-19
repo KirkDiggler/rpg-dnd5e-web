@@ -16,6 +16,29 @@
  * entries over those statements), keep-1's, keep-2's and the king's entries, `captain-policy`, and the
  * place's entries over the kept statements. Every kept sentence and entry
  * text is the engine's, unedited.
+ *
+ * THE RENAME (rpg-project#1005), FIRST PASS. In every pinned file below, each
+ * sentence, entry text and path the rename changed is re-taken from
+ * `rulebooks/dnd5e/encounter` v0.221.0 (rpg-toolkit 79bcc525, the same tree;
+ * `readback.Of` with `folded` as `rb.Folded()`, on the castle at the tag): the old engine's read-back and the new one's, on the castle before
+ * and after the rename, align string for string, and each string that differs
+ * replaced its old form here. Strings the rename did not touch are as recorded.
+ *
+ * THE CAPTAIN GOES BACK TO HIS GATE (rpg-project#1000), at
+ * `rulebooks/dnd5e/encounter` v0.222.0 (rpg-toolkit aef9cc40), the castle that
+ * adds the captain's `back-to-gate` state and his step to it on `heard`. The
+ * read-backs at v0.221.0 and v0.222.0 were compared statement by statement
+ * (by kind, path and subject) and entry by entry (by paths): a group or list
+ * a file kept whole is the v0.222.0 one whole (machines.json's
+ * `captain-policy` still without its rows); in a trimmed one each kept
+ * statement or entry is its v0.222.0 form, and the captain's post entry is
+ * the v0.222.0 one, which folds both his posts. Nothing here is hand-written.
+ *
+ * THE NOTED WORDS (rpg-project#1005, as re-ruled), at
+ * `rulebooks/dnd5e/encounter` v0.222.1 (rpg-toolkit 5d612401). The read-backs
+ * at v0.222.0 and v0.222.1 align string for string (the castle changed in
+ * words only); each of the 59 strings that differ replaced its v0.222.0 form
+ * wherever it appears here (58 places).
  */
 import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {

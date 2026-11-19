@@ -13,7 +13,7 @@
  * wherever a predicate is, so the editor offers it after the caller's forms
  * and edits its one inner predicate with this same editor. Every caller of
  * this editor is a WAITED-FOR site (an until, an arrival, an ending's when),
- * where a `not` of a fact, a round or a fall holds from the start; the
+ * where a `not` of a fact, a round or a fall is true from the start; the
  * engine's sentence for that is shown under the inner one
  * (`predicateNot.ts`), as Save & Play will say it.
  */

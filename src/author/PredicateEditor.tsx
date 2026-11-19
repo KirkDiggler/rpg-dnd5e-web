@@ -217,13 +217,13 @@ const FORM_LABEL: Record<PredicateForm, string> = {
 };
 
 const FORM_HELP: Record<PredicateKind, string> = {
-  not: 'Holds while the inner condition does not; written in the file, edited in the studio (rpg-project#719).',
+  not: 'True while the inner condition is not; written in the file, edited in the studio (rpg-project#719).',
   round:
-    'Holds once any fight in the run has started this round. Outside a fight it never holds.',
-  down: 'Holds once that monster is Down.',
-  fact: 'On an `until`: holds once the faction’s mind knows it. Carry a record that reveals it into the mind’s region.',
-  stance: 'Holds once the pair’s stance folds to this value.',
-  left: 'An ending’s alone: holds once the last standing party member has left by that exit (rpg-project#716).',
+    'True once any fight in the run has started this round. Outside a fight it is never true.',
+  down: 'True once that monster is Down.',
+  fact: 'On an `until`: true once the faction’s mind knows it. Carry a record that reveals it into the mind’s region.',
+  stance: 'True once the pair’s stance folds to this value.',
+  left: 'An ending’s alone: true once the last standing party member has left by that exit (rpg-project#716).',
 };
 
 /** The NAMED monsters, by id — a `{ down }` names a placement and only a

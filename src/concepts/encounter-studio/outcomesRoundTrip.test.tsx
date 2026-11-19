@@ -1,7 +1,7 @@
 /**
  * A CONVERSATION'S OUTCOMES, FROM THE FORM (rpg-project#975 C). What follows
  * a conversation entering a state is a list of consequences, each one kind:
- * a recognition, an arrest or a jail. An arrest is a relocation reached from
+ * a give, an arrest or a jail. An arrest is a relocation reached from
  * a conversation (R33): where the taken are held — a region, the shared
  * relocation's Region — and where they are seized. A jail is the move into
  * that cell: the shared relocation's Words and Rounds, and the fact taught
@@ -102,7 +102,7 @@ const field = <T extends HTMLElement>(label: string): T =>
   screen.getByLabelText(label) as T;
 
 describe('the castle still downloads byte for byte', () => {
-  it('unedited, with its recognition, arrest and jail', () => {
+  it('unedited, with its give, arrest and jail', () => {
     const result = read(served);
     expect(
       exportDraftYaml({ draft: result.draft, scope: result.scope }, result.key)
@@ -243,7 +243,7 @@ describe('a jail, from the form (rpg-project#975 C)', () => {
     const kinds = field<HTMLSelectElement>('Add outcome kind for front-gate');
     const jails = [...kinds.options].find((o) => o.value === 'jail')!;
     expect(jails.disabled).toBe(true);
-    expect(kinds.value).toBe('recognize');
+    expect(kinds.value).toBe('give');
   });
 
   it('the only arrest of a conversation that jails cannot be removed or changed', () => {
@@ -268,19 +268,17 @@ describe('a jail, from the form (rpg-project#975 C)', () => {
 });
 
 describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () => {
-  it('the admitted recognition reads in fields, not a sentence', () => {
+  it('the admitted give reads in fields, not a sentence', () => {
     conversations();
     const at = 'front-gate admitted 1';
-    expect(field<HTMLSelectElement>(`Outcome kind ${at}`).value).toBe(
-      'recognize'
-    );
+    expect(field<HTMLSelectElement>(`Outcome kind ${at}`).value).toBe('give');
     expect(field<HTMLInputElement>(`Topic for ${at}`).value).toBe('admitted');
     expect(field<HTMLSelectElement>(`About for ${at}`).value).toBe(
       'party_in_sight'
     );
     expect(
       field<HTMLInputElement>(
-        `Also held by the conversation’s carriers who witness it, for ${at}`
+        `Also given to the conversation’s carriers who witness it, for ${at}`
       ).checked
     ).toBe(true);
   });
@@ -311,7 +309,7 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
     );
   });
 
-  it('turning the admitted recognition into a jail replaces it whole', () => {
+  it('turning the admitted give into a jail replaces it whole', () => {
     const { saved } = conversations();
     fireEvent.change(field('Outcome kind front-gate admitted 1'), {
       target: { value: 'jail' },
@@ -321,7 +319,7 @@ describe('an outcome is one kind; adding and removing (rpg-project#975 C)', () =
       '      admitted:\n        - jail:\n            words: ""\n'
     );
     expect(text).not.toContain(
-      '        - recognize:\n            topic: admitted\n            holder: spoken_to\n            about: party_in_sight\n            heard_by: carriers_who_witnessed\n      # Hand edit'
+      '        - give:\n            topic: admitted\n            to: spoken_to\n            about: party_in_sight\n            heard_by: carriers_who_witnessed\n      # Hand edit'
     );
   });
 
@@ -372,7 +370,7 @@ describe('what the form cannot fully read is shown as written (rpg-project#975 C
     ).toBe('0 cells');
   });
 
-  it('a recognition with a word the form does not offer is shown as written, never blank', () => {
+  it('a give with a word the form does not offer is shown as written, never blank', () => {
     conversations(
       vi.fn(),
       served.replace(
@@ -391,8 +389,8 @@ describe('what the form cannot fully read is shown as written (rpg-project#975 C
 
   it('a sceneMove beside them survives a neighbour’s edit byte for byte', () => {
     const text = served.replace(
-      '      admitted:\n        - recognize:\n',
-      '      admitted:\n        - sceneMove:\n            leave: gate-left\n        - recognize:\n'
+      '      admitted:\n        - give:\n',
+      '      admitted:\n        - sceneMove:\n            leave: gate-left\n        - give:\n'
     );
     expect(text).not.toBe(served);
     const { saved } = conversations(vi.fn(), text);

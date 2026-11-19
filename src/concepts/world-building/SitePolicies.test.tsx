@@ -754,7 +754,7 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
     // `requires: holds` offers the room's HOLDABLE props — the table only; the
     // cellar door is declared but nobody can pick it up.
     fireEvent.change(screen.getByLabelText('Line 1 requires for goblin-1'), {
-      target: { value: 'holds' },
+      target: { value: 'carries' },
     });
     const prop = screen.getByLabelText(
       'Line 1 requires prop for goblin-1'
@@ -795,7 +795,7 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
           id: 'bribe',
           say: 'Ten gold says you never saw us.',
           check: [{ ability: 'persuasion', dc: 8 }],
-          requires: { holds: 'table' },
+          requires: { carries: 'table' },
           success: [{ say: 'Saw who?', fact: 'feast-tonight' }],
           failure: [{ say: 'Keep your coin.' }],
         },
@@ -843,7 +843,7 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
           'Line 1 requires for goblin-1'
         ) as HTMLSelectElement
       ).options,
-    ].find((option) => option.value === 'holds');
+    ].find((option) => option.value === 'carries');
     expect(holds?.disabled).toBe(true);
     expect(
       screen.getByTestId('option-no-holdable-line 1 of goblin-1')

@@ -1,35 +1,36 @@
 /**
  * A LINE'S ROW GRANTS ONE THING, AND A LINE IS SAID AT A LOUDNESS
  * (rpg-project#975 A). The edits the form makes, as the engine reads them
- * (`dungeonspec` `AnswerSpec`, `RecognizeSpec`, `RelocateSpec`):
+ * (`dungeonspec` `AnswerSpec`, `GiveSpec`, `RelocateSpec`):
  *
- * - `recognize: { topic, holder, about, heard_by? }` — holder is always
+ * - `give: { topic, to, about, heard_by? }` (rpg-project#1005; the retired
+ *   `recognize` is never read and is kept as written) — to is always
  *   `spoken_to`; about is `party_in_sight` or `speaker`; `heard_by` is
  *   `carriers_who_witnessed` or absent;
  * - `tells: <intel record id>`;
  * - `relocate: { to: <region id>, words, rounds? }` — rounds absent is none;
  * - `loudness: whisper | speak | shout | scream`, absent for speak.
  *
- * A row holds at most one grant: choosing one takes the others away, so the
+ * A row has at most one grant: choosing one takes the others away, so the
  * form cannot write the engine's "a row grants one thing" refusal. Every
  * other key of the row is kept as written, in its place.
  */
 import type { AnswerEntryShape } from './answerTableShape';
 import type { SiteNames } from './siteNames';
 
-export const ROW_GRANTS = ['recognize', 'tells', 'relocate'] as const;
+export const ROW_GRANTS = ['give', 'tells', 'relocate'] as const;
 export type RowGrant = (typeof ROW_GRANTS)[number];
 
-export const RECOGNITION_HOLDER = 'spoken_to';
-export const RECOGNITION_ABOUT = ['party_in_sight', 'speaker'] as const;
-export const RECOGNITION_HEARD_BY = 'carriers_who_witnessed';
+export const GIVE_TO = 'spoken_to';
+export const GIVE_ABOUT = ['party_in_sight', 'speaker'] as const;
+export const GIVE_HEARD_BY = 'carriers_who_witnessed';
 
 /** The four loudnesses, quietest first; absent is speak. */
 export const LOUDNESSES = ['whisper', 'speak', 'shout', 'scream'] as const;
 
-export interface RecognitionShape {
+export interface GiveShape {
   topic: string;
-  holder: string;
+  to: string;
   about: string;
   heard_by?: string;
 }
@@ -42,7 +43,7 @@ export interface RelocationShape {
 
 /** A row as the grant edits read it. */
 export type GrantingRow = AnswerEntryShape & {
-  recognize?: RecognitionShape;
+  give?: GiveShape;
   tells?: string;
   relocate?: RelocationShape;
 };
@@ -67,12 +68,12 @@ export function withGrant(
   const next = { ...row } as Record<string, unknown>;
   for (const key of ROW_GRANTS) delete next[key];
   switch (grant) {
-    case 'recognize':
-      next.recognize = {
+    case 'give':
+      next.give = {
         topic: names.topics[0] ?? '',
-        holder: RECOGNITION_HOLDER,
-        about: RECOGNITION_ABOUT[0],
-      } satisfies RecognitionShape;
+        to: GIVE_TO,
+        about: GIVE_ABOUT[0],
+      } satisfies GiveShape;
       break;
     case 'tells':
       next.tells = names.records[0] ?? '';
@@ -87,21 +88,21 @@ export function withGrant(
   return next as GrantingRow;
 }
 
-/** The row's recognition with one field changed, the others as written. */
-export function withRecognition(
+/** The row's give with one field changed, the others as written. */
+export function withGive(
   row: GrantingRow,
   patch: { topic?: string; about?: string; heard?: boolean }
 ): GrantingRow {
-  const was = isRecord(row.recognize) ? row.recognize : undefined;
-  const next: RecognitionShape = {
-    ...(was as RecognitionShape | undefined),
+  const was = isRecord(row.give) ? row.give : undefined;
+  const next: GiveShape = {
+    ...(was as GiveShape | undefined),
     topic: patch.topic ?? was?.topic ?? '',
-    holder: RECOGNITION_HOLDER,
-    about: patch.about ?? was?.about ?? RECOGNITION_ABOUT[0],
+    to: GIVE_TO,
+    about: patch.about ?? was?.about ?? GIVE_ABOUT[0],
   };
-  if (patch.heard === true) next.heard_by = RECOGNITION_HEARD_BY;
+  if (patch.heard === true) next.heard_by = GIVE_HEARD_BY;
   if (patch.heard === false) delete next.heard_by;
-  return { ...row, recognize: next };
+  return { ...row, give: next };
 }
 
 /** The row telling this record. */
@@ -153,7 +154,7 @@ export function withLoudness<T extends { loudness?: string }>(
 }
 
 /** Whether a line names a conversation — it advances one, or requires one
- * (under a `not:` too): only then has a recognition other carriers who
+ * (under a `not:` too): only then has a give other carriers who
  * witnessed it (`heard_by`). */
 export function lineNamesConversation(option: unknown): boolean {
   if (!isRecord(option)) return false;

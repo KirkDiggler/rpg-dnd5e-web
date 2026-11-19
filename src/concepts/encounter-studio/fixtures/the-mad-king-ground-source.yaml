@@ -1760,7 +1760,7 @@ room:
           initial: posted
           posted:
             blocks: true
-            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
+            post: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
@@ -1769,7 +1769,7 @@ room:
               - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
           alert:
             blocks: true
-            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
+            post: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
@@ -1778,7 +1778,7 @@ room:
               - { on: time, do: [{ pick: post }] }
           challenged:
             blocks: true
-            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
+            post: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
@@ -1919,7 +1919,7 @@ room:
               - ability: persuasion
                 dc: 8
             requires:
-              holds: purse
+              carries: purse
             success:
               - say: Saw who?
                 fact: feast-tonight

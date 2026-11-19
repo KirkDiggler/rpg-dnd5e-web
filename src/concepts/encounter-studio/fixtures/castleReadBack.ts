@@ -260,7 +260,7 @@ export function createCastleReadBackDocument(): RoomDraftDocument {
           id: 'bribe',
           say: 'Ten gold says you never saw us.',
           check: [{ ability: 'persuasion', dc: 8 }],
-          requires: { holds: 'purse' },
+          requires: { carries: 'purse' },
           success: [{ say: 'Saw who?', fact: 'feast-tonight' }],
           failure: [{ say: 'Keep your coin.' }],
         },

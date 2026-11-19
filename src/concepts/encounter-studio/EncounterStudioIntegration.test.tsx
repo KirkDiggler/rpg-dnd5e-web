@@ -7517,7 +7517,7 @@ describe('the inspector speaks the engine’s sentences (rpg-project#968)', () =
       )
     );
     expect(readBack.textContent).toContain(
-      'In `ready`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).'
+      'In `ready` or `back-to-gate`, on learning a fact, if it knows the fact `gate-cowed` → to `cowed` (“stood aside”).'
     );
     // Full is today's view, word for word.
     fireEvent.click(within(readBack).getByRole('button', { name: 'Full' }));

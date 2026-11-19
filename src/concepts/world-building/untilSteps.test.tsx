@@ -127,7 +127,7 @@ describe('until steps (rpg-project#717)', () => {
   it('says the steps in words, the first that holds winning', () => {
     const document = castle();
     expect(dispositionLine(document.scope.dispositions![0]!, document)).toBe(
-      'The garrison and the party are neutral: once Guard Captain, the garrison’s mind, knows guards-turned, allied; once Guard Captain, the garrison’s mind, knows party-recognized, hostile — the first of these that holds wins.'
+      'The garrison and the party are neutral: once Guard Captain, the garrison’s mind, knows guards-turned, allied; once Guard Captain, the garrison’s mind, knows party-recognized, hostile — the first of these that is true wins.'
     );
     expect(dispositionLine(document.scope.dispositions![1]!, document)).toMatch(
       /until .* is down; then neutral\.$/

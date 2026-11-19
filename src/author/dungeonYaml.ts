@@ -258,7 +258,7 @@ export type AnswerWhenDoc =
   | { kind: 'heard'; sound: string; within: number }
   /** `fact: <id>` (R6): the creature holds that world fact. */
   | { kind: 'fact'; fact: string }
-  /** `not: { … }` (R8): holds when the one condition inside does not. */
+  /** `not: { … }` (R8): true when the one condition inside is not. */
   | { kind: 'not'; inner: AnswerWhenDoc };
 
 /** The conditions of a `when` as a list — a single mapping is one entry. */
@@ -2393,8 +2393,14 @@ function requiresText(r: OptionRequires): string {
   if (Array.isArray(r)) return `[${r.map(requiresText).join(', ')}]`;
   if ('not' in r) return `{ not: ${requiresText(r.not)} }`;
   if ('fact' in r) return `{ fact: ${scalar(r.fact)} }`;
-  if ('holds' in r) return `{ holds: ${scalar(r.holds)} }`;
-  if ('recognized' in r) return `{ recognized: ${scalar(r.recognized)} }`;
+  if ('carries' in r) return `{ carries: ${scalar(r.carries)} }`;
+  if ('noted' in r) return `{ noted: ${scalar(r.noted)} }`;
+  // A read in a retired word (`recognized`, `holds`, rpg-project#1005) is carried and
+  // written back as it was read; the engine names the word that replaced it.
+  if (!('interaction' in r))
+    return `{ ${Object.entries(r as Record<string, unknown>)
+      .map(([key, value]) => `${key}: ${scalar(String(value))}`)
+      .join(', ')} }`;
   const { id, in: states } = r.interaction;
   return `{ interaction: { id: ${scalar(id)}, in: [${states.map(scalar).join(', ')}] } }`;
 }
