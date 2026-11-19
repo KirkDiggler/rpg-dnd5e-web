@@ -28,7 +28,7 @@ import {
 import type { RunWatch, WatchedRun } from './runWatch';
 
 /** One step's width in px. */
-export const TIMELINE_CELL = 64;
+export const TIMELINE_CELL = 72;
 
 export function StudioWatchTimeline({
   watch,

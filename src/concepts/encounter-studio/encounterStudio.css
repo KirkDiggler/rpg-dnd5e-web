@@ -2431,7 +2431,10 @@
   padding-left: 1.2rem;
 }
 /* Watch a run S4 (rpg-project#1011): the timeline strip under the map,
-   across its full width. One row per creature, one 64px cell per step. */
+   across its full width. One row per creature, one 72px cell per step.
+   Cell rules are scoped under .es-timeline so the shell's generic button
+   rules (.wb-shell button: padding, font size, raised background) do not
+   override them and cover the state band. */
 .es-timeline {
   flex: 0 0 auto;
   max-height: 38vh;
@@ -2489,28 +2492,30 @@
 }
 .es-timeline-band {
   position: absolute;
-  top: 2px;
-  height: 13px;
+  z-index: 1;
+  top: 1px;
+  height: 15px;
+  border-left: 2px solid rgba(255, 255, 255, 0.85);
+  font-weight: 600;
   box-sizing: border-box;
   padding: 0 4px;
   font-size: 10px;
-  line-height: 13px;
-  color: #f1f5f9;
+  line-height: 15px;
+  color: #f8fafc;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   border-radius: 2px;
   pointer-events: none;
 }
-.es-timeline-cell {
+.es-timeline .es-timeline-cell {
   position: absolute;
   top: 0;
   bottom: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 16px 1px 0;
-  font-size: 9.5px;
-  letter-spacing: -0.01em;
+  padding: 18px 1px 0;
+  font-size: 10px;
   line-height: 14px;
   color: var(--wb-text);
   background: transparent;
@@ -2522,21 +2527,21 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.es-timeline-cell:hover,
-.es-timeline-cell:focus-visible {
+.es-timeline .es-timeline-cell:hover,
+.es-timeline .es-timeline-cell:focus-visible {
   background: rgba(131, 230, 207, 0.12);
   outline: none;
 }
-.es-timeline-cell-state-edge {
+.es-timeline .es-timeline-cell-state-edge {
   border-left: 3px solid #f8fafc;
 }
-.es-timeline-cell-did-edge {
+.es-timeline .es-timeline-cell-did-edge {
   border-left: 2px dashed #fbbf24;
 }
-.es-timeline-cell-state-edge.es-timeline-cell-did-edge {
+.es-timeline .es-timeline-cell-state-edge.es-timeline-cell-did-edge {
   border-left: 3px double #fbbf24;
 }
-.es-timeline-cell-current {
+.es-timeline .es-timeline-cell-current {
   background: rgba(131, 230, 207, 0.08);
 }
 .es-timeline-now {
