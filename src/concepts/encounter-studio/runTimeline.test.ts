@@ -10,6 +10,7 @@
 import type { RecordRow } from '@/components/session/recordFeed';
 import { describe, expect, it } from 'vitest';
 import {
+  instanceOfKey,
   shownTimelineRows,
   stateColour,
   stateSegments,
@@ -156,13 +157,14 @@ describe('timelineOf', () => {
   it('says what a creature did from its picks, in the record’s words', () => {
     const west = rowOf('west');
     const [, one, two, three] = west.cells;
-    expect(one!.did?.kind).toBe('toward path');
-    expect(one!.did?.mark).toBe('toward');
+    expect(one!.did?.kind).toBe('toward path (patrol)');
+    expect(one!.did?.mark).toBe('toward path');
+    expect(one!.did?.text).toContain('entry [0]');
     expect(one!.did?.text).toContain('row patrol/item/0/move');
     expect(one!.did?.text).toContain('work completed');
-    expect(two!.did?.kind).toBe('toward noise');
+    expect(two!.did?.kind).toBe('toward noise (patrol)');
     expect(two!.didChanged).toBe(true);
-    expect(three!.did?.kind).toBe('toward path');
+    expect(three!.did?.kind).toBe('toward path (patrol)');
     expect(three!.didChanged).toBe(true);
     expect(west.changed).toBe(true);
   });
@@ -220,6 +222,24 @@ describe('helpers', () => {
   it('reads a behavior-qualified key as its instance and key', () => {
     expect(tableKeyOf('behavior/4:duty/item/0/move')).toBe('duty/item/0/move');
     expect(tableKeyOf('time')).toBe('time');
+    expect(instanceOfKey('behavior/4:duty/item/0/move')).toBe('duty');
+    expect(instanceOfKey('time')).toBe('');
+  });
+  it('tells two roles’ rows apart when word and selector match', () => {
+    const run = timelineOf(start, [
+      row('move:a', 'moved', { member: 'hero', position: { x: 1, y: 0 } }),
+      answered('west', 'toward', 'at', 'behavior/4:duty/item/0/move', 'time:a'),
+      row('move:b', 'moved', { member: 'hero', position: { x: 2, y: 0 } }),
+      answered(
+        'west',
+        'toward',
+        'at',
+        'behavior/11:investigate/look',
+        'time:b'
+      ),
+    ]);
+    const west = run.rows.find((r) => r.id === 'west')!;
+    expect(west.cells[2]!.didChanged).toBe(true);
   });
   it('gives one state one colour', () => {
     expect(stateColour('alert')).toBe(stateColour('alert'));

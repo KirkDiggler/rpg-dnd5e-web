@@ -75,11 +75,21 @@ export function tableKeyOf(key: string): string {
   return match[2]!;
 }
 
+/** The behavior instance a qualified key names (`duty` in
+ * `behavior/4:duty/item/0/move`, its length written before the colon), or
+ * '' for an unqualified key. */
+export function instanceOfKey(key: string): string {
+  const match = /^behavior\/(\d+):(.*)$/.exec(key);
+  if (!match) return '';
+  return match[2]!.slice(0, Number(match[1]));
+}
+
 interface Pick {
   word: string;
   selector: string;
   key: string;
   target: string;
+  path: string;
 }
 
 function pickOf(fields: Readonly<Record<string, unknown>>): Pick {
@@ -88,6 +98,7 @@ function pickOf(fields: Readonly<Record<string, unknown>>): Pick {
     selector: str(fields.selector),
     key: str(fields.key),
     target: str(fields.target),
+    path: Array.isArray(fields.path) ? `[${fields.path.join(', ')}]` : '',
   };
 }
 
@@ -95,13 +106,18 @@ function pickOf(fields: Readonly<Record<string, unknown>>): Pick {
  * with no word is a row that only speaks (`answerWord`). */
 function pickKind(pick: Pick): string {
   const word = pick.word || 'say';
-  return pick.selector ? `${word} ${pick.selector}` : word;
+  const kind = pick.selector ? `${word} ${pick.selector}` : word;
+  // Two roles' rows can share a word and selector (a patrol leg and an
+  // investigation's look are both `toward at`): the role tells them apart.
+  const instance = instanceOfKey(pick.key);
+  return instance ? `${kind} (${instance})` : kind;
 }
 
 function pickText(pick: Pick): string {
   const parts = [pickKind(pick)];
   if (pick.target) parts.push(`at ${pick.target}`);
   if (pick.key) parts.push(`row ${tableKeyOf(pick.key)}`);
+  if (pick.path) parts.push(`entry ${pick.path}`);
   return parts.join(' · ');
 }
 
@@ -207,7 +223,9 @@ function didIn(
     }
     out.set(id, {
       kind: g.kinds.join(' + '),
-      mark: g.kinds.map((k) => k.split(' ')[0]).join('+'),
+      mark: [...new Set(g.kinds.map((k) => k.replace(/ \(.*\)$/, '')))].join(
+        ' + '
+      ),
       text: g.texts.join('; '),
     });
   }

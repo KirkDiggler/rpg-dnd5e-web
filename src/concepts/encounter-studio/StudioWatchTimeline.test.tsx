@@ -96,7 +96,7 @@ describe('StudioWatchTimeline', () => {
     expect(
       screen.getAllByTestId('timeline-band').map((b) => b.dataset.state)
     ).toContain('alert');
-    expect(cell('west', 1).textContent).toBe('toward');
+    expect(cell('west', 1).textContent).toBe('toward path');
   });
 
   it('only creatures that changed hides the quiet ones, keeps the party', () => {
