@@ -82,10 +82,7 @@ unchanged.
   count; key order, comments and layout do not. Numbers compare as numbers, so
   `1` and `1.0` (an int and a float to the engine) are not told apart; the
   splice writes numbers as the encoder renders them and never makes that
-  change. When the edits fall in parts of the file that read on their own (a
-  block collection that starts its own line, or one `key: scalar` line) and
-  the write is the source byte for byte elsewhere, only those parts are
-  parsed; otherwise the whole text is. Anything that goes wrong while writing
+  change. The whole write is always parsed. Anything that goes wrong while writing
   or checking is a refusal too. Every room edit commits through
   `commitRoomDocument`, which first asks the file to take the edit
   (`assertSourceWritable`). A refused write leaves the document, the saved

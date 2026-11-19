@@ -883,7 +883,7 @@ function honestEdit(source: string, out: string) {
   };
 }
 
-describe('the short path’s preconditions: a write wrong as a whole is refused (rpg-project#1014 second review)', () => {
+describe('a write that reads right line by line but wrong in its place is refused (rpg-project#1014 reviews)', () => {
   afterEach(() => vi.restoreAllMocks());
   /** `spliceYaml` over a writer that writes `out` for the edit, and says
    * so honestly. */
@@ -904,7 +904,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
   const refused = (run: () => unknown) => expect(run).toThrow(UnsafeWriteError);
   type M = { m: Record<string, unknown> };
 
-  it('L3: a `key: scalar` line written deeper than its key re-parents, joins a block scalar, or breaks the file', () => {
+  it('a `key: scalar` line written deeper than its key re-parents, joins a block scalar, or breaks the file', () => {
     refused(
       writes(
         'm:\n  a:\n  x: 2\n',
@@ -934,7 +934,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
     );
   });
 
-  it('L2: a region whose new text loses its last newline joins the next line', () => {
+  it('edited lines that lose their last newline join the next line', () => {
     refused(
       writes(
         'k:\n  a: 1\n  b: 2\nj: 3\n',
@@ -946,7 +946,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
     );
   });
 
-  it('L4: a list at its key’s own column rewritten as a map joins the parent’s keys', () => {
+  it('a list at its key’s own column rewritten as a map joins the parent’s keys', () => {
     const source = 'o:\n  k:\n  - a\n  - b\n  j: 1\n';
     refused(
       writes(
@@ -968,7 +968,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
     );
   });
 
-  it('L4: a block list rewritten as a map at its own column is not read alone', () => {
+  it('a block list rewritten as a map is refused', () => {
     refused(
       writes(
         'o:\n  k:\n    - a\n    - b\n  j: 1\n',
@@ -980,7 +980,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
     );
   });
 
-  it('L5: a line that opens a block scalar takes the deeper lines after it', () => {
+  it('a line that opens a block scalar takes the deeper lines after it', () => {
     refused(
       writes(
         'm:\n  x: 1\n      # note\n  y: 2\n',
@@ -993,7 +993,7 @@ describe('the short path’s preconditions: a write wrong as a whole is refused 
     );
   });
 
-  it('a sound write the short path reads alone still passes', () => {
+  it('a sound write passes', () => {
     const source = 'm:\n  a:\n  x: 2\n  s: |\n    text\n  list:\n    - 1\n';
     expect(
       writes(
