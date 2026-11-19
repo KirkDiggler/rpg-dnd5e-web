@@ -3,13 +3,18 @@
  * the engine's own castle read-back at encounter v0.220.0, which says the
  * shape (rpg-project#994).
  */
+import type {
+  ReadBack,
+  ReadBackStatement,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import {
   castleMachinesReadBack,
+  castleMachinesWithClaimReadBack,
   castleRoutinesReadBack,
 } from './fixtures/engineReadBack';
 import { layoutMachine, overlapsOf, strokeFaultsOf } from './machineLayout';
-import { beatLabel, machineOf, stayLabel } from './machineView';
+import { beatLabel, machineOf, shortBeatLabel, stayLabel } from './machineView';
 
 const gate = () => {
   const view = machineOf(castleMachinesReadBack(), 'gate-1-policy');
@@ -140,6 +145,18 @@ describe('machineOf', () => {
         c.find((x) => x.role === 'to')!.id = 'challenged';
       },
     ],
+    [
+      'the claim it asks',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.push({ kind: 'claim', id: 'failed', role: 'asks' });
+      },
+    ],
+    [
+      'a read the drawing does not know',
+      (c: { kind: string; id: string; role: string }[]) => {
+        c.push({ kind: 'weather', id: 'rain', role: 'needs' });
+      },
+    ],
   ])('a shared step that differs only in %s is not merged', (_, change) => {
     const readBack = castleMachinesReadBack();
     const wakeAt = (state: string) =>
@@ -264,32 +281,38 @@ describe('layoutMachine', () => {
     .filter((g) => g.about?.kind === 'routine')
     .map((g) => g.about!.id);
 
-  it('every castle machine lays out with nothing overlapping, at the studio’s width', () => {
-    expect(routines).toEqual(
-      expect.arrayContaining([
-        'gate-1-policy',
-        'captain-policy',
-        'reserve-1-policy',
-      ])
-    );
-    for (const id of routines) {
-      const view = machineOf(castleMachinesReadBack(), id);
-      expect(view, id).not.toBeNull();
-      const layout = layoutMachine(view!);
-      expect(overlapsOf(layout), id).toEqual([]);
-      expect(strokeFaultsOf(layout), id).toEqual([]);
-      expect(layout.width, id).toBeLessThanOrEqual(1100);
-      // Every box is drawn, and every edge at least once.
-      expect(layout.boxes.map((b) => b.state.id).sort(), id).toEqual(
-        view!.states.map((s) => s.id).sort()
+  it.each([
+    ['as pinned', castleMachinesReadBack],
+    ['with the captain’s claim (v0.222.2)', castleMachinesWithClaimReadBack],
+  ])(
+    'every castle machine lays out with nothing overlapping, at the studio’s width, %s',
+    (_, castle) => {
+      expect(routines).toEqual(
+        expect.arrayContaining([
+          'gate-1-policy',
+          'captain-policy',
+          'reserve-1-policy',
+        ])
       );
-      for (const edge of view!.edges)
-        expect(
-          layout.pieces.some((p) => p.edge === edge),
-          `${id} ${edge.id}`
-        ).toBe(true);
+      for (const id of routines) {
+        const view = machineOf(castle(), id);
+        expect(view, id).not.toBeNull();
+        const layout = layoutMachine(view!);
+        expect(overlapsOf(layout), id).toEqual([]);
+        expect(strokeFaultsOf(layout), id).toEqual([]);
+        expect(layout.width, id).toBeLessThanOrEqual(1100);
+        // Every box is drawn, and every edge at least once.
+        expect(layout.boxes.map((b) => b.state.id).sort(), id).toEqual(
+          view!.states.map((s) => s.id).sort()
+        );
+        for (const edge of view!.edges)
+          expect(
+            layout.pieces.some((p) => p.edge === edge),
+            `${id} ${edge.id}`
+          ).toBe(true);
+      }
     }
-  });
+  );
 
   it('the gate guard: the start and its loop on top, cowed and turned below', () => {
     const layout = layoutMachine(gate());
@@ -314,5 +337,177 @@ describe('layoutMachine', () => {
     expect(
       intoTurned.filter((p) => p.bracket === null).map((p) => p.from)
     ).toEqual([['cowed']]);
+  });
+});
+
+/**
+ * A STEP'S HEARD CLAIM (rpg-project#1012): the engine says the verdict a
+ * step's condition asks as `{claim, held|failed, asks}`, over the captain's
+ * step on a lie as encounter v0.222.2 says it.
+ */
+describe('a step that asks about a heard claim', () => {
+  const LIE =
+    'behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]';
+  const captain = (readBack: ReadBack = castleMachinesWithClaimReadBack()) =>
+    machineOf(readBack, 'captain-policy')!;
+  const statementAt = (readBack: ReadBack, path: string) =>
+    readBack.sections
+      .flatMap((s) => s.groups)
+      .flatMap((g) => g.statements)
+      .find((st) => st.kind === 'routine.wake' && st.path === path)!;
+  /** The lie step said again from `ready`, as a second step would be, with
+   * `change` applied to its connections. */
+  const withTwin = (
+    change: (c: { kind: string; id: string; role: string }[]) => void = () => {}
+  ): {
+    readBack: ReadBack;
+    lie: ReadBackStatement;
+    twin: ReadBackStatement;
+  } => {
+    const readBack = castleMachinesWithClaimReadBack();
+    const lie = statementAt(readBack, LIE);
+    const group = readBack.sections
+      .flatMap((s) => s.groups)
+      .find((g) => g.statements.includes(lie))!;
+    const twin: ReadBackStatement = {
+      ...lie,
+      path: 'behaviorDefinitions.captain-policy.recipe.states.ready.transitions[9]',
+      connects: lie.connects.map((c) =>
+        c.role === 'from' ? { ...c, id: 'ready' } : { ...c }
+      ),
+    };
+    change(twin.connects);
+    group.statements.push(twin);
+    return { readBack, lie, twin };
+  };
+  /** The arrow each step is drawn in, from one view of the machine. */
+  const edgesOf = (readBack: ReadBack) => {
+    const view = captain(readBack);
+    return (statement: ReadBackStatement) =>
+      view.edges.find((edge) =>
+        edge.steps.some((step) => step.statement === statement)
+      )!;
+  };
+
+  it('its arrow is labelled with the verdict, in the engine’s ids', () => {
+    const view = captain();
+    const step = view.steps.find((st) => st.statement.path === LIE)!;
+    expect(step.claims).toEqual(['failed']);
+    const edge = view.edges.find((e) => e.steps.includes(step))!;
+    expect(edge.to).toBe('back-to-gate');
+    expect(beatLabel(edge)).toBe('on heard: claim failed, topic admitted');
+    // Known reads keep their words: the garrison turning is still its id.
+    expect(
+      beatLabel(view.edges.find((e) => e.to === 'turned' && e.beat === 'fact')!)
+    ).toBe('on fact: guards-turned');
+  });
+
+  it('the drawing keeps the full label for the mark, at the studio’s width', () => {
+    const layout = layoutMachine(captain());
+    const piece = layout.pieces.find((p) =>
+      p.steps.some((st) => st.statement.path === LIE)
+    )!;
+    expect(piece.label.full).toBe('on heard: claim failed, topic admitted');
+    expect(layout.width).toBeLessThanOrEqual(1100);
+  });
+
+  it.each([
+    ['as pinned', castleMachinesReadBack, 'on heard +1'],
+    ['at v0.222.2', castleMachinesWithClaimReadBack, 'on heard +2'],
+  ])(
+    'a cut label still shows the step has a condition, %s',
+    (_, castle, drawn) => {
+      // The captain's row cannot hold the lie step's full label at the
+      // studio's width; its drawn words say how many reads it has.
+      const layout = layoutMachine(captain(castle()));
+      const piece = layout.pieces.find((p) =>
+        p.steps.some((st) => st.statement.path === LIE)
+      )!;
+      expect(piece.label.text).toBe(drawn);
+      expect(layout.width).toBeLessThanOrEqual(1100);
+    }
+  );
+
+  it('a short label is marked only when the step reads something', () => {
+    const view = captain();
+    const lie = view.edges.find((e) =>
+      e.steps.some((st) => st.statement.path === LIE)
+    )!;
+    expect(shortBeatLabel(lie)).toBe('on heard +2');
+    const plain = view.steps.find((st) => st.reads.length === 0)!;
+    expect(shortBeatLabel(plain)).toBe(`on ${plain.beat}`);
+  });
+
+  it('a step that stays says its claim inside its box', () => {
+    const readBack = castleMachinesWithClaimReadBack();
+    const lie = statementAt(readBack, LIE);
+    lie.connects = lie.connects.filter((c) => c.role !== 'to');
+    const inHall = captain(readBack).states.find((s) => s.id === 'in-hall')!;
+    const stay = inHall.stays.find((st) => st.statement === lie)!;
+    expect(stayLabel(stay)).toBe('on heard: claim failed, topic admitted');
+    const box = layoutMachine(captain(readBack)).boxes.find(
+      (b) => b.state.id === 'in-hall'
+    )!;
+    expect(box.lines.map((line) => line.full)).toContain(
+      'on heard: claim failed, topic admitted'
+    );
+  });
+
+  it('two steps that differ only in the claim’s verdict are two arrows', () => {
+    const { readBack, lie, twin } = withTwin((c) => {
+      c.find((x) => x.kind === 'claim')!.id = 'held';
+    });
+    const edgeWith = edgesOf(readBack);
+    expect(edgeWith(lie)).not.toBe(edgeWith(twin));
+    expect(edgeWith(lie).from).toEqual(['in-hall']);
+    expect(edgeWith(twin).from).toEqual(['ready']);
+    expect(beatLabel(edgeWith(twin))).toBe(
+      'on heard: claim held, topic admitted'
+    );
+  });
+
+  it('two steps that ask the same claim, alike in all else, are one arrow', () => {
+    const { readBack, lie, twin } = withTwin();
+    const edgeWith = edgesOf(readBack);
+    const edge = edgeWith(lie);
+    expect(edgeWith(twin)).toBe(edge);
+    expect(edge.from).toEqual(expect.arrayContaining(['in-hall', 'ready']));
+    expect(beatLabel(edge)).toBe('on heard: claim failed, topic admitted');
+  });
+
+  it('a connection the drawing does not know keeps two steps apart and shows', () => {
+    const { readBack, lie, twin } = withTwin((c) => {
+      c.push({ kind: 'weather', id: 'rain', role: 'needs' });
+    });
+    const edgeWith = edgesOf(readBack);
+    expect(edgeWith(lie)).not.toBe(edgeWith(twin));
+    expect(edgeWith(lie).from).toEqual(['in-hall']);
+    expect(edgeWith(twin).from).toEqual(['ready']);
+    expect(beatLabel(edgeWith(twin))).toBe(
+      'on heard: claim failed, topic admitted, needs weather rain'
+    );
+    expect(beatLabel(edgeWith(lie))).toBe(
+      'on heard: claim failed, topic admitted'
+    );
+  });
+
+  it('a role the drawing does not know is said with its role', () => {
+    // A polarity role the engine might add: never read as `claim held`.
+    const { readBack, lie, twin } = withTwin((c) => {
+      c.find((x) => x.kind === 'claim')!.role = 'asks-not';
+      c.find((x) => x.kind === 'claim')!.id = 'held';
+    });
+    const edgeWith = edgesOf(readBack);
+    expect(edgeWith(lie)).not.toBe(edgeWith(twin));
+    expect(beatLabel(edgeWith(twin))).toBe(
+      'on heard: asks-not claim held, topic admitted'
+    );
+    // A known role on a kind it never carries is not known either.
+    expect(
+      beatLabel({
+        beat: 'fact',
+        reads: [{ kind: 'prop', id: 'lever', role: 'wakes-on' }],
+      })
+    ).toBe('on fact: wakes-on prop lever');
   });
 });

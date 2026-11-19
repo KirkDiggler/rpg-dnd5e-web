@@ -10,9 +10,18 @@
  * |----------------------------------------|--------------------------------|
  * | `routine`                              | `{state, <initial>, starts}`   |
  * | `routine.state`                        | `{state, S, is}`; `{state, S, final}` when terminal |
- * | `routine.wake`                         | `{state, S, from}`; `{state, Y, to}` only when it moves; `{beat, <on>, on}`; `{table, <key>, picks}` per pick |
+ * | `routine.wake`                         | `{state, S, from}`; `{state, Y, to}` only when it moves; `{beat, <on>, on}`; `{table, <key>, picks}` per pick; what its guard reads (below) |
  * | `routine.row`                          | `{table, <key>, row-of}`       |
  * | `creature.post`, `creature.blocking`   | `{state, S, while}` per state  |
+ *
+ * A wake's guard says what it reads beside its shape (rpg-toolkit
+ * `readback/routinewords.go`, `guardWords`): `{fact, F, wakes-on}`,
+ * `{topic, T, wakes-on}` (noted about anyone), `{topic, T, asks}` (noted
+ * about the one its beat names) and `{claim, held|failed, asks}` (the
+ * verdict of a claim it heard, rpg-project#1000, #1012). Every connection
+ * on a wake that is not one of its shape roles is one of its reads: it is
+ * drawn in the step's label and keeps two steps apart, so a read the
+ * engine adds later can never merge two different steps.
  *
  * This module reads those connections, the statements' `kind`, and the
  * routine their path is set under, and nothing else: it never reads a sentence or the file to place
@@ -55,6 +64,21 @@ const ROLE_USES = 'uses';
 /** A wake's guard reads: the engine's role for a fact or topic a step
  * wakes on (`{fact, guards-turned, wakes-on}`). */
 const ROLE_WAKES_ON = 'wakes-on';
+/** The engine's connection to the verdict a step's heard-claim condition
+ * asks (`{claim, failed, asks}`): its id is the engine's word, `held` or
+ * `failed`, and names no thing in the file. */
+const CLAIM = 'claim';
+const ROLE_ASKS = 'asks';
+/** The roles that say a wake's place in its machine. Every other
+ * connection on a wake is something its condition reads. */
+const SHAPE_ROLES = new Set([ROLE_FROM, ROLE_TO, ROLE_ON, ROLE_PICKS]);
+
+/** One connection a step's condition reads, as the engine says it. */
+export interface StepRead {
+  kind: string;
+  id: string;
+  role: string;
+}
 
 /** One step of the machine: one `routine.wake`. */
 export interface MachineStep {
@@ -70,6 +94,16 @@ export interface MachineStep {
   picks: string[];
   /** What its guard reads, as the engine connects it (`fact guards-turned`). */
   wakesOn: { kind: string; id: string }[];
+  /** The verdicts of a heard claim its condition asks (`failed`), in the
+   * engine's order; empty when it asks none. The connection says what is
+   * asked, not whether the condition wants it or its opposite (a `not`
+   * keeps it): the sentence says which. */
+  claims: string[];
+  /** Every connection that is not its shape (`from`, `to`, `on`,
+   * `picks`), in the engine's order: the wakes-on reads, the claim, a
+   * topic it asks about the one heard, and any the drawing does not yet
+   * know. */
+  reads: StepRead[];
 }
 
 /** A creature's post or blocking that holds while the machine is in a
@@ -99,15 +133,16 @@ export interface MachineState {
 }
 
 /** Steps that move, gathered: the same beat, the same target, the same
- * guard reads and the same tables picked, from one or more states. Drawn
- * once. */
+ * reads and the same tables picked, from one or more states. Drawn once. */
 export interface MachineEdge {
-  /** Stable within the machine: beat, target, guard reads and picks. */
+  /** Stable within the machine: beat, target, reads and picks. */
   id: string;
   from: string[];
   to: string;
   beat: string;
   wakesOn: { kind: string; id: string }[];
+  claims: string[];
+  reads: StepRead[];
   steps: MachineStep[];
 }
 
@@ -189,6 +224,10 @@ export function machineOf(
       wakesOn: statement.connects
         .filter((c) => c.role === ROLE_WAKES_ON)
         .map((c) => ({ kind: c.kind, id: c.id })),
+      claims: connected(statement, CLAIM, ROLE_ASKS),
+      reads: statement.connects
+        .filter((c) => !SHAPE_ROLES.has(c.role))
+        .map((c) => ({ kind: c.kind, id: c.id, role: c.role })),
     });
   }
   for (const step of steps)
@@ -243,14 +282,27 @@ const wakesKey = (step: Pick<MachineStep, 'wakesOn'>): string =>
     .sort()
     .join(',');
 
-/** Moving steps gathered by beat, target, guard reads and picks, in the
- * order their first step is said. Any part that differs keeps two steps
- * apart. */
+/** Every read but the wakes-on ones, by role, kind and id, sorted: the
+ * claim, a topic asked about the one heard, and any connection the drawing
+ * does not yet know. Empty for a step that reads none, so such a step's
+ * edge id is the one it always had. */
+const otherReadsKey = (step: Pick<MachineStep, 'reads'>): string =>
+  step.reads
+    .filter((r) => r.role !== ROLE_WAKES_ON)
+    .map((r) => `${r.role} ${r.kind} ${r.id}`)
+    .sort()
+    .join(',');
+
+/** Moving steps gathered by beat, target, reads and picks, in the order
+ * their first step is said. Any part that differs keeps two steps apart. */
 function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
   const edges = new Map<string, MachineEdge>();
   for (const step of steps) {
     if (step.to === null) continue;
-    const id = `${step.beat}>${step.to}>${wakesKey(step)}>${step.picks.join(',')}`;
+    const others = otherReadsKey(step);
+    const id =
+      `${step.beat}>${step.to}>${wakesKey(step)}>${step.picks.join(',')}` +
+      (others ? `>${others}` : '');
     const edge = edges.get(id);
     if (edge) {
       if (!edge.from.includes(step.from)) edge.from.push(step.from);
@@ -262,17 +314,51 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
         to: step.to,
         beat: step.beat,
         wakesOn: step.wakesOn,
+        claims: step.claims,
+        reads: step.reads,
         steps: [step],
       });
   }
   return [...edges.values()];
 }
 
-/** A step's words for a label: the beat it fires on and what its guard
- * reads, from connection ids alone (`on fact: guards-turned`). */
-export function beatLabel(step: Pick<MachineStep, 'beat' | 'wakesOn'>): string {
-  const reads = step.wakesOn.map((w) => w.id).join(', ');
+/** The reads the drawing knows, by role and kind, as the engine's
+ * `guardWords` says them today. */
+const KNOWN_READS = new Set([
+  `${ROLE_WAKES_ON} fact`,
+  `${ROLE_WAKES_ON} topic`,
+  `${ROLE_ASKS} ${CLAIM}`,
+  `${ROLE_ASKS} topic`,
+]);
+
+/** One read's words: a known wakes-on read is its id (`guards-turned`), a
+ * known asks read its kind and id (`claim failed`), and any other read its
+ * role, kind and id (`asks-not claim held`), so a role the drawing does
+ * not know can never be read as one it does. */
+const readWords = (r: StepRead): string =>
+  !KNOWN_READS.has(`${r.role} ${r.kind}`)
+    ? `${r.role} ${r.kind} ${r.id}`
+    : r.role === ROLE_WAKES_ON
+      ? r.id
+      : `${r.kind} ${r.id}`;
+
+/** A step's words for a label: the beat it fires on and what its
+ * condition reads, from connections alone, in the engine's order
+ * (`on fact: guards-turned`, `on heard: claim failed, topic admitted`). */
+export function beatLabel(step: Pick<MachineStep, 'beat' | 'reads'>): string {
+  const reads = step.reads.map(readWords).join(', ');
   return reads ? `on ${step.beat}: ${reads}` : `on ${step.beat}`;
+}
+
+/** A step's label when its full one does not fit: the beat, and how many
+ * reads its condition has beyond it (`on heard +2`), so a cut label still
+ * shows it has a condition. The full label is the mark's tooltip. */
+export function shortBeatLabel(
+  step: Pick<MachineStep, 'beat' | 'reads'>
+): string {
+  return step.reads.length
+    ? `on ${step.beat} +${step.reads.length}`
+    : `on ${step.beat}`;
 }
 
 /** A staying step's line inside its box: its beat and the tables it picks
