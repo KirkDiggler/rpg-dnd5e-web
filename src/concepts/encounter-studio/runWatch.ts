@@ -27,6 +27,9 @@ export function watchUnavailableReason(
 export interface WatchedRun {
   session: string;
   member: string;
+  /** The studio draft the run was started from, when known: a reload
+   * reopens the watch only on that draft (rpg-project#1008). */
+  room?: string;
 }
 
 export interface RunWatch {

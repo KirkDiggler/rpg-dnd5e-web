@@ -36,6 +36,11 @@ import { ErrorDisplay } from './components/ui/Feedback';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
 import { EncounterStudioWorkspace } from './concepts/encounter-studio/EncounterStudioWorkspace';
+import {
+  forgetWatching,
+  rememberWatching,
+  watchingOf,
+} from './concepts/encounter-studio/watchMemory';
 import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
@@ -290,6 +295,18 @@ function AppContent() {
       return; // setup/deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
+      // A run this tab was WATCHING from the studio goes back to the studio
+      // watching it, never into the game (rpg-project#1008). Any other run
+      // resumes as below.
+      const watched = watchingOf(
+        playerId ?? '',
+        myActiveLobby.data.encounterId
+      );
+      if (watched) {
+        setStudioReturn(watched);
+        setCurrentView('encounter-studio');
+        return;
+      }
       if (resumedLobbyCharacter.loading || resumeIdentityError) return;
       // The load right after this run's game view failed to render stays on
       // Home, once, and says so with a Resume control.
@@ -449,6 +466,20 @@ function AppContent() {
     setFailedOpen(null);
     setResumeLobbyId(null);
     setResumeEncounterId(failedOpen);
+    setCurrentView('lobby');
+  };
+  /** A watched run the studio could not reopen after a reload (its draft
+   * is not the one open): Home says the run is still open (#1008). */
+  const [watchNotReopened, setWatchNotReopened] = useState<{
+    session: string;
+    member: string;
+  } | null>(null);
+  const resumeWatchNotReopened = () => {
+    if (!watchNotReopened) return;
+    setWatchNotReopened(null);
+    setResumeLobbyId(null);
+    setLobbyCharacterId(watchNotReopened.member);
+    setResumeEncounterId(watchNotReopened.session);
     setCurrentView('lobby');
   };
   const handleBackToStudio = () => {
@@ -638,7 +669,20 @@ function AppContent() {
               onPlay={handlePlayAuthored}
               initialWatch={studioReturn}
               onPlayWatched={handlePlayWatched}
-              onWatchEnded={() => setStudioReturn(null)}
+              onWatchEnded={() => {
+                setStudioReturn(null);
+                forgetWatching(playerId ?? '');
+              }}
+              onWatchStarted={(run) => rememberWatching(playerId ?? '', run)}
+              onWatchLost={(run) => {
+                forgetWatching(playerId ?? '');
+                setStudioReturn(null);
+                setWatchNotReopened({
+                  session: run.session,
+                  member: run.member,
+                });
+                setCurrentView('home');
+              }}
             />
           ) : (
             <section className="p-8" aria-label="Encounter Studio unavailable">
@@ -701,6 +745,25 @@ function AppContent() {
                   type="button"
                   className="px-3 py-1 rounded border"
                   onClick={resumeFailedOpen}
+                >
+                  Resume
+                </button>
+              </div>
+            )}
+            {watchNotReopened && (
+              <div
+                role="status"
+                className="flex items-center justify-center gap-3 p-3 text-sm"
+              >
+                <span>
+                  The run you were watching is still open:{' '}
+                  <code>{watchNotReopened.session}</code>. The studio could not
+                  reopen it on the draft it has open.
+                </span>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded border"
+                  onClick={resumeWatchNotReopened}
                 >
                   Resume
                 </button>

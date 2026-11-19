@@ -255,6 +255,22 @@ vi.mock('./compositions/rpcCompositionSource', () => ({
   },
 }));
 
+// A watched run's record is streamed in development; here it is empty.
+vi.mock('./concepts/encounter-studio/runWatch', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('./concepts/encounter-studio/runWatch')
+    >();
+  const empty = { rows: [], notice: undefined };
+  return {
+    ...actual,
+    useRunWatch: (
+      watch: Parameters<typeof actual.useRunFold>[0],
+      draft: Parameters<typeof actual.useRunFold>[1]
+    ) => actual.useRunFold(watch, draft, empty),
+  };
+});
+
 vi.mock('./dev/AttackDieDevRouteSurface', () => ({
   AttackDieDevRouteSurface: () => <div>Attack Die Dev Route</div>,
 }));
@@ -1040,5 +1056,85 @@ describe('App resume after a game view failed to open (rpg-project#1004)', () =>
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.encounterId).toBe('enc-1');
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+  });
+});
+
+describe('App reload while watching a run from the studio (rpg-project#1008)', () => {
+  const watching = (mark: Record<string, string>) =>
+    window.sessionStorage.setItem('rpg.studio.watching', JSON.stringify(mark));
+  beforeEach(() => {
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+  });
+  afterEach(() => window.sessionStorage.clear());
+
+  it('a reload of the watched run returns to the studio watching it, not the game', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'test-player',
+      session: 'enc-1',
+      member: 'char-alice',
+      room: 'room-1',
+    });
+    render(<App />);
+    expect(await screen.findByTestId('studio-watch')).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Encounter Studio workspace' })
+    ).toBeTruthy();
+    expect(screen.queryByTestId('game-view')).toBeNull();
+  });
+
+  it('a watched run the studio cannot reopen lands on Home saying it is still open, never in the game', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'test-player',
+      session: 'enc-1',
+      member: 'char-alice',
+      room: 'another-draft',
+    });
+    render(<App />);
+    const notice = await screen.findByText(
+      /The run you were watching is still open/
+    );
+    expect(notice.textContent).toContain('enc-1');
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.queryByTestId('game-view')).toBeNull();
+    expect(window.sessionStorage.getItem('rpg.studio.watching')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.encounterId).toBe('enc-1');
+  });
+
+  it('a run that was not started by a watch resumes in the game as before', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'test-player',
+      session: 'another-run',
+      member: 'char-alice',
+      room: 'room-1',
+    });
+    render(<App />);
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.encounterId).toBe('enc-1');
+    expect(
+      screen.queryByRole('region', { name: 'Encounter Studio workspace' })
+    ).toBeNull();
+  });
+
+  it('another player’s watch in this tab does not reroute this player', async () => {
+    vi.stubEnv('MODE', 'development');
+    watching({
+      player: 'someone-else',
+      session: 'enc-1',
+      member: 'char-alice',
+      room: 'room-1',
+    });
+    render(<App />);
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.encounterId).toBe('enc-1');
   });
 });

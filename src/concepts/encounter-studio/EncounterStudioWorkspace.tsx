@@ -1,5 +1,7 @@
 import { useGetCharacter } from '@/api/hooks';
+import { useSeatedElsewhere } from '@/api/useSeatedElsewhere';
 import { useAuthoringGate } from '@/author/useAuthoringGate';
+import { SeatNotice } from '@/components/game/SeatNotice';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
   memo,
@@ -133,6 +135,7 @@ import { useRevealController, type RevealKey } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
+import { useWatchLeave } from './watchLeave';
 import {
   browserStorage,
   readWatchWidth,
@@ -183,6 +186,12 @@ interface EncounterStudioWorkspaceProps {
   onPlayWatched?: (encounterId: string, characterId: string) => void;
   /** The studio stopped watching: the game's way back is retired. */
   onWatchEnded?: () => void;
+  /** The studio started watching a run (App remembers it across a reload,
+   * rpg-project#1008). */
+  onWatchStarted?: (run: WatchedRun) => void;
+  /** `initialWatch` names a run started from another draft than the one
+   * this studio opened: it is not watched here (rpg-project#1008). */
+  onWatchLost?: (run: WatchedRun) => void;
 }
 interface StudioSurfaceProps {
   session: EncounterStudioSession;
@@ -200,6 +209,8 @@ interface StudioSurfaceProps {
   initialWatch?: WatchedRun | null;
   onPlayWatched?: (encounterId: string, characterId: string) => void;
   onWatchEnded?: () => void;
+  onWatchStarted?: (run: WatchedRun) => void;
+  onWatchLost?: (run: WatchedRun) => void;
   /** Where the studio remembers this draft's last saved key (S6-T7). */
   storage: KeyValueStorage;
 }
@@ -221,6 +232,8 @@ function StudioSurface({
   initialWatch = null,
   onPlayWatched,
   onWatchEnded,
+  onWatchStarted,
+  onWatchLost,
   storage,
 }: StudioSurfaceProps): React.JSX.Element {
   const navId = useId();
@@ -564,7 +577,21 @@ function StudioSurface({
   /** Watch a run (rpg-project#1004): the same launch as Play, but the
    * started run is watched here instead of entered. The intent is set by
    * the button pressed, and read when the launch hands its session over. */
-  const [watch, setWatch] = useState<WatchedRun | null>(initialWatch);
+  const [watch, setWatch] = useState<WatchedRun | null>(() =>
+    initialWatch &&
+    (initialWatch.room === undefined ||
+      initialWatch.room === session.document.draft.id)
+      ? initialWatch
+      : null
+  );
+  /** A remembered watch of another draft is not drawn over this one; App
+   * hears so once and falls back to Home (rpg-project#1008). */
+  const lostWatch = useRef(watch === null ? initialWatch : null);
+  useEffect(() => {
+    if (lostWatch.current) onWatchLost?.(lostWatch.current);
+    // Once, for the watch this mount was handed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const watchIntent = useRef(false);
   const enterWatch = useRef<(run: WatchedRun) => void>(() => {});
   const capability = useMemo<RoomPublishingCapability>(
@@ -898,14 +925,70 @@ function StudioSurface({
     void publishing.saveAndPlay();
   };
   const watchReason = watchUnavailableReason();
-  const pressWatch = (): void => {
-    if (copyKeyRefused || watchReason) return;
+  /** Ending a watch leaves its run (rpg-project#1008): the character is
+   * seated in it until it does, and a later launch would be refused. */
+  const watchLeave = useWatchLeave();
+  /** Runs this studio left: a seat read before the leave is no longer
+   * offered for abandoning. */
+  const [freed, setFreed] = useState<ReadonlySet<string>>(() => new Set());
+  const endWatch = (): void => {
+    if (watch) setFreed((was) => new Set(was).add(watch.session));
+    setWatch(null);
+    watchLeave.clearRefusal();
+    onWatchEnded?.();
+  };
+  /** Leaves the watched run, then stops watching. False when the leave was
+   * refused: the refusal is shown and the watch stays until the operator
+   * stops anyway. */
+  const stopWatching = async (): Promise<boolean> => {
+    if (!watch) return true;
+    if (!(await watchLeave.leaveRun(watch))) return false;
+    endWatch();
+    return true;
+  };
+  /** The character's seat elsewhere, the lobby flow's own notice: read on
+   * mount and learnt from a refused watch launch. The watched run's own
+   * seat, and a run this studio already left, are not "another run". */
+  const seated = useSeatedElsewhere(playCharacter);
+  const seatElsewhere =
+    seated.seat !== null &&
+    seated.seat.session !== watch?.session &&
+    (seated.seat.refused || !freed.has(seated.seat.session))
+      ? seated.seat
+      : null;
+  const seatHolder = useGetCharacter(seatElsewhere?.character ?? '');
+  /** The one automatic relaunch after Abandon run freed the seat: a second
+   * refusal shows as the launch's own error, never offered again. */
+  const relaunched = useRef(false);
+  const launchWatch = (): void => {
     if (siteOperation !== 'copy') setSiteOperation('save');
     watchIntent.current = true;
     void publishing.saveAndPlay();
   };
+  const pressWatch = async (): Promise<void> => {
+    if (copyKeyRefused || watchReason || seatElsewhere) return;
+    // A second watch leaves the first run before starting the next.
+    if (watch && !(await stopWatching())) return;
+    relaunched.current = false;
+    launchWatch();
+  };
+  const launchFailure = publishing.launch.failure;
+  useEffect(() => {
+    if (!launchFailure || !watchIntent.current) return;
+    watchIntent.current = false;
+    if (relaunched.current) {
+      relaunched.current = false;
+      return;
+    }
+    void seated.noteRefusal(launchFailure);
+    // A new failure only; the seat hook's callbacks are stable per character.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchFailure]);
   enterWatch.current = (run) => {
-    setWatch(run);
+    relaunched.current = false;
+    const started = { ...run, room: session.document.draft.id };
+    setWatch(started);
+    onWatchStarted?.(started);
     setSiteOperation(null);
     if (home === 'encounter') changeHome('build');
     if (view !== 'layout') switchView('layout');
@@ -1288,15 +1371,19 @@ function StudioSurface({
               watchReason !== null ||
               playUnavailableReason(gate.state, playCharacter) !== null ||
               copyKeyRefused ||
-              publishing.busy
+              publishing.busy ||
+              watchLeave.leaving ||
+              seatElsewhere !== null
             }
             title={
               watchReason ??
-              'Start a run of this encounter and watch it on the Layout'
+              (seatElsewhere
+                ? 'Abandon the other run first'
+                : 'Start a run of this encounter and watch it on the Layout')
             }
             aria-describedby={watchReason ? 'studio-watch-reason' : undefined}
             aria-pressed={watch !== null}
-            onClick={pressWatch}
+            onClick={() => void pressWatch()}
           >
             Watch a run
           </button>
@@ -1307,6 +1394,20 @@ function StudioSurface({
           )}
         </div>
       </header>
+      {seatElsewhere && (
+        <div className="es-seat-notice">
+          <SeatNotice
+            seated={seated}
+            name={seatHolder.data?.name}
+            onAbandoned={(afterRefusal) => {
+              setFreed((was) => new Set(was).add(seatElsewhere.session));
+              if (!afterRefusal) return;
+              relaunched.current = true;
+              launchWatch();
+            }}
+          />
+        </div>
+      )}
       {session.autosaveBlocked && (
         <p className="es-warning" role="alert">
           Autosave is paused. The displayed draft is in memory. “Replace
@@ -1390,6 +1491,7 @@ function StudioSurface({
               publishing={publishing}
               gate={gate}
               characterId={playCharacter}
+              launchErrorShownElsewhere={seatElsewhere?.refused === true}
               jumps={jumps}
               focusKey={keyFocus}
               onKeyFocused={() => setKeyFocus(0)}
@@ -1420,17 +1522,43 @@ function StudioSurface({
           <span>
             Leave Encounter Studio? Only successfully saved local drafts are
             kept. Changes still in memory and unfinished gestures may be lost.
+            {watch && ' Leaving also leaves the run you are watching.'}
           </span>
+          {watch && watchLeave.refusal && (
+            <span role="alert">{watchLeave.refusal}</span>
+          )}
           <span className="es-buttons">
             <button
               type="button"
+              disabled={watchLeave.leaving}
               onClick={() => {
-                session.cancelTransients();
-                onBack?.();
+                const leaveStudio = (): void => {
+                  session.cancelTransients();
+                  onBack?.();
+                };
+                if (!watch) {
+                  leaveStudio();
+                  return;
+                }
+                void stopWatching().then((left) => {
+                  if (left) leaveStudio();
+                });
               }}
             >
               Leave Encounter Studio
             </button>
+            {watch && watchLeave.refusal && (
+              <button
+                type="button"
+                onClick={() => {
+                  endWatch();
+                  session.cancelTransients();
+                  onBack?.();
+                }}
+              >
+                Leave anyway, the run stays open
+              </button>
+            )}
             <button type="button" onClick={() => setConfirmLeave(false)}>
               Keep editing
             </button>
@@ -1899,10 +2027,10 @@ function StudioSurface({
                       names={watchNames}
                       width={watchWidth}
                       onResize={resizeWatch}
-                      onStop={() => {
-                        setWatch(null);
-                        onWatchEnded?.();
-                      }}
+                      onStop={() => void stopWatching()}
+                      stopping={watchLeave.leaving}
+                      stopRefusal={watchLeave.refusal}
+                      onStopAnyway={endWatch}
                       onPlayInGame={
                         onPlayWatched
                           ? () => onPlayWatched(watch.session, watch.member)
@@ -2224,6 +2352,8 @@ export function EncounterStudioWorkspace({
   initialWatch = null,
   onPlayWatched,
   onWatchEnded,
+  onWatchStarted,
+  onWatchLost,
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [home, setHome] = useState<StudioHome>('build');
   const [view, setView] = useState<EncounterStudioView>('layout');
@@ -2267,6 +2397,8 @@ export function EncounterStudioWorkspace({
         initialWatch={initialWatch}
         onPlayWatched={onPlayWatched}
         onWatchEnded={onWatchEnded}
+        onWatchStarted={onWatchStarted}
+        onWatchLost={onWatchLost}
         storage={publicationStorage}
       />
     ),
@@ -2281,6 +2413,8 @@ export function EncounterStudioWorkspace({
       initialWatch,
       onPlayWatched,
       onWatchEnded,
+      onWatchStarted,
+      onWatchLost,
       publicationStorage,
     ]
   );

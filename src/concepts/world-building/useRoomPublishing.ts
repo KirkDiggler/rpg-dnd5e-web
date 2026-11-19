@@ -158,6 +158,7 @@ export interface UseRoomPublishingResult {
     launching: boolean;
     phase: LobbyLaunchPhase | null;
     error: string | null;
+    failure: unknown;
   };
   save: () => Promise<boolean>;
   saveAndPlay: () => Promise<boolean>;
