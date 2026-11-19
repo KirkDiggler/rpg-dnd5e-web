@@ -134,7 +134,11 @@ import type { ThreadHub } from './threadHubs';
 import { useMachineWords } from './useMachineWords';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
-import { useSavedRunReplay, useWatchSave } from './useSavedRun';
+import {
+  useSavedRunReplay,
+  useWatchIdentity,
+  useWatchSave,
+} from './useSavedRun';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
@@ -1088,11 +1092,39 @@ function StudioSurface({
   /** Open a saved run (rpg-project#1013): read-only, through the watch's
    * own fold, drawn from the file's snapshot. While one is open the map,
    * the panel and the timeline show it instead of a watch. */
+  /** The open encounter as the studio's own check last answered it
+   * (rpg-project#1017): its key and the server's content hash of its text,
+   * which a run's `scene_content` is compared with. No call of its own. */
+  const previewHash =
+    publishing.preview.status === 'errors'
+      ? null
+      : (publishing.preview.contentHash ?? null);
+  /** While a check is in flight the hash held is the previous text's: it
+   * is not compared until the current text's answer arrives. */
+  const previewChecking = publishing.preview.status === 'validating';
+  const openEncounter = useMemo(
+    () => ({
+      key: publishing.key.trim(),
+      contentHash: previewHash,
+      checking: previewChecking,
+    }),
+    [publishing.key, previewHash, previewChecking]
+  );
+  const openUnreachable = publishing.preview.status === 'unreachable';
+  const watchIdentity = useWatchIdentity({
+    rows: run.feed.rows,
+    session: watch ? `${watch.session}/${watch.member}` : '',
+    watching: watch !== null,
+    open: openEncounter,
+    openUnreachable,
+  });
   const savedRun = useSavedRunReplay({
     draft: session.document.draft,
     dungeonKey: publishing.key,
     names: watchNames,
     readBack: readBack.readBack,
+    open: openEncounter,
+    openUnreachable,
   });
   const replaying = savedRun.watch !== null && watch === null;
   const shownWatch = replaying ? savedRun.watch : watch;
@@ -2149,6 +2181,7 @@ function StudioSurface({
                       onResize={resizeWatch}
                       onStop={() => void stopWatching()}
                       save={watchSave}
+                      identity={watchIdentity}
                       stopping={watchLeave.leaving}
                       stopRefusal={watchLeave.refusal}
                       onStopAnyway={endWatch}

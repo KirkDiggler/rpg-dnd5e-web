@@ -251,6 +251,37 @@ describe('a repeated hold (review on rpg-dnd5e-web#1456)', () => {
     expect(quiet.changed).toBe(false);
   });
 
+  it('a NEW trace (rpg-project#1001 item 11) names the inline pick qualified: the same hold, and another role is another kind', () => {
+    // rpg-toolkit origin/main: `behavior_decision.selection.key` is the
+    // role-qualified key the `answered` beat carries.
+    const repeat = (role: string) =>
+      timelineOf(start, [
+        heroMoves('move:h1', 1),
+        answered('quiet', 'hold', '', 'behavior/4:duty/time', 'time:h1'),
+        heroMoves('move:h2', 2),
+        row('time:h2', 'behavior_decision', {
+          member: 'quiet',
+          operation: 'decide',
+          on: 'time',
+          pick_record: '',
+          outcomes: [{ id: role, before: 'ready', after: 'ready' }],
+          selection: {
+            beat: 'answered',
+            creature: 'quiet',
+            word: 'hold',
+            selector: '',
+            key: `behavior/${role.length}:${role}/time`,
+          },
+        }),
+      ]).rows.find((r) => r.id === 'quiet')!;
+    const same = repeat('duty');
+    expect(same.cells[2]!.did?.kind).toBe('hold (duty)');
+    expect(same.cells[2]!.didChanged).toBe(false);
+    const other = repeat('watch');
+    expect(other.cells[2]!.did?.kind).toBe('hold (watch)');
+    expect(other.cells[2]!.didChanged).toBe(true);
+  });
+
   it('compares roles only where both sides carry one', () => {
     expect(sameKind('hold (duty)', 'hold')).toBe(true);
     expect(sameKind('toward at (duty)', 'toward at (investigate)')).toBe(false);

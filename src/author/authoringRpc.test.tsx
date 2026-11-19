@@ -31,6 +31,7 @@ interface Deferred<T> {
 interface PutAnswer {
   errors: Array<{ path: string; message: string }>;
   atlas?: GetAtlasResponse | null;
+  contentHash?: string;
 }
 
 function okAnswer(): PutAnswer {
@@ -269,5 +270,43 @@ describe('usePutDungeonPreview cleanup', () => {
     });
     expect(requests.every((r) => r.validateOnly === true)).toBe(true);
     expect(requests.map((r) => r.yaml)).toEqual(['v1', 'v2']);
+  });
+
+  it('keeps the server’s content hash of a clean answer, drops it on an errors answer and on a new document (rpg-project#1017)', async () => {
+    const answers: Deferred<PutAnswer>[] = [];
+    const { client } = deferredClient(answers);
+    const { result, rerender } = renderHook(
+      ({ yaml, identity }: { yaml: string; identity: string }) =>
+        usePutDungeonPreview('k', yaml, { client, debounceMs: 0, identity }),
+      { initialProps: { yaml: 'v1', identity: 'doc-a' } }
+    );
+    await waitFor(() => expect(answers).toHaveLength(1));
+    await act(async () => {
+      answers[0]!.resolve({ errors: [], atlas: null, contentHash: 'h1' });
+    });
+    await waitFor(() => expect(result.current.contentHash).toBe('h1'));
+
+    rerender({ yaml: 'v2', identity: 'doc-a' });
+    await waitFor(() => expect(answers).toHaveLength(2));
+    await act(async () => {
+      answers[1]!.resolve({
+        errors: [{ path: 'x', message: 'broken' }],
+        atlas: null,
+      });
+    });
+    await waitFor(() => expect(result.current.status).toBe('errors'));
+    expect(result.current.contentHash).toBeUndefined();
+
+    rerender({ yaml: 'v3', identity: 'doc-a' });
+    await waitFor(() => expect(answers).toHaveLength(3));
+    await act(async () => {
+      answers[2]!.resolve({ errors: [], atlas: null, contentHash: 'h3' });
+    });
+    await waitFor(() => expect(result.current.contentHash).toBe('h3'));
+
+    // Another document opened into the same editor: the previous file's
+    // hash is gone at once, before its own check answers.
+    rerender({ yaml: 'v4', identity: 'doc-b' });
+    expect(result.current.contentHash).toBeUndefined();
   });
 });
