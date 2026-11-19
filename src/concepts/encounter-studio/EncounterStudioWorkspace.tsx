@@ -1086,6 +1086,7 @@ function StudioSurface({
    * the panel and the timeline show it instead of a watch. */
   const savedRun = useSavedRunReplay({
     draft: session.document.draft,
+    dungeonKey: publishing.key,
     names: watchNames,
     readBack: readBack.readBack,
   });
@@ -1094,7 +1095,32 @@ function StudioSurface({
   const shownRun = replaying ? savedRun.run : run;
   const shownNames = replaying ? savedRun.names : watchNames;
   const savedRunInput = useRef<HTMLInputElement>(null);
-  closeSavedRun.current = savedRun.close;
+  /** Where the studio was before a saved run opened: Close goes back. */
+  const beforeReplay = useRef<{
+    home: StudioHome;
+    view: EncounterStudioView;
+    siteOperation: typeof siteOperation;
+    sidebarOpen: boolean;
+  } | null>(null);
+  /** A watch that starts takes the canvas; nothing to go back to. */
+  closeSavedRun.current = () => {
+    beforeReplay.current = null;
+    savedRun.close();
+  };
+  const closeReplay = (): void => {
+    const before = beforeReplay.current;
+    beforeReplay.current = null;
+    savedRun.close();
+    if (!before) return;
+    if (before.home !== home) changeHome(before.home);
+    if (before.view !== view) switchView(before.view);
+    setSiteOperation(before.siteOperation);
+    setSidebarOpen(before.sidebarOpen);
+  };
+  const replayPanel = savedRun.panel && {
+    ...savedRun.panel,
+    onClose: closeReplay,
+  };
   /** What each member said in the shown step: the speech marks. */
   const saidThisStep = useMemo(
     () =>
@@ -1458,8 +1484,15 @@ function StudioSurface({
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = '';
               if (!file) return;
+              const before = beforeReplay.current ?? {
+                home,
+                view,
+                siteOperation,
+                sidebarOpen,
+              };
               void savedRun.open(file).then((opened) => {
                 if (!opened) return;
+                beforeReplay.current = before;
                 setSiteOperation(null);
                 if (home === 'encounter') changeHome('build');
                 if (view !== 'layout') switchView('layout');
@@ -2130,8 +2163,8 @@ function StudioSurface({
                       names={savedRun.names}
                       width={watchWidth}
                       onResize={resizeWatch}
-                      onStop={savedRun.close}
-                      replay={savedRun.panel}
+                      onStop={closeReplay}
+                      replay={replayPanel}
                     />
                   )}
                 </div>

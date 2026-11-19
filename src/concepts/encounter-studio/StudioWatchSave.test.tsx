@@ -4,6 +4,7 @@
  */
 import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
 import { create } from '@bufbuild/protobuf';
+import { ReadBackSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { RecordEventSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_pb';
 import { GetRecordResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
 import {
@@ -19,7 +20,7 @@ import { useRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft, type RoomDraft } from '../world-building/roomDraft';
 import { castleMachinesReadBack } from './fixtures/engineReadBack';
-import { useRunFold, type WatchedRun } from './runWatch';
+import { machinesRunBy, useRunFold, type WatchedRun } from './runWatch';
 import {
   openSavedRun,
   SAVED_RUN_FORMAT,
@@ -87,6 +88,13 @@ const SAVED_TEXT = savedRunText(
   },
   { events: EVENTS, complete: true }
 );
+/** A beat the server sent with no raw fields. */
+const BARE = create(RecordEventSchema, {
+  id: '0003',
+  at: 3n,
+  act: 'move:3',
+  beat: 'moved',
+});
 const RAW_TEXT = SAVED_TEXT.split('\n').slice(1).join('\n');
 
 const feed: RecordFeedSnapshot = {
@@ -255,6 +263,7 @@ describe('Open a saved run (rpg-project#1013)', () => {
   it('drives the fold from the snapshot, not the open draft, and says the draft changed', () => {
     const { result } = renderHook(() =>
       useSavedRunReplay({
+        dungeonKey: 'the-mad-king',
         draft: MOVED,
         names: new Map(),
         readBack: castleMachinesReadBack(),
@@ -276,6 +285,7 @@ describe('Open a saved run (rpg-project#1013)', () => {
   it('the same draft opens with no note', () => {
     const { result } = renderHook(() =>
       useSavedRunReplay({
+        dungeonKey: 'the-mad-king',
         draft: SAVED_DRAFT,
         names: new Map(),
         readBack: castleMachinesReadBack(),
@@ -349,5 +359,114 @@ describe('Open a saved run (rpg-project#1013)', () => {
     expect(screen.getByTestId('watch-step').textContent).toBe('the start');
     fireEvent.click(button('Close'));
     screen.getByText('closed');
+  });
+
+  it('draws the machines from the file, never the open draft’s read-back', () => {
+    const { result } = renderHook(() =>
+      useSavedRunReplay({
+        draft: SAVED_DRAFT,
+        names: new Map(),
+        readBack: create(ReadBackSchema, {}),
+      })
+    );
+    act(() => void result.current.openText('run.jsonl', SAVED_TEXT));
+    const member = {
+      id: 'gate-1',
+      roles: {},
+    } as unknown as Parameters<typeof machinesRunBy>[1];
+    expect(
+      machinesRunBy(result.current.readBack, member).map((m) => m.routine)
+    ).toEqual(
+      machinesRunBy(castleMachinesReadBack(), member).map((m) => m.routine)
+    );
+    expect(machinesRunBy(result.current.readBack, member)).not.toEqual([]);
+  });
+
+  it('a run saved from another encounter says so by name', () => {
+    const { result } = renderHook(() =>
+      useSavedRunReplay({
+        draft: SAVED_DRAFT,
+        dungeonKey: 'the-other-keep',
+        names: new Map(),
+        readBack: castleMachinesReadBack(),
+      })
+    );
+    act(() => void result.current.openText('run.jsonl', SAVED_TEXT));
+    expect(result.current.panel?.notes.join(' ')).toContain(
+      'This run was saved from The mad king'
+    );
+  });
+
+  it('an incomplete saved run says so', () => {
+    const text = savedRunText(
+      {
+        format: SAVED_RUN_FORMAT,
+        savedAt: '2026-11-19T14:00:00.000Z',
+        session: 'run-1',
+        member: 'hero',
+        dungeon: { key: 'the-mad-king', name: 'Gate' },
+        snapshot: snapshotOf({
+          draft: SAVED_DRAFT,
+          names: NAMES,
+          readBack: null,
+        }),
+      },
+      { events: [...EVENTS, BARE], complete: true }
+    );
+    const { result } = renderHook(() =>
+      useSavedRunReplay({
+        draft: SAVED_DRAFT,
+        names: new Map(),
+        readBack: null,
+      })
+    );
+    act(() => void result.current.openText('run.jsonl', text));
+    expect(result.current.panel?.notes.join(' ')).toContain(
+      'This saved run is incomplete'
+    );
+  });
+});
+
+describe('the operator hears how a save went (rpg-project#1013)', () => {
+  it('a save that wrote an incomplete file says so', async () => {
+    const { result } = renderHook(() =>
+      useWatchSave({
+        watch: WATCH,
+        lastBeat: '0002',
+        draft: SAVED_DRAFT,
+        names: NAMES,
+        readBack: null,
+        dungeonKey: 'k',
+        getPage: async () =>
+          create(GetRecordResponseSchema, {
+            events: [...EVENTS, BARE],
+            more: false,
+          }),
+        download: vi.fn(),
+      })
+    );
+    await act(async () => void (await result.current!.onSave()));
+    expect(result.current?.notice).toContain('this run is incomplete');
+  });
+
+  it('the panel shows a failed save and an incomplete one', () => {
+    render(
+      <Panel
+        save={{
+          onSave: vi.fn(async () => false),
+          saving: false,
+          error: 'Could not save the run: not seated',
+          notice: 'Saved, but this run is incomplete: 1 beats.',
+          unsaved: true,
+        }}
+        onStop={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('watch-save-error').textContent).toContain(
+      'not seated'
+    );
+    expect(screen.getByTestId('watch-save-notice').textContent).toContain(
+      'incomplete'
+    );
   });
 });

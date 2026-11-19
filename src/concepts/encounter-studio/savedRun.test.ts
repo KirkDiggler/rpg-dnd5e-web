@@ -27,7 +27,10 @@ import {
   readBackExcerpt,
   readWholeRecord,
   runDraftOfSnapshot,
+  SAVE_READ_RETRIES,
   SAVED_RUN_FORMAT,
+  savedFromElsewhere,
+  savedRunFile,
   savedRunFileName,
   savedRunText,
   snapshotOf,
@@ -115,15 +118,73 @@ describe('Save this run reads the whole record (rpg-project#1013)', () => {
     expect(record.complete).toBe(true);
   });
 
-  it('a read from the start the server answers restarted is not complete', async () => {
-    const record = await readWholeRecord(async () =>
-      create(GetRecordResponseSchema, {
-        events: [event(1)],
-        more: false,
-        restarted: true,
+  /** A read after an id that aged out: the server replays from its oldest
+   * retained beat, with `more` still true (record_service.proto). */
+  const restartedFrom = (events: ReturnType<typeof event>[]) =>
+    create(GetRecordResponseSchema, {
+      events: events.slice(0, 2),
+      more: true,
+      restarted: true,
+    });
+
+  it('a record that restarts under the read is read again from the start', async () => {
+    const events = Array.from({ length: 6 }, (_, i) => event(i + 1));
+    const { get: pages } = pager(events, 2);
+    let restarts = 1;
+    const asked: string[] = [];
+    const record = await readWholeRecord(async (afterId) => {
+      asked.push(afterId);
+      if (afterId !== '' && restarts > 0) {
+        restarts -= 1;
+        return restartedFrom(events);
+      }
+      return pages(afterId);
+    });
+    expect(asked.filter((a) => a === '').length).toBe(2);
+    expect(record.events.map((e) => e.id)).toEqual(events.map((e) => e.id));
+    expect(record.complete).toBe(true);
+  });
+
+  it('a record that keeps restarting fails the save, a bounded number of times', async () => {
+    const events = Array.from({ length: 6 }, (_, i) => event(i + 1));
+    const { get: pages } = pager(events, 2);
+    let reads = 0;
+    await expect(
+      readWholeRecord(async (afterId) => {
+        reads += 1;
+        if (reads > 100) throw new Error('unbounded');
+        return afterId === '' ? pages('') : restartedFrom(events);
       })
-    );
-    expect(record.complete).toBe(false);
+    ).rejects.toThrow(/restarted under the read/);
+    expect(reads).toBeLessThanOrEqual(2 * (SAVE_READ_RETRIES + 1));
+  });
+
+  it('a page that says more but brings nothing is never the end', async () => {
+    const events = Array.from({ length: 4 }, (_, i) => event(i + 1));
+    const { get: pages } = pager(events, 2);
+    let empties = 1;
+    const record = await readWholeRecord(async (afterId) => {
+      if (afterId !== '' && empties > 0) {
+        empties -= 1;
+        return create(GetRecordResponseSchema, { events: [], more: true });
+      }
+      return pages(afterId);
+    });
+    expect(record.events.map((e) => e.id)).toEqual(events.map((e) => e.id));
+  });
+
+  it('a server that keeps saying more with nothing fails the save', async () => {
+    let reads = 0;
+    await expect(
+      readWholeRecord(async () => {
+        reads += 1;
+        if (reads > 100) throw new Error('unbounded');
+        return create(GetRecordResponseSchema, {
+          events: reads === 1 ? [event(1)] : [],
+          more: true,
+        });
+      })
+    ).rejects.toThrow(/more of the record follows but sends none/);
   });
 
   it('names the file by the dungeon key and the UTC time', () => {
@@ -334,5 +395,49 @@ describe('the open draft against a saved run (rpg-project#1013)', () => {
     expect(draftDiffersFrom(snapshot, fewer, readBack)).toContain(
       'its creatures'
     );
+  });
+
+  it('a creature that now runs a different routine says so', () => {
+    const other = {
+      ...snapshot,
+      creatures: snapshot.creatures.map((c) =>
+        c.id === 'gate-1' ? { ...c, routines: ['another-routine'] } : c
+      ),
+    };
+    expect(draftDiffersFrom(other, DRAFT, readBack)).toContain(
+      'the routines its creatures run'
+    );
+  });
+
+  it('a run saved from another encounter is named', () => {
+    const h = header();
+    expect(
+      savedFromElsewhere(h, { key: 'the-mad-king', name: 'x' })
+    ).toBeNull();
+    expect(savedFromElsewhere(h, { key: 'other-keep', name: 'Other' })).toBe(
+      'The mad king'
+    );
+    expect(savedFromElsewhere(h, { key: '', name: 'Other' })).toBe(
+      'The mad king'
+    );
+  });
+});
+
+describe('an incomplete save (rpg-project#1013)', () => {
+  it('a beat without fields is left out, and the header and the closing line say the file is incomplete', () => {
+    const bare = create(RecordEventSchema, {
+      id: '000002',
+      at: 2n,
+      act: 'move:2',
+      beat: 'moved',
+    });
+    const file = savedRunFile(header(), {
+      events: [event(1), bare, event(3)],
+      complete: true,
+    });
+    expect(file.incomplete).toContain('1 beats had no readable fields');
+    const opened = openSavedRun('run.jsonl', file.text);
+    expect(opened.header?.incomplete).toBe(file.incomplete);
+    expect(opened.capture.feed.notice).toContain('Capture incomplete');
   });
 });

@@ -515,3 +515,58 @@ describe('Stop watching offers to save first (rpg-project#1013)', () => {
     screen.getByTestId('studio-watch');
   });
 });
+
+describe('Open a saved run and Close it (rpg-project#1013)', () => {
+  const line = (o: Record<string, unknown>) => JSON.stringify(o);
+  const file = [
+    line({
+      schema: 1,
+      kind: 'capture',
+      capture: 'c',
+      logged_at: 't',
+      status: 'started',
+      history_complete: true,
+    }),
+    line({
+      schema: 1,
+      kind: 'record',
+      capture: 'c',
+      logged_at: 't',
+      session: 'run-7',
+      id: '0001',
+      at: 1,
+      act: '',
+      beat: 'joined',
+      fields: { beat: 'joined', kind: 'player', member: HERO },
+    }),
+    line({
+      schema: 1,
+      kind: 'capture',
+      capture: 'c',
+      logged_at: 't',
+      status: 'drained',
+      history_complete: true,
+    }),
+  ].join('\n');
+  const pressed = (name: string) =>
+    screen.getByRole('button', { name }).getAttribute('aria-pressed');
+
+  it('opens on the Layout, read-only, and Close goes back to the view the studio was in', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '3D' }));
+    expect(pressed('3D')).toBe('true');
+    // jsdom's File has no text(); a browser's does.
+    const chosen = Object.assign(new File([file], 'records.jsonl'), {
+      text: async () => file,
+    });
+    fireEvent.change(screen.getByTestId('studio-open-saved-run'), {
+      target: { files: [chosen] },
+    });
+    await screen.findByTestId('watch-replay');
+    expect(pressed('Layout')).toBe('true');
+    expect(fakes.exit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByTestId('watch-replay')).toBeNull();
+    expect(pressed('3D')).toBe('true');
+  });
+});

@@ -290,6 +290,15 @@ export function StudioWatch({
                 {save.error}
               </p>
             )}
+            {save?.notice && (
+              <p
+                role="status"
+                className="es-warning"
+                data-testid="watch-save-notice"
+              >
+                {save.notice}
+              </p>
+            )}
             {stopRefusal && (
               <p role="alert" className="es-warning">
                 {stopRefusal}
@@ -494,6 +503,8 @@ export interface WatchSave {
   saving: boolean;
   /** The last save's failure, as a sentence. */
   error: string | null;
+  /** The last save wrote a file that does not hold the whole run. */
+  notice?: string | null;
   /** The run has beats since it was last saved. */
   unsaved: boolean;
 }

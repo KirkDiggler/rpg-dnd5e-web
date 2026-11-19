@@ -77,6 +77,8 @@ export interface SavedRunHeader {
   memberName?: string;
   dungeon: { key: string; name: string };
   snapshot: SavedRunSnapshot;
+  /** Why the file does not hold the whole run; absent when it does. */
+  incomplete?: string;
 }
 
 /** A saved run, opened: the header when the file has one (a raw server
@@ -184,27 +186,53 @@ export function snapshotOf(input: {
   };
 }
 
-/** Every event of the run's record, oldest first: GetRecord paged from the
- * start until the server says there is no `more`. `restarted` on a read
- * from the start means the server no longer holds the start. */
-export async function readWholeRecord(
+/** How many times a save re-reads a record that restarted under it, and
+ * how many empty `more` pages in a row it accepts, before it gives up. */
+export const SAVE_READ_RETRIES = 3;
+
+/** One read from the start; null when the server restarted the record
+ * under it (the id asked after aged out). */
+async function readOnce(
   get: (afterId: string) => Promise<GetRecordResponse>
-): Promise<{ events: RecordEvent[]; complete: boolean }> {
+): Promise<RecordEvent[] | null> {
   const events: RecordEvent[] = [];
   let after = '';
-  let complete = true;
+  let stalls = 0;
   for (;;) {
     const page = await get(after);
-    if (page.restarted) complete = false;
+    if (page.restarted) return null;
+    let advanced = false;
     for (const event of page.events) {
       if (after !== '' && event.id <= after) continue;
       events.push(event);
       after = event.id;
+      advanced = true;
     }
-    // `more` is the only end signal; an empty page cannot advance.
-    if (!page.more || page.events.length === 0) break;
+    // `more` is the only end signal. A page that says more but brings
+    // nothing new is no progress, never the end.
+    if (!page.more) return events;
+    if (advanced) stalls = 0;
+    else if (++stalls > SAVE_READ_RETRIES)
+      throw new Error(
+        'the server says more of the record follows but sends none; nothing was saved.'
+      );
   }
-  return { events, complete };
+}
+
+/** Every event of the run's record, oldest first: GetRecord paged from the
+ * start until the server says there is no `more`. A record that restarts
+ * under the read is read again from the start, a few times; a save is
+ * never written from a read that did not reach the end. */
+export async function readWholeRecord(
+  get: (afterId: string) => Promise<GetRecordResponse>
+): Promise<{ events: RecordEvent[]; complete: boolean }> {
+  for (let attempt = 0; attempt <= SAVE_READ_RETRIES; attempt++) {
+    const events = await readOnce(get);
+    if (events) return { events, complete: true };
+  }
+  throw new Error(
+    `the record restarted under the read ${SAVE_READ_RETRIES + 1} times; nothing was saved.`
+  );
 }
 
 /** The file's name: `<dungeon-key>-run-<UTC timestamp>.jsonl`. */
@@ -228,6 +256,7 @@ function headerJson(header: SavedRunHeader): Record<string, unknown> {
     member: header.member,
     ...(header.memberName ? { member_name: header.memberName } : {}),
     dungeon: header.dungeon,
+    ...(header.incomplete ? { incomplete: header.incomplete } : {}),
     snapshot: {
       creatures: s.creatures,
       ...(s.partyStart ? { party_start: s.partyStart } : {}),
@@ -244,10 +273,18 @@ export function savedRunText(
   header: SavedRunHeader,
   record: { events: readonly RecordEvent[]; complete: boolean }
 ): string {
+  return savedRunFile(header, record).text;
+}
+
+/** The saved file, and why it does not hold the whole run (absent when it
+ * does): the header says so too, so a replay can say it. */
+export function savedRunFile(
+  header: SavedRunHeader,
+  record: { events: readonly RecordEvent[]; complete: boolean }
+): { text: string; incomplete?: string } {
   const capture = `saved-${header.savedAt}`;
   const loggedAt = header.savedAt;
   const decoder = new TextDecoder('utf-8', { fatal: true });
-  const lines: string[] = [JSON.stringify(headerJson(header))];
   let missing = 0;
   const records: string[] = [];
   for (const event of record.events) {
@@ -283,18 +320,25 @@ export function savedRunText(
       history_complete: complete,
       ...(reason ? { reason } : {}),
     });
-  lines.push(status('started'));
-  lines.push(...records);
   const reasons = [
     ...(record.complete ? [] : ['the server no longer held the run’s start']),
-    ...(missing ? [`${missing} beats had no raw fields`] : []),
+    ...(missing
+      ? [`${missing} beats had no readable fields and are left out`]
+      : []),
   ];
-  lines.push(
-    reasons.length
-      ? status('incomplete', reasons.join('; '))
-      : status('drained')
-  );
-  return `${lines.join('\n')}\n`;
+  const incomplete = reasons.join('; ') || undefined;
+  const lines = [
+    JSON.stringify(
+      headerJson({ ...header, ...(incomplete ? { incomplete } : {}) })
+    ),
+    status('started'),
+    ...records,
+    incomplete ? status('incomplete', incomplete) : status('drained'),
+  ];
+  return {
+    text: `${lines.join('\n')}\n`,
+    ...(incomplete ? { incomplete } : {}),
+  };
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -321,6 +365,7 @@ export function headerOf(raw: Record<string, unknown>): SavedRunHeader {
     member: str(raw.member),
     ...(str(raw.member_name) ? { memberName: str(raw.member_name) } : {}),
     dungeon: { key: str(dungeon.key), name: str(dungeon.name) },
+    ...(str(raw.incomplete) ? { incomplete: str(raw.incomplete) } : {}),
     snapshot: {
       creatures: creatures.flatMap((c) => {
         if (!isRecordObject(c)) return [];
@@ -414,6 +459,16 @@ export function draftDiffersFrom(
     })
   )
     out.push('where its creatures start');
+  if (
+    readBack &&
+    snapshot.creatures.some(
+      (c) =>
+        now.has(c.id) &&
+        [...c.routines].sort().join(',') !==
+          routinesOf(readBack, c.id).sort().join(',')
+    )
+  )
+    out.push('the routines its creatures run');
   const routines = new Set(snapshot.creatures.flatMap((c) => c.routines));
   if (
     readBack &&
@@ -425,4 +480,19 @@ export function draftDiffersFrom(
   if (snapshot.layoutHash && snapshot.layoutHash !== layoutHashOf(draft))
     out.push('its map');
   return out;
+}
+
+/** The name of the encounter a saved run came from when it is not the open
+ * one (by key when both have one, else by name); null when it is. */
+export function savedFromElsewhere(
+  header: SavedRunHeader,
+  open: { key: string; name: string }
+): string | null {
+  const saved = header.dungeon;
+  const key = open.key.trim();
+  const differs =
+    saved.key && key
+      ? saved.key !== key
+      : !!saved.name && saved.name !== open.name;
+  return differs ? saved.name || saved.key : null;
 }

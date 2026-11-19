@@ -22,8 +22,9 @@ import {
   runDraftOfSnapshot,
   SAVE_PAGE_LIMIT,
   SAVED_RUN_FORMAT,
+  savedFromElsewhere,
+  savedRunFile,
   savedRunFileName,
-  savedRunText,
   snapshotOf,
   type OpenedRun,
 } from './savedRun';
@@ -75,24 +76,28 @@ export function useWatchSave(input: WatchSaveInput): WatchSave | undefined {
   const { watch, lastBeat } = input;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The last save wrote a file that does not hold the whole run. */
+  const [notice, setNotice] = useState<string | null>(null);
   /** The newest beat the last save held. */
   const [savedThrough, setSavedThrough] = useState<string | null>(null);
   const key = watch ? `${watch.session}\u0000${watch.member}` : '';
   useEffect(() => {
     setSavedThrough(null);
     setError(null);
+    setNotice(null);
   }, [key]);
   const onSave = async (): Promise<boolean> => {
     if (!watch) return false;
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const record = await readWholeRecord((afterId) =>
         (input.getPage ?? serverPage)(watch, afterId)
       );
       const savedAt = (input.now ?? (() => new Date()))();
       const dungeonKey = input.dungeonKey.trim() || input.draft.id;
-      const text = savedRunText(
+      const file = savedRunFile(
         {
           format: SAVED_RUN_FORMAT,
           savedAt: savedAt.toISOString(),
@@ -110,8 +115,10 @@ export function useWatchSave(input: WatchSaveInput): WatchSave | undefined {
       );
       (input.download ?? downloadText)(
         savedRunFileName(dungeonKey, savedAt),
-        text
+        file.text
       );
+      if (file.incomplete)
+        setNotice(`Saved, but this run is incomplete: ${file.incomplete}.`);
       setSavedThrough(record.events[record.events.length - 1]?.id ?? '');
       return true;
     } catch (err) {
@@ -126,6 +133,7 @@ export function useWatchSave(input: WatchSaveInput): WatchSave | undefined {
     onSave,
     saving,
     error,
+    notice,
     unsaved:
       lastBeat !== '' && (savedThrough === null || lastBeat > savedThrough),
   };
@@ -170,6 +178,8 @@ export interface SavedRunReplay {
 /** Open a saved run: a read-only replay through the watch's own fold. */
 export function useSavedRunReplay(input: {
   draft: Readonly<RoomDraft>;
+  /** The open encounter's key, to say a run saved from another one. */
+  dungeonKey?: string;
   names: ReadonlyMap<string, string>;
   readBack: ReadBack | null;
 }): SavedRunReplay {
@@ -218,6 +228,18 @@ export function useSavedRunReplay(input: {
   const notes = useMemo(() => {
     if (!opened) return [];
     if (!header) return [NO_SNAPSHOT_NOTE];
+    const notes = header.incomplete
+      ? [`This saved run is incomplete: ${header.incomplete}.`]
+      : [];
+    const elsewhere = savedFromElsewhere(header, {
+      key: input.dungeonKey ?? '',
+      name: input.draft.name,
+    });
+    if (elsewhere !== null)
+      return [
+        ...notes,
+        `This run was saved from ${elsewhere}, not the open encounter (${input.draft.name}). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.`,
+      ];
     const differs = draftDiffersFrom(
       header.snapshot,
       input.draft,
@@ -225,10 +247,11 @@ export function useSavedRunReplay(input: {
     );
     return differs.length
       ? [
+          ...notes,
           `The encounter has changed since this run was saved (${differs.join(', ')}). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.`,
         ]
-      : [];
-  }, [opened, header, input.draft, input.readBack]);
+      : notes;
+  }, [opened, header, input.draft, input.readBack, input.dungeonKey]);
   const panel = opened
     ? {
         name: opened.fileName,
