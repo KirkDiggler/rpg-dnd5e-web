@@ -50,6 +50,18 @@ const roleFixtures = vi.hoisted(() => {
         { role: 'leaf', node: 'Leaf_West', door: 'b' },
       ],
     },
+    heightRef: 'dnd5e:env:dark-fortress:height_fit_fixture',
+    heightAsset: {
+      ...base,
+      ref: 'dnd5e:env:dark-fortress:height_fit_fixture',
+      url: '/models/synty/world-assets/env/dark-fortress/height-fit.glb',
+      boundsMeters: [3, 3, 0.3],
+      roles: [
+        { role: 'frame', node: 'Height_Frame' },
+        { role: 'leaf', node: 'Height_Leaf', door: 'entry' },
+        { role: 'above', node: 'Height_Above' },
+      ],
+    },
     missingRef: 'dnd5e:env:dark-fortress:roles_missing_01',
     missingAsset: {
       ...base,
@@ -72,6 +84,9 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
       if (ref === roleFixtures.ref) {
         return roleFixtures.asset as unknown as GeneratedWorldAsset;
       }
+      if (ref === roleFixtures.heightRef) {
+        return roleFixtures.heightAsset as unknown as GeneratedWorldAsset;
+      }
       if (ref === roleFixtures.missingRef) {
         return roleFixtures.missingAsset as unknown as GeneratedWorldAsset;
       }
@@ -87,6 +102,23 @@ const loadedUrls = vi.hoisted(() => [] as string[]);
 vi.mock('@react-three/drei', () => ({
   useGLTF: (url: string) => {
     loadedUrls.push(url);
+    if (url.includes('height-fit.glb')) {
+      const scene = new THREE.Group();
+      for (const [name, height, y] of [
+        ['Height_Frame', 2 / SYNTY_SCALE, 1 / SYNTY_SCALE],
+        ['Height_Leaf', 1.8 / SYNTY_SCALE, 0.9 / SYNTY_SCALE],
+        ['Height_Above', 1 / SYNTY_SCALE, 2.5 / SYNTY_SCALE],
+      ] as const) {
+        const part = new THREE.Mesh(
+          new THREE.BoxGeometry(3 / SYNTY_SCALE, height, 0.3 / SYNTY_SCALE),
+          new THREE.MeshStandardMaterial()
+        );
+        part.name = name;
+        part.position.y = y;
+        scene.add(part);
+      }
+      return { scene };
+    }
     if (url.includes('roles-')) {
       const scene = new THREE.Group();
       const material = new THREE.MeshStandardMaterial();
@@ -448,10 +480,55 @@ describe('WorldAssetModel named roles', () => {
     // its own scaled thickness, so the column is continuous.
     const stride = 0.5 * visible[0]!.scale.y;
     visible.forEach((course, index) => {
-      expect(course.position.y).toBeCloseTo(3.25 + index * stride);
+      // The source course is centred at 3.25 with its lower face at 3.
+      // Resizing must keep that lower face anchored, not the centre pivot.
+      const lowerFace = course.position.y - 0.25 * course.scale.y;
+      expect(lowerFace).toBeCloseTo(3 + index * stride);
     });
     await renderer.unmount();
     await grown.unmount();
+  });
+
+  it('keeps actual tall geometry at the reported height with a bounded upper-row pool', async () => {
+    const measured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.heightRef}
+        position={[0, 0, 0]}
+        heightScale={40}
+        onBoundsMeasured={measured}
+      />
+    );
+    const root = renderer.scene.findByProps({
+      name: 'world-asset-model',
+    }).instance;
+    root.updateWorldMatrix(true, true);
+    const size = (node: THREE.Object3D) =>
+      new THREE.Box3().setFromObject(node, true).getSize(new THREE.Vector3()).y;
+    expect(size(root)).toBeCloseTo(120, 4);
+    expect(size(root.getObjectByName('Height_Leaf')!)).toBeCloseTo(1.8);
+    expect(measured).toHaveBeenLastCalledWith(
+      expect.objectContaining({ height: 120 })
+    );
+    const rows: THREE.Object3D[] = [];
+    root.traverse((node) => {
+      if (node.name === 'Height_Above') rows.push(node);
+    });
+    expect(rows).toHaveLength(64);
+    await renderer.update(
+      <WorldAssetModel
+        assetRef={roleFixtures.heightRef}
+        position={[0, 0, 0]}
+        heightScale={1}
+      />
+    );
+    const shrunk = renderer.scene.findByProps({
+      name: 'world-asset-model',
+    }).instance;
+    shrunk.updateWorldMatrix(true, true);
+    expect(size(shrunk)).toBeCloseTo(3);
+    expect(size(shrunk.getObjectByName('Height_Leaf')!)).toBeCloseTo(1.8);
+    await renderer.unmount();
   });
 
   it('leaves the bounds unchanged when roles have no above part', async () => {
