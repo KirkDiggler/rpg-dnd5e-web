@@ -42,6 +42,10 @@ export interface UsePlayAuthoredDungeonResult {
   phase: LobbyLaunchPhase | null;
   /** The last failure's phase-named message; null when idle or succeeded. */
   error: string | null;
+  /** The last failure as the RPC threw it (null with `error`), so a caller
+   * can read a refusal's code: a seat refusal offers Abandon run
+   * (`useSeatedElsewhere.noteRefusal`) instead of a dead end. */
+  failure: unknown;
   /**
    * Runs createLobby → setReady → StartEncounter → `onPlay` for one
    * already-saved dungeon key. Resolves `true` exactly when navigation was
@@ -82,6 +86,7 @@ export function usePlayAuthoredDungeon({
   const [launching, setLaunching] = useState(false);
   const [phase, setPhase] = useState<LobbyLaunchPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<unknown>(null);
 
   /** Only ONE launch may run, and only the CURRENT owner may act. Each
    * launch receives a fresh object token; reference identity prevents a
@@ -127,6 +132,7 @@ export function usePlayAuthoredDungeon({
       ownerRef.current = owner;
       setLaunching(true);
       setError(null);
+      setFailure(null);
       /** A continuation may act only while its token is still the current
        * owner of a live mount. */
       const isCurrent = () => mounted.current && ownerRef.current === owner;
@@ -163,6 +169,7 @@ export function usePlayAuthoredDungeon({
               ? `Could not start the encounter: ${message}`
               : `Could not create the lobby: ${message}`
         );
+        setFailure(err);
         return false;
       } finally {
         // Only the current owner may release the busy latch: a retired or
@@ -180,5 +187,5 @@ export function usePlayAuthoredDungeon({
     [characterId, createLobby, setReady, startEncounter, onPlay]
   );
 
-  return { launching, phase, error, play, cancel };
+  return { launching, phase, error, failure, play, cancel };
 }
