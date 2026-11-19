@@ -30,6 +30,7 @@ import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e
 import {
   beatLabel,
   holdLabel,
+  shortBeatLabel,
   stayLabel,
   type MachineEdge,
   type MachineState,
@@ -318,7 +319,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
         to: edge.to,
         steps: edge.steps.filter((step) => from.includes(step.from)),
         full: beatLabel(edge),
-        short: `on ${edge.beat}`,
+        short: shortBeatLabel(edge),
         kind: adjacent ? 'adjacent' : 'channel',
         channel,
       });

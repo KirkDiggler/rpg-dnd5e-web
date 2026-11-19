@@ -14,7 +14,7 @@ import {
   castleRoutinesReadBack,
 } from './fixtures/engineReadBack';
 import { layoutMachine, overlapsOf, strokeFaultsOf } from './machineLayout';
-import { beatLabel, machineOf, stayLabel } from './machineView';
+import { beatLabel, machineOf, shortBeatLabel, stayLabel } from './machineView';
 
 const gate = () => {
   const view = machineOf(castleMachinesReadBack(), 'gate-1-policy');
@@ -411,6 +411,33 @@ describe('a step that asks about a heard claim', () => {
     expect(layout.width).toBeLessThanOrEqual(1100);
   });
 
+  it.each([
+    ['as pinned', castleMachinesReadBack, 'on heard +1'],
+    ['at v0.222.2', castleMachinesWithClaimReadBack, 'on heard +2'],
+  ])(
+    'a cut label still shows the step has a condition, %s',
+    (_, castle, drawn) => {
+      // The captain's row cannot hold the lie step's full label at the
+      // studio's width; its drawn words say how many reads it has.
+      const layout = layoutMachine(captain(castle()));
+      const piece = layout.pieces.find((p) =>
+        p.steps.some((st) => st.statement.path === LIE)
+      )!;
+      expect(piece.label.text).toBe(drawn);
+      expect(layout.width).toBeLessThanOrEqual(1100);
+    }
+  );
+
+  it('a short label is marked only when the step reads something', () => {
+    const view = captain();
+    const lie = view.edges.find((e) =>
+      e.steps.some((st) => st.statement.path === LIE)
+    )!;
+    expect(shortBeatLabel(lie)).toBe('on heard +2');
+    const plain = view.steps.find((st) => st.reads.length === 0)!;
+    expect(shortBeatLabel(plain)).toBe(`on ${plain.beat}`);
+  });
+
   it('a step that stays says its claim inside its box', () => {
     const readBack = castleMachinesWithClaimReadBack();
     const lie = statementAt(readBack, LIE);
@@ -457,10 +484,30 @@ describe('a step that asks about a heard claim', () => {
     expect(edgeWith(lie).from).toEqual(['in-hall']);
     expect(edgeWith(twin).from).toEqual(['ready']);
     expect(beatLabel(edgeWith(twin))).toBe(
-      'on heard: claim failed, topic admitted, weather rain'
+      'on heard: claim failed, topic admitted, needs weather rain'
     );
     expect(beatLabel(edgeWith(lie))).toBe(
       'on heard: claim failed, topic admitted'
     );
+  });
+
+  it('a role the drawing does not know is said with its role', () => {
+    // A polarity role the engine might add: never read as `claim held`.
+    const { readBack, lie, twin } = withTwin((c) => {
+      c.find((x) => x.kind === 'claim')!.role = 'asks-not';
+      c.find((x) => x.kind === 'claim')!.id = 'held';
+    });
+    const edgeWith = edgesOf(readBack);
+    expect(edgeWith(lie)).not.toBe(edgeWith(twin));
+    expect(beatLabel(edgeWith(twin))).toBe(
+      'on heard: asks-not claim held, topic admitted'
+    );
+    // A known role on a kind it never carries is not known either.
+    expect(
+      beatLabel({
+        beat: 'fact',
+        reads: [{ kind: 'prop', id: 'lever', role: 'wakes-on' }],
+      })
+    ).toBe('on fact: wakes-on prop lever');
   });
 });

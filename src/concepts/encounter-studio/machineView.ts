@@ -322,16 +322,43 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
   return [...edges.values()];
 }
 
+/** The reads the drawing knows, by role and kind, as the engine's
+ * `guardWords` says them today. */
+const KNOWN_READS = new Set([
+  `${ROLE_WAKES_ON} fact`,
+  `${ROLE_WAKES_ON} topic`,
+  `${ROLE_ASKS} ${CLAIM}`,
+  `${ROLE_ASKS} topic`,
+]);
+
+/** One read's words: a known wakes-on read is its id (`guards-turned`), a
+ * known asks read its kind and id (`claim failed`), and any other read its
+ * role, kind and id (`asks-not claim held`), so a role the drawing does
+ * not know can never be read as one it does. */
+const readWords = (r: StepRead): string =>
+  !KNOWN_READS.has(`${r.role} ${r.kind}`)
+    ? `${r.role} ${r.kind} ${r.id}`
+    : r.role === ROLE_WAKES_ON
+      ? r.id
+      : `${r.kind} ${r.id}`;
+
 /** A step's words for a label: the beat it fires on and what its
- * condition reads, from connections alone, in the engine's order. A
- * wakes-on read is its id (`on fact: guards-turned`); any other read is its
- * kind and id (`on heard: claim failed, topic admitted`), so a read the
- * drawing does not yet know still shows. */
+ * condition reads, from connections alone, in the engine's order
+ * (`on fact: guards-turned`, `on heard: claim failed, topic admitted`). */
 export function beatLabel(step: Pick<MachineStep, 'beat' | 'reads'>): string {
-  const reads = step.reads
-    .map((r) => (r.role === ROLE_WAKES_ON ? r.id : `${r.kind} ${r.id}`))
-    .join(', ');
+  const reads = step.reads.map(readWords).join(', ');
   return reads ? `on ${step.beat}: ${reads}` : `on ${step.beat}`;
+}
+
+/** A step's label when its full one does not fit: the beat, and how many
+ * reads its condition has beyond it (`on heard +2`), so a cut label still
+ * shows it has a condition. The full label is the mark's tooltip. */
+export function shortBeatLabel(
+  step: Pick<MachineStep, 'beat' | 'reads'>
+): string {
+  return step.reads.length
+    ? `on ${step.beat} +${step.reads.length}`
+    : `on ${step.beat}`;
 }
 
 /** A staying step's line inside its box: its beat and the tables it picks
