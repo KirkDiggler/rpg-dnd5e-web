@@ -2,7 +2,8 @@
  * A BEHAVIOUR'S MACHINE, DRAWN (rpg-project#995): a box per state, an arrow
  * per step that changes state, what the creature does while it stays put
  * written inside the box. Hand-laid SVG from `layoutMachine`; the words in
- * it are the engine's ids and connection words (`machineView`), and every
+ * it are the engine's plain words (`GetMachineWords`, rpg-project#1015), or
+ * its ids and connection words without them (`machineView`), and every
  * mark's full sentences are in the detail pane.
  *
  * Every box and arrow is a mark, as the places marks are: focusable, named,
