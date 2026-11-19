@@ -41,7 +41,10 @@ import {
   withTransitions,
   type Node,
 } from './machineEdit';
+import { BeatField, StepActs, StepConditions } from './MachineStepWords';
+import type { MachineWords } from './machineWords';
 import type { RefusalTarget } from './refusalJump';
+import { stepChoicesOf } from './stepWords';
 
 /** The studio root's class: its control and font styles are scoped under
  * it, so the pop-up is rendered inside it (encounterStudio.css). */
@@ -52,6 +55,10 @@ const PANEL = 'wb-panel';
 /** One edit of a behaviour definition, run on the document's own copy. */
 export type DefinitionEdit = (definition: Node) => Node;
 const STAYS = '';
+const stepNode = (step: unknown): Node =>
+  step !== null && typeof step === 'object' && !Array.isArray(step)
+    ? (step as Node)
+    : {};
 const NONE = '';
 /** A new row, as the Bundles page makes one. */
 const NEW_ROW: AnswerEntryShape = { when: { enemy: 'none' }, hold: {} };
@@ -74,6 +81,7 @@ export function MachineStateEdit({
   readBackIsCurrent,
   onCommit,
   onJump,
+  words = null,
 }: {
   routine: string;
   state: string;
@@ -86,7 +94,12 @@ export function MachineStateEdit({
    * rejected edit is. */
   onCommit(edit: DefinitionEdit): boolean;
   onJump?(target: RefusalTarget): void;
+  /** The engine's machine words (`useMachineWords`): with them the step's
+   * beat, condition and acts are offered and written from the table
+   * (rpg-project#1018); without them the editor is as before. */
+  words?: MachineWords | null;
 }): React.JSX.Element {
+  const choices = words ? stepChoicesOf(definition, readBack, routine) : null;
   const steps = transitionsOf(definition, state);
   const states = statesOf(definition);
   const lists = tableKeysOf(definition);
@@ -120,23 +133,33 @@ export function MachineStateEdit({
             : undefined;
           return (
             <li key={index} className="es-machine-step" data-step={index}>
-              <label>
-                <span>On</span>
-                <select
-                  aria-label={`What fires ${name}`}
-                  value={step.on}
-                  onChange={(e) =>
-                    setStep(index, withStepOn(raw, e.target.value))
-                  }
-                >
-                  {step.on === '' && <option value="">(none)</option>}
-                  {beats.map((beat) => (
-                    <option key={beat} value={beat}>
-                      {beat}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {words && choices ? (
+                <BeatField
+                  words={words}
+                  on={step.on}
+                  name={name}
+                  choices={choices}
+                  onChange={(on) => setStep(index, withStepOn(raw, on))}
+                />
+              ) : (
+                <label>
+                  <span>On</span>
+                  <select
+                    aria-label={`What fires ${name}`}
+                    value={step.on}
+                    onChange={(e) =>
+                      setStep(index, withStepOn(raw, e.target.value))
+                    }
+                  >
+                    {step.on === '' && <option value="">(none)</option>}
+                    {beats.map((beat) => (
+                      <option key={beat} value={beat}>
+                        {beat}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <span>Then</span>
                 <select
@@ -214,13 +237,35 @@ export function MachineStateEdit({
               >
                 Remove
               </button>
-              {kept && (
-                <p className="es-help es-machine-kept" data-kept="">
-                  Kept as written: {step.guarded ? 'its condition' : ''}
-                  {step.guarded && step.otherActs > 0 ? ' and ' : ''}
-                  {step.otherActs > 0 ? 'its other acts' : ''}.{' '}
-                  {sentence ?? 'The engine says it once the file is checked.'}
-                </p>
+              {words && choices ? (
+                <>
+                  <StepConditions
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    sentence={sentence}
+                    choices={choices}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                  <StepActs
+                    words={words}
+                    step={stepNode(raw)}
+                    beat={step.on}
+                    name={name}
+                    choices={choices}
+                    onStep={(next) => setStep(index, next)}
+                  />
+                </>
+              ) : (
+                kept && (
+                  <p className="es-help es-machine-kept" data-kept="">
+                    Kept as written: {step.guarded ? 'its condition' : ''}
+                    {step.guarded && step.otherActs > 0 ? ' and ' : ''}
+                    {step.otherActs > 0 ? 'its other acts' : ''}.{' '}
+                    {sentence ?? 'The engine says it once the file is checked.'}
+                  </p>
+                )
               )}
             </li>
           );
@@ -230,7 +275,12 @@ export function MachineStateEdit({
         <button
           type="button"
           className="es-machine-add-step"
-          onClick={() => setSteps((all) => [...all, newStep(STATE_BEATS[0])])}
+          onClick={() =>
+            setSteps((all) => [
+              ...all,
+              newStep(words?.beats[0]?.word ?? STATE_BEATS[0]),
+            ])
+          }
         >
           Add a step
         </button>

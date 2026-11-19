@@ -103,7 +103,7 @@ export interface StepView {
   otherActs: number;
 }
 
-const firstPickAt = (acts: unknown[]): number =>
+export const firstPickAt = (acts: readonly unknown[]): number =>
   acts.findIndex((act) => mapping(act) && typeof act.pick === 'string');
 
 export function stepOf(step: unknown): StepView {
@@ -175,6 +175,18 @@ export function withStepPick(step: unknown, key: string | null): Node {
   } else if (at >= 0) acts[at] = { ...(acts[at] as Node), pick: key };
   else acts.unshift({ pick: key });
   return withKey(node, 'do', acts.length > 0 ? acts : undefined);
+}
+
+/** The step's condition set whole (rpg-project#1018); undefined removes
+ * it. */
+export function withStepWhen(step: unknown, when: unknown): Node {
+  return withKey(stepNode(step), 'when', when);
+}
+
+/** The step's acts set whole, in order (rpg-project#1018); an empty list
+ * removes `do`. */
+export function withStepDo(step: unknown, acts: readonly unknown[]): Node {
+  return withKey(stepNode(step), 'do', acts.length > 0 ? [...acts] : undefined);
 }
 
 /** The step's reason; empty text removes it. */

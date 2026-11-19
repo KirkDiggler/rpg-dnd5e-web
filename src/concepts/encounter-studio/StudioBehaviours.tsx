@@ -262,6 +262,7 @@ export function StudioBehaviours({
                     readBackIsCurrent={readBack.readBackIsCurrent}
                     onCommit={(edit) => onCommitDefinition(focus, edit)}
                     onJump={onJump}
+                    words={machineWords}
                   />
                 </div>
               ) : (
