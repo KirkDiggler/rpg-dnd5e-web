@@ -16,6 +16,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parse } from 'yaml';
 import { readDraftYaml } from '../encounter-studio/draftFile';
 import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
 import {
@@ -24,6 +25,8 @@ import {
   stringifyRoomDraft,
   type RoomDraft,
 } from './roomDraft';
+import { encodeCanonicalWithValue } from './singleRoomDungeon';
+import { renderScope } from './siteScope';
 import type { KeyValueStorage } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 import { spliceInternals } from './yamlSplice';
@@ -156,5 +159,16 @@ describe('a write the studio cannot make safely is refused (rpg-project#1014)', 
     expect(screen.queryByText(/could not write this change safely/)).toBe(null);
     expect(savedDraft(storage).sourceRef).toBeUndefined();
     expect(undo().disabled).toBe(false);
+  });
+
+  it('the value the guard compares against is what the canonical text reads as (the castle)', () => {
+    const read = readDraftYaml(served);
+    if (!read.ok) throw new Error(read.refusal);
+    const { text, value } = encodeCanonicalWithValue({
+      key: read.key,
+      draft: read.draft,
+      ...renderScope(read.scope),
+    });
+    expect(value).toStrictEqual(parse(text));
   });
 });

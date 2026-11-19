@@ -354,14 +354,15 @@ export function checkWrite(
 
 /** The last few files read, parsed once: the studio splices the same source
  * on every save and every check (rpg-project#1014). Neither the document nor
- * its value is changed by a splice. `local` says whether a write into it may
- * be checked by its edited part alone (`checkLocally`): not when it holds an
- * anchor, an alias, a tag, a directive or a second document. */
+ * its value is changed by a splice. `local` is the short path's file
+ * precondition (L0 below); `scalars` are the source ranges of its scalars
+ * that span lines (L5). */
 interface Read {
   source: string;
   document: Document;
   own: Json;
   local: boolean;
+  scalars: [number, number][];
 }
 const reads: Read[] = [];
 
@@ -373,14 +374,27 @@ function readOf(source: string): Read {
     throw new Error(
       `the file this draft was read from no longer parses: ${document.errors[0]?.message ?? 'it is empty'}`
     );
-  let local = !/^(---|\.\.\.|%)/m.test(source) && !source.includes('\t');
+  let local = !/^(---|\.\.\.|%)/m.test(source) && !/[\t\r]/.test(source);
+  const scalars: [number, number][] = [];
   visit(document, {
     Node(_key, node) {
       if (isAlias(node) || (node as { anchor?: string }).anchor || node.tag)
         local = false;
+      if (
+        isScalar(node) &&
+        node.range &&
+        source.slice(node.range[0], node.range[1]).includes('\n')
+      )
+        scalars.push([node.range[0], node.range[1]]);
     },
   });
-  const read = { source, document, own: document.toJS() as Json, local };
+  const read = {
+    source,
+    document,
+    own: document.toJS() as Json,
+    local,
+    scalars,
+  };
   reads.unshift(read);
   reads.length = Math.min(reads.length, 4);
   return read;
@@ -392,21 +406,28 @@ const pastLine = (text: string, at: number) => {
   const end = text.indexOf('\n', at);
   return end === -1 ? text.length : end + 1;
 };
+const indentOf = (line: string) => line.search(/\S/);
+/** A line that opens a block scalar (`|`, `>`, with their indicators), or
+ * might: anything that ends in one is sent to the full parse (L5). */
+const BLOCK_SCALAR = /(^|[\s:-])[|>][-+0-9]*\s*(#.*)?$/;
 
 interface Region {
   path: (string | number)[];
   /** Source offsets of the region's whole lines (`start`..`end`). */
   start: number;
   end: number;
+  /** The column its key (a line) or its first entry (a collection) is at. */
   column: number;
   /** One `key: scalar` line, rather than a block collection. */
   line?: string;
+  /** A block collection: which kind it is. */
+  kind?: 'map' | 'seq';
 }
 
 /** The deepest part of the file that holds `edit` and can be read on its
- * own: a block collection that starts its own line (its whole lines), or a
- * `key: scalar` written on one line that the edit keeps on one line. Null
- * when only the document root holds it. */
+ * own: a block collection that starts its own line right of its parent
+ * (L4), or a `key: scalar` written on one line (L3). Null when only the
+ * document root holds it. */
 function regionOf(read: Read, edit: Edit): Region | null {
   const { source } = read;
   let best: Region | null = null;
@@ -414,6 +435,10 @@ function regionOf(read: Read, edit: Edit): Region | null {
   const path: (string | number)[] = [];
   while (node && (isMap(node) || isSeq(node))) {
     let next: Node | null = null;
+    const seqColumn =
+      isSeq(node) && node.range
+        ? node.range[0] - startOfLine(source, node.range[0])
+        : -1;
     const pairs = isMap(node)
       ? node.items
       : node.items.map((item, i) => ({ key: i, value: item }));
@@ -425,7 +450,7 @@ function regionOf(read: Read, edit: Edit): Region | null {
         : (pair.key as number);
       const child = pair.value as Node | null;
       if (key === null) return best;
-      // `key: scalar` on one line, in a block map.
+      // L3: `key: scalar` on one line, in a block map.
       if (
         isMap(node) &&
         !node.flow &&
@@ -461,12 +486,24 @@ function regionOf(read: Read, edit: Edit): Region | null {
       path.push(key);
       next = child;
       const column = child.range[0] - line;
+      // L4: right of its parent, the key (or the dash) it belongs to; a
+      // list may sit at its key's own column, and is not read alone then.
+      const parent = isMap(node)
+        ? (pair.key as Node).range![0] -
+          startOfLine(source, (pair.key as Node).range![0])
+        : seqColumn;
       if (
         !child.flow &&
-        column > 0 &&
+        column > parent &&
         source.slice(line, child.range[0]).trim() === ''
       )
-        best = { path: [...path], start: line, end: stop, column };
+        best = {
+          path: [...path],
+          start: line,
+          end: stop,
+          column,
+          kind: isMap(child) ? 'map' : 'seq',
+        };
       break;
     }
     node = next;
@@ -484,18 +521,30 @@ function withValueAt(value: Json, path: (string | number)[], leaf: Json): Json {
   return copy;
 }
 
-/** A region's new text read on its own, or undefined when it cannot be. */
+/** A region's new text read on its own (L3, L4, L5), or undefined when it
+ * cannot be. */
 function readRegion(region: Region, text: string): { value: Json } | undefined {
-  const lines = text.split('\n');
-  const pad = ' '.repeat(region.column);
-  if (lines.some((line) => line.trim() !== '' && !line.startsWith(pad)))
-    return undefined;
-  if (region.line !== undefined && lines.filter((l) => l.trim()).length !== 1)
-    return undefined;
+  // L2: whole lines; the text ends where a line ends.
+  if (text !== '' && !text.endsWith('\n')) return undefined;
+  const lines = text.split('\n').slice(0, -1);
+  const content = lines.filter((line) => line.trim() !== '');
+  // L5: no block scalar is opened inside it.
+  if (content.some((line) => BLOCK_SCALAR.test(line))) return undefined;
+  if (content.some((line) => indentOf(line) < region.column)) return undefined;
+  const first = content.find((line) => !/^\s*#/.test(line));
+  if (first === undefined) return undefined;
+  // L3 and L4: its first entry stays at exactly the column it was at.
+  if (indentOf(first) !== region.column) return undefined;
+  if (region.line !== undefined && content.length !== 1) return undefined;
   const part = parseDocument(
     lines.map((line) => line.slice(region.column)).join('\n')
   );
   if (part.errors.length || part.warnings.length || !part.contents)
+    return undefined;
+  // L4: a block collection stays the kind it was.
+  if (region.kind === 'map' && !(isMap(part.contents) && !part.contents.flow))
+    return undefined;
+  if (region.kind === 'seq' && !(isSeq(part.contents) && !part.contents.flow))
     return undefined;
   let value: Json;
   try {
@@ -511,13 +560,34 @@ function readRegion(region: Region, text: string): { value: Json } | undefined {
 
 /**
  * THE GUARD'S SHORT PATH (rpg-project#1014 review: a check on every
- * keystroke must not lag). Each edit is placed in the deepest part of the
- * file that can be read on its own (`regionOf`). When the write is the
- * source byte for byte outside those parts, only the parts are parsed:
- * each stays at or right of its own column, so none can join its parent,
- * and the document's value is the source's with those parts replaced. True
- * only when that value equals the intended one; anything else (a shape this
- * cannot establish, or a mismatch) goes to the full check, which decides.
+ * keystroke must not lag). It may only ever agree with the full parse:
+ * true means the write is the one the full check would accept; false sends
+ * it to the full check, which decides. Never a refusal of its own. It
+ * applies only when every precondition holds, each one tested in
+ * `yamlSplice.test.ts` › "the short path's preconditions":
+ *
+ * - L0 the file: no `---`, `...` or `%` line, no tab, no carriage return,
+ *   no anchor, alias or tag.
+ * - L1 every edit falls in a region (`regionOf`), and the write is the
+ *   source byte for byte outside the regions.
+ * - L2 each region is whole lines in the source and in the write: it
+ *   starts at a line start and its new text ends with a newline, so it can
+ *   join neither neighbour.
+ * - L3 a `key: scalar` line stays one line, its key at exactly the column
+ *   it was at (deeper would re-parent it under the line above), and reads
+ *   alone as that one key.
+ * - L4 a block collection starts its own line at a column right of its
+ *   parent key's (or dash's) column; its first entry stays at exactly that
+ *   column, no line goes left of it, and it stays the kind it was (a list
+ *   is not rewritten as a map, which could join its parent's keys).
+ * - L5 no block scalar (`|`, `>`) is opened inside a region, and no scalar
+ *   that spans lines reaches the line before one or runs into it.
+ * - L6 the source's value with each region's value in place equals the
+ *   intended value.
+ *
+ * `yamlSplice.test.ts` › "the short path agrees with the full parse" checks
+ * the shipped verdict against the full parse's on seeded castle edits and
+ * faulty writers.
  */
 function checkLocally(
   read: Read,
@@ -532,6 +602,11 @@ function checkLocally(
   for (const edit of edits) {
     const region = regionOf(read, edit);
     if (!region) return false;
+    // L5: a scalar that spans lines must not reach the region's line
+    // before, or run into the region.
+    const before = region.start > 0 ? startOfLine(source, region.start - 1) : 0;
+    if (read.scalars.some(([from, to]) => from < region.start && to > before))
+      return false;
     const held = found.find(
       (f) => f.region.start === region.start && f.region.end === region.end
     );
@@ -564,9 +639,12 @@ function checkLocally(
   let at = 0;
   for (const { region, edits: held } of regions) {
     if (region.start < from) return false;
+    // L1: byte for byte outside the regions.
     const gap = source.slice(from, region.start);
     if (out.slice(at, at + gap.length) !== gap) return false;
     at += gap.length;
+    // L2: the region starts a line in the write.
+    if (at > 0 && out[at - 1] !== '\n') return false;
     const grown = held.reduce(
       (sum, e) => sum + e.text.length - (e.end - e.start),
       0
@@ -577,9 +655,12 @@ function checkLocally(
     if (!part) return false;
     whole = withValueAt(whole, region.path, part.value);
     at += length;
+    // L2: and ends where a line ends.
+    if (at > 0 && at < out.length && out[at - 1] !== '\n') return false;
     from = region.end;
   }
   if (out.slice(at) !== source.slice(from)) return false;
+  // L6.
   return sameValue(whole, mergeValue(read.own, base, current));
 }
 
@@ -697,6 +778,9 @@ function spliceText(
     },
   });
   const aliasWrites = new Map<Alias, { value: Json; reached: boolean }>();
+  /** Keys moved up onto their row's dash line when the keys before them
+   * went: a key added before one is written on that line too. */
+  const promotedHeads = new Set<Pair>();
 
   /** Replace a node with `value` rendered in its own style. */
   function replace(node: Node, value: Json, inFlow: boolean) {
@@ -794,7 +878,50 @@ function spliceText(
       else if (!sameValue(b[key], c[key]))
         return replace(map, mergeValue(ownValue(map), b, c), inFlow);
     }
-    for (const key of removed) removePair(map, pairs.get(key)!, inner);
+    // THE ROW'S FIRST KEY GOES (rpg-project#1014 review): it shares its line
+    // with the row's dash (`- id: a`), so removing its lines would take the
+    // dash too. The first key that stays moves up onto the dash line
+    // instead, with the keys before it; the comment lines directly above it
+    // are set above the dash line. (Every key going is `- {}`, above.)
+    const gone = (pair: Pair) => {
+      const key = keyOf(pair);
+      return key !== undefined && removed.has(key);
+    };
+    const head = map.items[0] as Pair | undefined;
+    const headAt = (head?.key as Node | null)?.range?.[0];
+    let promoted = 0;
+    if (
+      !inner &&
+      head &&
+      headAt !== undefined &&
+      gone(head) &&
+      source.slice(lineStart(headAt), headAt).trim() !== ''
+    ) {
+      promoted = map.items.findIndex((pair) => !gone(pair as Pair));
+      const next = map.items[promoted] as Pair;
+      const to = (next.key as Node).range![0];
+      const comments = source.slice(commentsAbove(to), lineStart(to));
+      edit(headAt, to, '');
+      if (comments) {
+        const line = lineStart(headAt);
+        const indent = ' '.repeat(source.slice(line).search(/\S/));
+        edit(
+          line,
+          line,
+          comments
+            .split('\n')
+            .filter((text) => text.trim())
+            .map((text) => `${indent}${text.trim()}\n`)
+            .join('')
+        );
+      }
+      promotedHeads.add(next);
+    }
+    for (const key of removed) {
+      const pair = pairs.get(key)!;
+      if (map.items.indexOf(pair) < promoted) continue;
+      removePair(map, pair, inner);
+    }
     const order = Object.keys(c);
     const stays = (key: string) => pairs.has(key) && !removed.has(key);
     const lastStaying = [...map.items]
@@ -862,7 +989,10 @@ function spliceText(
       // (`- relocate:`): the new key takes the dash's place on that line and
       // the old key moves down to the next, never above the dash, where it
       // would be read as the sequence's own key (rpg-project#958).
-      if (source.slice(lineStart(keyStart), keyStart).trim() !== '')
+      if (
+        source.slice(lineStart(keyStart), keyStart).trim() !== '' ||
+        promotedHeads.has(anchor.before)
+      )
         return edit(keyStart, keyStart, `${text}\n${' '.repeat(indent)}`);
       const at = commentsAbove(keyStart);
       return edit(at, at, `${' '.repeat(indent)}${text}\n`);

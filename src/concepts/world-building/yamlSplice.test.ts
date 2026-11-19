@@ -857,3 +857,211 @@ describe('the guard is in the real write path, and fails closed (rpg-project#101
     ).toMatch(/cannot be read back/);
   });
 });
+
+/** The one edit that turns `source` into `out`: what a writer that reports
+ * its edits honestly would say. */
+function honestEdit(source: string, out: string) {
+  let head = 0;
+  while (
+    head < source.length &&
+    head < out.length &&
+    source[head] === out[head]
+  )
+    head++;
+  let tail = 0;
+  while (
+    tail < source.length - head &&
+    tail < out.length - head &&
+    source[source.length - 1 - tail] === out[out.length - 1 - tail]
+  )
+    tail++;
+  return {
+    start: head,
+    end: source.length - tail,
+    text: out.slice(head, out.length - tail),
+    order: 0,
+  };
+}
+
+describe('the short path’s preconditions: a write wrong as a whole is refused (rpg-project#1014 second review)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  /** `spliceYaml` over a writer that writes `out` for the edit, and says
+   * so honestly. */
+  const writes = (
+    source: string,
+    edit: (value: never) => void,
+    out: string
+  ) => {
+    const own = parse(source);
+    const current = structuredClone(own);
+    edit(current as never);
+    vi.spyOn(spliceInternals, 'text').mockReturnValue({
+      out,
+      edits: [honestEdit(source, out)],
+    });
+    return () => spliceYaml(source, own, current);
+  };
+  const refused = (run: () => unknown) => expect(run).toThrow(UnsafeWriteError);
+  type M = { m: Record<string, unknown> };
+
+  it('L3: a `key: scalar` line written deeper than its key re-parents, joins a block scalar, or breaks the file', () => {
+    refused(
+      writes(
+        'm:\n  a:\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  a:\n    x: 5\n'
+      )
+    );
+    refused(
+      writes(
+        'm:\n  s: |\n    text\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  s: |\n    text\n    x: 5\n'
+      )
+    );
+    refused(
+      writes(
+        'm:\n  s: hello\n  x: 2\n',
+        (v: M) => {
+          v.m.x = 5;
+        },
+        'm:\n  s: hello\n    x: 5\n'
+      )
+    );
+  });
+
+  it('L2: a region whose new text loses its last newline joins the next line', () => {
+    refused(
+      writes(
+        'k:\n  a: 1\n  b: 2\nj: 3\n',
+        (v: { k: Record<string, number> }) => {
+          v.k.b = 5;
+        },
+        'k:\n  a: 1\n  b: 5j: 3\n'
+      )
+    );
+  });
+
+  it('L4: a list at its key’s own column rewritten as a map joins the parent’s keys', () => {
+    const source = 'o:\n  k:\n  - a\n  - b\n  j: 1\n';
+    refused(
+      writes(
+        source,
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = { x: 5 };
+        },
+        'o:\n  k:\n  x: 5\n  j: 1\n'
+      )
+    );
+    refused(
+      writes(
+        source,
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = { j: 9 };
+        },
+        'o:\n  k:\n  j: 9\n  j: 1\n'
+      )
+    );
+  });
+
+  it('L4: a block list rewritten as a map at its own column is not read alone', () => {
+    refused(
+      writes(
+        'o:\n  k:\n    - a\n    - b\n  j: 1\n',
+        (v: { o: Record<string, unknown> }) => {
+          v.o.k = ['a', 'c'];
+        },
+        'o:\n  k:\n    x: a\n  j: 1\n'
+      )
+    );
+  });
+
+  it('L5: a line that opens a block scalar takes the deeper lines after it', () => {
+    refused(
+      writes(
+        'm:\n  x: 1\n      # note\n  y: 2\n',
+        (v: M) => {
+          // What `x: |` reads as alone: the line passes on its own.
+          v.m.x = '';
+        },
+        'm:\n  x: |\n      # note\n  y: 2\n'
+      )
+    );
+  });
+
+  it('a sound write the short path reads alone still passes', () => {
+    const source = 'm:\n  a:\n  x: 2\n  s: |\n    text\n  list:\n    - 1\n';
+    expect(
+      writes(
+        source,
+        (v: M) => {
+          v.m.x = 5;
+        },
+        source.replace('x: 2', 'x: 5')
+      )()
+    ).toBe(source.replace('x: 2', 'x: 5'));
+  });
+});
+
+describe('removing a row’s first key keeps the row (rpg-project#1014 second review)', () => {
+  type L = { list: Record<string, unknown>[] };
+  const write = (source: string, edit: (v: L) => void) => {
+    const own = parse(source);
+    const current = structuredClone(own);
+    edit(current);
+    return spliceYaml(source, own, current);
+  };
+
+  it('the next key moves up onto the dash line; the row’s other lines stay', () => {
+    expect(
+      write('list:\n  - id: a\n    x: 1 # one\n    y: 2\n  - id: b\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - x: 1 # one\n    y: 2\n  - id: b\n');
+  });
+
+  it('the comment above the key that moves up is set above the dash', () => {
+    expect(
+      write('list:\n  - id: a\n    # about x\n    x: 1\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  # about x\n  - x: 1\n');
+  });
+
+  it('the first two keys go, a key is added before the one that moves up, and the only key goes', () => {
+    expect(
+      write('list:\n  - id: a\n    x: 1\n    y: 2\n', (v) => {
+        delete v.list[0].id;
+        delete v.list[0].x;
+      })
+    ).toBe('list:\n  - y: 2\n');
+    expect(
+      write('list:\n  - id: a\n    x: 1\n', (v) => {
+        delete v.list[0].id;
+        v.list[0] = { w: 0, ...v.list[0] };
+      })
+    ).toBe('list:\n  - w: 0\n    x: 1\n');
+    expect(
+      write('list:\n  - id: a\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - {}\n');
+  });
+
+  it('in a compact row (`- - id: a`) and before a nested list', () => {
+    expect(
+      write('q:\n  - - id: a\n      x: 1\n', (v) => {
+        delete (v as unknown as { q: Record<string, unknown>[][] }).q[0][0].id;
+      })
+    ).toBe('q:\n  - - x: 1\n');
+    expect(
+      write('list:\n  - id: a\n    x:\n      - 1\n', (v) => {
+        delete v.list[0].id;
+      })
+    ).toBe('list:\n  - x:\n      - 1\n');
+  });
+});

@@ -8,7 +8,7 @@
  * parse to exactly the intended document, leave every byte outside the edited
  * list unchanged, and (for a move) keep the same comment lines.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isMap,
   isPair,
@@ -21,7 +21,7 @@ import {
   type YAMLSeq,
 } from 'yaml';
 import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
-import { spliceYaml } from './yamlSplice';
+import { checkWrite, spliceInternals, spliceYaml } from './yamlSplice';
 
 type Json = unknown;
 type Path = (string | number)[];
@@ -577,4 +577,187 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
     },
     3_600_000
   );
+});
+
+/** A seeded generator (mulberry32): the same sample on every run. */
+function seeded(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The one edit that turns `source` into `out`, as an honest writer
+ * reports it. */
+function honestEdit(source: string, out: string) {
+  let head = 0;
+  while (
+    head < source.length &&
+    head < out.length &&
+    source[head] === out[head]
+  )
+    head++;
+  let tail = 0;
+  while (
+    tail < source.length - head &&
+    tail < out.length - head &&
+    source[source.length - 1 - tail] === out[out.length - 1 - tail]
+  )
+    tail++;
+  return {
+    start: head,
+    end: source.length - tail,
+    text: out.slice(head, out.length - tail),
+    order: 0,
+  };
+}
+
+/** Every path in a value, with what is there. */
+function pathsOf(value: Json, path: Path = []): [Path, Json][] {
+  const here: [Path, Json][] = [[path, value]];
+  if (Array.isArray(value))
+    return here.concat(...value.map((v, i) => pathsOf(v, [...path, i])));
+  if (value && typeof value === 'object')
+    return here.concat(
+      ...Object.entries(value).map(([k, v]) => pathsOf(v, [...path, k]))
+    );
+  return here;
+}
+
+/** A random edit of the castle: a scalar set to another type, a key or row
+ * removed, a key or row added, a map or list emptied, two rows swapped. */
+function randomEdit(own: Json, paths: [Path, Json][], random: () => number) {
+  for (;;) {
+    const [path, value] = paths[Math.floor(random() * paths.length)];
+    if (path.length === 0) continue;
+    const next = copy(own);
+    const parent = at(next, path.slice(0, -1)) as Record<string | number, Json>;
+    const leaf = path.at(-1)!;
+    const kind = Math.floor(random() * 6);
+    if (kind === 0)
+      parent[leaf] = SCALARS[Math.floor(random() * SCALARS.length)];
+    else if (kind === 1) {
+      if (Array.isArray(parent)) parent.splice(leaf as number, 1);
+      else delete parent[leaf];
+    } else if (kind === 2) {
+      if (Array.isArray(parent)) parent.splice(leaf as number, 0, 'added');
+      else parent[`added${Math.floor(random() * 99)}`] = 7;
+    } else if (kind === 3 && value && typeof value === 'object')
+      parent[leaf] = Array.isArray(value) ? [] : {};
+    else if (kind === 4 && Array.isArray(value) && value.length > 1) {
+      const target = at(next, path) as Json[];
+      [target[0], target[1]] = [target[1], target[0]];
+    } else if (
+      kind === 5 &&
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    )
+      (at(next, path) as Record<string, Json>)[
+        `added${Math.floor(random() * 99)}`
+      ] = 'x';
+    else continue;
+    return next;
+  }
+}
+
+/** Ways a writer goes wrong, applied to the line `n` of a correct write. */
+const FAULTS: ((lines: string[], n: number) => string[] | null)[] = [
+  (l, n) => l.map((x, i) => (i === n ? ` ${x}` : x)),
+  (l, n) => l.map((x, i) => (i === n ? `  ${x}` : x)),
+  (l, n) =>
+    l[n].startsWith(' ') ? l.map((x, i) => (i === n ? x.slice(1) : x)) : null,
+  (l, n) =>
+    l[n].startsWith('  ') ? l.map((x, i) => (i === n ? x.slice(2) : x)) : null,
+  // The line's newline dropped: it joins the next.
+  (l, n) =>
+    n + 1 < l.length
+      ? [...l.slice(0, n), l[n] + l[n + 1], ...l.slice(n + 2)]
+      : null,
+  // A newline added inside the line.
+  (l, n) => {
+    const at = l[n].indexOf(': ');
+    return at < 0
+      ? null
+      : [
+          ...l.slice(0, n),
+          l[n].slice(0, at + 1),
+          `  ${l[n].slice(at + 2)}`,
+          ...l.slice(n + 1),
+        ];
+  },
+  // A dash dropped, or a dash written for a key.
+  (l, n) =>
+    /^\s*- /.test(l[n])
+      ? l.map((x, i) => (i === n ? x.replace('- ', '  ') : x))
+      : null,
+  (l, n) =>
+    /^\s*- /.test(l[n])
+      ? l.map((x, i) => (i === n ? x.replace('- ', 'k: ') : x))
+      : /^\s*[\w-]+: /.test(l[n])
+        ? l.map((x, i) => (i === n ? x.replace(/^(\s*)/, '$1- ') : x))
+        : null,
+  // A line written twice (a duplicate key, or a duplicate row).
+  (l, n) => [...l.slice(0, n + 1), l[n], ...l.slice(n + 1)],
+  // Truncated after the line.
+  (l, n) => l.slice(0, n + 1),
+];
+
+describe('the short path agrees with the full parse (rpg-project#1014 second review)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('on seeded castle edits, and on faulty writes of each, the guard’s verdict is the full parse’s', () => {
+    const random = seeded(1014);
+    const own = parse(served) as Json;
+    const paths = pathsOf(own);
+    const real = spliceInternals.text;
+    const disagreements: string[] = [];
+    let cases = 0;
+    let accepted = 0;
+    for (let sample = 0; sample < 60; sample++) {
+      const current = randomEdit(own, paths, random);
+      const sound = written(served, own, current);
+      if (sound === null) {
+        disagreements.push(`sample ${sample}: a sound write was refused`);
+        continue;
+      }
+      const lines = sound.split('\n');
+      const changed =
+        sound.slice(0, honestEdit(served, sound).start).split('\n').length - 1;
+      for (let k = 0; k < 6; k++) {
+        const n = Math.max(
+          0,
+          Math.min(lines.length - 1, changed + Math.floor(random() * 5) - 2)
+        );
+        const fault = FAULTS[Math.floor(random() * FAULTS.length)](lines, n);
+        if (!fault) continue;
+        const out = fault.join('\n');
+        cases++;
+        let full = true;
+        try {
+          checkWrite(own, own, current, out);
+        } catch {
+          full = false;
+        }
+        const spy = vi
+          .spyOn(spliceInternals, 'text')
+          .mockReturnValue({ out, edits: [honestEdit(served, out)] });
+        const shipped = written(served, own, current) !== null;
+        spy.mockRestore();
+        if (shipped) accepted++;
+        if (shipped !== full)
+          disagreements.push(
+            `sample ${sample} fault on line ${n + 1}: shipped ${shipped}, full ${full}`
+          );
+      }
+    }
+    expect(spliceInternals.text).toBe(real);
+    expect(cases).toBeGreaterThan(0);
+    expect(accepted).toBeLessThan(cases);
+    expect(disagreements).toEqual([]);
+  }, 300_000);
 });
