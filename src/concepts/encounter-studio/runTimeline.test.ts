@@ -191,6 +191,21 @@ describe('timelineOf', () => {
     expect(last.did).toBeUndefined();
   });
 
+  it('a party member’s own line is its verb, not a second kind', () => {
+    const spoke = timelineOf(start, [
+      row('speak:1', 'spoke', { member: 'hero' }),
+      row('speak:1', 'speech', {
+        utterance: 'u9',
+        speaker: 'hero',
+        words: 'Hello',
+        loudness: 'speak',
+      }),
+    ]);
+    const did = spoke.rows.find((r) => r.id === 'hero')!.cells[1]!.did!;
+    expect(did.mark).toBe('speak');
+    expect(did.text).toContain('said “Hello”');
+  });
+
   it('the party acts are its own did, and party rows come first', () => {
     expect(timeline.rows[0]!.id).toBe('hero');
     expect(rowOf('hero').cells[1]!.did?.kind).toBe('move');

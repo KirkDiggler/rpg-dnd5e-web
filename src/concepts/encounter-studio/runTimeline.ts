@@ -204,7 +204,9 @@ function didIn(
   for (const line of speechOf(rows, to, from)) {
     if (!line.speaker) continue;
     const g = of(line.speaker);
-    kind(g, 'say');
+    // A party member's own line is its act (`speak`): the words go in the
+    // text, not a second kind beside the verb.
+    if (line.speaker !== step.actor) kind(g, 'say');
     g.texts.push(
       line.words !== undefined ? `said “${line.words}”` : 'said something'
     );
@@ -224,7 +226,7 @@ function didIn(
     out.set(id, {
       kind: g.kinds.join(' + '),
       mark: [...new Set(g.kinds.map((k) => k.replace(/ \(.*\)$/, '')))].join(
-        ' + '
+        '+'
       ),
       text: g.texts.join('; '),
     });
