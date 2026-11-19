@@ -499,15 +499,18 @@ function spliceText(
     // `key:` with nothing after it: a zero-width empty value. The new value
     // goes after the colon's space, on the key's line, in flow.
     if (start === end) return edit(start, end, ` ${flow(value)}`);
-    // A block collection emptied goes back up onto its key's line (or its
-    // dash's): `key: {}`, `key: []`, as a reader would write it.
-    const emptied =
+    // A block collection emptied, or turned into a scalar, goes back up onto
+    // its key's line (or its dash's): `key: {}`, `key: []`, `key: 3`, as a
+    // reader would write it; text over several lines is a block scalar
+    // (`key: |-`) whose lines sit right of the key (rpg-project#1014).
+    const onKeyLine =
       (isMap(node) || isSeq(node)) &&
       !node.flow &&
       !inFlow &&
       ((Array.isArray(value) && value.length === 0) ||
-        (isObject(value) && Object.keys(value).length === 0));
-    if (emptied) {
+        (isObject(value) && Object.keys(value).length === 0) ||
+        !(isObject(value) || Array.isArray(value)));
+    if (onKeyLine) {
       let at = start;
       while (at > 0 && /\s/.test(source[at - 1])) at--;
       if (
@@ -515,7 +518,15 @@ function spliceText(
         (source[at - 1] === ':' || source[at - 1] === '-') &&
         source.slice(at, start).includes('\n')
       )
-        return edit(at, end, ` ${flow(value)}`);
+        return edit(
+          at,
+          end,
+          ` ${
+            typeof value === 'string' && value.includes('\n')
+              ? block(value, column(start))
+              : flow(value)
+          }`
+        );
     }
     const keepFlow =
       inFlow ||

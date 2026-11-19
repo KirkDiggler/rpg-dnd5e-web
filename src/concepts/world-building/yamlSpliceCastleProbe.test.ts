@@ -105,21 +105,23 @@ function ownedBytes(source: string, node: YAMLSeq | YAMLMap) {
   const [start] = node.range!;
   let end = node.range![1];
   while (end > start && /\s/.test(source[end - 1])) end--;
-  if (node.flow) return { head: start, tail: end };
+  if (node.flow) return { head: start, tail: end, rowHead: start };
   // A block list owns the comment lines directly above its first dash when
   // the dash starts its line, and every comment or blank line after its last
   // row up to the next line of content.
   let head = start;
   const line = lineStart(source, start);
-  // A row's map starts on its dash line (`- id: a`): the row is the dash
-  // line and the comment lines directly above it, since removing its first
-  // key sets the next key's comment above the dash (rpg-project#1014).
+  // A row's map starts on its dash line (`- id: a`). Its `rowHead` is the
+  // dash line and the comment lines directly above it: removing the row's
+  // FIRST key sets the next key's comment above the dash (rpg-project#1014),
+  // and only that case is measured from there.
+  let rowHead = start;
   if (isMap(node) && /^\s*(- )+$/.test(source.slice(line, start))) {
-    head = line;
-    while (head > 0) {
-      const prev = lineStart(source, head - 1);
-      if (!/^\s*#/.test(source.slice(prev, head - 1))) break;
-      head = prev;
+    rowHead = line;
+    while (rowHead > 0) {
+      const prev = lineStart(source, rowHead - 1);
+      if (!/^\s*#/.test(source.slice(prev, rowHead - 1))) break;
+      rowHead = prev;
     }
   } else if (source.slice(line, start).trim() === '') {
     head = line;
@@ -133,6 +135,7 @@ function ownedBytes(source: string, node: YAMLSeq | YAMLMap) {
     let back = head;
     while (back > 0 && /\s/.test(source[back - 1])) back--;
     if (source[back - 1] === ':' || source[back - 1] === '-') head = back;
+    rowHead = head;
   }
   let tail = source.indexOf('\n', end);
   tail = tail === -1 ? source.length : tail + 1;
@@ -142,7 +145,7 @@ function ownedBytes(source: string, node: YAMLSeq | YAMLMap) {
     if (text.trim() !== '' && !/^\s*#/.test(text)) break;
     tail = next === -1 ? source.length : next + 1;
   }
-  return { head, tail };
+  return { head, tail, rowHead };
 }
 
 function at(value: Json, path: Path): Json {
@@ -201,6 +204,9 @@ interface Case {
    * row removed, for an add). */
   source: string;
   move: boolean;
+  /** The comment lines the write must keep, as a multiset; a move keeps
+   * the source's. */
+  comments?: string[];
 }
 
 /** What is wrong with one write, or null. `spliceYaml` checks its own
@@ -227,9 +233,47 @@ function check(c: Case, strict = false): string | null {
     !out.endsWith(c.source.slice(tail))
   )
     return 'changed bytes outside the list';
-  if (c.move && !exact(comments(out), comments(c.source)))
-    return 'changed the comment lines';
+  const kept = c.comments ?? (c.move ? comments(c.source) : undefined);
+  if (kept && !exact(comments(out), kept)) return 'changed the comment lines';
   return null;
+}
+
+/** The source's comment lines without those in `from`..`to` (whole lines). */
+function commentsWithout(source: string, from: number, to: number): string[] {
+  const gone = comments(source.slice(lineStart(source, from), to));
+  const all = comments(source);
+  for (const line of gone) all.splice(all.indexOf(line), 1);
+  return all;
+}
+
+/** Where a removed pair's own text ends: through the line its value ends
+ * on. */
+function pairEndOf(
+  source: string,
+  map: YAMLMap,
+  key: string
+): [number, number] {
+  const pair = map.items.find(
+    (item) => isScalar(item.key) && String(item.key.value) === key
+  )!;
+  const keyAt = (pair.key as Node).range![0];
+  const value = pair.value as Node | null;
+  let end = value?.range ? value.range[1] : (pair.key as Node).range![1];
+  while (end > keyAt && /\s/.test(source[end - 1])) end--;
+  const stop = source.indexOf('\n', end);
+  // The comment lines directly above a key that starts its line are its own.
+  let from = keyAt;
+  if (source.slice(lineStart(source, keyAt), keyAt).trim() === '') {
+    from = lineStart(source, keyAt);
+    const column = keyAt - from;
+    while (from > 0) {
+      const prev = lineStart(source, from - 1);
+      const text = source.slice(prev, from - 1);
+      if (!/^\s*#/.test(text) || text.search(/\S/) !== column) break;
+      from = prev;
+    }
+  }
+  return [from, stop === -1 ? source.length : stop + 1];
 }
 
 /** Every write the probe makes. `rows` limits which rows get the remove,
@@ -316,6 +360,7 @@ interface MapAt {
   depth: number;
   head: number;
   tail: number;
+  rowHead: number;
 }
 
 /** Every mapping with its path and the bytes it owns. */
@@ -369,13 +414,17 @@ function* mapCasesOf(
     for (const key of Object.keys(value)) {
       if (!keys(map, key)) continue;
       const without = withMap(own, map.path, (m) => void delete m[key]);
+      const first = Object.keys(value)[0] === key;
+      const [from, to] = pairEndOf(source, map.node, key);
       yield {
         label: `${name}.${key} removed`,
-        list: map,
+        // Only a row's first key going moves bytes above the dash.
+        list: first ? { head: map.rowHead, tail: map.tail } : map,
         source,
         base: own,
         current: without,
         move: false,
+        comments: commentsWithout(source, from, to),
       };
       if (!reverse(map)) continue;
       const removed = written(source, own, without);
@@ -388,6 +437,7 @@ function* mapCasesOf(
           base: parse(removed),
           current: own,
           move: false,
+          comments: comments(removed),
         };
     }
     if (!emptied(map)) continue;
@@ -401,6 +451,8 @@ function* mapCasesOf(
       base: own,
       current: cleared,
       move: false,
+      // The map's own lines go, comments among them.
+      comments: commentsWithout(source, map.node.range![0], map.node.range![1]),
     };
     if (!reverse(map)) continue;
     const empty = written(source, own, cleared);
@@ -415,6 +467,7 @@ function* mapCasesOf(
           m.probe = 1;
         }),
         move: false,
+        comments: comments(empty),
       };
   }
 }
@@ -603,6 +656,51 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
     expect(failures).toEqual([]);
   });
 
+  it('a writer that drops the comment above a row is caught, though the value is right: its first key or its last removed', () => {
+    const real = spliceInternals.text;
+    const own = parse(served) as Json;
+    const path: Path = ['bundles', 'guard-base', 'rows', 1];
+    const map = find(mapsOf(served), path)!;
+    // The comment line directly above the row's dash.
+    const dash = lineStart(served, map.node.range![0]);
+    const above = served.slice(lineStart(served, dash - 1), dash);
+    expect(above).toMatch(/^\s*#/);
+    const keys = Object.keys(at(own, path) as object);
+    for (const [key, first] of [
+      [keys[0], true],
+      [keys.at(-1)!, false],
+    ] as const) {
+      const current = withMap(own, path, (m) => void delete m[key]);
+      const [from, to] = pairEndOf(served, map.node, key);
+      const c: Case = {
+        label: `${path.join('.')}.${key} removed`,
+        // As the map probe measures it: a first key from the dash line.
+        list: first ? { head: map.rowHead, tail: map.tail } : map,
+        source: served,
+        base: own,
+        current,
+        move: false,
+        comments: commentsWithout(served, from, to),
+      };
+      expect(check(c, true)).toBe(null);
+      vi.spyOn(spliceInternals, 'text').mockImplementation((...args) => {
+        const written = real(...args);
+        return { ...written, out: written.out.replace(above, '') };
+      });
+      try {
+        // Inside the measured bytes (a first key), only the comment check
+        // can catch it; outside (a last key), the byte check does too.
+        expect(check(c, true)).toMatch(
+          first
+            ? /^changed the comment lines$/
+            : /^changed (bytes outside|the comment)/
+        );
+      } finally {
+        vi.restoreAllMocks();
+      }
+    }
+  });
+
   it('the maps near the top of the castle: a key added back, and a first key added to the emptied map', () => {
     const { writes, failures } = failuresOf(
       mapCasesOf(
@@ -631,8 +729,8 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
     expect(failures).toEqual([]);
   }, 300_000);
 
-  it.runIf(process.env.SPLICE_PROBE === 'all')(
-    'every key of every map removed and added back, every map emptied and given a first key, every scalar replaced by every type',
+  it.runIf(everything)(
+    'every key of every map removed and added back, every map emptied and given a first key',
     () => {
       const maps = failuresOf(
         mapCasesOf(
@@ -641,11 +739,18 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
           () => true
         )
       );
-      const scalars = failuresOf(scalarCasesOf(served, () => SCALARS));
       expect(maps.failures).toEqual([]);
+    },
+    10_800_000
+  );
+
+  it.runIf(everything)(
+    'every scalar replaced by every type',
+    () => {
+      const scalars = failuresOf(scalarCasesOf(served, () => SCALARS));
       expect(scalars.failures).toEqual([]);
     },
-    3_600_000
+    10_800_000
   );
 });
 
@@ -770,7 +875,7 @@ function randomEdit(own: Json, paths: [Path, Json][], random: () => number) {
             ? `${value}_x`
             : !value;
     else continue;
-    return next;
+    return { next, kind, path };
   }
 }
 
@@ -1011,6 +1116,43 @@ function meaning(text: string): { value: Json } | undefined {
   }
 }
 
+/** Which documented writer limit an edit the writer cannot make falls
+ * under, by its shape; null for any other (rpg-project#1014 known limits:
+ * a multi-line string written into a flow row, keys removed from a flow
+ * map). */
+function knownLimit(
+  document: ReturnType<typeof parseDocument>,
+  edit: { kind: number; path: Path },
+  current: Json
+): string | null {
+  const inFlow = (path: Path) => {
+    for (let n = path.length; n >= 0; n--) {
+      const node = document.getIn(path.slice(0, n), true) as Node | undefined;
+      if (node && (isMap(node) || isSeq(node)) && node.flow) return true;
+    }
+    return false;
+  };
+  const parent = edit.path.slice(0, -1);
+  const multiLine = (value: Json) =>
+    typeof value === 'string' && value.includes('\n');
+  const here = at(current, edit.path) as Json;
+  if (
+    inFlow(edit.path) &&
+    ((edit.kind <= 1 && multiLine(here)) ||
+      (edit.kind === 6 &&
+        here !== null &&
+        typeof here === 'object' &&
+        Object.values(here).some(multiLine)))
+  )
+    return 'multi-line text into a flow row';
+  if (
+    (edit.kind === 2 && inFlow(parent)) ||
+    (edit.kind === 7 && inFlow(edit.path))
+  )
+    return 'a key removed from a flow map';
+  return null;
+}
+
 describe('the guard refuses every write that means something else (rpg-project#1014 reviews)', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -1021,20 +1163,38 @@ describe('the guard refuses every write that means something else (rpg-project#1
     const random = seeded(1014);
     const own = parse(served) as Json;
     const paths = pathsOf(own);
+    const document = parseDocument(served);
+    const real = spliceInternals.text;
+    const limits: Record<string, number> = {};
     const wrong: string[] = [];
     let faulty = 0;
     let refused = 0;
     for (let sample = 0; sample < 30; sample++) {
-      const current = randomEdit(own, paths, random);
+      const edit = randomEdit(own, paths, random);
+      const current = edit.next;
       const intended = mergeValue(own, own, current);
+      // The writer's own text, unchecked: when it means the edit, the
+      // guard must pass it. When it does not, the writer cannot make this
+      // write, and only the known limits may be why (rpg-project#1014).
+      const honest = real(served, document, own, current).out;
       const sound = written(served, own, current);
-      // A write the writer itself cannot make is refused (a known limit);
-      // it has no sound text to make faults of.
-      if (sound === null) continue;
-      if (!sameValue(meaning(sound)?.value, intended))
-        wrong.push(
-          `sample ${sample}: a write that means something else passed`
-        );
+      if (!sameValue(meaning(honest)?.value, intended)) {
+        const limit = knownLimit(document, edit, current);
+        if (!limit)
+          wrong.push(
+            `sample ${sample}: the writer cannot make it (edit ${edit.kind} at ${edit.path.join('.')})`
+          );
+        else limits[limit] = (limits[limit] ?? 0) + 1;
+        if (sound !== null)
+          wrong.push(
+            `sample ${sample}: a write that means something else passed`
+          );
+        continue;
+      }
+      if (sound === null) {
+        wrong.push(`sample ${sample}: a sound write was refused`);
+        continue;
+      }
       const lines = sound.split('\n');
       const changed =
         sound.slice(0, honestEdit(served, sound).start).split('\n').length - 1;
@@ -1063,5 +1223,11 @@ describe('the guard refuses every write that means something else (rpg-project#1
     expect(faulty).toBeGreaterThan(0);
     expect(refused).toBeGreaterThan(0);
     expect(wrong).toEqual([]);
+    // The known limits are named, not skipped: any other cause fails above.
+    for (const name of Object.keys(limits))
+      expect([
+        'multi-line text into a flow row',
+        'a key removed from a flow map',
+      ]).toContain(name);
   }, 120_000);
 });

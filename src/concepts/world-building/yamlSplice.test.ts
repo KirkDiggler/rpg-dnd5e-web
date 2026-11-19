@@ -786,6 +786,19 @@ describe('an emptied map is `{}`, an emptied list `[]` (rpg-project#1014 review)
     expect(add('b: 2\n', { x: 1 })).toBe('b: 2\na:\n  x: 1\n');
   });
 
+  it('a block map or list turned into a scalar, or into text over several lines, is written from its key’s line', () => {
+    const file =
+      'list:\n  - id: a\n    # note\n    cell:\n      q: 1\n    after: 2\n';
+    const to = (value: unknown) =>
+      write(file, (v: { list: Record<string, unknown>[] }) => {
+        v.list[0].cell = value;
+      });
+    expect(to(3)).toBe(file.replace('cell:\n      q: 1\n', 'cell: 3\n'));
+    expect(to('multi\nline')).toBe(
+      file.replace('cell:\n      q: 1\n', 'cell: |-\n      multi\n      line\n')
+    );
+  });
+
   it('a file that already holds `{}`, `[]` and `key:` takes an edit elsewhere, byte for byte', () => {
     const file = 'm: {}\nl: []\nn:\ns: ""\nb: 2\n';
     expect(
