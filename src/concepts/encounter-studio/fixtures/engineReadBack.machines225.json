@@ -3776,9 +3776,7 @@
       "items": [
         {
           "text": "Routine `captain-policy` — run by Guard Captain (captain); starts in `ready`; recipe `site:behaviors:captain-policy`.",
-          "paths": [
-            "behaviorDefinitions.captain-policy"
-          ],
+          "paths": ["behaviorDefinitions.captain-policy"],
           "base": "behaviorDefinitions.captain-policy",
           "items": [
             {
@@ -3927,9 +3925,7 @@
         },
         {
           "text": "Routine `gate-1-policy` — run by Guard (gate-1); starts in `posted`; recipe `dnd5e:machines:gate-1`.",
-          "paths": [
-            "behaviorDefinitions.gate-1-policy"
-          ],
+          "paths": ["behaviorDefinitions.gate-1-policy"],
           "base": "behaviorDefinitions.gate-1-policy",
           "items": [
             {
@@ -4036,9 +4032,7 @@
                 },
                 {
                   "text": "`barred`: says “Whoa there, buddy. Can I help you?”",
-                  "paths": [
-                    "behaviorDefinitions.gate-1-policy.table.barred[0]"
-                  ]
+                  "paths": ["behaviorDefinitions.gate-1-policy.table.barred[0]"]
                 },
                 {
                   "text": "`challenged`: says “I said, can I help you?”",
@@ -4048,9 +4042,7 @@
                 },
                 {
                   "text": "`cowed`: if it knows of no enemy → walks to q -5, r 8.",
-                  "paths": [
-                    "behaviorDefinitions.gate-1-policy.table.cowed[0]"
-                  ]
+                  "paths": ["behaviorDefinitions.gate-1-policy.table.cowed[0]"]
                 },
                 {
                   "text": "`post`:",
@@ -4122,9 +4114,7 @@
         },
         {
           "text": "Routine `gate-2-policy` — run by Guard (gate-2); starts in `ready`; recipe `site:behaviors:gate-2-policy`.",
-          "paths": [
-            "behaviorDefinitions.gate-2-policy"
-          ],
+          "paths": ["behaviorDefinitions.gate-2-policy"],
           "base": "behaviorDefinitions.gate-2-policy",
           "items": [
             {
@@ -4189,9 +4179,7 @@
                 },
                 {
                   "text": "`barred`: says “Not so fast. Nobody through until the captain says so.”",
-                  "paths": [
-                    "behaviorDefinitions.gate-2-policy.table.barred[0]"
-                  ]
+                  "paths": ["behaviorDefinitions.gate-2-policy.table.barred[0]"]
                 },
                 {
                   "text": "`time`:",
@@ -4222,9 +4210,7 @@
         },
         {
           "text": "Routine `hall-1-policy` — run by Guard (hall-1); starts in `ready`; recipe `site:behaviors:hall-1-policy`.",
-          "paths": [
-            "behaviorDefinitions.hall-1-policy"
-          ],
+          "paths": ["behaviorDefinitions.hall-1-policy"],
           "base": "behaviorDefinitions.hall-1-policy",
           "items": [
             {
@@ -4285,9 +4271,7 @@
         },
         {
           "text": "Routine `keep-1-policy` — run by Knight (keep-1); starts in `ready`; recipe `site:behaviors:keep-1-policy`.",
-          "paths": [
-            "behaviorDefinitions.keep-1-policy"
-          ],
+          "paths": ["behaviorDefinitions.keep-1-policy"],
           "base": "behaviorDefinitions.keep-1-policy",
           "items": [
             {
@@ -4366,9 +4350,7 @@
         },
         {
           "text": "Routine `keep-2-policy` — run by Knight (keep-2); starts in `ready`; recipe `site:behaviors:keep-2-policy`.",
-          "paths": [
-            "behaviorDefinitions.keep-2-policy"
-          ],
+          "paths": ["behaviorDefinitions.keep-2-policy"],
           "base": "behaviorDefinitions.keep-2-policy",
           "items": [
             {
@@ -4447,9 +4429,7 @@
         },
         {
           "text": "Routine `reserve-1-policy` — run by Knight (reserve-1); starts in `waiting`; recipe `dnd5e:machines:reserve-1`.",
-          "paths": [
-            "behaviorDefinitions.reserve-1-policy"
-          ],
+          "paths": ["behaviorDefinitions.reserve-1-policy"],
           "base": "behaviorDefinitions.reserve-1-policy",
           "items": [
             {
@@ -4567,9 +4547,7 @@
         },
         {
           "text": "Routine `sergeant-policy` — run by Guard (sergeant); starts in `ready`; recipe `site:behaviors:sergeant-policy`.",
-          "paths": [
-            "behaviorDefinitions.sergeant-policy"
-          ],
+          "paths": ["behaviorDefinitions.sergeant-policy"],
           "base": "behaviorDefinitions.sergeant-policy",
           "items": [
             {

@@ -137,13 +137,7 @@
           "goes": "open",
           "names": "deed",
           "kind": "string",
-          "values": [
-            "attacked",
-            "intimidated",
-            "persuaded",
-            "fled",
-            "fell"
-          ]
+          "values": ["attacked", "intimidated", "persuaded", "fled", "fell"]
         }
       ]
     },
@@ -171,11 +165,7 @@
       "word": "enemy",
       "fact": true,
       "kind": "string",
-      "values": [
-        "seen",
-        "remembered",
-        "none"
-      ],
+      "values": ["seen", "remembered", "none"],
       "states_form": "{ enemy }",
       "label": "an enemy is {value}",
       "value_labels": {
@@ -195,11 +185,7 @@
           "goes": "field",
           "field": "value",
           "kind": "string",
-          "values": [
-            "seen",
-            "remembered",
-            "none"
-          ]
+          "values": ["seen", "remembered", "none"]
         },
         {
           "name": "op",
@@ -252,12 +238,7 @@
       "word": "heard.kind",
       "fact": true,
       "kind": "string",
-      "values": [
-        "boom",
-        "crash",
-        "clang",
-        "voice"
-      ],
+      "values": ["boom", "crash", "clang", "voice"],
       "label": "it was a {value}",
       "value_labels": {
         "boom": "it was a boom",
@@ -277,12 +258,7 @@
           "goes": "field",
           "field": "value",
           "kind": "string",
-          "values": [
-            "boom",
-            "crash",
-            "clang",
-            "voice"
-          ]
+          "values": ["boom", "crash", "clang", "voice"]
         },
         {
           "name": "op",
@@ -312,12 +288,7 @@
           "goes": "open",
           "names": "loudness",
           "kind": "string",
-          "values": [
-            "whisper",
-            "speak",
-            "shout",
-            "scream"
-          ]
+          "values": ["whisper", "speak", "shout", "scream"]
         },
         {
           "name": "value",
@@ -339,13 +310,8 @@
       "word": "heard.claim",
       "fact": true,
       "kind": "string",
-      "values": [
-        "held",
-        "failed"
-      ],
-      "on": [
-        "heard"
-      ],
+      "values": ["held", "failed"],
+      "on": ["heard"],
       "label": "it was a claim that {value}",
       "value_labels": {
         "failed": "it was a claim that failed",
@@ -363,10 +329,7 @@
           "goes": "field",
           "field": "value",
           "kind": "string",
-          "values": [
-            "held",
-            "failed"
-          ]
+          "values": ["held", "failed"]
         },
         {
           "name": "op",
@@ -383,12 +346,7 @@
       "open": "topic",
       "fact": true,
       "kind": "bool",
-      "on": [
-        "heard",
-        "seen",
-        "barred",
-        "approached"
-      ],
+      "on": ["heard", "seen", "barred", "approached"],
       "label": "has noted {id} about them",
       "label_not": "has not noted {id} about them",
       "long": "{who} {verb} {id} about {about}",
@@ -478,14 +436,7 @@
     {
       "word": "within",
       "kind": "int",
-      "on": [
-        "heard",
-        "deed",
-        "seen",
-        "barred",
-        "approached",
-        "deed:"
-      ],
+      "on": ["heard", "deed", "seen", "barred", "approached", "deed:"],
       "label": "within {n} cells",
       "long": "it happened within {n} cells of {who}",
       "written": {
@@ -511,14 +462,7 @@
     {
       "word": "regions",
       "kind": "int",
-      "on": [
-        "heard",
-        "deed",
-        "seen",
-        "barred",
-        "approached",
-        "deed:"
-      ],
+      "on": ["heard", "deed", "seen", "barred", "approached", "deed:"],
       "label": "within {n} rooms",
       "long": "it happened within {n} rooms of {who}",
       "written": {
@@ -557,10 +501,7 @@
           "field": "op",
           "names": "op",
           "kind": "string",
-          "values": [
-            "eq",
-            "gte"
-          ]
+          "values": ["eq", "gte"]
         },
         {
           "name": "n",
@@ -650,12 +591,7 @@
     },
     {
       "word": "pick",
-      "on": [
-        "time",
-        "turn",
-        "barred",
-        "approached"
-      ],
+      "on": ["time", "turn", "barred", "approached"],
       "states_form": "{ pick: <key> }",
       "label": "acts from the {id} list",
       "short": "acts from its {id} rows",
@@ -714,11 +650,7 @@
           "field": "value",
           "kind": "of",
           "kind_of": "id",
-          "kinds": [
-            "bool",
-            "int",
-            "string"
-          ]
+          "kinds": ["bool", "int", "string"]
         }
       ]
     },
