@@ -69,6 +69,12 @@ export interface PreviewState {
    * carried none), kept through a later `errors` answer or a transport
    * failure so the inspector can show the last sentences, marked. */
   readBack: ReadBack | null;
+  /** The server's `content_hash` of the text the LAST answer was about
+   * (rpg-project#1017): set from a clean answer (absent when the server
+   * sent none), dropped by an `errors` answer (a text that does not compile
+   * has no hash) and by a new document. A watched or saved run compares its
+   * `scene_content.content_hash` with it. */
+  contentHash?: string;
 }
 
 export const PREVIEW_DEBOUNCE_MS = 400;
@@ -130,6 +136,7 @@ export function usePutDungeonPreview(
     setState((s) => ({
       ...s,
       readBack: null,
+      contentHash: undefined,
       errors: [],
       message: null,
       status:
@@ -194,6 +201,9 @@ export function usePutDungeonPreview(
           atlas: response.atlas ?? null,
           message: null,
           readBack: response.readBack ?? null,
+          ...(response.contentHash
+            ? { contentHash: response.contentHash }
+            : {}),
         });
       }
     }, debounceMs);

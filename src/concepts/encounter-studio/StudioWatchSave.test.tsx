@@ -282,7 +282,7 @@ describe('Open a saved run (rpg-project#1013)', () => {
     );
   });
 
-  it('the same draft opens with no note', () => {
+  it('the same draft opens with one line: no encounter identity, and the snapshot matches (rpg-project#1017)', () => {
     const { result } = renderHook(() =>
       useSavedRunReplay({
         dungeonKey: 'the-mad-king',
@@ -292,7 +292,9 @@ describe('Open a saved run (rpg-project#1013)', () => {
       })
     );
     act(() => void result.current.openText('run.jsonl', SAVED_TEXT));
-    expect(result.current.panel?.notes).toEqual([]);
+    expect(result.current.panel?.notes).toEqual([
+      'This run carries no encounter identity (it was recorded before runs named their encounter). Its snapshot matches the open draft.',
+    ]);
   });
 
   it('a raw capture opens against the open draft, with the note', () => {

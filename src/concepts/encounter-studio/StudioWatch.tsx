@@ -39,6 +39,7 @@ import { type RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MachineDrawing } from './MachineDrawing';
+import { shortHash, type RunIdentity } from './runIdentity';
 import { runSpeechLine } from './runSpeech';
 import { rowsAbout, runStateLabel, speechOf, stepSightOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
@@ -69,6 +70,7 @@ export function StudioWatch({
   onResize,
   save,
   replay,
+  identity,
 }: {
   watch: WatchedRun;
   run: RunWatch;
@@ -96,6 +98,9 @@ export function StudioWatch({
   /** A saved run, opened read-only (#1013): the panel draws it with no
    * Live, no stepping and no way into the game. */
   replay?: WatchReplay;
+  /** What the watched run is a run of (rpg-project#1017), and its one
+   * comparison line with the open encounter; absent says nothing. */
+  identity?: WatchIdentity;
 }): React.JSX.Element {
   const { view, step, setStep, feed, upTo, selected } = run;
   const steps = view.steps;
@@ -226,6 +231,13 @@ export function StudioWatch({
               A saved run of {seatName}: Back and Forward walk it. Nothing here
               reaches the server.
             </p>
+            <details
+              className="es-watch-section"
+              data-testid="watch-run-details"
+            >
+              <summary>Run details</summary>
+              <RunIdentityLine run={replay.identity ?? null} />
+            </details>
           </header>
         ) : (
           <header className="es-watch-header">
@@ -336,7 +348,17 @@ export function StudioWatch({
                 <code>{watch.member}</code>. The engine runs it; this map draws
                 its record.
               </p>
+              <RunIdentityLine run={identity?.run ?? null} />
             </details>
+            {identity?.line && (
+              <p
+                className={identity.notable ? 'es-warning' : 'es-help'}
+                role="status"
+                data-testid="watch-identity-line"
+              >
+                {identity.line}
+              </p>
+            )}
           </header>
         )}
         {stepControls('watch-step')}
@@ -577,6 +599,40 @@ export interface WatchSave {
   unsaved: boolean;
 }
 
+/** What a watched run is a run of, and how it compares with the open
+ * encounter (rpg-project#1017). */
+export interface WatchIdentity {
+  run: RunIdentity | null;
+  /** The one comparison line. */
+  line: string;
+  /** The line says the run is not of the open encounter as it is now. */
+  notable: boolean;
+}
+
+/** The run's `scene_content` in one line: its encounter key, engine and
+ * short content hash; a line saying it has none when it carries none. */
+function RunIdentityLine({
+  run,
+}: {
+  run: RunIdentity | null;
+}): React.JSX.Element {
+  return (
+    <p className="es-help" data-testid="watch-run-identity">
+      {run ? (
+        <>
+          Encounter <code>{run.key || 'unnamed'}</code> · engine{' '}
+          <code>{run.engine || 'unknown'}</code> · content{' '}
+          <code title={run.contentHash}>
+            {run.contentHash ? shortHash(run.contentHash) : 'no hash'}
+          </code>
+        </>
+      ) : (
+        'The record does not name its encounter.'
+      )}
+    </p>
+  );
+}
+
 /** A saved run, opened read-only. */
 export interface WatchReplay {
   /** The file's name. */
@@ -586,6 +642,8 @@ export interface WatchReplay {
   /** What the operator must know before trusting the drawing: the draft
    * differs, or the file carried no snapshot. */
   notes: string[];
+  /** The run's `scene_content` (rpg-project#1017); null when it has none. */
+  identity?: RunIdentity | null;
   onClose(): void;
 }
 

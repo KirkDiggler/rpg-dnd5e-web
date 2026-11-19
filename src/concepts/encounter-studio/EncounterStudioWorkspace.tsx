@@ -133,7 +133,11 @@ import { StudioWatchTimeline } from './StudioWatchTimeline';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
-import { useSavedRunReplay, useWatchSave } from './useSavedRun';
+import {
+  useSavedRunReplay,
+  useWatchIdentity,
+  useWatchSave,
+} from './useSavedRun';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
@@ -1084,11 +1088,31 @@ function StudioSurface({
   /** Open a saved run (rpg-project#1013): read-only, through the watch's
    * own fold, drawn from the file's snapshot. While one is open the map,
    * the panel and the timeline show it instead of a watch. */
+  /** The open encounter as the studio's own check last answered it
+   * (rpg-project#1017): its key and the server's content hash of its text,
+   * which a run's `scene_content` is compared with. No call of its own. */
+  const previewHash =
+    publishing.preview.status === 'errors'
+      ? null
+      : (publishing.preview.contentHash ?? null);
+  const openEncounter = useMemo(
+    () => ({ key: publishing.key.trim(), contentHash: previewHash }),
+    [publishing.key, previewHash]
+  );
+  const openUnreachable = publishing.preview.status === 'unreachable';
+  const watchIdentity = useWatchIdentity({
+    rows: run.feed.rows,
+    watching: watch !== null,
+    open: openEncounter,
+    openUnreachable,
+  });
   const savedRun = useSavedRunReplay({
     draft: session.document.draft,
     dungeonKey: publishing.key,
     names: watchNames,
     readBack: readBack.readBack,
+    open: openEncounter,
+    openUnreachable,
   });
   const replaying = savedRun.watch !== null && watch === null;
   const shownWatch = replaying ? savedRun.watch : watch;
@@ -2145,6 +2169,7 @@ function StudioSurface({
                       onResize={resizeWatch}
                       onStop={() => void stopWatching()}
                       save={watchSave}
+                      identity={watchIdentity}
                       stopping={watchLeave.leaving}
                       stopRefusal={watchLeave.refusal}
                       onStopAnyway={endWatch}
