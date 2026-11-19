@@ -116,21 +116,36 @@ export function actWords(
 const opWords = (words: MachineWords, op: string): string =>
   words.ops.find((o) => o.op === op)?.words ?? op;
 
+/** A structural word's sentence template (`not` → `NOT ({inner})`, `any`
+ * → `({parts})`, `all` → `{parts}`) with its one slot filled. The words are
+ * the engine's; null when the table has none. */
+function structure(
+  words: MachineWords,
+  node: 'all' | 'any' | 'not',
+  text: string
+): string | null {
+  const word = words.conditions.find((w) => w.word === node);
+  const slot = node === 'not' ? '{inner}' : '{parts}';
+  return word?.long.includes(slot) ? word.long.replace(slot, text) : null;
+}
+
 /** One condition's words, with its polarity: `positive` false says it is
- * asked to be false. A bool word asked `false` is its own negation. */
+ * asked to be false. A bool word asked `false` is its own negation. A
+ * negation is the word's `label_not`, or the engine's `not` template around
+ * its label. */
 function leafWords(
-  words: MachineWords | null,
+  words: MachineWords,
   c: StepCondition,
   positive: boolean
 ): string {
-  const found = words ? conditionWordOf(words, c.id) : null;
-  if (!words || !found) {
+  const found = conditionWordOf(words, c.id);
+  if (!found) {
     // No word for it: the id, its comparison and value, as the engine
     // spells them.
     const value =
       c.is && c.is !== 'true' ? ` ${c.op ? `${c.op} ` : ''}${c.is}` : '';
     const plain = `${c.id}${value}`;
-    return positive ? plain : `not (${plain})`;
+    return positive ? plain : (structure(words, 'not', plain) ?? plain);
   }
   const { word, open } = found;
   const isBool = word.kind === 'bool';
@@ -147,9 +162,7 @@ function leafWords(
     !isBool && word.valueLabels[c.is] !== undefined
       ? word.valueLabels[c.is]!
       : fillSlots(word.label || word.word, slots);
-  if (polarity) return plain;
-  const not = words.conditions.find((w) => w.word === 'not');
-  return `${not?.word ?? 'not'} (${plain})`;
+  return polarity ? plain : (structure(words, 'not', plain) ?? plain);
 }
 
 type Segment = { node: 'all' | 'any'; i: number } | { node: 'not' };
@@ -186,66 +199,64 @@ export function compareAt(a: string, b: string): number {
   return x.length - y.length;
 }
 
-interface Said {
-  text: string;
-  /** Joined from two or more parts: wrapped when it is itself a part. */
-  compound: boolean;
-}
-
 /** A step's whole condition in the engine's words, from its condition
- * connections (in `at` order): leaves at one place are all needed; `all`
- * and `any` are joined by the engine's own `join`; a `not` is the leaf's
- * `label_not`, or `not (…)`. Empty when it has none. */
+ * connections (in `at` order). Leaves at one place, and an `all`, are
+ * joined by the `all` word's `join` inside its sentence template; an `any`
+ * by its own; a `not` is the leaf's `label_not`, or the `not` template. The
+ * web adds no connective of its own. Empty when it has none.
+ *
+ * Without words (or without the structural words), the ids are listed flat
+ * only when that is exact: every condition needed and asked as it is. A
+ * condition with an `any`, a `not`, a value asked false or a place the
+ * drawing cannot read gives null: the caller says the beat and a count. */
 export function conditionWords(
   words: MachineWords | null,
   conditions: readonly StepCondition[]
-): string {
+): string | null {
   if (!conditions.length) return '';
+  const placed = conditions.map((c) => ({ c, segs: segmentsOf(c.at) }));
   const joinOf = (node: 'all' | 'any'): string | undefined =>
     words?.conditions.find((w) => w.word === node)?.join || undefined;
-  const placed = conditions.map((c) => ({ c, segs: segmentsOf(c.at) }));
-  // No words for the structure, or a place the drawing cannot read: each
-  // condition flat, by its hint, as the drawing listed reads before.
-  if (!joinOf('all') || !joinOf('any') || placed.some((p) => p.segs === null))
-    return conditions.map((c) => leafWords(words, c, !c.negated)).join(', ');
-  const join = (parts: Said[], node: 'all' | 'any'): Said =>
+  const spoken =
+    words !== null &&
+    joinOf('all') !== undefined &&
+    joinOf('any') !== undefined &&
+    ['all', 'any', 'not'].every(
+      (node) => structure(words, node as 'all', 'x') !== null
+    ) &&
+    placed.every((p) => p.segs !== null);
+  if (!spoken) {
+    const flat = placed.every(
+      (p) =>
+        p.segs !== null &&
+        p.segs.every((seg) => seg.node === 'all') &&
+        !p.c.negated &&
+        p.c.is !== 'false'
+    );
+    if (!flat) return null;
+    return conditions
+      .map((c) => {
+        const value =
+          c.is && c.is !== 'true' ? ` ${c.op ? `${c.op} ` : ''}${c.is}` : '';
+        return `${c.id}${value}`;
+      })
+      .join(', ');
+  }
+  const w = words!;
+  const joined = (parts: string[], node: 'all' | 'any'): string =>
     parts.length === 1
       ? parts[0]!
-      : {
-          text: parts
-            .map((p) => (p.compound ? `(${p.text})` : p.text))
-            .join(joinOf(node)!),
-          compound: true,
-        };
-  const say = (
-    items: { c: StepCondition; segs: Segment[] }[],
-    positive: boolean
-  ): Said => {
-    const parts: Said[] = [];
-    const leaves = items.filter((p) => p.segs.length === 0);
-    for (const leaf of leaves)
-      parts.push({ text: leafWords(words, leaf.c, positive), compound: false });
-    const nots = items.filter((p) => p.segs[0]?.node === 'not');
-    if (nots.length) {
-      const inner = nots.map((p) => ({ ...p, segs: p.segs.slice(1) }));
-      const single =
-        inner.length === 1 && inner[0]!.segs.length === 0
-          ? inner[0]!
-          : undefined;
-      if (single)
-        parts.push({
-          text: leafWords(words, single.c, !positive),
-          compound: false,
-        });
-      else {
-        const said = say(inner, true);
-        const not = positive ? 'not' : '';
-        parts.push({
-          text: not ? `${not} (${said.text})` : said.text,
-          compound: !not && said.compound,
-        });
-      }
-    }
+      : structure(w, node, parts.join(joinOf(node)!))!;
+  const say = (items: { c: StepCondition; segs: Segment[] }[]): string => {
+    const parts: string[] = items
+      .filter((p) => p.segs.length === 0)
+      .map((leaf) => leafWords(w, leaf.c, true));
+    const nots = items
+      .filter((p) => p.segs[0]?.node === 'not')
+      .map((p) => ({ ...p, segs: p.segs.slice(1) }));
+    if (nots.length === 1 && nots[0]!.segs.length === 0)
+      parts.push(leafWords(w, nots[0]!.c, false));
+    else if (nots.length) parts.push(structure(w, 'not', say(nots))!);
     for (const node of ['all', 'any'] as const) {
       const under = items.filter((p) => p.segs[0]?.node === node);
       if (!under.length) continue;
@@ -259,12 +270,10 @@ export function conditionWords(
       }
       const kids = [...byIndex.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([, list]) => say(list, positive));
-      // Under a `not`, De Morgan is the engine's to say, not ours: the
-      // node is said as written, inside the `not (…)` its caller adds.
-      parts.push(join(kids, node));
+        .map(([, list]) => say(list));
+      parts.push(joined(kids, node));
     }
-    return join(parts, 'all');
+    return joined(parts, 'all');
   };
-  return say(placed as { c: StepCondition; segs: Segment[] }[], true).text;
+  return say(placed as { c: StepCondition; segs: Segment[] }[]);
 }

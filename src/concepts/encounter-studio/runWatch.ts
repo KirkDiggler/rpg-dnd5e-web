@@ -12,7 +12,6 @@ import { layoutMachine, type MachineLayout } from './machineLayout';
 import { machineOf } from './machineView';
 import type { MachineWords } from './machineWords';
 import { foldRun, stepStartOf, type RunMember, type RunView } from './runView';
-import { machineWordsNow } from './useMachineWords';
 
 export const WATCH_DEV_ONLY_SENTENCE =
   'Watching a run reads the run’s record, which the server serves only in development.';
@@ -143,9 +142,9 @@ const RUNS = 'runs';
 export function machinesRunBy(
   readBack: ReadBack | null,
   member: RunMember,
-  /** The engine's machine words; by default the ones the studio already
-   * asked for this session (rpg-project#1015), else the ids as before. */
-  words: MachineWords | null = machineWordsNow()
+  /** The engine's machine words (`useMachineWords`, rpg-project#1015);
+   * null draws the ids as before. */
+  words: MachineWords | null = null
 ): { routine: string; layout: MachineLayout; live: string | null }[] {
   if (!readBack) return [];
   const states = new Set(

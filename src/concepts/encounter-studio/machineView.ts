@@ -45,6 +45,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   actWords,
+  beatWordOf,
   beatWords,
   compareAt,
   conditionWordOf,
@@ -430,77 +431,82 @@ const readWords = (r: StepRead): string =>
 export type Labelled = Pick<MachineStep, 'beat' | 'reads'> &
   Partial<Pick<MachineStep, 'conditions'>>;
 
-/** The thing a beat that takes one is about: the step's one `wakes-on`
- * read of the beat's own kind (`{fact, guards-turned, wakes-on}` on a
- * `fact` beat). */
-const thingOf = (step: Labelled): string | undefined => {
-  const own = step.reads.filter(
-    (r) => r.role === ROLE_WAKES_ON && r.kind === step.beat
-  );
-  return own.length === 1 ? own[0]!.id : undefined;
-};
+/** A place inside `when` that only `all` leads to: the condition is
+ * needed, whatever else the step asks. */
+const NEEDED_AT = /^when(\.all\[\d+\])*$/;
+
+/** The thing a beat that takes one is about, and the condition it is said
+ * by (rpg-project#1015 review): the step's ONE condition whose word's open
+ * part is of the beat's own kind (`fact:` on a `fact` beat, `noted.anyone:`
+ * on a `topic` beat), asked true, not under a `not`, on a path only `all`
+ * leads to. The engine's `wakes-on` read is not the source: it is said of
+ * such a leaf under a `not`, inside an `any`, and asked false too. With
+ * none or several, the beat says no thing and every condition is said. */
+function thingOf(
+  step: Labelled,
+  words: MachineWords | null
+): { id: string; condition: StepCondition } | undefined {
+  if (!words) return undefined;
+  const beat = beatWordOf(words, step.beat);
+  if (!beat?.word.labelWith) return undefined;
+  const named = (step.conditions ?? []).flatMap((c) => {
+    const found = conditionWordOf(words, c.id);
+    return found &&
+      found.word.open === step.beat &&
+      c.is === 'true' &&
+      !c.negated &&
+      NEEDED_AT.test(c.at)
+      ? [{ id: found.open, condition: c }]
+      : [];
+  });
+  return named.length === 1 ? named[0] : undefined;
+}
 
 /** What a step's label says after its beat: its condition (still to be
  * worded) and every read the drawing does not know, or, from an engine that
- * sends no condition connections, its reads as before. With words, the
- * beat's filled thing is not said again: the wakes-on read it came from,
- * and the one condition that asks that same thing be known. */
+ * sends no condition connections, its reads as before. The condition the
+ * beat's thing is said by is not said again. */
 function partsOf(
   step: Labelled,
   words: MachineWords | null
 ): { conditions: StepCondition[]; reads: string[] } {
   const conditions = step.conditions ?? [];
-  const thing = words ? thingOf(step) : undefined;
   if (!conditions.length)
-    return {
-      conditions: [],
-      reads: step.reads
-        .filter((r) => !(thing && r.role === ROLE_WAKES_ON && r.id === thing))
-        .map(readWords),
-    };
+    return { conditions: [], reads: step.reads.map(readWords) };
   const reads = step.reads
     .filter(
       (r) => r.kind !== CONDITION && !KNOWN_READS.has(`${r.role} ${r.kind}`)
     )
     .map(readWords);
-  if (!thing || !words) return { conditions, reads };
-  const named = conditions.findIndex((c) => {
-    const found = conditionWordOf(words, c.id);
-    return (
-      found !== null &&
-      found.word.open === step.beat &&
-      found.open === thing &&
-      c.is === 'true' &&
-      !c.negated
-    );
-  });
+  const thing = thingOf(step, words);
   return {
-    conditions:
-      named < 0 ? conditions : conditions.filter((_, i) => i !== named),
+    conditions: thing
+      ? conditions.filter((c) => c !== thing.condition)
+      : conditions,
     reads,
   };
 }
 
-const wordsOf = (step: Labelled, words: MachineWords | null): string[] => {
-  const { conditions, reads } = partsOf(step, words);
-  const whole = conditionWords(words, conditions);
-  return [...(whole ? [whole] : []), ...reads];
-};
-
 /** The beat's own words: the engine's label, or `on <beat>` without
  * words for it. */
 const beatOf = (step: Labelled, words: MachineWords | null): string =>
-  (words && beatWords(words, step.beat, thingOf(step))) || `on ${step.beat}`;
+  (words && beatWords(words, step.beat, thingOf(step, words)?.id)) ||
+  `on ${step.beat}`;
 
 /** A step's words for a label. With the engine's words: the beat's plain
  * label, then its whole condition (`hears something · it was a claim that
  * failed and has noted admitted about them`). Without them, the
- * connections' ids as before (`on fact: guards-turned`). */
+ * connections' ids as before (`on fact: guards-turned`), or, for a
+ * condition with structure the ids cannot say (an `any`, a `not`, a value
+ * asked false), the beat and how many conditions it has. */
 export function beatLabel(
   step: Labelled,
   words: MachineWords | null = null
 ): string {
-  const parts = wordsOf(step, words);
+  const { conditions, reads } = partsOf(step, words);
+  const whole = conditionWords(words, conditions);
+  if (whole === null) return shortBeatLabel(step, words);
+  const parts = [...(whole ? [whole] : []), ...reads];
   if (!words || !beatWords(words, step.beat))
     return parts.length
       ? `on ${step.beat}: ${parts.join(', ')}`

@@ -43,6 +43,7 @@ import { runSpeechLine } from './runSpeech';
 import { rowsAbout, speechOf } from './runView';
 import { machinesRunBy, type RunWatch, type WatchedRun } from './runWatch';
 import { StudioDialog } from './StudioDialog';
+import { useMachineWords } from './useMachineWords';
 import { FIGHT_MOVES_IN_THE_GAME, type StudioStep } from './useStudioStep';
 import {
   clampWatchWidth,
@@ -101,9 +102,12 @@ export function StudioWatch({
   const last = steps.length - 1;
   const at = step ?? last;
   const member = selected ? view.members[selected] : undefined;
+  // The engine's machine words, the same answer the Behaviours drawing has
+  // (rpg-project#1015): the drawings re-lay when it arrives.
+  const { words: machineWords } = useMachineWords();
   const machines = useMemo(
-    () => (member ? machinesRunBy(readBack, member) : []),
-    [readBack, member]
+    () => (member ? machinesRunBy(readBack, member, machineWords) : []),
+    [readBack, member, machineWords]
   );
   const memberFeed = useMemo<RecordFeedSnapshot>(
     () => ({

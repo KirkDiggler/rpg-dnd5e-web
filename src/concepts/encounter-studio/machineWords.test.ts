@@ -24,6 +24,7 @@ import {
   type MachineEdge,
 } from './machineView';
 import { conditionWords } from './machineWords';
+import { machinesRunBy } from './runWatch';
 
 const WORDS = machineWordsV225();
 const LIE =
@@ -127,7 +128,7 @@ describe('a step’s label in the engine’s words', () => {
   it('a negated condition reads as negated, in the structure `at` gives', () => {
     const edge = edgeOf(castleMachinesV225ReadBack(), HEARD);
     expect(beatLabel(edge, WORDS)).toBe(
-      'hears something · within 6 cells and (not (it was a voice), or it was at least a shout)'
+      'hears something · within 6 cells and (NOT (it was a voice), or it was at least a shout)'
     );
     // A word with its own negated label says it.
     expect(
@@ -187,7 +188,7 @@ describe('a step’s label in the engine’s words', () => {
           at: 'when.not.all[1]',
         },
       ])
-    ).toBe('not (it was a claim that held and has noted admitted about them)');
+    ).toBe('NOT (it was a claim that held and has noted admitted about them)');
   });
 
   it('the connections’ order does not change the label: `at` orders them', () => {
@@ -307,10 +308,10 @@ describe('falling back', () => {
       'on heard: heard.claim failed, noted:admitted'
     );
     expect(shortBeatLabel(edge)).toBe('on heard +2');
+    // An `any` or a `not` the ids cannot say: the beat and a count, never
+    // a flat list that would read as all needed (review finding 1).
     const heard = edgeOf(castleMachinesV225ReadBack(), HEARD);
-    expect(beatLabel(heard)).toBe(
-      'on heard: within lte 6, not (heard.kind voice), heard.loudness:shout'
-    );
+    expect(beatLabel(heard)).toBe('on heard +3');
   });
 
   it('with no condition connections (an older engine), the reads are said as before', () => {
@@ -326,7 +327,9 @@ describe('falling back', () => {
       castleMachinesReadBack(),
       'gate-1-policy'
     )!.edges.find((e) => e.to === 'turned')!;
-    expect(beatLabel(turned, WORDS)).toBe('learns guards-turned');
+    // A `wakes-on` read alone never names the beat's thing: the engine
+    // says it of a fact under a `not` too.
+    expect(beatLabel(turned, WORDS)).toBe('learns a fact · guards-turned');
     expect(beatLabel(turned)).toBe('on fact: guards-turned');
   });
 
@@ -403,6 +406,108 @@ describe('the castle’s ten machines in plain words', () => {
     expect(lines.some((text) => text.endsWith('…'))).toBe(false);
     expect(box.lines.map((line) => line.full)).toContain(
       'time passes · acts from the back-to-gate list'
+    );
+  });
+});
+
+/**
+ * THE BEAT'S THING (review of #1462, finding A): the engine says
+ * `{fact, X, wakes-on}` for a `fact:X` asked true under a `not` or inside
+ * an `any`, and `{topic, T, wakes-on}` for `noted.anyone:T` asked false.
+ * The beat names its thing only from one positive condition every path to
+ * which is `all`; otherwise it is the plain beat and every condition.
+ */
+describe('a beat names its thing only from a needed, positive condition', () => {
+  const step = (
+    beat: string,
+    wakesOn: { kind: string; id: string },
+    conditions: {
+      id: string;
+      is: string;
+      op?: string;
+      negated?: boolean;
+      at: string;
+    }[]
+  ) => ({
+    beat,
+    reads: [{ ...wakesOn, role: 'wakes-on' }],
+    conditions: conditions.map((c) => ({
+      op: '',
+      negated: false,
+      ...c,
+    })),
+  });
+
+  it('a fact under a `not` is not the thing the beat learns', () => {
+    const s = step('fact', { kind: 'fact', id: 'gate-cowed' }, [
+      { id: 'fact:gate-cowed', is: 'true', negated: true, at: 'when.not' },
+    ]);
+    expect(beatLabel(s, WORDS)).toBe(
+      'learns a fact · has not learned gate-cowed'
+    );
+  });
+
+  it('a fact inside an `any` is not the thing, and its branch is kept', () => {
+    const s = step('fact', { kind: 'fact', id: 'gate-cowed' }, [
+      { id: 'fact:gate-cowed', is: 'true', at: 'when.any[0]' },
+      { id: 'within', is: '6', op: 'lte', at: 'when.any[1]' },
+    ]);
+    expect(beatLabel(s, WORDS)).toBe(
+      'learns a fact · (has learned gate-cowed, or within 6 cells)'
+    );
+    expect(shortBeatLabel(s, WORDS)).toBe('learns a fact +2');
+  });
+
+  it('a topic asked false is not the thing the beat notes', () => {
+    const s = step('topic', { kind: 'topic', id: 'admitted' }, [
+      { id: 'noted.anyone:admitted', is: 'false', at: 'when' },
+    ]);
+    expect(beatLabel(s, WORDS)).toBe(
+      'notes a topic about someone · has not noted admitted about anyone'
+    );
+  });
+
+  it('the one needed positive fact is the thing, and is said once', () => {
+    const s = step('fact', { kind: 'fact', id: 'gate-cowed' }, [
+      { id: 'fact:gate-cowed', is: 'true', at: 'when.all[0]' },
+      { id: 'within', is: '6', op: 'lte', at: 'when.all[1]' },
+    ]);
+    expect(beatLabel(s, WORDS)).toBe('learns gate-cowed · within 6 cells');
+    expect(shortBeatLabel(s, WORDS)).toBe('learns gate-cowed +1');
+  });
+
+  it('two needed facts: neither is the thing, both are said', () => {
+    const s = {
+      ...step('fact', { kind: 'fact', id: 'gate-cowed' }, [
+        { id: 'fact:gate-cowed', is: 'true', at: 'when.all[0]' },
+        { id: 'fact:guards-turned', is: 'true', at: 'when.all[1]' },
+      ]),
+    };
+    s.reads.push({ kind: 'fact', id: 'guards-turned', role: 'wakes-on' });
+    expect(beatLabel(s, WORDS)).toBe(
+      'learns a fact · has learned gate-cowed and has learned guards-turned'
+    );
+  });
+});
+
+describe('the watch’s drawings', () => {
+  it('are in the words they are given, the same as the Behaviours drawing', () => {
+    const member = {
+      id: 'captain',
+      cell: null,
+      party: false,
+      state: 'in-hall',
+      roles: {},
+    };
+    const said = (words: typeof WORDS | null) =>
+      machinesRunBy(castleMachinesV225ReadBack(), member, words)
+        .flatMap((m) => m.layout.pieces)
+        .map((p) => p.label.full);
+    expect(said(WORDS)).toContain(
+      'hears something · it was a claim that failed and has noted admitted about them'
+    );
+    expect(said(null)).toContain(
+      'on heard: heard.claim failed, noted:admitted'
     );
   });
 });
