@@ -61,6 +61,33 @@ export interface RunMember {
   lastReason?: string;
   /** Each role instance's state after the last decision, by instance id. */
   roles: Readonly<Record<string, string>>;
+  /** Each OTHER role's state (rpg-project#1016), from its last
+   * `role_state` beat, by the role's instance id (the id the decision
+   * traces name). Absent when the record wrote no `role_state` for it. */
+  roleStates?: Readonly<Record<string, RunRoleState>>;
+  /** Who it sees (rpg-project#1016): every member a `sighted` beat with it
+   * as `observer` said it `gained`, less every one a later beat said it
+   * `lost`, sorted. Absent when the record names it as no observer. */
+  sees?: readonly string[];
+}
+
+/** A role's state, as its last `role_state` beat wrote it. */
+export interface RunRoleState {
+  state: string;
+  /** The role's recipe (`example:behaviors:investigate`), when written. */
+  recipe?: string;
+  /** The transition's reason, when written. */
+  reason?: string;
+}
+
+/** The member's states in one compact label: the body's, then each other
+ * role's as `role: state` (`ready · investigate: active`). A member with no
+ * `role_state` beat reads its `state` exactly as before. */
+export function runStateLabel(member: RunMember): string {
+  const parts = member.state ? [member.state] : [];
+  for (const [role, rs] of Object.entries(member.roleStates ?? {}))
+    parts.push(`${role}: ${rs.state}`);
+  return parts.join(' · ');
 }
 
 /** One step of the run: a party verb and everything the world did after it,
@@ -242,7 +269,45 @@ export function foldRun(
           if (role && after) roles[role] = after;
         }
         m.roles = roles;
-        if (!m.fromBeat) m.state = rolesLabel(roles);
+        if (!m.fromBeat) m.state = bodyLabel(roles, m.roleStates);
+        break;
+      }
+      case 'role_state': {
+        // A creature's OTHER role (rpg-toolkit encounter machine.go
+        // appendRoleStateBeat: member, role, recipe, from, to, reason). The
+        // body's `state` is its own beat and is left alone.
+        const id = str(f.member);
+        const role = str(f.role);
+        const to = str(f.to);
+        if (!id || !role || !to) break;
+        const m = member(id);
+        m.roleStates = {
+          ...m.roleStates,
+          [role]: {
+            state: to,
+            ...(str(f.recipe) ? { recipe: str(f.recipe) } : {}),
+            ...(str(f.reason) ? { reason: str(f.reason) } : {}),
+          },
+        };
+        // The machine drawing finds its live box by role instance id.
+        m.roles = { ...m.roles, [role]: to };
+        if (!m.fromBeat) m.state = bodyLabel(m.roles, m.roleStates);
+        break;
+      }
+      case 'sighted': {
+        // rpg-toolkit encounter sightedbeat.go: `gained` came into view,
+        // `lost` left it. A beat with no `observer` (written before
+        // rpg-project#1001) names nobody's sight: ignored, as before.
+        const id = str(f.observer);
+        if (!id) break;
+        const gained = strings(f.gained);
+        const lost = strings(f.lost);
+        if (gained.length === 0 && lost.length === 0) break;
+        const m = member(id);
+        const sees = new Set(m.sees ?? []);
+        for (const g of gained) sees.add(g);
+        for (const l of lost) sees.delete(l);
+        m.sees = [...sees].sort();
         break;
       }
       default:
@@ -260,10 +325,28 @@ export function foldRun(
   return { members: out, steps: stepsOf(rows, start.self) };
 }
 
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+
+/** The body's label from a decision's roles while no `state` beat has come:
+ * every role but those a `role_state` beat speaks for (they are shown as
+ * their own); undefined when none is left. */
+function bodyLabel(
+  roles: Readonly<Record<string, string>>,
+  others: Readonly<Record<string, RunRoleState>> | undefined
+): string | undefined {
+  if (!others) return rolesLabel(roles);
+  const body = Object.fromEntries(
+    Object.entries(roles).filter(([role]) => !(role in others))
+  );
+  return Object.keys(body).length > 0 ? rolesLabel(body) : undefined;
+}
+
 /** Roles' states in one label: the one state when there is one role,
  * else `role: state` each. */
 function rolesLabel(roles: Readonly<Record<string, string>>): string {
   const entries = Object.entries(roles);
+  if (entries.length === 0) return '';
   if (entries.length === 1) return entries[0]![1];
   return entries.map(([role, state]) => `${role}: ${state}`).join(' · ');
 }
@@ -355,4 +438,97 @@ export function barredOf(
 /** The first row of step `at`: where the step's own beats begin. */
 export function stepStartOf(steps: readonly RunStep[], at: number): number {
   return at > 0 ? (steps[at - 1]?.through ?? 0) : 0;
+}
+
+/** One observer's sight changing (rpg-project#1016): the toolkit's
+ * `sighted` beat (encounter sightedbeat.go), one per observer whose
+ * perception changed in a pass. `gained`: came into its view (first contact
+ * or back in view; the beat does not tell them apart). `lost`: left its
+ * view. `changed`: members it can see whose own state the engine declared
+ * changed (not a change of sight). `knowledge`: its view of doors or
+ * objects changed. The beat names no position and no reason. */
+export interface RunSighting {
+  index: number;
+  observer: string;
+  gained: readonly string[];
+  lost: readonly string[];
+  changed: readonly string[];
+  knowledge: boolean;
+}
+
+/** Every `sighted` beat that names its observer in rows [from, upTo),
+ * oldest first. A beat with no `observer` is left out. */
+export function sightingsOf(
+  rows: readonly RecordRow[],
+  upTo: number = rows.length,
+  from = 0
+): RunSighting[] {
+  const out: RunSighting[] = [];
+  const limit = Math.max(0, Math.min(upTo, rows.length));
+  for (let i = Math.max(0, from); i < limit; i++) {
+    const row = rows[i]!;
+    const f = row.fields;
+    if (row.beat !== 'sighted' || !f) continue;
+    const observer = str(f.observer);
+    if (!observer) continue;
+    out.push({
+      index: i,
+      observer,
+      gained: strings(f.gained),
+      lost: strings(f.lost),
+      changed: strings(f.changed),
+      knowledge: f.knowledge_changed === true,
+    });
+  }
+  return out;
+}
+
+/** Each observer's sight in one step: who came into and who left its view
+ * across rows [from, upTo). A member seen then lost within the step (or
+ * lost then seen) is said both ways, as the record has it. */
+export interface StepSight {
+  observer: string;
+  gained: readonly string[];
+  lost: readonly string[];
+  changed: readonly string[];
+  knowledge: boolean;
+}
+
+export function stepSightOf(
+  rows: readonly RecordRow[],
+  upTo: number = rows.length,
+  from = 0
+): StepSight[] {
+  const by = new Map<
+    string,
+    {
+      gained: Set<string>;
+      lost: Set<string>;
+      changed: Set<string>;
+      knowledge: boolean;
+    }
+  >();
+  for (const s of sightingsOf(rows, upTo, from)) {
+    let g = by.get(s.observer);
+    if (!g) {
+      g = {
+        gained: new Set(),
+        lost: new Set(),
+        changed: new Set(),
+        knowledge: false,
+      };
+      by.set(s.observer, g);
+    }
+    s.gained.forEach((x) => g.gained.add(x));
+    s.lost.forEach((x) => g.lost.add(x));
+    s.changed.forEach((x) => g.changed.add(x));
+    g.knowledge ||= s.knowledge;
+  }
+  return [...by].map(([observer, g]) => ({
+    observer,
+    gained: [...g.gained].sort(),
+    lost: [...g.lost].sort(),
+    changed: [...g.changed].sort(),
+    knowledge: g.knowledge,
+  }));
 }
