@@ -11,6 +11,7 @@ import type { RecordRow } from '@/components/session/recordFeed';
 import { describe, expect, it } from 'vitest';
 import {
   instanceOfKey,
+  sameKind,
   shownTimelineRows,
   stateColour,
   stateSegments,
@@ -220,7 +221,49 @@ describe('timelineOf', () => {
   });
 });
 
+describe('a repeated hold (review on rpg-dnd5e-web#1456)', () => {
+  it('a suppressed repeat hold, inline and unqualified, is the same hold', () => {
+    // The toolkit writes the inline selection from the pick before
+    // `appendPickBeat` qualifies its own copy (behavior_trace.go:112,
+    // clocks.go:817-819): `time` beside the answered `behavior/4:duty/time`.
+    const run = timelineOf(start, [
+      heroMoves('move:h1', 1),
+      answered('quiet', 'hold', '', 'behavior/4:duty/time', 'time:h1'),
+      heroMoves('move:h2', 2),
+      row('time:h2', 'behavior_decision', {
+        member: 'quiet',
+        operation: 'decide',
+        on: 'time',
+        pick_record: '',
+        outcomes: [{ id: 'duty', before: 'ready', after: 'ready' }],
+        selection: {
+          beat: 'answered',
+          creature: 'quiet',
+          word: 'hold',
+          selector: '',
+          key: 'time',
+        },
+      }),
+    ]);
+    const quiet = run.rows.find((r) => r.id === 'quiet')!;
+    expect(quiet.cells[2]!.did?.mark).toBe('hold');
+    expect(quiet.cells[2]!.didChanged).toBe(false);
+    expect(quiet.changed).toBe(false);
+  });
+
+  it('compares roles only where both sides carry one', () => {
+    expect(sameKind('hold (duty)', 'hold')).toBe(true);
+    expect(sameKind('toward at (duty)', 'toward at (investigate)')).toBe(false);
+    expect(sameKind('toward path', 'toward sound')).toBe(false);
+  });
+});
+
 describe('shownTimelineRows', () => {
+  it('keeps the selected creature’s row though it never changed', () => {
+    const ids = shownTimelineRows(timeline, true, 'quiet').map((r) => r.id);
+    expect(ids).toContain('quiet');
+  });
+
   it('only creatures that changed hides the quiet ones, never the party', () => {
     const ids = shownTimelineRows(timeline, true).map((r) => r.id);
     expect(ids).toContain('hero');

@@ -121,6 +121,37 @@ function pickText(pick: Pick): string {
   return parts.join(' · ');
 }
 
+/** `word selector (instance)` → its parts; the instance is '' when absent. */
+function kindParts(kind: string): { base: string; instance: string }[] {
+  return kind.split(' + ').map((part) => {
+    const match = / \(([^()]*)\)$/.exec(part);
+    return match
+      ? { base: part.slice(0, match.index), instance: match[1]! }
+      : { base: part, instance: '' };
+  });
+}
+
+/**
+ * Whether two steps' kinds are the same kind of doing: the same `word
+ * selector` parts, and the same role where BOTH carry one. The toolkit
+ * writes an inline `behavior_decision.selection` from the pick before it is
+ * qualified (behavior_trace.go, `appendPickBeat` qualifies only its own
+ * copy), so a suppressed repeat hold reads `hold` beside the `answered`
+ * `hold (duty)` the step before; that is the same hold, not a change.
+ */
+export function sameKind(a: string, b: string): boolean {
+  const left = kindParts(a);
+  const right = kindParts(b);
+  if (left.length !== right.length) return false;
+  return left.every((part, i) => {
+    const other = right[i]!;
+    if (part.base !== other.base) return false;
+    return (
+      !part.instance || !other.instance || part.instance === other.instance
+    );
+  });
+}
+
 interface Gathered {
   kinds: string[];
   texts: string[];
@@ -287,7 +318,7 @@ export function timelineOf(
         transitioned || (index > 0 && state !== undefined && prior !== state);
       const did = dids[index]!.get(id);
       const didChanged =
-        !!did?.kind && lastKind !== '' && did.kind !== lastKind;
+        !!did?.kind && lastKind !== '' && !sameKind(did.kind, lastKind);
       if (did?.kind) lastKind = did.kind;
       if (didChanged || transitioned || (stateChanged && prior !== undefined))
         changed = true;
@@ -303,10 +334,11 @@ export function timelineOf(
  * when `onlyChanged`). */
 export function shownTimelineRows(
   timeline: RunTimeline,
-  onlyChanged: boolean
+  onlyChanged: boolean,
+  selected: string | null = null
 ): TimelineRow[] {
   return timeline.rows.filter(
-    (row) => row.party || !onlyChanged || row.changed
+    (row) => row.party || !onlyChanged || row.changed || row.id === selected
   );
 }
 

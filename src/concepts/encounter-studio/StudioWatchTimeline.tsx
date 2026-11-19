@@ -72,7 +72,7 @@ export function StudioWatchTimeline({
   const creatures = timeline.rows.filter((r) => !r.party).length;
   const [onlyChanged, setOnlyChanged] = useState<boolean | null>(null);
   const filtering = onlyChanged ?? creatures > TIMELINE_HANDFUL;
-  const rows = shownTimelineRows(timeline, filtering);
+  const rows = shownTimelineRows(timeline, filtering, selected);
   const last = timeline.steps.length - 1;
   const at = step ?? last;
   const agedOut =

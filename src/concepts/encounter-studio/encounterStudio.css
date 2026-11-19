@@ -2442,7 +2442,7 @@
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.4rem 0.6rem;
-  background: #101923;
+  background: var(--wb-bg);
   border-top: 1px solid var(--wb-border);
   min-width: 0;
 }
@@ -2483,7 +2483,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: #101923;
+  background: var(--wb-bg);
   border-right: 1px solid var(--wb-border);
 }
 .es-timeline-track {
