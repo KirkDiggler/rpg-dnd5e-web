@@ -7,7 +7,7 @@ import type { RecordFeedSnapshot } from '@/components/session/recordFeed';
 import { useSessionRecordStream } from '@/components/session/useSessionRecordStream';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useMemo, useState } from 'react';
-import type { RoomDraft } from '../world-building/roomDraft';
+import type { RoomHexCell } from '../world-building/workspaceGeometry';
 import { layoutMachine, type MachineLayout } from './machineLayout';
 import { machineOf } from './machineView';
 import { foldRun, stepStartOf, type RunMember, type RunView } from './runView';
@@ -49,15 +49,31 @@ export interface RunWatch {
   setSelected(id: string | null): void;
 }
 
-/** The record of the watched run, folded at the chosen step. */
+/** Where a run's creatures and party begin: the open draft's, or a saved
+ * run's snapshot (rpg-project#1013). A `RoomDraft` is one. */
+export interface RunDraft {
+  room: {
+    monsterDeclarations: readonly {
+      id: string;
+      startingCell: { location: RoomHexCell };
+    }[];
+    partyStart?: RoomHexCell;
+  };
+}
+
+/** The record of the watched run, folded at the chosen step. The watch
+ * holds the WHOLE run from its first beat (rpg-project#1013), its own copy
+ * beside the game trace panel's ring, so Back reaches the start and no
+ * creature falls back to its starting cell in a long run. */
 export function useRunWatch(
   watch: WatchedRun | null,
-  draft: Readonly<RoomDraft>
+  draft: Readonly<RunDraft>
 ): RunWatch {
   const feed = useSessionRecordStream(
     watch?.session ?? '',
     watch?.member ?? '',
-    watch !== null
+    watch !== null,
+    Infinity
   );
   return useRunFold(watch, draft, feed);
 }
@@ -65,7 +81,7 @@ export function useRunWatch(
 /** The fold and the step and selection state, over any feed. */
 export function useRunFold(
   watch: WatchedRun | null,
-  draft: Readonly<RoomDraft>,
+  draft: Readonly<RunDraft>,
   feed: RecordFeedSnapshot
 ): RunWatch {
   /** The chosen step BY THE RECORD'S OWN ACT ID ('' is the start), never

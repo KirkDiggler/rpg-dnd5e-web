@@ -25,6 +25,12 @@
  * the character is not left seated. Play in the game and the game's Back
  * to the studio do not: the run is still being played.
  *
+ * SAVE A RUN, OPEN IT AGAIN (#1013): "Save this run" reads the whole
+ * record from the server and downloads it with a snapshot of the draft
+ * (`savedRun.ts`); Stop watching offers to save first, since the record
+ * cannot be read once the seat has left. A saved run opens into this same
+ * panel READ-ONLY (`replay`): no Live, no stepping, no Play in the game.
+ *
  * DEV MODE ONLY: the record is the diagnostic stream the server serves only
  * in development. Elsewhere the control is disabled and says why.
  */
@@ -60,6 +66,8 @@ export function StudioWatch({
   onPlayInGame,
   width = null,
   onResize,
+  save,
+  replay,
 }: {
   watch: WatchedRun;
   run: RunWatch;
@@ -82,6 +90,11 @@ export function StudioWatch({
   width?: number | null;
   /** The viewer resized the panel; null returns it to the default. */
   onResize?: (width: number | null) => void;
+  /** Save this run (#1013); absent offers none. */
+  save?: WatchSave;
+  /** A saved run, opened read-only (#1013): the panel draws it with no
+   * Live, no stepping and no way into the game. */
+  replay?: WatchReplay;
 }): React.JSX.Element {
   const { view, step, setStep, feed, upTo, selected } = run;
   const steps = view.steps;
@@ -102,7 +115,18 @@ export function StudioWatch({
   const shownStep = steps[at];
   /** A step's refusal belongs to the Live step: stepped back in history,
    * the panel shows that step's record only. */
-  const live = step === null ? stepping : undefined;
+  const live = step === null && !replay ? stepping : undefined;
+  /** Stop watching asked to save first: the inline choice is open. */
+  const [stopChoice, setStopChoice] = useState(false);
+  const pressStop = (): void => {
+    if (save?.unsaved) setStopChoice(true);
+    else onStop();
+  };
+  const saveAndStop = async (): Promise<void> => {
+    if (!save || !(await save.onSave())) return;
+    setStopChoice(false);
+    onStop();
+  };
   /** Every line said up to the shown step, newest last, from every speaker
    * the record has. */
   const said = useMemo(() => speechOf(feed.rows, upTo), [feed.rows, upTo]);
@@ -122,7 +146,7 @@ export function StudioWatch({
       behavior: 'smooth',
     });
   }, [member?.id]);
-  const stepLine = `${step === null ? 'Live · ' : ''}${
+  const stepLine = `${step === null && !replay ? 'Live · ' : ''}${
     at === 0 || !shownStep
       ? 'the start'
       : `step ${at} of ${last}: ${shownStep.verb} by ${names?.get(shownStep.actor) ?? shownStep.actor} · r${String(shownStep.at)}`
@@ -139,13 +163,15 @@ export function StudioWatch({
       >
         Forward
       </button>
-      <button
-        type="button"
-        aria-pressed={step === null}
-        onClick={() => setStep(null)}
-      >
-        Live
-      </button>
+      {!replay && (
+        <button
+          type="button"
+          aria-pressed={step === null}
+          onClick={() => setStep(null)}
+        >
+          Live
+        </button>
+      )}
       <span role="status" className="es-help" data-testid={testId}>
         {stepLine}
       </span>
@@ -161,44 +187,143 @@ export function StudioWatch({
     >
       {onResize && <WatchResize width={width} onResize={onResize} />}
       <div className="es-watch-fixed">
-        <header className="es-watch-header">
-          <h3>Watching a run · {seatName}</h3>
-          <div className="es-buttons">
-            {onPlayInGame && (
-              <button type="button" onClick={onPlayInGame}>
-                Play in the game
+        {replay ? (
+          <header className="es-watch-header" data-testid="watch-replay">
+            <h3>
+              Saved run · {replay.name} · saved {replay.savedAt}
+            </h3>
+            <div className="es-buttons">
+              <button type="button" onClick={replay.onClose}>
+                Close
               </button>
-            )}
-            <button type="button" disabled={stopping} onClick={onStop}>
-              {stopping ? 'Leaving the run…' : 'Stop watching'}
-            </button>
-            {stopRefusal && onStopAnyway && (
-              <button type="button" onClick={onStopAnyway}>
-                Stop watching anyway
-              </button>
-            )}
-          </div>
-          {stopRefusal && (
-            <p role="alert" className="es-warning">
-              {stopRefusal}
-              {onStopAnyway &&
-                ' Stop watching anyway keeps the run open, and its character stays seated in it.'}
-            </p>
-          )}
-          <p className="es-help">
-            {stepping
-              ? 'At Live, click a marked hex beside your character to step.'
-              : 'Move in the game, then press Back to the studio there.'}
-          </p>
-          <details className="es-watch-section" data-testid="watch-run-details">
-            <summary>Run details</summary>
+            </div>
+            {replay.notes.map((note, i) => (
+              <p
+                key={i}
+                className="es-warning"
+                role="status"
+                data-testid="watch-replay-note"
+              >
+                {note}
+              </p>
+            ))}
             <p className="es-help">
-              Run <code>{watch.session}</code> · seat{' '}
-              <code>{watch.member}</code>. The engine runs it; this map draws
-              its record.
+              A saved run of {seatName}: Back and Forward walk it. Nothing here
+              reaches the server.
             </p>
-          </details>
-        </header>
+          </header>
+        ) : (
+          <header className="es-watch-header">
+            <h3>Watching a run · {seatName}</h3>
+            <div className="es-buttons">
+              {onPlayInGame && (
+                <button type="button" onClick={onPlayInGame}>
+                  Play in the game
+                </button>
+              )}
+              {save && (
+                <button
+                  type="button"
+                  disabled={save.saving}
+                  onClick={() => void save.onSave()}
+                  title="Download the whole run, and what is needed to draw it, as one file"
+                >
+                  {save.saving ? 'Saving…' : 'Save this run'}
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={stopping || stopChoice}
+                onClick={pressStop}
+              >
+                {stopping ? 'Leaving the run…' : 'Stop watching'}
+              </button>
+              {stopRefusal && onStopAnyway && (
+                <button type="button" onClick={onStopAnyway}>
+                  Stop watching anyway
+                </button>
+              )}
+            </div>
+            {stopChoice && save && (
+              <div
+                className="es-buttons"
+                role="group"
+                aria-label="Save before you stop?"
+                data-testid="watch-stop-choice"
+              >
+                <span className="es-help">
+                  This run has beats you have not saved; once the seat leaves,
+                  the record cannot be read.
+                </span>
+                <button
+                  type="button"
+                  disabled={save.saving}
+                  onClick={() => void saveAndStop()}
+                >
+                  Save and stop
+                </button>
+                <button
+                  type="button"
+                  disabled={save.saving}
+                  onClick={() => {
+                    setStopChoice(false);
+                    onStop();
+                  }}
+                >
+                  Stop without saving
+                </button>
+                <button
+                  type="button"
+                  disabled={save.saving}
+                  onClick={() => setStopChoice(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {save?.error && (
+              <p
+                role="alert"
+                className="es-warning"
+                data-testid="watch-save-error"
+              >
+                {save.error}
+              </p>
+            )}
+            {save?.notice && (
+              <p
+                role="status"
+                className="es-warning"
+                data-testid="watch-save-notice"
+              >
+                {save.notice}
+              </p>
+            )}
+            {stopRefusal && (
+              <p role="alert" className="es-warning">
+                {stopRefusal}
+                {onStopAnyway &&
+                  ' Stop watching anyway keeps the run open, and its character stays seated in it.'}
+              </p>
+            )}
+            <p className="es-help">
+              {stepping
+                ? 'At Live, click a marked hex beside your character to step.'
+                : 'Move in the game, then press Back to the studio there.'}
+            </p>
+            <details
+              className="es-watch-section"
+              data-testid="watch-run-details"
+            >
+              <summary>Run details</summary>
+              <p className="es-help">
+                Run <code>{watch.session}</code> · seat{' '}
+                <code>{watch.member}</code>. The engine runs it; this map draws
+                its record.
+              </p>
+            </details>
+          </header>
+        )}
         {stepControls('watch-step')}
         <section
           className="es-watch-this-step"
@@ -268,7 +393,9 @@ export function StudioWatch({
         {!member ? (
           <p className="es-help">
             {feed.rows.length === 0
-              ? 'No record beats yet. Play in the game to start the clock.'
+              ? replay
+                ? 'This saved run holds no beats.'
+                : 'No record beats yet. Play in the game to start the clock.'
               : 'Select a creature on the map to see its machine and why it changed.'}
           </p>
         ) : (
@@ -367,6 +494,31 @@ export function StudioWatch({
       )}
     </aside>
   );
+}
+
+/** Save this run, as the workspace offers it. */
+export interface WatchSave {
+  /** Reads the whole record and downloads it; false when it could not. */
+  onSave(): Promise<boolean>;
+  saving: boolean;
+  /** The last save's failure, as a sentence. */
+  error: string | null;
+  /** The last save wrote a file that does not hold the whole run. */
+  notice?: string | null;
+  /** The run has beats since it was last saved. */
+  unsaved: boolean;
+}
+
+/** A saved run, opened read-only. */
+export interface WatchReplay {
+  /** The file's name. */
+  name: string;
+  /** When it was saved, in words. */
+  savedAt: string;
+  /** What the operator must know before trusting the drawing: the draft
+   * differs, or the file carried no snapshot. */
+  notes: string[];
+  onClose(): void;
 }
 
 /** A machine drawing as wide as the panel allows: its own size when it

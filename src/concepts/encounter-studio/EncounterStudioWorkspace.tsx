@@ -133,6 +133,7 @@ import { StudioWatchTimeline } from './StudioWatchTimeline';
 import type { ThreadHub } from './threadHubs';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
+import { useSavedRunReplay, useWatchSave } from './useSavedRun';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
@@ -1000,6 +1001,7 @@ function StudioSurface({
   }, [launchFailure]);
   enterWatch.current = (run) => {
     relaunched.current = false;
+    closeSavedRun.current();
     const started = { ...run, room: session.document.draft.id };
     setWatch(started);
     onWatchStarted?.(started);
@@ -1008,6 +1010,8 @@ function StudioSurface({
     if (view !== 'layout') switchView('layout');
   };
   const run = useRunWatch(watch, session.document.draft);
+  /** A watch that starts closes an open saved run. */
+  const closeSavedRun = useRef<() => void>(() => {});
   /** One step from the Layout (rpg-project#1006): offered at the live step
    * only, from the seat's cell as the record last put it. */
   const studioStep = useStudioStep(watch, run.view.steps.length);
@@ -1066,10 +1070,62 @@ function StudioSurface({
     if (watch && seatName) names.set(watch.member, seatName);
     return names;
   }, [placementNames, watch, seatName]);
+  /** Save this run (rpg-project#1013): the whole record and the draft's
+   * snapshot, as one file. */
+  const watchSave = useWatchSave({
+    watch,
+    lastBeat: run.feed.rows[run.feed.rows.length - 1]?.id ?? '',
+    seatName,
+    draft: session.document.draft,
+    names: placementNames,
+    readBack: readBack.readBack,
+    dungeonKey: publishing.key,
+  });
+  /** Open a saved run (rpg-project#1013): read-only, through the watch's
+   * own fold, drawn from the file's snapshot. While one is open the map,
+   * the panel and the timeline show it instead of a watch. */
+  const savedRun = useSavedRunReplay({
+    draft: session.document.draft,
+    dungeonKey: publishing.key,
+    names: watchNames,
+    readBack: readBack.readBack,
+  });
+  const replaying = savedRun.watch !== null && watch === null;
+  const shownWatch = replaying ? savedRun.watch : watch;
+  const shownRun = replaying ? savedRun.run : run;
+  const shownNames = replaying ? savedRun.names : watchNames;
+  const savedRunInput = useRef<HTMLInputElement>(null);
+  /** Where the studio was before a saved run opened: Close goes back. */
+  const beforeReplay = useRef<{
+    home: StudioHome;
+    view: EncounterStudioView;
+    siteOperation: typeof siteOperation;
+    sidebarOpen: boolean;
+  } | null>(null);
+  /** A watch that starts takes the canvas; nothing to go back to. */
+  closeSavedRun.current = () => {
+    beforeReplay.current = null;
+    savedRun.close();
+  };
+  const closeReplay = (): void => {
+    const before = beforeReplay.current;
+    beforeReplay.current = null;
+    savedRun.close();
+    if (!before) return;
+    if (before.home !== home) changeHome(before.home);
+    if (before.view !== view) switchView(before.view);
+    setSiteOperation(before.siteOperation);
+    setSidebarOpen(before.sidebarOpen);
+  };
+  const replayPanel = savedRun.panel && {
+    ...savedRun.panel,
+    onClose: closeReplay,
+  };
   /** What each member said in the shown step: the speech marks. */
   const saidThisStep = useMemo(
-    () => saidInStep(run.feed.rows, run.from, run.upTo, watchNames),
-    [run.feed.rows, run.from, run.upTo, watchNames]
+    () =>
+      saidInStep(shownRun.feed.rows, shownRun.from, shownRun.upTo, shownNames),
+    [shownRun.feed.rows, shownRun.from, shownRun.upTo, shownNames]
   );
   /** A refusal's noun, in words, for its jump button. */
   const refusalNounName = (target: RefusalTarget): string => {
@@ -1404,6 +1460,48 @@ function StudioSurface({
           {watchReason && (
             <span id="studio-watch-reason" className="es-help">
               {watchReason}
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={watch !== null}
+            title={
+              watch
+                ? 'Stop watching first'
+                : 'Open a run saved from the watch, and walk it on the Layout'
+            }
+            onClick={() => savedRunInput.current?.click()}
+          >
+            Open a saved run
+          </button>
+          <input
+            ref={savedRunInput}
+            type="file"
+            accept=".jsonl,.json,.ndjson,text/plain,application/json"
+            hidden
+            data-testid="studio-open-saved-run"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (!file) return;
+              const before = beforeReplay.current ?? {
+                home,
+                view,
+                siteOperation,
+                sidebarOpen,
+              };
+              void savedRun.open(file).then((opened) => {
+                if (!opened) return;
+                beforeReplay.current = before;
+                setSiteOperation(null);
+                if (home === 'encounter') changeHome('build');
+                if (view !== 'layout') switchView('layout');
+              });
+            }}
+          />
+          {savedRun.error && (
+            <span role="alert" className="es-warning">
+              {savedRun.error}
             </span>
           )}
         </div>
@@ -1958,10 +2056,10 @@ function StudioSurface({
               <div className="es-layout-main">
                 <div
                   className={
-                    watch ? 'es-canvas es-canvas-watching' : 'es-canvas'
+                    shownWatch ? 'es-canvas es-canvas-watching' : 'es-canvas'
                   }
                   style={
-                    watch && watchWidth !== null
+                    shownWatch && watchWidth !== null
                       ? ({
                           '--es-watch-width': `${watchWidth}px`,
                         } as React.CSSProperties)
@@ -1970,7 +2068,7 @@ function StudioSurface({
                 >
                   <LayoutViewport
                     draft={session.document.draft}
-                    tool={watch ? 'select' : layoutTool}
+                    tool={shownWatch ? 'select' : layoutTool}
                     groundCatalog={groundCatalog}
                     groundBrush={groundBrush}
                     frame={frame}
@@ -2003,18 +2101,22 @@ function StudioSurface({
                       placesView.clearJoin();
                       void session.clearSelection();
                     }}
-                    placedEditing={watch ? undefined : placedEditing}
+                    placedEditing={shownWatch ? undefined : placedEditing}
                     watching={
-                      watch
+                      shownWatch
                         ? {
-                            members: Object.values(run.view.members),
-                            names: watchNames,
-                            selectedId: run.selected,
-                            onSelect: run.setSelected,
-                            steps: layoutSteps,
+                            members: Object.values(shownRun.view.members),
+                            names: shownNames,
+                            selectedId: shownRun.selected,
+                            onSelect: shownRun.setSelected,
+                            // A saved run is read-only: no step.
+                            steps: replaying ? undefined : layoutSteps,
                             said: saidThisStep,
                             // A refusal belongs to the Live step.
-                            tried: run.step === null ? studioStep.tried : null,
+                            tried:
+                              !replaying && run.step === null
+                                ? studioStep.tried
+                                : null,
                           }
                         : undefined
                     }
@@ -2042,6 +2144,7 @@ function StudioSurface({
                       width={watchWidth}
                       onResize={resizeWatch}
                       onStop={() => void stopWatching()}
+                      save={watchSave}
                       stopping={watchLeave.leaving}
                       stopRefusal={watchLeave.refusal}
                       onStopAnyway={endWatch}
@@ -2052,6 +2155,18 @@ function StudioSurface({
                       }
                     />
                   )}
+                  {replaying && savedRun.watch && (
+                    <StudioWatch
+                      watch={savedRun.watch}
+                      run={savedRun.run}
+                      readBack={savedRun.readBack}
+                      names={savedRun.names}
+                      width={watchWidth}
+                      onResize={resizeWatch}
+                      onStop={closeReplay}
+                      replay={replayPanel}
+                    />
+                  )}
                 </div>
                 {watch && (
                   <StudioWatchTimeline
@@ -2060,6 +2175,14 @@ function StudioSurface({
                     draft={session.document.draft}
                     names={watchNames}
                     refusal={studioStep.refusal}
+                  />
+                )}
+                {replaying && savedRun.watch && (
+                  <StudioWatchTimeline
+                    watch={savedRun.watch}
+                    run={savedRun.run}
+                    draft={savedRun.draft}
+                    names={savedRun.names}
                   />
                 )}
                 <LayoutFooter draft={session.document.draft} />
