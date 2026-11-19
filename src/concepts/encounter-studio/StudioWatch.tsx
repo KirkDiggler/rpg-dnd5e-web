@@ -20,6 +20,11 @@
  * the seat are steps (`useStudioStep`, the game's own Move). A refused or
  * stopped step's sentence shows here; a fight sends moves to the game.
  *
+ * ENDING A WATCH LEAVES THE RUN (#1008): Stop watching, a second Watch a
+ * run, and leaving the studio Exit the watched run (`watchLeave.ts`), so
+ * the character is not left seated. Play in the game and the game's Back
+ * to the studio do not: the run is still being played.
+ *
  * DEV MODE ONLY: the record is the diagnostic stream the server serves only
  * in development. Elsewhere the control is disabled and says why.
  */
@@ -47,6 +52,9 @@ export function StudioWatch({
   readBack,
   names,
   onStop,
+  stopping = false,
+  stopRefusal = null,
+  onStopAnyway,
   onPlayInGame,
   width = null,
   onResize,
@@ -57,7 +65,14 @@ export function StudioWatch({
   stepping?: Pick<StudioStep, 'busy' | 'refusal' | 'fight'>;
   readBack: ReadBack | null;
   names?: ReadonlyMap<string, string>;
+  /** Leaves the run, then stops watching (rpg-project#1008). */
   onStop(): void;
+  /** The leave is in flight. */
+  stopping?: boolean;
+  /** The leave was refused, in the server's words. */
+  stopRefusal?: string | null;
+  /** Stops watching without leaving: the run stays open. */
+  onStopAnyway?: () => void;
   /** Routes this tab to the game on the watched run; absent when the
    * studio has no route into the game. */
   onPlayInGame?: () => void;
@@ -112,10 +127,22 @@ export function StudioWatch({
                 Play in the game
               </button>
             )}
-            <button type="button" onClick={onStop}>
-              Stop watching
+            <button type="button" disabled={stopping} onClick={onStop}>
+              {stopping ? 'Leaving the run…' : 'Stop watching'}
             </button>
+            {stopRefusal && onStopAnyway && (
+              <button type="button" onClick={onStopAnyway}>
+                Stop watching anyway
+              </button>
+            )}
           </div>
+          {stopRefusal && (
+            <p role="alert" className="es-warning">
+              {stopRefusal}
+              {onStopAnyway &&
+                ' Stop watching anyway keeps the run open, and its character stays seated in it.'}
+            </p>
+          )}
           <p className="es-help">
             {stepping
               ? 'At Live, click a marked hex beside your character to step.'

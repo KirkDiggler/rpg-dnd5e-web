@@ -92,6 +92,9 @@ export interface StudioPublishProps {
   onKeyFocused?(): void;
   copy?: boolean;
   copySourceKey?: string | null;
+  /** The launch's refusal is answered elsewhere (the seat notice, #1008),
+   * so its raw sentence is not repeated here. */
+  launchErrorShownElsewhere?: boolean;
 }
 
 /** The panel the header's Save & Play opens, under the header beside the
@@ -109,6 +112,7 @@ export function StudioPublish({
   onKeyFocused,
   copy = false,
   copySourceKey = null,
+  launchErrorShownElsewhere = false,
 }: StudioPublishProps): React.JSX.Element {
   const {
     key,
@@ -276,7 +280,7 @@ export function StudioPublish({
           {saveFailed}
         </p>
       )}
-      {launch.error && (
+      {launch.error && !launchErrorShownElsewhere && (
         <p role="alert" className="es-warning">
           {launch.error}
         </p>
