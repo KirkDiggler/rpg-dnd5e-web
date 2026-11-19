@@ -293,7 +293,7 @@ describe('Open a saved run (rpg-project#1013)', () => {
     );
     act(() => void result.current.openText('run.jsonl', SAVED_TEXT));
     expect(result.current.panel?.notes).toEqual([
-      'This run carries no encounter identity (it was recorded before runs named their encounter). Its snapshot matches the open draft.',
+      'This run carries no encounter identity (it was recorded before runs named their encounter). By its snapshot, the encounter looks the same.',
     ]);
   });
 
@@ -395,7 +395,7 @@ describe('Open a saved run (rpg-project#1013)', () => {
     );
     act(() => void result.current.openText('run.jsonl', SAVED_TEXT));
     expect(result.current.panel?.notes.join(' ')).toContain(
-      'This run was saved from The mad king'
+      'this run was saved from The mad king'
     );
   });
 

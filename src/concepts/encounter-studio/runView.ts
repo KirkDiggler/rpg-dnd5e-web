@@ -22,10 +22,17 @@
  * one per member seated at setup, written right after `scene_content`, and
  * one right after each later `joined`, so a late joiner appears when it
  * joins. Its `cell` is the same canvas `spatial.Position` a `moved` beat's
- * `position` is. A member the record writes no `joined_at` for (a run from
- * an engine before the beat, or a capture that starts mid-run) begins where
- * the draft (or a saved run's snapshot) placed it, as before: a creature at
- * its `startingCell`, the party at the party start.
+ * `position` is. A reserve enters through `arrived` {id, kind, cell}
+ * (reserve.go `appendArrivedBeat`), with no `joined_at`.
+ *
+ * A record that carries `scene_content` comes from an engine that writes
+ * `joined_at` (the beat is written first, before every setup `joined_at`),
+ * so the RECORD places everyone: a member is on the map only from its
+ * `joined_at` or `arrived`, and a reserve or a joiner not yet arrived is not
+ * drawn at all. Only a record with no `scene_content` (an older engine, or a
+ * capture that starts mid-run) begins each member the record does not place
+ * where the draft (or a saved run's snapshot) placed it, as before: a
+ * creature at its `startingCell`, the party at the party start.
  *
  * ONE CELL CONVERSION (`studioCellOf`): the record's `{x, y}` is the
  * dungeon-absolute axial cell (the toolkit's `HexCellAt` output; the
@@ -194,6 +201,9 @@ export function foldRun(
   /** Members the record itself places (`joined_at`, anywhere in the run):
    * none of them takes the draft's cell; each appears at its own beat. */
   const placed = placedByRecord(rows);
+  /** A record with `scene_content` places everyone: no draft cell at all. */
+  const recordPlaces = rows.some((row) => row.beat === 'scene_content');
+  const fromDraft = (id: string): boolean => !recordPlaces && !placed.has(id);
   /** `fromBeat`: the state came from a `state` beat, which a later
    * decision's roles never overwrite. */
   type Folding = RunMember & { fromBeat?: boolean };
@@ -204,7 +214,7 @@ export function foldRun(
       m = {
         id,
         cell:
-          party.has(id) && start.partyStart && !placed.has(id)
+          party.has(id) && start.partyStart && fromDraft(id)
             ? { ...start.partyStart }
             : null,
         party: party.has(id),
@@ -215,7 +225,7 @@ export function foldRun(
     return m;
   };
   for (const creature of start.creatures) {
-    if (placed.has(creature.id)) continue;
+    if (!fromDraft(creature.id)) continue;
     members.set(creature.id, {
       id: creature.id,
       cell: { ...creature.cell },

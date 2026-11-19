@@ -82,11 +82,15 @@ export interface OpenEncounter {
   /** The server's `content_hash` of the open text; null when there is none
    * (the text does not compile, or has not been checked yet). */
   contentHash: string | null;
+  /** A check of the current text is in flight: `contentHash` (if any) is
+   * an older text's and is not compared. */
+  checking?: boolean;
 }
 
 /** What the comparison could rely on from the server. */
 export interface ServerSide {
-  /** The server's encounter release; null when it is not known. */
+  /** The server's encounter release, confirmed for the comparison at hand;
+   * null when it is not (yet) known. */
   engine: string | null;
   /** The server could not be reached (the check or the engine's words). */
   unreachable: boolean;
@@ -113,16 +117,22 @@ export function compareRun(
   server: ServerSide
 ): RunComparison {
   if (!identity || !identity.contentHash) return { kind: 'no-identity' };
+  // The key is part of the hash: a run that names no key, or an open
+  // encounter with none, cannot be compared (fail closed).
+  if (!identity.key)
+    return { kind: 'not-compared', why: 'the run’s record names no key' };
+  if (!open.key)
+    return { kind: 'not-compared', why: 'the open encounter has no key' };
   // The key is the record's own fact, not a hash: another key is said as
   // that whatever the engine.
-  if (identity.key && open.key && identity.key !== open.key)
+  if (identity.key !== open.key)
     return { kind: 'other-key', key: identity.key };
   if (server.unreachable)
     return { kind: 'not-compared', why: 'the server could not be reached' };
   if (server.engine === null)
     return {
       kind: 'not-compared',
-      why: 'the server has not said its engine release',
+      why: 'the server’s engine release is not confirmed yet',
     };
   if (!identity.engine || identity.engine !== server.engine)
     return {
@@ -130,8 +140,11 @@ export function compareRun(
       engine: identity.engine,
       server: server.engine,
     };
-  if (!open.key)
-    return { kind: 'not-compared', why: 'the open encounter has no key' };
+  if (open.checking)
+    return {
+      kind: 'not-compared',
+      why: 'the open encounter is being checked',
+    };
   if (open.contentHash === null)
     return {
       kind: 'not-compared',
@@ -144,11 +157,17 @@ export function compareRun(
 
 /** Whether the comparison leaves the saved snapshot to say what changed. */
 export function fallsBackToSnapshot(c: RunComparison): boolean {
-  return c.kind === 'no-identity' || c.kind === 'not-compared';
+  return (
+    c.kind === 'no-identity' ||
+    c.kind === 'not-compared' ||
+    c.kind === 'other-engine'
+  );
 }
 
 /** The comparison as one plain line. `fallback` is the snapshot
- * comparison's own sentence, for the cases that fall back to it. */
+ * comparison's own sentence (a saved run's), for the cases that fall back
+ * to it: no identity, not compared, and another engine (engine releases
+ * land daily, so most saved runs meet that one). */
 export function comparisonLine(c: RunComparison, fallback?: string): string {
   const then = fallback ? ` ${fallback}` : '';
   switch (c.kind) {
@@ -159,7 +178,7 @@ export function comparisonLine(c: RunComparison, fallback?: string): string {
     case 'other-key':
       return `This run was saved from ${c.key}, not the open encounter.`;
     case 'other-engine':
-      return `This run was saved under another engine version (${c.engine || 'unknown'}; the server runs ${c.server}), so whether the encounter changed since cannot be said.`;
+      return `This run was saved under engine ${c.engine || 'unknown'} (the server runs ${c.server}), so its content hash cannot be compared.${then}`;
     case 'no-identity':
       return `This run carries no encounter identity (it was recorded before runs named their encounter).${then}`;
     case 'not-compared':

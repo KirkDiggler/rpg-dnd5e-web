@@ -282,16 +282,6 @@ describe('a repeated hold (review on rpg-dnd5e-web#1456)', () => {
     expect(other.cells[2]!.didChanged).toBe(true);
   });
 
-  it('an OLD saved run still needs the one-sided role match: its inline kind is unqualified', () => {
-    // Why the workaround stays (rpg-project#1017): files saved before item
-    // 11 carry `hold` beside `hold (duty)`; a strict comparison would mark
-    // a change at every suppressed repeat hold of an old run.
-    const answeredKind: string = 'hold (duty)';
-    const inlineKind: string = 'hold';
-    expect(answeredKind === inlineKind).toBe(false);
-    expect(sameKind(answeredKind, inlineKind)).toBe(true);
-  });
-
   it('compares roles only where both sides carry one', () => {
     expect(sameKind('hold (duty)', 'hold')).toBe(true);
     expect(sameKind('toward at (duty)', 'toward at (investigate)')).toBe(false);

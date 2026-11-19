@@ -1099,13 +1099,21 @@ function StudioSurface({
     publishing.preview.status === 'errors'
       ? null
       : (publishing.preview.contentHash ?? null);
+  /** While a check is in flight the hash held is the previous text's: it
+   * is not compared until the current text's answer arrives. */
+  const previewChecking = publishing.preview.status === 'validating';
   const openEncounter = useMemo(
-    () => ({ key: publishing.key.trim(), contentHash: previewHash }),
-    [publishing.key, previewHash]
+    () => ({
+      key: publishing.key.trim(),
+      contentHash: previewHash,
+      checking: previewChecking,
+    }),
+    [publishing.key, previewHash, previewChecking]
   );
   const openUnreachable = publishing.preview.status === 'unreachable';
   const watchIdentity = useWatchIdentity({
     rows: run.feed.rows,
+    session: watch ? `${watch.session}/${watch.member}` : '',
     watching: watch !== null,
     open: openEncounter,
     openUnreachable,

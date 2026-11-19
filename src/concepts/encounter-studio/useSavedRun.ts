@@ -153,9 +153,34 @@ export function useWatchSave(input: WatchSaveInput): WatchSave | undefined {
   };
 }
 
+/** Saved runs opened in this page, so each opening asks afresh. */
+let opens = 0;
+
+/** What the engine release is asked for: the run shown, the open key and
+ * hash, and whether the server answered the last check. A change of any
+ * asks again: each new hash is confirmed against the engine that serves
+ * now, and a reconnect flips the last one back. */
+function engineAsk(
+  run: string,
+  open: OpenEncounter | undefined,
+  unreachable: boolean | undefined
+): string {
+  return [
+    run,
+    open?.key ?? '',
+    open?.contentHash ?? '',
+    unreachable ? 'unreachable' : '',
+  ].join('\u0000');
+}
+
 const EMPTY: RecordFeedSnapshot = { rows: [], notice: undefined };
 
-export const SNAPSHOT_MATCHES_NOTE = 'Its snapshot matches the open draft.';
+export const SNAPSHOT_MATCHES_NOTE =
+  'By its snapshot, the encounter looks the same.';
+
+/** Said whenever a saved run is not of the open encounter as it is now. */
+export const DRAWN_AS_SAVED_NOTE =
+  'The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.';
 
 export const NO_SNAPSHOT_NOTE =
   'This file has no snapshot (a server capture): where the creatures start, their names and their machines come from the open draft.';
@@ -187,10 +212,10 @@ export function snapshotLine(
     name: draft.name,
   });
   if (elsewhere !== null)
-    return `This run was saved from ${elsewhere}, not the open encounter (${draft.name}). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.`;
+    return `By its snapshot, this run was saved from ${elsewhere}, not the open encounter (${draft.name}).`;
   const differs = draftDiffersFrom(header.snapshot, draft, readBack);
   return differs.length
-    ? `The encounter has changed since this run was saved (${differs.join(', ')}). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.`
+    ? `By its snapshot, the encounter has changed since this run was saved (${differs.join(', ')}).`
     : null;
 }
 
@@ -276,9 +301,13 @@ export function useSavedRunReplay(input: {
     () => (opened ? (runIdentityOf(feed.rows) ?? header?.run ?? null) : null),
     [opened, feed.rows, header]
   );
+  /** Each opening is its own ask: the engine release is confirmed afresh
+   * for it, and again whenever the open hash or reachability changes. */
+  const openId = useMemo(() => (opened ? String(++opens) : ''), [opened]);
   const server = useEngineVersion({
     client: input.engineClient,
     enabled: !!identity?.contentHash,
+    ask: engineAsk(openId, input.open, input.openUnreachable),
   });
   const comparison = useMemo<RunComparison | null>(
     () =>
@@ -316,13 +345,17 @@ export function useSavedRunReplay(input: {
     const fallback = fallsBackToSnapshot(comparison)
       ? snapshotLine(header, input.draft, input.dungeonKey, input.readBack)
       : undefined;
-    return [
-      ...notes,
-      comparisonLine(
-        comparison,
-        fallback === undefined ? undefined : (fallback ?? SNAPSHOT_MATCHES_NOTE)
-      ),
-    ];
+    // Not the open encounter as it is now, by its hash or its snapshot:
+    // the drawing is the saved one, on the open draft's map.
+    const differs =
+      comparison.kind === 'changed' ||
+      comparison.kind === 'other-key' ||
+      (fallback !== undefined && fallback !== null);
+    const line = comparisonLine(
+      comparison,
+      fallback === undefined ? undefined : (fallback ?? SNAPSHOT_MATCHES_NOTE)
+    );
+    return [...notes, differs ? `${line} ${DRAWN_AS_SAVED_NOTE}` : line];
   }, [
     opened,
     header,
@@ -364,6 +397,8 @@ export function useSavedRunReplay(input: {
  * has no snapshot to fall back to: the draft is what it was started from. */
 export function useWatchIdentity(input: {
   rows: RecordFeedSnapshot['rows'];
+  /** The watched run (session and seat): a new watch asks again. */
+  session?: string;
   watching: boolean;
   open: OpenEncounter;
   openUnreachable?: boolean;
@@ -377,6 +412,7 @@ export function useWatchIdentity(input: {
   const server = useEngineVersion({
     client: input.engineClient,
     enabled: !!identity?.contentHash,
+    ask: engineAsk(input.session ?? '', open, openUnreachable),
   });
   return useMemo(() => {
     if (!watching) return undefined;

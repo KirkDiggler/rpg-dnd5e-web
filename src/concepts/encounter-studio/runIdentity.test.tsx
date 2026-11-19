@@ -101,11 +101,9 @@ describe('start cells from the record (joined_at)', () => {
     expect(view.members.hero?.cell).toEqual(studioCellOf({ x: 0, y: 3 }));
   });
 
-  it('a member with no joined_at begins at the draft cell, as before', () => {
-    expect(foldRun(start, rows, 4).members.east?.cell).toEqual({
-      q: 5,
-      r: 5,
-    });
+  it('a record with scene_content places everyone: a draft creature it never places is not drawn', () => {
+    expect(foldRun(start, rows, 4).members.east).toBeUndefined();
+    expect(foldRun(start, rows).members.east).toBeUndefined();
   });
 
   it('a late joiner is not drawn before it joins, and appears at its joined_at cell', () => {
@@ -115,7 +113,57 @@ describe('start cells from the record (joined_at)', () => {
     );
   });
 
-  it('a record with no joined_at (an older engine, a capture from mid-run) uses the draft and party start exactly as before', () => {
+  it('a live watch whose record has not yet streamed the join does not draw the joiner at its draft cell', () => {
+    const prefix = rows.slice(0, rows.length - 2);
+    expect(foldRun(start, prefix).members.late).toBeUndefined();
+  });
+
+  it('the review probe: a reserve with no joined_at is not drawn at its draft cell', () => {
+    const probeStart: RunStart = {
+      creatures: [
+        { id: 'west', cell: { q: 9, r: 9 } },
+        { id: 'reserve', cell: { q: 7, r: 7 } },
+      ],
+      partyStart: { q: 8, r: 8 },
+      self: 'hero',
+    };
+    const probe = [
+      row('scene-opened', {}),
+      row('scene_content', {
+        key: 'k',
+        site_hash: 's',
+        content_hash: 'h',
+        engine: 'v0.229.0',
+      }),
+      row('joined_at', { member: 'west', cell: { x: 2, y: 0 } }),
+      row('joined_at', { member: 'hero', cell: { x: 0, y: 3 } }),
+      row('moved', { member: 'hero', position: { x: 1, y: 3 } }, 'move:1'),
+    ];
+    expect(foldRun(probeStart, probe).members.reserve).toBeUndefined();
+  });
+
+  it('a reserve that arrives mid-run appears at its arrived cell, and Back to before it does not draw it', () => {
+    // rpg-toolkit reserve.go appendArrivedBeat: {beat: arrived, id, kind, cell}
+    const run = [
+      ...setup(),
+      row('moved', { member: 'hero', position: { x: 1, y: 3 } }, 'move:1'),
+      row('moved', { member: 'hero', position: { x: 2, y: 3 } }, 'move:2'),
+      row(
+        'arrived',
+        { id: 'east', kind: 'monster', cell: { x: 6, y: 2 } },
+        'move:2'
+      ),
+    ];
+    const steps = foldRun(start, run).steps;
+    const last = steps[steps.length - 1]!;
+    expect(foldRun(start, run, last.through).members.east?.cell).toEqual(
+      studioCellOf({ x: 6, y: 2 })
+    );
+    const before = steps[steps.length - 2]!;
+    expect(foldRun(start, run, before.through).members.east).toBeUndefined();
+  });
+
+  it('a record with no scene_content and no joined_at (an older engine, a capture from mid-run) uses the draft and party start exactly as before', () => {
     const old = [
       row('joined', { member: 'hero', kind: 'player' }),
       row('moved', { member: 'west', position: { x: 3, y: 0 } }),
@@ -126,9 +174,10 @@ describe('start cells from the record (joined_at)', () => {
     expect(view.members.late?.cell).toEqual({ q: 7, r: 7 });
   });
 
-  it('the timeline reads the same starts', () => {
+  it('the timeline reads the same starts: a creature the record never places has no row', () => {
     const timeline = timelineOf(start, rows);
     expect(timeline.rows.some((r) => r.id === 'west')).toBe(true);
+    expect(timeline.rows.some((r) => r.id === 'east')).toBe(false);
   });
 });
 
@@ -211,8 +260,37 @@ describe('has the encounter changed since this run (one rule each)', () => {
       SERVER
     );
     expect(c.kind).toBe('other-engine');
-    expect(comparisonLine(c)).toContain('another engine version');
-    expect(comparisonLine(c)).not.toMatch(/unchanged|has changed/);
+    expect(comparisonLine(c)).toBe(
+      'This run was saved under engine v0.227.0 (the server runs v0.228.0), so its content hash cannot be compared.'
+    );
+  });
+  it('a run that names no key is not compared (the key is part of the hash)', () => {
+    expect(
+      compareRun(
+        { ...ID, key: '' },
+        { key: 'the-patrol', contentHash: HASH },
+        SERVER
+      ).kind
+    ).toBe('not-compared');
+  });
+  it('a check in flight: the held hash is an older text’s and is not compared', () => {
+    const c = compareRun(
+      ID,
+      { key: 'the-patrol', contentHash: HASH, checking: true },
+      SERVER
+    );
+    expect(comparisonLine(c)).toBe(
+      'Whether the encounter changed since this run could not be checked: the open encounter is being checked.'
+    );
+  });
+  it('an engine release not yet confirmed for this comparison: not compared', () => {
+    expect(
+      compareRun(
+        ID,
+        { key: 'the-patrol', contentHash: HASH },
+        { engine: null, unreachable: false }
+      ).kind
+    ).toBe('not-compared');
   });
   it('no identity', () => {
     expect(
@@ -291,6 +369,12 @@ const engineClient = (engine: string | Error): EngineVersionClient => ({
   }) as never,
 });
 
+/** Stable open encounters, by hash. */
+const OPENS: Record<string, { key: string; contentHash: string }> = {
+  [HASH]: { key: 'the-patrol', contentHash: HASH },
+  [OTHER_HASH]: { key: 'the-patrol', contentHash: OTHER_HASH },
+};
+
 async function notesOf(input: {
   events: typeof NEW_EVENTS;
   open: { key: string; contentHash: string | null };
@@ -359,7 +443,7 @@ describe('a saved run says one line about the open encounter', () => {
         engine: ENGINE,
       })
     ).toEqual([
-      'The encounter has changed since this run: its content hash differs from the open encounter’s.',
+      'The encounter has changed since this run: its content hash differs from the open encounter’s. The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.',
     ]);
   });
 
@@ -370,18 +454,68 @@ describe('a saved run says one line about the open encounter', () => {
         open: { key: 'the-mad-king', contentHash: HASH },
         engine: ENGINE,
       })
-    ).toEqual(['This run was saved from the-patrol, not the open encounter.']);
+    ).toEqual([
+      'This run was saved from the-patrol, not the open encounter. The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.',
+    ]);
   });
 
-  it('another engine', async () => {
+  it('another engine, the snapshot the same: says so, from the snapshot', async () => {
     const notes = await notesOf({
       events: NEW_EVENTS,
       open: { key: 'the-patrol', contentHash: HASH },
       engine: 'v0.229.0',
     });
     expect(notes).toEqual([
-      'This run was saved under another engine version (v0.228.0; the server runs v0.229.0), so whether the encounter changed since cannot be said.',
+      'This run was saved under engine v0.228.0 (the server runs v0.229.0), so its content hash cannot be compared. By its snapshot, the encounter looks the same.',
     ]);
+  });
+
+  it('another engine, the snapshot differs: says what changed, from the snapshot', async () => {
+    const notes = await notesOf({
+      events: NEW_EVENTS,
+      open: { key: 'the-patrol', contentHash: HASH },
+      engine: 'v0.229.0',
+      draft: draftWith({ q: 0, r: 0 }),
+    });
+    expect(notes).toEqual([
+      'This run was saved under engine v0.228.0 (the server runs v0.229.0), so its content hash cannot be compared. By its snapshot, the encounter has changed since this run was saved (where its creatures start). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.',
+    ]);
+  });
+
+  it('the api re-upped on a newer engine under the open tab: a new hash asks the release again, and says another engine, never changed', async () => {
+    const releases = [ENGINE, 'v0.229.0'];
+    const client: EngineVersionClient = {
+      getMachineWords: vi.fn(async () =>
+        create(GetMachineWordsResponseSchema, {
+          encounterVersion: releases.shift() ?? 'v0.229.0',
+        })
+      ) as never,
+    };
+    const { result, rerender } = renderHook(
+      ({ hash }: { hash: string }) =>
+        useSavedRunReplay({
+          draft: DRAFT,
+          dungeonKey: 'the-patrol',
+          names: new Map(),
+          readBack: null,
+          open: OPENS[hash]!,
+          engineClient: client,
+        }),
+      { initialProps: { hash: HASH } }
+    );
+    act(() => void result.current.openText('run.jsonl', fileOf(NEW_EVENTS)));
+    await waitFor(() =>
+      expect(result.current.panel!.notes[0]).toMatch(
+        /^The encounter is unchanged/
+      )
+    );
+    rerender({ hash: OTHER_HASH });
+    await waitFor(() =>
+      expect(result.current.panel!.notes[0]).toMatch(
+        /^This run was saved under engine v0.228.0/
+      )
+    );
+    expect(client.getMachineWords).toHaveBeenCalledTimes(2);
   });
 
   it('no identity: says so, then the snapshot comparison', async () => {
@@ -392,7 +526,7 @@ describe('a saved run says one line about the open encounter', () => {
       draft: draftWith({ q: 0, r: 0 }),
     });
     expect(notes).toEqual([
-      'This run carries no encounter identity (it was recorded before runs named their encounter). The encounter has changed since this run was saved (where its creatures start). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.',
+      'This run carries no encounter identity (it was recorded before runs named their encounter). By its snapshot, the encounter has changed since this run was saved (where its creatures start). The creatures, where they start and their machines are drawn as saved; the map is the open draft’s.',
     ]);
   });
 
@@ -404,7 +538,7 @@ describe('a saved run says one line about the open encounter', () => {
       openUnreachable: true,
     });
     expect(notes).toEqual([
-      'Whether the encounter changed since this run could not be checked: the server could not be reached. Its snapshot matches the open draft.',
+      'Whether the encounter changed since this run could not be checked: the server could not be reached. By its snapshot, the encounter looks the same.',
     ]);
   });
 
@@ -445,9 +579,13 @@ describe('a live watch when the author edits mid-run', () => {
       )
     );
     rerender({ hash: OTHER_HASH });
-    expect(result.current?.line).toBe(
-      'The encounter has changed since this run: its content hash differs from the open encounter’s.'
+    await waitFor(() =>
+      expect(result.current?.line).toBe(
+        'The encounter has changed since this run: its content hash differs from the open encounter’s.'
+      )
     );
+    // Each new hash confirms the engine release again.
+    expect(client.getMachineWords).toHaveBeenCalledTimes(2);
     expect(result.current?.notable).toBe(true);
   });
 });
