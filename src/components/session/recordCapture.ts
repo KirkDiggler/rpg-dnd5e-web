@@ -67,6 +67,19 @@ export interface ParsedRecordCapture {
   session: string;
   count: number;
   feed: RecordFeedSnapshot;
+  /** A saved run's header line (`kind: "run"`, the studio's Save this run,
+   * rpg-project#1013), as written; absent in a server capture. */
+  header?: Record<string, unknown>;
+}
+
+/** The `kind` of a saved run's header line: what drawing the run needs
+ * besides its beats. The reader keeps it and reads no record from it. */
+export const RUN_HEADER_KIND = 'run';
+
+export interface ParseRecordCaptureOptions {
+  /** The most rows kept, newest last; the trace panel keeps
+   * RECORD_MAX_ROWS, a saved run's replay keeps them all (Infinity). */
+  limit?: number;
 }
 
 function text(value: unknown, name: string): string {
@@ -85,7 +98,10 @@ function clock(value: unknown): bigint {
 /** Reads one captured session, never a simulation or a lookup of current source.
  * Duplicate identical records are harmless; conflicting IDs, malformed lines,
  * unsupported schemas and mixed sessions are refused. Status/gaps remain visible. */
-export function parseRecordCapture(source: string): ParsedRecordCapture {
+export function parseRecordCapture(
+  source: string,
+  options: ParseRecordCaptureOptions = {}
+): ParsedRecordCapture {
   if (new TextEncoder().encode(source).length > MAX_RECORD_CAPTURE_BYTES)
     throw new Error(
       'Capture exceeds32MiB; filter a smaller session/time window.'
@@ -95,6 +111,7 @@ export function parseRecordCapture(source: string): ParsedRecordCapture {
   const ended = new Set<string>();
   const warnings = new Set<string>();
   let session = '';
+  let header: Record<string, unknown> | undefined;
   const lines = source.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
@@ -102,16 +119,26 @@ export function parseRecordCapture(source: string): ParsedRecordCapture {
       const entry = parseRecordJSON(lines[i]);
       if (!isRecordObject(entry) || entry.schema !== 1)
         throw new Error('Unsupported capture schema.');
+      if (entry.kind === RUN_HEADER_KIND) {
+        if (header) throw new Error('A saved run has one header line.');
+        header = entry;
+        continue;
+      }
       const capture = text(entry.capture, 'capture identity');
       if (entry.kind === 'capture') {
+        // A capture that says its history is complete (a saved run read
+        // whole from the start) implies no missing earlier history.
+        const whole = entry.history_complete === true;
         if (entry.status === 'started') {
           started.add(capture);
-          warnings.add('Capture window: earlier history is not implied.');
+          if (!whole)
+            warnings.add('Capture window: earlier history is not implied.');
         } else if (entry.status === 'drained') {
           ended.add(capture);
-          warnings.add(
-            'Accepted export batches drained; earlier history is not implied.'
-          );
+          if (!whole)
+            warnings.add(
+              'Accepted export batches drained; earlier history is not implied.'
+            );
         } else if (entry.status === 'incomplete') {
           ended.add(capture);
           warnings.add(
@@ -162,17 +189,20 @@ export function parseRecordCapture(source: string): ParsedRecordCapture {
       warnings.add(
         'No drain marker: this is an open or truncated capture window.'
       );
+  if (header && header.session !== session)
+    throw new Error('The saved run’s header names another session.');
   const incoming = [...records.values()].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   );
   const buffered = bufferRecordRows({
     rows: [],
     incoming,
-    limit: RECORD_MAX_ROWS,
+    limit: options.limit ?? RECORD_MAX_ROWS,
   });
   return {
     session,
     count: records.size,
     feed: { ...buffered, notice: [...warnings].join(' ') || undefined },
+    ...(header ? { header } : {}),
   };
 }

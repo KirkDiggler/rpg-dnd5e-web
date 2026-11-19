@@ -36,6 +36,9 @@ const fakes = vi.hoisted(() => ({
   createCalls: 0,
   /** Every Exit and StartEncounter, in the order they were made. */
   order: [] as string[],
+  /** The watched run's record rows (empty: nothing to save). */
+  rows: [] as Array<Record<string, unknown>>,
+  getRecord: vi.fn(),
 }));
 
 vi.mock('@/author/authoringRpc', async (importOriginal) => {
@@ -60,6 +63,7 @@ vi.mock('@/api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/client')>()),
   lobbyClient: { listDungeons: vi.fn(async () => ({ dungeons: [] })) },
   sessionClient: { exit: fakes.exit, getSeat: fakes.getSeat },
+  recordClient: { getRecord: fakes.getRecord },
 }));
 vi.mock('@/api/hooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/hooks')>()),
@@ -103,13 +107,22 @@ vi.mock('@/api/useStartLobbyEncounter', () => ({
 vi.mock('./runWatch', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./runWatch')>();
   const empty = { rows: [], notice: undefined };
+  const held = { rows: [] as unknown[], feed: empty };
   return {
     ...actual,
     watchUnavailableReason: () => null,
     useRunWatch: (
       watch: Parameters<typeof actual.useRunFold>[0],
       draft: Parameters<typeof actual.useRunFold>[1]
-    ) => actual.useRunFold(watch, draft, empty),
+    ) => {
+      if (held.rows !== fakes.rows)
+        held.feed = {
+          rows: fakes.rows as never,
+          notice: undefined,
+        };
+      held.rows = fakes.rows;
+      return actual.useRunFold(watch, draft, held.feed);
+    },
   };
 });
 vi.mock('@react-three/fiber', async (importOriginal) => ({
@@ -162,6 +175,8 @@ beforeEach(() => {
   fakes.getSeat.mockRejectedValue(new ConnectError('no seat', Code.NotFound));
   fakes.starts = [];
   fakes.startCalls = 0;
+  fakes.rows = [];
+  fakes.getRecord.mockReset();
   fakes.createCalls = 0;
   source = {
     worldId: 'joined-test-world',
@@ -428,5 +443,130 @@ describe('Watching gives the map the inspector’s width (rpg-project#1011)', ()
       expect(screen.queryByTestId('studio-watch')).toBeNull()
     );
     expect(inspector().getAttribute('aria-expanded')).toBe(before);
+  });
+});
+
+describe('Stop watching offers to save first (rpg-project#1013)', () => {
+  const beat = {
+    id: '0001',
+    at: 1n,
+    act: 'move:1',
+    beat: 'moved',
+    fields: { beat: 'moved', member: HERO, position: { x: 1, y: 1 } },
+  };
+
+  it('Save and stop reads the whole record, downloads it, then leaves the run', async () => {
+    fakes.starts = ['run-1'];
+    fakes.rows = [beat];
+    fakes.getRecord.mockImplementation(async () => {
+      fakes.order.push('save');
+      return { events: [], more: false, restarted: false };
+    });
+    const created = vi.fn(() => 'blob:run');
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL = created;
+        static revokeObjectURL = vi.fn();
+      }
+    );
+    mount();
+    await watchStarts();
+    fireEvent.click(panel().getByRole('button', { name: 'Stop watching' }));
+    expect(fakes.exit).not.toHaveBeenCalled();
+    fireEvent.click(panel().getByRole('button', { name: 'Save and stop' }));
+    await waitFor(() =>
+      expect(screen.queryByTestId('studio-watch')).toBeNull()
+    );
+    expect(fakes.getRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ session: 'run-1', member: HERO, afterId: '' })
+    );
+    expect(created).toHaveBeenCalled();
+    expect(fakes.order.filter((o) => o !== 'start')).toEqual([
+      'save',
+      'exit run-1',
+    ]);
+  });
+
+  it('Stop without saving leaves the run and reads nothing', async () => {
+    fakes.starts = ['run-1'];
+    fakes.rows = [beat];
+    mount();
+    await watchStarts();
+    fireEvent.click(panel().getByRole('button', { name: 'Stop watching' }));
+    fireEvent.click(
+      panel().getByRole('button', { name: 'Stop without saving' })
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('studio-watch')).toBeNull()
+    );
+    expect(fakes.exit).toHaveBeenCalledWith({ session: 'run-1', member: HERO });
+    expect(fakes.getRecord).not.toHaveBeenCalled();
+  });
+
+  it('Cancel keeps watching and the run seated', async () => {
+    fakes.starts = ['run-1'];
+    fakes.rows = [beat];
+    mount();
+    await watchStarts();
+    fireEvent.click(panel().getByRole('button', { name: 'Stop watching' }));
+    fireEvent.click(panel().getByRole('button', { name: 'Cancel' }));
+    expect(fakes.exit).not.toHaveBeenCalled();
+    screen.getByTestId('studio-watch');
+  });
+});
+
+describe('Open a saved run and Close it (rpg-project#1013)', () => {
+  const line = (o: Record<string, unknown>) => JSON.stringify(o);
+  const file = [
+    line({
+      schema: 1,
+      kind: 'capture',
+      capture: 'c',
+      logged_at: 't',
+      status: 'started',
+      history_complete: true,
+    }),
+    line({
+      schema: 1,
+      kind: 'record',
+      capture: 'c',
+      logged_at: 't',
+      session: 'run-7',
+      id: '0001',
+      at: 1,
+      act: '',
+      beat: 'joined',
+      fields: { beat: 'joined', kind: 'player', member: HERO },
+    }),
+    line({
+      schema: 1,
+      kind: 'capture',
+      capture: 'c',
+      logged_at: 't',
+      status: 'drained',
+      history_complete: true,
+    }),
+  ].join('\n');
+  const pressed = (name: string) =>
+    screen.getByRole('button', { name }).getAttribute('aria-pressed');
+
+  it('opens on the Layout, read-only, and Close goes back to the view the studio was in', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '3D' }));
+    expect(pressed('3D')).toBe('true');
+    // jsdom's File has no text(); a browser's does.
+    const chosen = Object.assign(new File([file], 'records.jsonl'), {
+      text: async () => file,
+    });
+    fireEvent.change(screen.getByTestId('studio-open-saved-run'), {
+      target: { files: [chosen] },
+    });
+    await screen.findByTestId('watch-replay');
+    expect(pressed('Layout')).toBe('true');
+    expect(fakes.exit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByTestId('watch-replay')).toBeNull();
+    expect(pressed('3D')).toBe('true');
   });
 });

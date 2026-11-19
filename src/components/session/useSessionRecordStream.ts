@@ -27,7 +27,10 @@ function retryDelayMs(attempt: number): number {
 export function useSessionRecordStream(
   session: string,
   member: string,
-  enabled: boolean
+  enabled: boolean,
+  /** The most rows held (recordFeed's `limit`); the debug panel keeps the
+   * default ring, the studio's watch the whole run (Infinity). */
+  limit?: number
 ): RecordFeedSnapshot {
   const [snapshot, setSnapshot] = useState<RecordFeedSnapshot>(EMPTY);
   const held = useRef<{ key: string; snapshot: RecordFeedSnapshot }>({
@@ -61,9 +64,10 @@ export function useSessionRecordStream(
       symbols: prior.symbols,
       related: prior.related,
       notice: prior.notice,
+      limit,
     });
     return () => feed.stop();
-  }, [session, member, enabled]);
+  }, [session, member, enabled, limit]);
 
   return snapshot;
 }
