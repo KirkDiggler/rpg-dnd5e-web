@@ -2199,7 +2199,8 @@
 .es-machine-steps {
   display: grid;
   gap: 0.5rem;
-  padding-left: 1.25rem;
+  padding-left: 0;
+  list-style: none;
 }
 .es-machine-step {
   display: flex;
@@ -2256,6 +2257,114 @@
 .es-machine-kept {
   flex-basis: 100%;
   margin: 0;
+}
+/* Each step is a card (rpg-project#1018): a head with its number, its one
+ * line in the engine's words and Remove step at the right; its controls on
+ * one wrapping line with the small "+ condition" / "+ act"; and only the
+ * conditions and acts it has, as compact rows under it. */
+li.es-machine-step {
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  background: var(--wb-panel);
+}
+li.es-machine-step:nth-child(even) {
+  background: var(--wb-raised);
+}
+.es-machine-step-head {
+  flex-basis: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.es-machine-step-name {
+  flex: none;
+  font-weight: 600;
+}
+.es-machine-step-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.es-machine-step-head > button {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.es-machine-adds {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-self: end;
+}
+.es-machine-adds > select {
+  width: auto;
+  font-size: 0.85em;
+}
+/* A step's condition and other acts, under its row (rpg-project#1018). */
+.es-machine-conditions,
+.es-machine-acts {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-machine-conditions > ul,
+.es-machine-acts > ul {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+.es-machine-condition,
+.es-machine-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-machine-condition > p,
+.es-machine-act > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.es-machine-condition[data-not-allowed] > select:first-child {
+  outline: 1px dashed var(--es-warning-text);
+}
+/* A refused step: its row, its condition or act, its box or arrow. */
+li.es-machine-step[data-refused],
+.es-machine-condition[data-refused],
+.es-machine-act[data-refused] {
+  border-left: 3px solid var(--es-warning-text);
+  padding-left: 0.4rem;
+}
+.es-machine-refused {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
+}
+.es-machine-state[data-refused] .es-machine-box {
+  stroke: var(--es-warning-text);
+  stroke-dasharray: 5 3;
+}
+.es-machine-step[data-refused] .es-machine-stroke {
+  stroke: var(--es-warning-text);
+  stroke-dasharray: 5 3;
+}
+.es-machine-refused-mark {
+  fill: var(--es-warning-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.es-machine-refused-mark:focus-visible {
+  outline: 2px solid var(--wb-accent);
 }
 .es-dialog-backdrop {
   position: fixed;

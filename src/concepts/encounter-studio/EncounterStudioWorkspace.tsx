@@ -2471,6 +2471,12 @@ function StudioSurface({
                   onOpenFact={openFact}
                   onCommitDefinition={session.commitBehaviorDefinition}
                   machineWords={machineWords.words}
+                  // A step's refusal names an index into the text: while
+                  // the next check is out the held ones may name another
+                  // step, so step marks wait for it (rpg-project#1018).
+                  refusals={
+                    publishing.preview.status === 'validating' ? [] : jumps
+                  }
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (
