@@ -219,6 +219,30 @@ export interface LayoutWatching {
   selectedId: string | null;
   /** A click on a member's glyph. */
   onSelect(id: string): void;
+  /** One step from the Layout (rpg-project#1006): the six cells next to
+   * the seat's cell are offered as steps. Absent offers none: stepped back
+   * in history, or no cell known for the seat. */
+  steps?: LayoutSteps;
+  /** What each member said in the shown step, by member id: a speech mark
+   * on its glyph. */
+  said?: ReadonlyMap<string, RunSaid>;
+  /** The hex a refused step tried, marked briefly. */
+  tried?: import('../world-building/workspaceGeometry').RoomHexCell | null;
+}
+
+/** A member's line in the shown step: the whole line as the game says it,
+ * and its words when they were caught. */
+export interface RunSaid {
+  line: string;
+  words?: string;
+}
+
+export interface LayoutSteps {
+  /** The seat's cell, as the record last put it. */
+  from: import('../world-building/workspaceGeometry').RoomHexCell;
+  /** A step is in flight; further steps are ignored. */
+  busy: boolean;
+  onStep(cell: import('../world-building/workspaceGeometry').RoomHexCell): void;
 }
 
 export interface LayoutViewportProps {

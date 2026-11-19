@@ -8,20 +8,48 @@
  * Glyphs are world-space, labels screen-sized, as `LayoutPlacedOverlay`
  * draws the authored starts. A glyph carries `data-run-member`; the
  * viewport's watching click reads it to select the member.
+ *
+ * STEPS (rpg-project#1006): at the live step, the six cells next to the
+ * seat are drawn as steps (`data-run-step`), under the members, so a click
+ * on a creature in one of them selects the creature. Each is a focusable
+ * button ("Step to q, r") that Enter or Space also takes. The step only
+ * asks the server; the seat's glyph moves when the record says it did.
+ * A refused step's hex is marked briefly (`data-run-tried`).
+ *
+ * SPEECH: a member that spoke in the shown step carries a small bubble over
+ * its glyph with the line cut short; the whole line is its accessible name
+ * and title.
  */
+import { axialNeighbors } from '@/author/hexOffset';
+import type { RoomHexCell } from '../world-building/workspaceGeometry';
 import {
   layoutCellCenter,
+  layoutCellCorners,
   worldToClient,
   type LayoutTransform,
 } from './layoutGeometry';
 import type { RunMember } from './runView';
+import type { LayoutSteps, RunSaid } from './studioSession';
 
 const RING = 0.55;
+/** How much of a line the speech mark shows before it is cut short. */
+const SPEECH_MARK_CHARS = 32;
+/** The bubble's height and its gap above the marker (its tail's length),
+ * in screen pixels. */
+const BUBBLE_HEIGHT = 18;
+const BUBBLE_LIFT = 10;
+
+function shorten(line: string, max: number): string {
+  return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
+}
 
 export function LayoutRunOverlay({
   members,
   names,
   selectedId,
+  steps,
+  said,
+  tried,
   transform,
   worldTransform,
 }: {
@@ -29,6 +57,11 @@ export function LayoutRunOverlay({
   /** Display names by member id; the id when absent. */
   names?: ReadonlyMap<string, string>;
   selectedId: string | null;
+  steps?: LayoutSteps;
+  /** The shown step's line by member id. */
+  said?: ReadonlyMap<string, RunSaid>;
+  /** The hex a refused step tried. */
+  tried?: RoomHexCell | null;
   transform: LayoutTransform;
   worldTransform?: string;
 }): React.JSX.Element {
@@ -41,6 +74,67 @@ export function LayoutRunOverlay({
         aria-label="The run"
         data-testid="run-overlay"
       >
+        {steps && (
+          <g
+            className="es-layout-run-steps"
+            aria-label="Steps you can take"
+            data-busy={steps.busy || undefined}
+          >
+            {axialNeighbors(steps.from).map((cell) => {
+              const name = `Step to ${cell.q}, ${cell.r}`;
+              const take = (): void => {
+                if (!steps.busy) steps.onStep(cell);
+              };
+              return (
+                <g
+                  key={`${cell.q},${cell.r}`}
+                  data-run-step={`${cell.q},${cell.r}`}
+                  data-step-q={cell.q}
+                  data-step-r={cell.r}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={name}
+                  aria-disabled={steps.busy || undefined}
+                  style={{ cursor: steps.busy ? 'progress' : 'pointer' }}
+                  onKeyDown={(event): void => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    take();
+                  }}
+                >
+                  <title>{name}</title>
+                  <polygon
+                    points={layoutCellCorners(cell)
+                      .map((p) => `${p.x},${p.z}`)
+                      .join(' ')}
+                    fill="#2dd4bf"
+                    fillOpacity={steps.busy ? 0.06 : 0.14}
+                    stroke="#2dd4bf"
+                    strokeOpacity={0.7}
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              );
+            })}
+          </g>
+        )}
+        {tried && (
+          <g data-run-tried={`${tried.q},${tried.r}`} pointerEvents="none">
+            <polygon
+              points={layoutCellCorners(tried)
+                .map((p) => `${p.x},${p.z}`)
+                .join(' ')}
+              fill="#ef4444"
+              fillOpacity={0.25}
+              stroke="#ef4444"
+              strokeWidth={2.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        )}
         {placed.map((member) => {
           const centre = layoutCellCenter(member.cell!);
           const selected = member.id === selectedId;
@@ -109,6 +203,62 @@ export function LayoutRunOverlay({
             </text>
           );
         })}
+        {said &&
+          placed.map((member) => {
+            const spoken = said.get(member.id);
+            if (!spoken) return null;
+            const line = spoken.line;
+            const point = worldToClient(
+              layoutCellCenter(member.cell!),
+              transform
+            );
+            if (!point) return null;
+            const x = point.x - transform.bounds.left;
+            const y = point.y - transform.bounds.top - RING * transform.scale;
+            const short = shorten(spoken.words ?? line, SPEECH_MARK_CHARS);
+            const width = short.length * 6.2 + 12;
+            return (
+              <g
+                key={`said-${member.id}`}
+                data-run-said={member.id}
+                role="img"
+                aria-label={line}
+              >
+                <title>{line}</title>
+                {/* Above the speaker's marker, its tail pointing down at
+                    it; the speaker's own label sits below the marker, so
+                    the two never meet. Other creatures' labels nearby are
+                    not avoided (rpg-project#1006: not this slice). */}
+                <rect
+                  x={x - width / 2}
+                  y={y - BUBBLE_LIFT - BUBBLE_HEIGHT}
+                  width={width}
+                  height={BUBBLE_HEIGHT}
+                  rx={6}
+                  fill="#fef9c3"
+                  stroke="#101923"
+                  strokeWidth={1}
+                />
+                <path
+                  data-run-said-tail=""
+                  d={`M ${x - 5} ${y - BUBBLE_LIFT - 0.5} L ${x} ${y - 2} L ${x + 5} ${y - BUBBLE_LIFT - 0.5} Z`}
+                  fill="#fef9c3"
+                  stroke="#101923"
+                  strokeWidth={1}
+                />
+                <text
+                  x={x}
+                  y={y - BUBBLE_LIFT - 5}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fill="#101923"
+                  style={{ userSelect: 'none' }}
+                >
+                  {short}
+                </text>
+              </g>
+            );
+          })}
       </g>
     </>
   );

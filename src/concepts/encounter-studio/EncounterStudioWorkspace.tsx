@@ -75,6 +75,7 @@ import {
 } from './refusalJump';
 import { RevealContextProvider } from './reveal';
 import { keyOfPath, keyOfTarget, nameOfKey } from './revealKey';
+import { saidInStep } from './runSpeech';
 import {
   useRunWatch,
   watchUnavailableReason,
@@ -131,6 +132,13 @@ import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
 import { useSettledRefusals } from './useSettledRefusals';
 import { useStudioLabels } from './useStudioLabels';
+import { layoutStepsOf, useStudioStep } from './useStudioStep';
+import {
+  browserStorage,
+  readWatchWidth,
+  WATCH_WIDTH_STORAGE_KEY,
+  writeWatchWidth,
+} from './watchPanel';
 
 /** A section key's on-screen word (rpg-project#970, ruled 2026-11-16). */
 const sectionLabel = (key: EncounterSectionKey): string =>
@@ -903,6 +911,26 @@ function StudioSurface({
     if (view !== 'layout') switchView('layout');
   };
   const run = useRunWatch(watch, session.document.draft);
+  /** One step from the Layout (rpg-project#1006): offered at the live step
+   * only, from the seat's cell as the record last put it. */
+  const studioStep = useStudioStep(watch, run.view.steps.length);
+  const layoutSteps = layoutStepsOf(watch, run, studioStep);
+  /** The watch panel's width the viewer chose (null: the default), kept
+   * in the browser as a per-viewer convenience. */
+  const [watchWidth, setWatchWidth] = useState<number | null>(() =>
+    readWatchWidth(browserStorage())
+  );
+  const resizeWatch = (next: number | null): void => {
+    setWatchWidth(next);
+    if (next !== null) writeWatchWidth(browserStorage(), next);
+    else {
+      try {
+        browserStorage()?.setItem(WATCH_WIDTH_STORAGE_KEY, '');
+      } catch {
+        // The store refused: the default still holds for this visit.
+      }
+    }
+  };
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -941,6 +969,11 @@ function StudioSurface({
     if (watch && seatName) names.set(watch.member, seatName);
     return names;
   }, [placementNames, watch, seatName]);
+  /** What each member said in the shown step: the speech marks. */
+  const saidThisStep = useMemo(
+    () => saidInStep(run.feed.rows, run.from, run.upTo, watchNames),
+    [run.feed.rows, run.from, run.upTo, watchNames]
+  );
   /** A refusal's noun, in words, for its jump button. */
   const refusalNounName = (target: RefusalTarget): string => {
     switch (target.kind) {
@@ -1781,7 +1814,18 @@ function StudioSurface({
                 </LayoutRoomList>
               )}
               <div className="es-layout-main">
-                <div className="es-canvas">
+                <div
+                  className={
+                    watch ? 'es-canvas es-canvas-watching' : 'es-canvas'
+                  }
+                  style={
+                    watch && watchWidth !== null
+                      ? ({
+                          '--es-watch-width': `${watchWidth}px`,
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                >
                   <LayoutViewport
                     draft={session.document.draft}
                     tool={watch ? 'select' : layoutTool}
@@ -1825,6 +1869,10 @@ function StudioSurface({
                             names: watchNames,
                             selectedId: run.selected,
                             onSelect: run.setSelected,
+                            steps: layoutSteps,
+                            said: saidThisStep,
+                            // A refusal belongs to the Live step.
+                            tried: run.step === null ? studioStep.tried : null,
                           }
                         : undefined
                     }
@@ -1846,8 +1894,11 @@ function StudioSurface({
                     <StudioWatch
                       watch={watch}
                       run={run}
+                      stepping={studioStep}
                       readBack={readBack.readBack}
                       names={watchNames}
+                      width={watchWidth}
+                      onResize={resizeWatch}
                       onStop={() => {
                         setWatch(null);
                         onWatchEnded?.();

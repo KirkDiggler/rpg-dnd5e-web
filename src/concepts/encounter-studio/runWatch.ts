@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { RoomDraft } from '../world-building/roomDraft';
 import { layoutMachine, type MachineLayout } from './machineLayout';
 import { machineOf } from './machineView';
-import { foldRun, type RunMember, type RunView } from './runView';
+import { foldRun, stepStartOf, type RunMember, type RunView } from './runView';
 
 export const WATCH_DEV_ONLY_SENTENCE =
   'Watching a run reads the run’s record, which the server serves only in development.';
@@ -39,6 +39,8 @@ export interface RunWatch {
   /** The chosen step has aged out of the record (the feed keeps the newest
    * beats); the earliest step still held is shown instead. */
   agedOut: boolean;
+  /** The shown step's first row: rows [from, upTo) are this step's own. */
+  from: number;
   upTo: number;
   selected: string | null;
   setSelected(id: string | null): void;
@@ -98,12 +100,14 @@ export function useRunFold(
     () => foldRun(start, feed.rows, upTo),
     [start, feed.rows, upTo]
   );
+  const from = stepStartOf(steps, shown ?? steps.length - 1);
   return {
     feed,
     view,
     step: shown,
     setStep,
     agedOut,
+    from,
     upTo,
     selected,
     setSelected,
