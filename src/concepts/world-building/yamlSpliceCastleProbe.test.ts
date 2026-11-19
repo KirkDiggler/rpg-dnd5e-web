@@ -17,6 +17,7 @@ import {
   parse,
   parseDocument,
   type Node,
+  type YAMLMap,
   type YAMLSeq,
 } from 'yaml';
 import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
@@ -95,7 +96,7 @@ function listsOf(source: string): List[] {
   return lists;
 }
 
-function ownedBytes(source: string, node: YAMLSeq) {
+function ownedBytes(source: string, node: YAMLSeq | YAMLMap) {
   const [start] = node.range!;
   let end = node.range![1];
   while (end > start && /\s/.test(source[end - 1])) end--;
@@ -112,6 +113,11 @@ function ownedBytes(source: string, node: YAMLSeq) {
       if (!/^\s*#/.test(source.slice(prev, head - 1))) break;
       head = prev;
     }
+    // An emptied collection goes up onto its key's (or dash's) line: from
+    // just after the `:` or `-` on, the bytes are the collection's.
+    let back = head;
+    while (back > 0 && /\s/.test(source[back - 1])) back--;
+    if (source[back - 1] === ':' || source[back - 1] === '-') head = back;
   }
   let tail = source.indexOf('\n', end);
   tail = tail === -1 ? source.length : tail + 1;
@@ -172,7 +178,8 @@ const comments = (text: string) =>
 
 interface Case {
   label: string;
-  list: List;
+  /** The edited node's bytes: everything outside them must not change. */
+  list: { head: number; tail: number };
   base: Json;
   current: Json;
   /** The source the write splices into (the castle, or the castle with the
@@ -288,6 +295,185 @@ function* casesOf(
   }
 }
 
+interface MapAt {
+  path: Path;
+  node: YAMLMap;
+  depth: number;
+  head: number;
+  tail: number;
+}
+
+/** Every mapping with its path and the bytes it owns. */
+function mapsOf(source: string): MapAt[] {
+  const document = parseDocument(source);
+  const maps: MapAt[] = [];
+  const visit = (node: Node | null, path: Path) => {
+    if (!node) return;
+    if (isMap(node)) {
+      maps.push({
+        path,
+        node,
+        depth: path.length,
+        ...ownedBytes(source, node),
+      });
+      for (const pair of node.items)
+        if (isPair(pair) && isScalar(pair.key))
+          visit(pair.value as Node, [...path, String(pair.key.value)]);
+    }
+    if (isSeq(node))
+      node.items.forEach((item, i) => visit(item as Node, [...path, i]));
+  };
+  visit(document.contents as Node, []);
+  return maps;
+}
+
+function withMap(
+  value: Json,
+  path: Path,
+  edit: (map: Record<string, Json>) => void
+) {
+  const next = copy(value);
+  edit(at(next, path) as Record<string, Json>);
+  return next;
+}
+
+/** Map writes: each key removed (`keys`), the map emptied, and, splicing
+ * into the castle as those writes left it, the key added back and a first
+ * key added to the emptied map (`reverse`). */
+function* mapCasesOf(
+  source: string,
+  keys: (map: MapAt, key: string) => boolean,
+  reverse: (map: MapAt) => boolean,
+  emptied: (map: MapAt) => boolean = () => true
+): Generator<Case> {
+  const own = parse(source) as Json;
+  for (const map of mapsOf(source)) {
+    const value = at(own, map.path) as Record<string, Json>;
+    const name = map.path.join('.') || 'the document';
+    if (map.path.length === 0) continue;
+    for (const key of Object.keys(value)) {
+      if (!keys(map, key)) continue;
+      const without = withMap(own, map.path, (m) => void delete m[key]);
+      yield {
+        label: `${name}.${key} removed`,
+        list: map,
+        source,
+        base: own,
+        current: without,
+        move: false,
+      };
+      if (!reverse(map)) continue;
+      const removed = written(source, own, without);
+      const reread = removed && find(mapsOf(removed), map.path);
+      if (reread)
+        yield {
+          label: `${name}.${key} added back`,
+          list: reread,
+          source: removed,
+          base: parse(removed),
+          current: own,
+          move: false,
+        };
+    }
+    if (!emptied(map)) continue;
+    const cleared = withMap(own, map.path, (m) => {
+      for (const key of Object.keys(m)) delete m[key];
+    });
+    yield {
+      label: `${name} emptied`,
+      list: map,
+      source,
+      base: own,
+      current: cleared,
+      move: false,
+    };
+    if (!reverse(map)) continue;
+    const empty = written(source, own, cleared);
+    const reread = empty && find(mapsOf(empty), map.path);
+    if (reread)
+      yield {
+        label: `${name} emptied, then given a first key`,
+        list: reread,
+        source: empty,
+        base: parse(empty),
+        current: withMap(parse(empty), map.path, (m) => {
+          m.probe = 1;
+        }),
+        move: false,
+      };
+  }
+}
+
+/** The write's text when it is sound, else null (its own case fails). */
+function written(source: string, base: Json, current: Json): string | null {
+  try {
+    return spliceYaml(source, base, current);
+  } catch {
+    return null;
+  }
+}
+
+function find<T extends { path: Path }>(items: T[], path: Path): T | undefined {
+  const name = path.join('.');
+  return items.find((item) => item.path.join('.') === name);
+}
+
+/** The values a scalar is replaced with: each type, and text that reads as
+ * another type when it is not quoted. */
+const SCALARS: Json[] = ['text', 42, true, null, '', '42', 'true', 1.5, 'a: b'];
+
+/** Scalar writes: each scalar (a map's value or a list's item) replaced by
+ * the values `pick` chooses from `SCALARS`. Its own line or lines are its
+ * bytes. */
+function* scalarCasesOf(
+  source: string,
+  pick: (index: number) => Json[]
+): Generator<Case> {
+  const document = parseDocument(source);
+  const own = parse(source) as Json;
+  let index = 0;
+  const cases: Case[] = [];
+  type Bytes = { head: number; tail: number };
+  const visit = (node: Node | null, path: Path, list?: Bytes) => {
+    if (!node) return;
+    if (isMap(node))
+      for (const pair of node.items)
+        if (isPair(pair) && isScalar(pair.key))
+          visit(pair.value as Node, [...path, String(pair.key.value)], list);
+    if (isSeq(node)) {
+      const bytes = ownedBytes(source, node);
+      node.items.forEach((item, i) => visit(item as Node, [...path, i], bytes));
+    }
+    if (isScalar(node) && node.range && path.length > 0) {
+      const old = at(own, path);
+      const head = lineStart(source, node.range[0]);
+      let tail = source.indexOf('\n', node.range[1]);
+      tail = tail === -1 ? source.length : tail + 1;
+      for (const value of pick(index++)) {
+        if (Object.is(value, old)) continue;
+        const parent = path.slice(0, -1);
+        const leaf = path.at(-1)!;
+        const next = copy(own);
+        (at(next, parent) as Record<string | number, Json>)[leaf] = value;
+        // A list whose rows all carry an id aligns them by it: a row whose
+        // id changes is another row, written where the old one stood, so
+        // the list's bytes are the write's.
+        const byId = leaf === 'id' && typeof path.at(-2) === 'number';
+        cases.push({
+          label: `${path.join('.')} = ${JSON.stringify(value)}`,
+          list: byId && list ? list : { head, tail },
+          source,
+          base: own,
+          current: next,
+          move: false,
+        });
+      }
+    }
+  };
+  visit(document.contents as Node, []);
+  yield* cases;
+}
+
 /** Run every write the probe makes and list what went wrong. */
 function failuresOf(cases: Iterable<Case>, strict = false) {
   const failures: string[] = [];
@@ -339,5 +525,56 @@ describe('every castle list writes back through the splice (rpg-project#1014)', 
       expect(failures).toEqual([]);
     },
     900_000
+  );
+
+  it('empties every map, and removes the last key of every map', () => {
+    const { writes, failures } = failuresOf(
+      mapCasesOf(
+        served,
+        (map, key) => Object.keys(map.node.toJSON()).at(-1) === key,
+        () => false
+      )
+    );
+    expect(writes).toBeGreaterThan(0);
+    expect(failures).toEqual([]);
+  }, 300_000);
+
+  it('the maps near the top of the castle: a key added back, and a first key added to the emptied map', () => {
+    const { writes, failures } = failuresOf(
+      mapCasesOf(
+        served,
+        (map, key) =>
+          map.depth <= 2 && Object.keys(map.node.toJSON()).at(-1) === key,
+        (map) => map.depth <= 2,
+        (map) => map.depth <= 2
+      )
+    );
+    expect(writes).toBeGreaterThan(0);
+    expect(failures).toEqual([]);
+  }, 300_000);
+
+  it('replaces every scalar, each with one of text, a number, a flag, null, empty text and text that reads as another type', () => {
+    const { writes, failures } = failuresOf(
+      scalarCasesOf(served, (i) => [SCALARS[i % SCALARS.length]])
+    );
+    expect(writes).toBeGreaterThan(0);
+    expect(failures).toEqual([]);
+  }, 300_000);
+
+  it.runIf(process.env.SPLICE_PROBE === 'all')(
+    'every key of every map removed and added back, every map emptied and given a first key, every scalar replaced by every type',
+    () => {
+      const maps = failuresOf(
+        mapCasesOf(
+          served,
+          () => true,
+          () => true
+        )
+      );
+      const scalars = failuresOf(scalarCasesOf(served, () => SCALARS));
+      expect(maps.failures).toEqual([]);
+      expect(scalars.failures).toEqual([]);
+    },
+    3_600_000
   );
 });

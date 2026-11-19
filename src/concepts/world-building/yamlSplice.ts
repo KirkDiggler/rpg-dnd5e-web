@@ -260,7 +260,7 @@ function movedItemEdited(
       document.toJS(),
       [base],
       [current],
-      spliceText(text, document, [base], [current])
+      spliceText(text, document, [base], [current]).out
     )
       .replace(/\n$/, '')
       .split('\n')
@@ -334,7 +334,17 @@ export function checkWrite(
       `The file it would write does not parse${line ? ` at line ${line}` : ''}.`
     );
   }
-  const at = firstDifference(written.toJS(), mergeValue(own, base, current));
+  let value: Json;
+  try {
+    value = written.toJS();
+  } catch (error) {
+    // An alias whose anchor the write lost, for one (rpg-project#1014
+    // review): the text parses, but has no value.
+    throw new UnsafeWriteError(
+      `The file it would write cannot be read back: ${error instanceof Error ? error.message : String(error)}.`
+    );
+  }
+  const at = firstDifference(value, mergeValue(own, base, current));
   if (at)
     throw new UnsafeWriteError(
       `The file it would write reads ${at} differently from the edit.`
@@ -344,10 +354,18 @@ export function checkWrite(
 
 /** The last few files read, parsed once: the studio splices the same source
  * on every save and every check (rpg-project#1014). Neither the document nor
- * its value is changed by a splice. */
-const reads: { source: string; document: Document; own: Json }[] = [];
+ * its value is changed by a splice. `local` says whether a write into it may
+ * be checked by its edited part alone (`checkLocally`): not when it holds an
+ * anchor, an alias, a tag, a directive or a second document. */
+interface Read {
+  source: string;
+  document: Document;
+  own: Json;
+  local: boolean;
+}
+const reads: Read[] = [];
 
-function readOf(source: string) {
+function readOf(source: string): Read {
   const held = reads.find((read) => read.source === source);
   if (held) return held;
   const document = parseDocument(source);
@@ -355,26 +373,245 @@ function readOf(source: string) {
     throw new Error(
       `the file this draft was read from no longer parses: ${document.errors[0]?.message ?? 'it is empty'}`
     );
-  const read = { source, document, own: document.toJS() as Json };
+  let local = !/^(---|\.\.\.|%)/m.test(source) && !source.includes('\t');
+  visit(document, {
+    Node(_key, node) {
+      if (isAlias(node) || (node as { anchor?: string }).anchor || node.tag)
+        local = false;
+    },
+  });
+  const read = { source, document, own: document.toJS() as Json, local };
   reads.unshift(read);
   reads.length = Math.min(reads.length, 4);
   return read;
 }
 
+const startOfLine = (text: string, at: number) =>
+  text.lastIndexOf('\n', at - 1) + 1;
+const pastLine = (text: string, at: number) => {
+  const end = text.indexOf('\n', at);
+  return end === -1 ? text.length : end + 1;
+};
+
+interface Region {
+  path: (string | number)[];
+  /** Source offsets of the region's whole lines (`start`..`end`). */
+  start: number;
+  end: number;
+  column: number;
+  /** One `key: scalar` line, rather than a block collection. */
+  line?: string;
+}
+
+/** The deepest part of the file that holds `edit` and can be read on its
+ * own: a block collection that starts its own line (its whole lines), or a
+ * `key: scalar` written on one line that the edit keeps on one line. Null
+ * when only the document root holds it. */
+function regionOf(read: Read, edit: Edit): Region | null {
+  const { source } = read;
+  let best: Region | null = null;
+  let node = read.document.contents as Node | null;
+  const path: (string | number)[] = [];
+  while (node && (isMap(node) || isSeq(node))) {
+    let next: Node | null = null;
+    const pairs = isMap(node)
+      ? node.items
+      : node.items.map((item, i) => ({ key: i, value: item }));
+    for (const pair of pairs) {
+      const key = isMap(node)
+        ? isScalar(pair.key)
+          ? String((pair.key as { value: unknown }).value)
+          : null
+        : (pair.key as number);
+      const child = pair.value as Node | null;
+      if (key === null) return best;
+      // `key: scalar` on one line, in a block map.
+      if (
+        isMap(node) &&
+        !node.flow &&
+        (isScalar(child) || child === null) &&
+        isScalar(pair.key) &&
+        pair.key.range
+      ) {
+        const keyAt = pair.key.range[0];
+        const line = startOfLine(source, keyAt);
+        const lineEnd = pastLine(source, keyAt) - 1;
+        const valueEnd = child?.range?.[1] ?? keyAt;
+        if (
+          source.slice(line, keyAt).trim() === '' &&
+          valueEnd <= lineEnd &&
+          edit.start >= keyAt &&
+          edit.end <= lineEnd &&
+          !edit.text.includes('\n')
+        )
+          return {
+            path: [...path, key],
+            start: line,
+            end: Math.min(lineEnd + 1, source.length),
+            column: keyAt - line,
+            line: key as string,
+          };
+      }
+      if (!child?.range || !(isMap(child) || isSeq(child))) continue;
+      let end = child.range[1];
+      while (end > child.range[0] && /\s/.test(source[end - 1])) end--;
+      const line = startOfLine(source, child.range[0]);
+      const stop = pastLine(source, end);
+      if (edit.start < line || edit.end > stop) continue;
+      path.push(key);
+      next = child;
+      const column = child.range[0] - line;
+      if (
+        !child.flow &&
+        column > 0 &&
+        source.slice(line, child.range[0]).trim() === ''
+      )
+        best = { path: [...path], start: line, end: stop, column };
+      break;
+    }
+    node = next;
+  }
+  return best;
+}
+
+function withValueAt(value: Json, path: (string | number)[], leaf: Json): Json {
+  if (path.length === 0) return leaf;
+  const [head, ...rest] = path;
+  const copy = (
+    Array.isArray(value) ? [...value] : { ...(value as object) }
+  ) as Record<string | number, Json>;
+  copy[head] = withValueAt(copy[head], rest, leaf);
+  return copy;
+}
+
+/** A region's new text read on its own, or undefined when it cannot be. */
+function readRegion(region: Region, text: string): { value: Json } | undefined {
+  const lines = text.split('\n');
+  const pad = ' '.repeat(region.column);
+  if (lines.some((line) => line.trim() !== '' && !line.startsWith(pad)))
+    return undefined;
+  if (region.line !== undefined && lines.filter((l) => l.trim()).length !== 1)
+    return undefined;
+  const part = parseDocument(
+    lines.map((line) => line.slice(region.column)).join('\n')
+  );
+  if (part.errors.length || part.warnings.length || !part.contents)
+    return undefined;
+  let value: Json;
+  try {
+    value = part.toJS();
+  } catch {
+    return undefined;
+  }
+  if (region.line === undefined) return { value };
+  if (!isObject(value) || Object.keys(value).length !== 1) return undefined;
+  if (!Object.hasOwn(value, region.line)) return undefined;
+  return { value: value[region.line] };
+}
+
+/**
+ * THE GUARD'S SHORT PATH (rpg-project#1014 review: a check on every
+ * keystroke must not lag). Each edit is placed in the deepest part of the
+ * file that can be read on its own (`regionOf`). When the write is the
+ * source byte for byte outside those parts, only the parts are parsed:
+ * each stays at or right of its own column, so none can join its parent,
+ * and the document's value is the source's with those parts replaced. True
+ * only when that value equals the intended one; anything else (a shape this
+ * cannot establish, or a mismatch) goes to the full check, which decides.
+ */
+function checkLocally(
+  read: Read,
+  base: Json,
+  current: Json,
+  out: string,
+  edits: readonly Edit[]
+): boolean {
+  if (!read.local || edits.length === 0) return false;
+  const { source } = read;
+  const found: { region: Region; edits: Edit[] }[] = [];
+  for (const edit of edits) {
+    const region = regionOf(read, edit);
+    if (!region) return false;
+    const held = found.find(
+      (f) => f.region.start === region.start && f.region.end === region.end
+    );
+    if (held) held.edits.push(edit);
+    else found.push({ region, edits: [edit] });
+  }
+  // A region inside another is the outer one's.
+  const regions = found
+    .filter(
+      (f) =>
+        !found.some(
+          (g) =>
+            g !== f &&
+            g.region.start <= f.region.start &&
+            f.region.end <= g.region.end &&
+            (g.region.start < f.region.start || f.region.end < g.region.end)
+        )
+    )
+    .sort((x, y) => x.region.start - y.region.start);
+  for (const f of found)
+    if (!regions.includes(f)) {
+      const outer = regions.find(
+        (g) => g.region.start <= f.region.start && f.region.end <= g.region.end
+      );
+      if (!outer) return false;
+      outer.edits.push(...f.edits);
+    }
+  let whole = read.own;
+  let from = 0;
+  let at = 0;
+  for (const { region, edits: held } of regions) {
+    if (region.start < from) return false;
+    const gap = source.slice(from, region.start);
+    if (out.slice(at, at + gap.length) !== gap) return false;
+    at += gap.length;
+    const grown = held.reduce(
+      (sum, e) => sum + e.text.length - (e.end - e.start),
+      0
+    );
+    const length = region.end - region.start + grown;
+    if (length < 0) return false;
+    const part = readRegion(region, out.slice(at, at + length));
+    if (!part) return false;
+    whole = withValueAt(whole, region.path, part.value);
+    at += length;
+    from = region.end;
+  }
+  if (out.slice(at) !== source.slice(from)) return false;
+  return sameValue(whole, mergeValue(read.own, base, current));
+}
+
+/** The writer below the guard; a test may stand a faulty one in its place
+ * to show the guard refuses what it writes (rpg-project#1014 review). */
+export const spliceInternals = { text: spliceText };
+
 /**
  * The source with the studio's base → current changes spliced into its
- * text, checked before it is returned (`checkWrite`): a write that does not
- * read back as the edit meant throws `UnsafeWriteError` instead.
+ * text, checked before it is returned: a write that does not read back as
+ * the edit meant throws `UnsafeWriteError` instead. FAIL CLOSED: anything
+ * that goes wrong while writing or checking is that refusal too, never a
+ * write let through unchecked.
  */
 export function spliceYaml(source: string, base: Json, current: Json): string {
   if (sameValue(base, current)) return source;
-  const { document, own } = readOf(source);
-  return checkWrite(
-    own,
-    base,
-    current,
-    spliceText(source, document, base, current)
-  );
+  try {
+    const read = readOf(source);
+    const { out, edits } = spliceInternals.text(
+      source,
+      read.document,
+      base,
+      current
+    );
+    if (checkLocally(read, base, current, out, edits)) return out;
+    return checkWrite(read.own, base, current, out);
+  } catch (error) {
+    if (error instanceof UnsafeWriteError) throw error;
+    throw new UnsafeWriteError(
+      `The check could not finish: ${error instanceof Error ? error.message : String(error)}.`
+    );
+  }
 }
 
 function spliceText(
@@ -382,7 +619,7 @@ function spliceText(
   document: Document,
   base: Json,
   current: Json
-): string {
+): { out: string; edits: Edit[] } {
   const pad = /\{ \S/.test(source) || !/\{\S/.test(source);
   // Brackets keep their own spacing: the castle pads `{ q }` but not `[{`.
   const padBrackets = /\[ \S/.test(source) || !/\[\S/.test(source);
@@ -468,6 +705,24 @@ function spliceText(
     // `key:` with nothing after it: a zero-width empty value. The new value
     // goes after the colon's space, on the key's line, in flow.
     if (start === end) return edit(start, end, ` ${flow(value)}`);
+    // A block collection emptied goes back up onto its key's line (or its
+    // dash's): `key: {}`, `key: []`, as a reader would write it.
+    const emptied =
+      (isMap(node) || isSeq(node)) &&
+      !node.flow &&
+      !inFlow &&
+      ((Array.isArray(value) && value.length === 0) ||
+        (isObject(value) && Object.keys(value).length === 0));
+    if (emptied) {
+      let at = start;
+      while (at > 0 && /\s/.test(source[at - 1])) at--;
+      if (
+        at > 0 &&
+        (source[at - 1] === ':' || source[at - 1] === '-') &&
+        source.slice(at, start).includes('\n')
+      )
+        return edit(at, end, ` ${flow(value)}`);
+    }
     const keepFlow =
       inFlow ||
       isScalar(node) ||
@@ -526,6 +781,11 @@ function spliceText(
       added.length > 0 &&
       (removed.size === map.items.length || (inner && removed.size > 0))
     )
+      return replace(map, mergeValue(ownValue(map), b, c), inFlow);
+    // EVERY KEY GOES: the map is written `{}` where it stood. Removing its
+    // lines one by one would leave `key:` behind, which reads as null, not
+    // as an empty map (rpg-project#1014 review).
+    if (map.items.length > 0 && removed.size === map.items.length)
       return replace(map, mergeValue(ownValue(map), b, c), inFlow);
     for (const [key, pair] of pairs) {
       if (!Object.hasOwn(c, key) || !Object.hasOwn(b, key)) continue;
@@ -659,16 +919,43 @@ function spliceText(
       source.slice(lineStart(seq.range![0]), seq.range![0]).trim() !== '';
     // Edits this list made before it found it must be rewritten whole.
     const mark = edits.length;
+    /** The compact list rewritten whole from its own value. Its comment
+     * lines would go with its text, so each one whose row stays (or moves)
+     * is first set above the parent row's line, at that row's column; one
+     * whose row is removed goes with it (rpg-project#1014 review). */
     const refuseCompact = () => {
       edits.length = mark;
+      const kept = new Set(pairs.map(([i]) => i));
+      const comments: string[] = [];
+      const end = endOf(seq);
+      for (
+        let at = throughLine(seq.range![0]);
+        at < end;
+        at = throughLine(at)
+      ) {
+        const line = source.slice(at, lineEnd(at));
+        if (!/^\s*#/.test(line)) continue;
+        let owner = items.findIndex((item) => item!.range![0] > at);
+        if (owner === -1) owner = items.length - 1;
+        if (kept.has(owner)) comments.push(line.trim());
+      }
+      if (comments.length) {
+        const line = lineStart(seq.range![0]);
+        const indent = ' '.repeat(source.slice(line).search(/\S/));
+        edit(
+          line,
+          line,
+          comments.map((comment) => `${indent}${comment}\n`).join('')
+        );
+      }
       whole();
     };
     const firstSteady = steady[0][0];
     const head = compact ? items[firstSteady]!.range![0] : -1;
     if (compact) {
-      if (spans.some((span, i) => i > 0 && !span)) return whole();
+      if (spans.some((span, i) => i > 0 && !span)) return refuseCompact();
       const run = source.slice(items[0]!.range![0], head);
-      if (/^\s*#/m.test(run)) return whole();
+      if (/^\s*#/m.test(run)) return refuseCompact();
     }
     for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
     if (!changesShape) return;
@@ -807,5 +1094,5 @@ function spliceText(
   let out = source;
   for (const { start, end, text } of sorted)
     out = out.slice(0, start) + text + out.slice(end);
-  return out;
+  return { out, edits: sorted };
 }

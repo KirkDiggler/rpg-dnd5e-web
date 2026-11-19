@@ -5,7 +5,6 @@ import {
   isPair,
   isScalar,
   isSeq,
-  parse,
   parseDocument,
   visit,
   type Scalar,
@@ -197,13 +196,11 @@ function baseOf(token: string, source: string): unknown {
   for (const held of bases.keys())
     if (dungeonSourceOf(held) === undefined) bases.delete(held);
   const read = decodeSingleRoomDungeon(source);
-  const base = parse(
-    encodeCanonical({
-      key: read.key,
-      draft: read.draft,
-      ...renderScope(scopeFrom(read)),
-    })
-  );
+  const base = encodeCanonicalWithValue({
+    key: read.key,
+    draft: read.draft,
+    ...renderScope(scopeFrom(read)),
+  }).value;
   bases.set(token, base);
   return base;
 }
@@ -219,22 +216,24 @@ import {
 export function encodeSingleRoomDungeon(
   input: EncodeSingleRoomDungeonInput
 ): string {
-  const canonical = encodeCanonical({
-    ...input,
-    draft: captureDoorFramePresentations(input.draft, pinnedFrameMaterials()),
-  });
+  const draft = captureDoorFramePresentations(
+    input.draft,
+    pinnedFrameMaterials()
+  );
   const token = input.draft.sourceRef;
   // A lost file is the caller's to announce (`dungeonSourceLost`): the
   // publish panels ask before this canonical encoding is saved.
   const source = dungeonSourceOf(token);
-  if (token === undefined || source === undefined) return canonical;
+  if (token === undefined || source === undefined)
+    return encodeCanonical({ ...input, draft });
+  const { text, value } = encodeCanonicalWithValue({ ...input, draft });
   // The commit's check (`assertSourceWritable`) and the publish panel encode
   // the same document one after the other: the second takes the first's
   // checked write (rpg-project#1014).
-  if (lastWrite?.source === source && lastWrite.canonical === canonical)
+  if (lastWrite?.source === source && lastWrite.canonical === text)
     return lastWrite.out;
-  const out = spliceYaml(source, baseOf(token, source), parse(canonical));
-  lastWrite = { source, canonical, out };
+  const out = spliceYaml(source, baseOf(token, source), value);
+  lastWrite = { source, canonical: text, out };
   return out;
 }
 
@@ -260,8 +259,12 @@ export function assertSourceWritable(document: RoomDraftDocument): void {
   let key: unknown;
   try {
     key = (baseOf(token, source) as { key?: unknown }).key;
-  } catch {
-    return;
+  } catch (error) {
+    // FAIL CLOSED (rpg-project#1014 review): a file the studio cannot read
+    // back cannot take the edit either.
+    throw new UnsafeWriteError(
+      `The file this draft was read from cannot be read: ${error instanceof Error ? error.message : String(error)}.`
+    );
   }
   try {
     encodeSingleRoomDungeon({
@@ -270,6 +273,9 @@ export function assertSourceWritable(document: RoomDraftDocument): void {
       ...renderScope(document.scope),
     });
   } catch (error) {
+    // The splice's own failures are all `UnsafeWriteError` (it fails
+    // closed); what is left is the encoder's refusal before it splices, a
+    // policy form part-way through, which export and publish name.
     if (error instanceof UnsafeWriteError) throw error;
   }
 }
@@ -288,6 +294,25 @@ function withoutSourceRef(draft: RoomDraft): RoomDraft {
 }
 
 function encodeCanonical(input: EncodeSingleRoomDungeonInput): string {
+  return canonicalDocument(input).toString({ flowCollectionPadding: false });
+}
+
+/** The canonical text and the value it reads as. The value is the built
+ * document's own (`toJS`), not a parse of the text: the same value, without
+ * a second parse of a file-sized text on every check (rpg-project#1014
+ * review). */
+export function encodeCanonicalWithValue(input: EncodeSingleRoomDungeonInput): {
+  text: string;
+  value: unknown;
+} {
+  const document = canonicalDocument(input);
+  return {
+    text: document.toString({ flowCollectionPadding: false }),
+    value: document.toJS(),
+  };
+}
+
+function canonicalDocument(input: EncodeSingleRoomDungeonInput): Document {
   if (!input.key || typeof input.key !== 'string')
     throw new Error('Dungeon key must be non-empty.');
   const draft = validateRoomDocument({
@@ -319,7 +344,7 @@ function encodeCanonical(input: EncodeSingleRoomDungeonInput): string {
     room: withoutSourceRef(draft.draft),
   });
   flowRegionRows(document);
-  return document.toString({ flowCollectionPadding: false });
+  return document;
 }
 
 /**

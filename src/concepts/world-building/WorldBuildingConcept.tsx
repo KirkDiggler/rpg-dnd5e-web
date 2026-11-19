@@ -980,7 +980,11 @@ export function WorldBuildingConcept({
       nextRoom: RoomGameplayData = roomHistoryRef.current.present.draft.room,
       nextName?: string,
       nextId = roomHistoryRef.current.present.draft.id,
-      nextScope?: SiteScope
+      nextScope?: SiteScope,
+      /** A fresh document (New room) has no file: it does not keep the
+       * replaced document's `sourceRef`, so it is never spliced into that
+       * file (rpg-project#1014 review). */
+      fresh = false
     ): boolean => {
       if (
         roomMode &&
@@ -993,9 +997,11 @@ export function WorldBuildingConcept({
       try {
         if (roomMode) {
           const current = roomHistoryRef.current.present;
+          const unsourced = { ...current.draft };
+          delete unsourced.sourceRef;
           const nextDraft = reconcileRoomDraft(
             {
-              ...current.draft,
+              ...(fresh ? unsourced : current.draft),
               id: nextId,
               ...(nextName === undefined ? {} : { name: nextName }),
               room: nextRoom,
@@ -2116,7 +2122,8 @@ export function WorldBuildingConcept({
       roomMode ? freshRoom.id : undefined,
       // A fresh document authors no policies: New room empties the scope
       // rather than carrying the replaced document's factions forward.
-      roomMode ? {} : undefined
+      roomMode ? {} : undefined,
+      roomMode
     );
     if (roomMode) cancelTransients();
     setTool('select');

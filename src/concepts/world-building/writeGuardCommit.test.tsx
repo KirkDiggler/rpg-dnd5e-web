@@ -5,11 +5,17 @@
  * edit (`assertSourceWritable`): the splice's text must parse and read back
  * as the edit meant. A broken splice (injected here) leaves the document,
  * the saved draft and the undo history as they were, and the operator reads
- * the studio's sentence; a sound one commits as before.
+ * the studio's sentence; a sound one commits as before. New room starts a
+ * document with no file.
  */
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parse } from 'yaml';
 import { readDraftYaml } from '../encounter-studio/draftFile';
 import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
 import {
@@ -20,26 +26,23 @@ import {
 } from './roomDraft';
 import type { KeyValueStorage } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
+import { spliceInternals } from './yamlSplice';
 
-/** The splice's fault, when a test injects one: text that does not parse,
- * or text that parses but is the file unchanged (the edit lost). */
-const fault = vi.hoisted(() => ({
-  mode: null as null | 'unparseable' | 'lost',
-}));
-vi.mock('./yamlSplice', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./yamlSplice')>();
-  return {
-    ...actual,
-    spliceYaml: (source: string, base: unknown, current: unknown) => {
-      if (!fault.mode || actual.sameValue(base, current))
-        return actual.spliceYaml(source, base, current);
-      const broken =
-        fault.mode === 'unparseable' ? `${source}\n- [ unclosed\n` : source;
-      // The guard as the real splice runs it, over the broken text.
-      return actual.checkWrite(parse(source), base, current, broken);
-    },
-  };
-});
+/** The writer below the guard made faulty, as a splice bug would be: text
+ * that does not parse, or the file unchanged (the edit lost). The guard in
+ * the real `spliceYaml` must refuse what it writes. */
+function breakTheWriter(mode: 'unparseable' | 'lost') {
+  const real = spliceInternals.text;
+  vi.spyOn(spliceInternals, 'text').mockImplementation(
+    (source, document, base, current) => {
+      const { edits } = real(source, document, base, current);
+      return {
+        out: mode === 'unparseable' ? `${source}\n- [ unclosed\n` : source,
+        edits,
+      };
+    }
+  );
+}
 
 const viewport = vi.hoisted(() => ({
   paint: null as
@@ -77,7 +80,7 @@ class MemoryStorage implements KeyValueStorage {
 }
 
 afterEach(() => {
-  fault.mode = null;
+  vi.restoreAllMocks();
   cleanup();
 });
 
@@ -128,7 +131,7 @@ describe('a write the studio cannot make safely is refused (rpg-project#1014)', 
       const { storage, cell } = openCastle();
       const saved = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
       expect(undo().disabled).toBe(true);
-      fault.mode = mode;
+      breakTheWriter(mode);
       act(() => viewport.paint!([cell], 'paint'));
       expect(screen.getByRole('alert').textContent).toMatch(sentence);
       expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(saved);
@@ -143,5 +146,15 @@ describe('a write the studio cannot make safely is refused (rpg-project#1014)', 
     expect(screen.queryByText(/could not write this change safely/)).toBe(null);
     expect(undo().disabled).toBe(false);
     expect(floorCells(savedDraft(storage))).toContainEqual(cell);
+  });
+
+  it('New room keeps no file: the blank room is never spliced into the castle', () => {
+    const { storage } = openCastle();
+    fireEvent.click(screen.getByRole('button', { name: 'Identity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    expect(screen.queryByText(/could not write this change safely/)).toBe(null);
+    expect(savedDraft(storage).sourceRef).toBeUndefined();
+    expect(undo().disabled).toBe(false);
   });
 });
