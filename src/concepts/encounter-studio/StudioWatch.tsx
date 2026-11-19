@@ -35,10 +35,7 @@
  * in development. Elsewhere the control is disabled and says why.
  */
 import { RecordPanel } from '@/components/session/combat-experience/RecordPanel';
-import {
-  RECORD_AGED_OUT_NOTICE,
-  type RecordFeedSnapshot,
-} from '@/components/session/recordFeed';
+import { type RecordFeedSnapshot } from '@/components/session/recordFeed';
 import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MachineDrawing } from './MachineDrawing';
@@ -382,7 +379,15 @@ export function StudioWatch({
             ))}
           {sightLines.length > SIGHT_LINES_SHOWN && (
             <details className="es-watch-sight" data-testid="watch-sight-many">
-              <summary>Sight changed for {stepSight.length} creatures</summary>
+              <summary>
+                Sight changed for{' '}
+                {
+                  stepSight.filter(
+                    (s) => s.gained.length > 0 || s.lost.length > 0
+                  ).length
+                }{' '}
+                creatures
+              </summary>
               {sightLines.map((line, i) => (
                 <p key={i} data-testid="watch-sight">
                   {line}
@@ -470,8 +475,8 @@ export function StudioWatch({
             ))}
             {member.sees && (
               <p className="es-help" data-testid="watch-sees">
-                {feed.notice === RECORD_AGED_OUT_NOTICE
-                  ? 'Sees (from the steps the record still holds): '
+                {feed.notice
+                  ? 'Sees, from the steps the record holds: '
                   : 'Sees: '}
                 {member.sees.length > 0
                   ? member.sees.map((id) => names?.get(id) ?? id).join(', ')

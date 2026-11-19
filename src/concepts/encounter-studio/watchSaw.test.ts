@@ -178,6 +178,30 @@ describe('the fold reads sight (sighted.observer)', () => {
   });
 });
 
+describe('a member that leaves the run', () => {
+  it('exited clears its sight; others keep it until the record says lost', () => {
+    const left: RecordRow[] = [
+      row('', { beat: 'sighted', observer: 'gate-1', gained: ['west'] }),
+      row('', { beat: 'sighted', observer: 'west', gained: ['gate-1'] }),
+      row('move:1', { beat: 'exited', member: 'west' }),
+    ];
+    const view = foldRun(start, left);
+    expect(view.members.west).toBeUndefined();
+    // Not inferred: gate-1 still sees west until a `lost` says otherwise.
+    expect(view.members['gate-1']!.sees).toEqual(['west']);
+    // Back in the run, it sees only what a new beat says.
+    const back = foldRun(start, [
+      ...left,
+      row('move:2', {
+        beat: 'moved',
+        member: 'west',
+        position: { x: 3, y: 0 },
+      }),
+    ]);
+    expect(back.members.west!.sees).toBeUndefined();
+  });
+});
+
 describe('what happened this step says who saw whom', () => {
   const names = new Map([
     ['gate-1', 'Guard'],
@@ -311,7 +335,47 @@ describe('the timeline: a band per other role, a mark for sight', () => {
     const marked = rowOf('gate-1')
       .cells.filter((c) => c.sight)
       .map((c) => c.step);
-    expect(marked).toEqual([0, 1, 3]);
+    // Step 0 is first light: what it already saw is no change and no mark.
+    expect(marked).toEqual([1, 3]);
+  });
+
+  it('first light alone is no change (the review probe)', () => {
+    const g = (id: string) => ({ id, cell: { q: 1, r: 1 } });
+    const probeStart: RunStart = {
+      creatures: [g('busy'), g('g1'), g('g2')],
+      partyStart: { q: 0, r: 0 },
+      self: 'hero',
+    };
+    const probe: RecordRow[] = [
+      row('', { beat: 'joined', member: 'hero', kind: 'player' }),
+      row('', { beat: 'sighted', observer: 'g1', gained: ['g2'] }),
+      row('', { beat: 'sighted', observer: 'g2', gained: ['g1'] }),
+      heroMoves('move:1', 1),
+      row('move:1', {
+        beat: 'state',
+        member: 'busy',
+        from: 'idle',
+        to: 'alert',
+        reason: '',
+      }),
+      heroMoves('move:2', 2),
+      row('move:2', {
+        beat: 'state',
+        member: 'busy',
+        from: 'alert',
+        to: 'idle',
+        reason: '',
+      }),
+    ];
+    const shown = (source: readonly RecordRow[]) =>
+      shownTimelineRows(timelineOf(probeStart, source), true)
+        .map((r) => r.id)
+        .sort();
+    expect(shown(probe)).toEqual(['busy', 'hero']);
+    expect(shown(probe)).toEqual(shown(neutral(probe)));
+    const g1 = timelineOf(probeStart, probe).rows.find((r) => r.id === 'g1')!;
+    expect(g1.cells[0]!.sight).toBeUndefined();
+    expect(g1.cells[0]!.didChanged).toBe(false);
   });
 
   it('only creatures that changed counts a role or a sight change', () => {

@@ -74,11 +74,13 @@ const rows: RecordRow[] = [
 function Panel({
   shown,
   selected = 'gate-1',
+  notice,
 }: {
   shown: readonly RecordRow[];
   selected?: string;
+  notice?: string;
 }): React.JSX.Element {
-  const feed: RecordFeedSnapshot = { rows: [...shown], notice: undefined };
+  const feed: RecordFeedSnapshot = { rows: [...shown], notice };
   const run = useRunFold(WATCH, draft, feed);
   if (run.selected !== selected) run.setSelected(selected);
   return (
@@ -144,6 +146,48 @@ describe('what each creature saw', () => {
     );
     expect(sightLines()).toContain('a now sees Toolkit Sandbox Bard');
   });
+
+  it('the count names only observers whose sight came or went', () => {
+    const many = [
+      ...rows.slice(0, 1),
+      ...['a', 'b', 'c', 'd'].map((o, i) =>
+        row(`s${i}`, 'move:1', {
+          beat: 'sighted',
+          observer: o,
+          gained: ['hero'],
+        })
+      ),
+      ...['e', 'f'].map((o, i) =>
+        row(`c${i}`, 'move:1', {
+          beat: 'sighted',
+          observer: o,
+          changed: ['hero'],
+          knowledge_changed: true,
+        })
+      ),
+    ];
+    render(<Panel shown={many} />);
+    expect(
+      screen.getByTestId('watch-sight-many').querySelector('summary')!
+        .textContent
+    ).toBe('Sight changed for 4 creatures');
+  });
+
+  it.each([
+    ['a capture window', 'Capture window: earlier history is not implied.'],
+    [
+      'a saved run missing its start',
+      'Capture incomplete: the server no longer held the run’s start.',
+    ],
+  ])(
+    'with %s, Sees says it is from the steps the record holds',
+    (_, notice) => {
+      render(<Panel shown={rows} notice={notice} />);
+      expect(screen.getByTestId('watch-sees').textContent).toBe(
+        'Sees, from the steps the record holds: no one'
+      );
+    }
+  );
 
   it('the timeline marks the observer’s cell “sees”, with the full text', () => {
     render(<Panel shown={rows} />);

@@ -380,7 +380,11 @@ export function timelineOf(
         cell.rolesChanged = rolesChanged;
         changed = true;
       }
-      const sight = sights[index]!.get(id);
+      // FIRST LIGHT is not a change: the engine opens every run with each
+      // observer gaining whoever is already in view (encounter.go
+      // NewEncounter), the sight counterpart of a first-known state, which
+      // the state rule above does not count either. Step 0 gets no mark.
+      const sight = index > 0 ? sights[index]!.get(id) : undefined;
       if (sight) {
         cell.sight = sight;
         changed = true;
