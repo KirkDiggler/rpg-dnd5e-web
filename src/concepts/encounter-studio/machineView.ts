@@ -60,11 +60,15 @@ const ROUTINE = 'routine';
 const KIND_ROUTINE = 'routine';
 const KIND_STATE = 'routine.state';
 const KIND_WAKE = 'routine.wake';
+/** A flag the routine remembers (encounter v0.228.0): `{flag, <name>,
+ * declares, is}`. */
+const KIND_FLAG = 'routine.flag';
 const ROUTINE_KINDS = new Set([
   KIND_ROUTINE,
   KIND_STATE,
   KIND_WAKE,
   'routine.row',
+  KIND_FLAG,
 ]);
 const underRoutine = (path: string, routineId: string): boolean => {
   const at = `behaviorDefinitions.${routineId}`;
@@ -95,6 +99,11 @@ const ROLE_ASKS = 'asks';
 const SHAPE_ROLES = new Set([ROLE_FROM, ROLE_TO, ROLE_ON, ROLE_PICKS]);
 /** One condition a step's `when` reads (encounter v0.225.0). */
 const CONDITION = 'condition';
+/** One act of a step, `{act, <word>, does, is?, at}` (encounter v0.228.0). */
+const ACT = 'act';
+/** A flag a step asks, sets or clears, or a routine declares. */
+const FLAG = 'flag';
+const ROLE_DECLARES = 'declares';
 /** Between a beat's words and its condition's, and between the parts of a
  * staying step's line. */
 const SEP = ' · ';
@@ -139,6 +148,31 @@ export interface MachineStep {
   /** Its whole condition, as its `condition` connections say it, in `at`
    * order; empty from an engine that sends none. */
   conditions: StepCondition[];
+  /** Every act it does, as its `act` connections say them, in the author's
+   * order (`to` first, then `do[i]`); empty from an engine that sends none
+   * (before encounter v0.228.0). */
+  acts: StepAct[];
+  /** The `flag` connections no condition or act already says, for the
+   * grouping key only (`asks warned` with no `flag:warned` condition). */
+  flagReads: StepRead[];
+}
+
+/** One act of a step. `is` is the engine's JSON literal (`"3"` is text,
+ * `3` a number), or empty where the act carries no value. */
+export interface StepAct {
+  /** As authored, open part filled: `to:challenged`, `pick:barred`,
+   * `anchor`, `wake_in`, `set:seen`. */
+  id: string;
+  is: string;
+  at: string;
+}
+
+/** A flag the machine remembers: its name and starting value (a JSON
+ * literal), from its `routine.flag` statement. */
+export interface MachineFlag {
+  name: string;
+  is: string;
+  statement: ReadBackStatement;
 }
 
 /** A creature's post or blocking that holds while the machine is in a
@@ -179,6 +213,7 @@ export interface MachineEdge {
   claims: string[];
   reads: StepRead[];
   conditions: StepCondition[];
+  acts: StepAct[];
   steps: MachineStep[];
 }
 
@@ -191,6 +226,9 @@ export interface MachineView {
   steps: MachineStep[];
   /** The moving steps, gathered, in the order their first step is said. */
   edges: MachineEdge[];
+  /** What the machine remembers, in the engine's order; empty when it
+   * declares no flag. */
+  flags: MachineFlag[];
 }
 
 const connected = (
@@ -262,7 +300,9 @@ export function machineOf(
         .map((c) => ({ kind: c.kind, id: c.id })),
       claims: connected(statement, CLAIM, ROLE_ASKS),
       reads: statement.connects
-        .filter((c) => !SHAPE_ROLES.has(c.role))
+        .filter(
+          (c) => !SHAPE_ROLES.has(c.role) && c.kind !== ACT && c.kind !== FLAG
+        )
         .map((c) =>
           c.kind === CONDITION
             ? {
@@ -277,6 +317,8 @@ export function machineOf(
             : { kind: c.kind, id: c.id, role: c.role }
         ),
       conditions: conditionsOf(statement),
+      acts: actsOf(statement),
+      flagReads: flagReadsOf(statement),
     });
   }
   for (const step of steps)
@@ -322,7 +364,77 @@ export function machineOf(
     states: [...states.values()],
     steps,
     edges: edgesOf(steps),
+    flags: own.flatMap((statement) => {
+      if (statement.kind !== KIND_FLAG) return [];
+      const c = statement.connects.find(
+        (x) => x.kind === FLAG && x.role === ROLE_DECLARES
+      );
+      return c ? [{ name: c.id, is: c.is, statement }] : [];
+    }),
   };
+}
+
+/** The order of an act's place: `to` first, then `do[i]` by index. */
+const actRank = (at: string): number => {
+  if (at === 'to') return -1;
+  const m = /^do\[(\d+)\]$/.exec(at);
+  return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+/** A step's act connections, each once, in the author's order. */
+function actsOf(statement: ReadBackStatement): StepAct[] {
+  const seen = new Set<string>();
+  const out: StepAct[] = [];
+  for (const c of statement.connects) {
+    if (c.kind !== ACT) continue;
+    const act = { id: c.id, is: c.is, at: c.at };
+    const key = JSON.stringify([act.id, act.is, act.at]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(act);
+  }
+  return out
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => actRank(x.a.at) - actRank(y.a.at) || x.i - y.i)
+    .map(({ a }) => a);
+}
+
+/** A step's `flag` connections that neither a condition (`flag:<name>`
+ * for `asks`) nor an act (`set:<name>`, `clear:<name>` for `sets`,
+ * `clears`) already says. */
+function flagReadsOf(statement: ReadBackStatement): StepRead[] {
+  const said = new Set(
+    statement.connects
+      .filter((c) => c.kind === CONDITION || c.kind === ACT)
+      .map((c) => c.id)
+  );
+  const covers: Record<string, string> = {
+    asks: 'flag:',
+    sets: 'set:',
+    clears: 'clear:',
+  };
+  return statement.connects
+    .filter(
+      (c) =>
+        c.kind === FLAG &&
+        !(covers[c.role] !== undefined && said.has(`${covers[c.role]}${c.id}`))
+    )
+    .map((c) => ({ kind: c.kind, id: c.id, role: c.role }));
+}
+
+/** An act's value as the JSON literal says it: the value, and its text as
+ * written (`"3"` stays quoted, so text and number read apart). Null for an
+ * act with no value. */
+export function actValueOf(
+  is: string
+): { value: unknown; text: string } | null {
+  if (!is) return null;
+  try {
+    const value: unknown = JSON.parse(is);
+    return { value, text: typeof value === 'string' ? is : String(value) };
+  } catch {
+    return { value: is, text: is };
+  }
 }
 
 /** A step's condition connections, each once, in `at` order (the engine's
@@ -375,6 +487,15 @@ const otherReadsKey = (step: Pick<MachineStep, 'reads'>): string =>
 const conditionsKey = (step: Pick<MachineStep, 'conditions'>): string =>
   step.conditions.map(conditionKey).join(',');
 
+/** Every act, in order, with its value and place, and every flag
+ * connection no condition or act says. Empty from an engine that sends
+ * neither, so such a step's edge id is the one it had. */
+const actsKey = (step: Pick<MachineStep, 'acts' | 'flagReads'>): string =>
+  [
+    ...step.acts.map((a) => JSON.stringify([a.id, a.is, a.at])),
+    ...step.flagReads.map((r) => `${r.role} ${r.kind} ${r.id}`).sort(),
+  ].join(',');
+
 /** Moving steps gathered by beat, target, reads and picks, in the order
  * their first step is said. Any part that differs keeps two steps apart. */
 function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
@@ -383,10 +504,12 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
     if (step.to === null) continue;
     const others = otherReadsKey(step);
     const whole = conditionsKey(step);
+    const does = actsKey(step);
     const id =
       `${step.beat}>${step.to}>${wakesKey(step)}>${step.picks.join(',')}` +
       (others ? `>${others}` : '') +
-      (whole ? `>when ${whole}` : '');
+      (whole ? `>when ${whole}` : '') +
+      (does ? `>do ${does}` : '');
     const edge = edges.get(id);
     if (edge) {
       if (!edge.from.includes(step.from)) edge.from.push(step.from);
@@ -401,6 +524,7 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
         claims: step.claims,
         reads: step.reads,
         conditions: step.conditions,
+        acts: step.acts,
         steps: [step],
       });
   }
@@ -429,7 +553,32 @@ const readWords = (r: StepRead): string =>
 
 /** What a label is made from: a step or an edge. */
 export type Labelled = Pick<MachineStep, 'beat' | 'reads'> &
-  Partial<Pick<MachineStep, 'conditions'>>;
+  Partial<Pick<MachineStep, 'conditions' | 'acts'>>;
+
+/** The acts a label says: every act but the move and the picks, which the
+ * arrow and the box's list lines already say (`to:X`, `pick:K`). */
+const ownActs = (step: Labelled): StepAct[] =>
+  (step.acts ?? []).filter(
+    (a) => !a.id.startsWith('to:') && !a.id.startsWith('pick:') && a.id !== 'to'
+  );
+
+/** One act's words: the engine's act label, its open part and value
+ * filled (`waits 3 rounds`, `marks the moment`, `sets seen to true`); its
+ * id and value without the words. */
+function actSaid(a: StepAct, words: MachineWords | null): string {
+  const value = actValueOf(a.is);
+  const colon = a.id.indexOf(':');
+  const word = colon < 0 ? a.id : a.id.slice(0, colon);
+  const open = colon < 0 ? '' : a.id.slice(colon + 1);
+  const said =
+    words &&
+    actWords(words, word, {
+      id: open,
+      value: value?.text ?? '',
+      n: value?.text ?? '',
+    });
+  return said || `${a.id}${value ? ` ${value.text}` : ''}`;
+}
 
 /** A place inside `when` that only `all` leads to: the condition is
  * needed, whatever else the step asks. */
@@ -501,12 +650,17 @@ const beatOf = (step: Labelled, words: MachineWords | null): string =>
  * asked false), the beat and how many conditions it has. */
 export function beatLabel(
   step: Labelled,
-  words: MachineWords | null = null
+  words: MachineWords | null = null,
+  { acts = true }: { acts?: boolean } = {}
 ): string {
   const { conditions, reads } = partsOf(step, words);
   const whole = conditionWords(words, conditions);
-  if (whole === null) return shortBeatLabel(step, words);
-  const parts = [...(whole ? [whole] : []), ...reads];
+  if (whole === null) return shortBeatLabel(step, words, { acts });
+  const parts = [
+    ...(whole ? [whole] : []),
+    ...reads,
+    ...(acts ? ownActs(step).map((a) => actSaid(a, words)) : []),
+  ];
   if (!words || !beatWords(words, step.beat))
     return parts.length
       ? `on ${step.beat}: ${parts.join(', ')}`
@@ -519,14 +673,16 @@ export function beatLabel(
  * shows it has a condition. The full label is the mark's tooltip. */
 export function shortBeatLabel(
   step: Labelled,
-  words: MachineWords | null = null
+  words: MachineWords | null = null,
+  { acts = true }: { acts?: boolean } = {}
 ): string {
   const beat =
     words && beatWords(words, step.beat)
       ? beatOf(step, words)
       : `on ${step.beat}`;
   const { conditions, reads } = partsOf(step, words);
-  const n = conditions.length + reads.length;
+  const n =
+    conditions.length + reads.length + (acts ? ownActs(step).length : 0);
   return n ? `${beat} +${n}` : beat;
 }
 
@@ -550,10 +706,17 @@ export function stayParts(
   const picked = words
     ? step.picks.map((id) => actWords(words, 'pick', { id }))
     : [];
+  // Its other acts (encounter v0.228.0) under its lists, in the author's
+  // order; none from an older engine.
+  const acts = ownActs(step).map((a) => actSaid(a, words));
   if (words && picked.length && picked.every((p) => p !== null))
-    return [beatLabel(step, words), ...(picked as string[])];
+    return [
+      beatLabel(step, words, { acts: false }),
+      ...(picked as string[]),
+      ...acts,
+    ];
   const picks = step.picks.length ? `: picks ${step.picks.join(', ')}` : '';
-  return [`${beatLabel(step, words)}${picks}`];
+  return [`${beatLabel(step, words, { acts: false })}${picks}`, ...acts];
 }
 
 /** A hold's line inside its box: the creature, and what its statement

@@ -12,6 +12,11 @@ Slice [rpg-project#1015](https://github.com/KirkDiggler/rpg-project/issues/1015)
 
 ## Decided
 
+- A step's `act` connections (encounter v0.228.0) are in the grouping key in order, with value and place. `to:` and `pick:` acts are not said, because the arrow and the list lines already say them. Other acts are said in the engine's act words: after the condition on an arrow, counted in `+N`, and as lines under the lists in a box — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
+- A `flag` connection is never said. It goes in the grouping key only when no `flag:<name>` condition and no `set:` / `clear:` act already says it — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
+- A machine's `routine.flag` statements are drawn as a static strip above its states: the word "Remembers", then `name: <starting value>`, with each flag's sentence on hover. Clicking a flag does not mark its readers and writers; the strip is static — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
+- An act's `is` is read as a JSON literal: a text value keeps its quotes (`"3"`) and a number does not (`3`). A condition's `is` is still the plain word — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
+
 - A step's condition is said from `at`, not from `negated`. Leaves at one place, and `all`, are joined by the `all` word's `join` (" and "); `any` by its own (", or "). A part made of several is put in parentheses — [80658144](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/80658144).
 - A negated leaf reads its `label_not` where the table has one, else the `not` word's own template `NOT ({inner})`. An `any` is its template `({parts})` and an `all` is `{parts}`, joined by their `join`. The web adds no connective; the only thing it adds is the " · " separator — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1462#pullrequestreview-5972018992).
 - The beat comes first, then " · ", then the condition. The " · " is a separator, not a connective. A staying step's lists are joined to it the same way — [80658144](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/80658144).
@@ -22,6 +27,9 @@ Slice [rpg-project#1015](https://github.com/KirkDiggler/rpg-project/issues/1015)
 - The watch panel calls `useMachineWords()` and passes the words to `machinesRunBy`. Its drawings re-lay when the answer arrives, the same answer the Behaviours drawing has — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1462#pullrequestreview-5972018992).
 
 ## Found
+
+- At v0.228.0 the castle declares no flag and has no `flag` connection. Its 83 steps carry 88 `act` connections, and the `GetMachineWords` answer is the v0.225.0 one apart from its version. Read with the v0.225.0 rule, the acts would have shown on every arrow as `does act to:…`, and the captain's machine would have widened to 1400 — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
+- Two castle labels change from v0.225.0. Gate-1's hearing step gains " · marks the moment". The barred step from posted and alert finds no clear place for "someone walks into it · marks the moment" on its lane, so it is drawn short as "someone walks into it +1", with the full words on hover. Every arrow gathers the same steps as before — [hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7006816628).
 
 - At v0.225.0 the castle has no `{claim, …, asks}` connections. The heard claim arrives only as a `heard.claim` condition, and its 21 `routine.wake` statements with a condition carry 24 condition connections (43 with the hub repeats) — [rpg-project#1001 hand-off](https://github.com/KirkDiggler/rpg-project/issues/1001#issuecomment-7003637122).
 - Plain words make the castle's boxes and arrows about twice as wide. Before the layout changes, captain-policy laid out 1565 wide and gate-1-policy 1130, against the studio's 1100 — [80658144](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/80658144).

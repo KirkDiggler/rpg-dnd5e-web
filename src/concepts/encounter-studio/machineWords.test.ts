@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   castleMachinesReadBack,
   castleMachinesV225ReadBack,
+  castleMachinesV228ReadBack,
   castleMachinesWithClaimReadBack,
   machineWordsV225,
 } from './fixtures/engineReadBack';
@@ -24,6 +25,7 @@ import {
   type MachineLayout,
 } from './machineLayout';
 import {
+  actValueOf,
   beatLabel,
   machineOf,
   shortBeatLabel,
@@ -579,5 +581,248 @@ describe('the drawing’s frame', () => {
         studioCss
       )![1]!;
     expect(below).toMatch(/min-height:\s*26rem/);
+  });
+});
+
+/**
+ * EVERY ACT OF A STEP AND A MACHINE'S MEMORY (rpg-project#1001 item 4,
+ * encounter v0.228.0): `{act, <word>, does, is?, at}` beside the unchanged
+ * `to` and `picks` edges, and `routine.flag` with `{flag, <name>, declares,
+ * is}`.
+ */
+describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => {
+  const routines = castleMachinesV228ReadBack()
+    .sections.flatMap((s) => s.groups)
+    .filter((g) => g.about?.kind === 'routine')
+    .map((g) => g.about!.id);
+  /** Every drawn word of a machine: arrow labels, then box lines. */
+  const drawn = (readBack: ReadBack, id: string) => {
+    const layout = layoutMachine(machineOf(readBack, id)!, WORDS);
+    return [
+      ...layout.pieces.map((p) => p.label.text),
+      ...layout.boxes.flatMap((b) => b.lines.map((l) => l.text)),
+    ];
+  };
+
+  it('the castle draws as at v0.225.0, but where a step marks the moment', () => {
+    // The two steps of gate-1 that anchor say so; every other word of the
+    // ten machines is the same, and none says `to:` or `pick:` again.
+    const changed: string[] = [];
+    for (const id of routines) {
+      const before = drawn(castleMachinesV225ReadBack(), id);
+      const after = drawn(castleMachinesV228ReadBack(), id);
+      for (const text of after) if (!before.includes(text)) changed.push(text);
+      expect(
+        after.some((t) => /\b(to|pick):/.test(t)),
+        id
+      ).toBe(false);
+    }
+    expect(changed.sort()).toEqual(
+      [
+        'hears something · within 6 cells and (NOT (it was a voice), or it was at least a shout) · marks the moment',
+        'someone walks into it +1',
+      ].sort()
+    );
+  });
+
+  it('every machine lays out inside its bounds with nothing overlapping', () => {
+    for (const id of routines) {
+      const layout = layoutMachine(
+        machineOf(castleMachinesV228ReadBack(), id)!,
+        WORDS
+      );
+      expect(overlapsOf(layout), id).toEqual([]);
+      expect(strokeFaultsOf(layout), id).toEqual([]);
+      expect(outsideOf(layout), id).toEqual([]);
+      expect(layout.width, id).toBeLessThanOrEqual(1100);
+      // The castle declares no flag: no strip.
+      expect(layout.memory, id).toEqual([]);
+    }
+  });
+
+  it('the arrows gather the same steps as at v0.225.0', () => {
+    for (const id of routines) {
+      const from = (readBack: ReadBack) =>
+        machineOf(readBack, id)!.edges.map((e) =>
+          e.steps.map((s) => s.statement.path).sort()
+        );
+      expect(from(castleMachinesV228ReadBack()), id).toEqual(
+        from(castleMachinesV225ReadBack())
+      );
+    }
+  });
+
+  it('two steps that differ only in an act are two arrows', () => {
+    const twin = (change: (c: ReadBackConnection[]) => void) => {
+      const readBack = castleMachinesV228ReadBack();
+      const original = wakeAt(readBack, LIE);
+      const group = readBack.sections
+        .flatMap((s) => s.groups)
+        .find((g) => g.statements.includes(original))!;
+      const copy: ReadBackStatement = {
+        ...original,
+        path: original.path.replace(
+          'in-hall.transitions[1]',
+          'ready.transitions[9]'
+        ),
+        connects: original.connects.map((c) =>
+          c.role === 'from' ? { ...c, id: 'ready' } : { ...c }
+        ),
+      };
+      change(copy.connects);
+      group.statements.push(copy);
+      const view = machineOf(readBack, 'captain-policy')!;
+      const of = (st: ReadBackStatement) =>
+        view.edges.find((e) => e.steps.some((s) => s.statement === st))!;
+      return { a: of(original), b: of(copy) };
+    };
+    const anchor = (c: ReadBackConnection[]) => {
+      c.push({
+        ...c.find((x) => x.kind === 'act')!,
+        id: 'anchor',
+        is: '',
+        at: 'do[0]',
+      });
+    };
+    const apart = twin(anchor);
+    expect(apart.a).not.toBe(apart.b);
+    expect(beatLabel(apart.b, WORDS)).toMatch(/ · marks the moment$/);
+    expect(beatLabel(apart.a, WORDS)).not.toMatch(/marks the moment/);
+    // A different value is a different act: text "3" is not the number 3.
+    const wait = (is: string) => (c: ReadBackConnection[]) => {
+      c.push({
+        ...c.find((x) => x.kind === 'act')!,
+        id: 'wake_in',
+        is,
+        at: 'do[0]',
+      });
+    };
+    const textVsNumber = twin((c) => wait('"3"')(c));
+    expect(textVsNumber.a).not.toBe(textVsNumber.b);
+    const same = twin(() => {});
+    expect(same.a).toBe(same.b);
+  });
+
+  it('an act’s value is a JSON literal; a condition’s is still the plain word', () => {
+    expect(actValueOf('3')).toEqual({ value: 3, text: '3' });
+    expect(actValueOf('"3"')).toEqual({ value: '3', text: '"3"' });
+    expect(actValueOf('true')).toEqual({ value: true, text: 'true' });
+    expect(actValueOf('')).toBeNull();
+    const edge = edgeOf(castleMachinesV228ReadBack(), NOTHING_CAME);
+    expect(edge.conditions).toEqual([
+      expect.objectContaining({ id: 'rounds', is: '3', op: 'gte' }),
+    ]);
+    expect(beatLabel(edge, WORDS)).toBe(
+      'time passes · at least 3 rounds since it marked the moment'
+    );
+  });
+
+  it('a staying step says its other acts under its lists', () => {
+    const readBack = castleMachinesV228ReadBack();
+    const posted = machineOf(readBack, 'gate-1-policy')!.states.find(
+      (s) => s.id === 'posted'
+    )!;
+    const time = posted.stays.find((s) => s.beat === 'time')!;
+    time.acts = [
+      ...time.acts,
+      { id: 'wake_in', is: '2', at: 'do[1]' },
+      { id: 'set:seen', is: '"yes"', at: 'do[2]' },
+    ];
+    expect(stayLabel(time, WORDS)).toBe(
+      'time passes · acts from the post list · waits 2 rounds · sets seen to "yes"'
+    );
+  });
+
+  /** gate-1's machine with a flag it remembers, hand-built from the
+   * hand-off's shapes (the castle declares none): `warned`, a bool that
+   * starts false, asked by its barred step and set by its heard step. */
+  const withFlag = (): ReadBack => {
+    const readBack = castleMachinesV228ReadBack();
+    const group = readBack.sections
+      .flatMap((s) => s.groups)
+      .find((g) => g.about?.id === 'gate-1-policy')!;
+    const head = group.statements.find((st) => st.kind === 'routine')!;
+    group.statements.push({
+      ...head,
+      kind: 'routine.flag',
+      path: 'behaviorDefinitions.gate-1-policy.recipe.flags.warned',
+      sentence:
+        'The routine `gate-1-policy` remembers the flag `warned`, a bool that starts as false.',
+      connects: [
+        {
+          ...head.connects[0]!,
+          kind: 'flag',
+          id: 'warned',
+          role: 'declares',
+          is: 'false',
+          op: '',
+          negated: false,
+          at: '',
+        },
+      ],
+    });
+    const heard = wakeAt(readBack, HEARD);
+    const act = heard.connects.find((c) => c.kind === 'act')!;
+    heard.connects.push(
+      { ...act, id: 'set:warned', is: 'true', at: 'do[1]' },
+      { ...act, kind: 'flag', id: 'warned', role: 'sets', is: '', at: '' }
+    );
+    return readBack;
+  };
+
+  it('a machine with a flag draws what it remembers above its states', () => {
+    const view = machineOf(withFlag(), 'gate-1-policy')!;
+    expect(view.flags.map((f) => [f.name, f.is])).toEqual([
+      ['warned', 'false'],
+    ]);
+    const layout = layoutMachine(view, WORDS);
+    expect(layout.memory.map((m) => m.text)).toEqual([
+      'Remembers',
+      'warned: false',
+    ]);
+    expect(layout.memory[1]!.statement!.sentence).toMatch(
+      /remembers the flag `warned`/
+    );
+    const top = Math.min(...layout.boxes.map((b) => b.rect.y));
+    for (const m of layout.memory) expect(m.y).toBeLessThan(top);
+    expect(overlapsOf(layout)).toEqual([]);
+    expect(strokeFaultsOf(layout)).toEqual([]);
+    expect(outsideOf(layout)).toEqual([]);
+    // The act that sets it says so; its `flag sets` connection is not said
+    // again and does not split the arrow from an identical step.
+    const heard = layout.pieces.find((p) =>
+      p.steps.some((s) => s.statement.path === HEARD)
+    )!;
+    expect(heard.label.full).toMatch(
+      / · marks the moment · sets warned to true$/
+    );
+    expect(heard.label.full).not.toMatch(/flag/);
+    expect(
+      machineOf(withFlag(), 'gate-1-policy')!.steps.find(
+        (s) => s.statement.path === HEARD
+      )!.flagReads
+    ).toEqual([]);
+  });
+
+  it('a flag connection nothing else says is kept for the grouping key, unshown', () => {
+    const readBack = castleMachinesV228ReadBack();
+    const lie = wakeAt(readBack, LIE);
+    lie.connects.push({
+      ...lie.connects[0]!,
+      kind: 'flag',
+      id: 'warned',
+      role: 'asks',
+      is: '',
+      op: '',
+      negated: false,
+      at: '',
+    });
+    const step = machineOf(readBack, 'captain-policy')!.steps.find(
+      (s) => s.statement === lie
+    )!;
+    expect(step.flagReads).toEqual([
+      { kind: 'flag', id: 'warned', role: 'asks' },
+    ]);
+    expect(beatLabel(step, WORDS)).not.toMatch(/warned/);
   });
 });

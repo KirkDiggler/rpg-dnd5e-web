@@ -76,6 +76,25 @@ export function MachineDrawing({
             <path d="M 0 0 L 10 5 L 0 10 z" className="es-machine-arrowhead" />
           </marker>
         </defs>
+        {layout.memory.length > 0 && (
+          // What the machine remembers (encounter v0.228.0): each flag
+          // with its starting value, its sentence on hover. Static.
+          <g className="es-machine-memory" data-memory="">
+            {layout.memory.map((m, i) => (
+              <text
+                key={i}
+                className="es-machine-line"
+                data-muted={m.statement ? undefined : true}
+                data-flag={m.statement ? m.text.split(':')[0] : undefined}
+                x={m.x}
+                y={m.y}
+              >
+                {m.statement && <title>{m.statement.sentence}</title>}
+                {m.text}
+              </text>
+            ))}
+          </g>
+        )}
         {layout.pieces.map((piece) => (
           <Piece
             key={piece.id}

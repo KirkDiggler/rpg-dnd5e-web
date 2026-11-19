@@ -52,6 +52,7 @@ import castleJson from './engineReadBack.castle.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
 import machines225Json from './engineReadBack.machines225.json?raw';
+import machines228Json from './engineReadBack.machines228.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
@@ -179,4 +180,18 @@ export function machineWordsV225(): GetMachineWordsResponse {
     GetMachineWordsResponseSchema,
     JSON.parse(machineWordsJson) as JsonValue
   );
+}
+
+/**
+ * THE CASTLE'S MACHINES WITH EVERY ACT OF A STEP (rpg-project#1015, #1001
+ * item 4), recorded the same way as `castleMachinesV225ReadBack` at rpg-api
+ * `dev` abf88ba5 (encounter v0.228.0, protos unchanged at v0.1.282) and
+ * trimmed the same way. Each step's acts are `{act, <word>, does, is?, at}`
+ * connections beside the unchanged `to` and `picks` edges. The castle
+ * declares no flag, so it has no `routine.flag` statement and no `flag`
+ * connection. The `GetMachineWords` answer at v0.228.0 is the v0.225.0
+ * one but for its `encounter_version`. Unedited.
+ */
+export function castleMachinesV228ReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(machines228Json) as JsonValue);
 }

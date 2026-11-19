@@ -28,6 +28,7 @@
  */
 import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
+  actValueOf,
   beatLabel,
   holdLabel,
   shortBeatLabel,
@@ -143,7 +144,19 @@ export interface MachineLayout {
   height: number;
   boxes: LaidBox[];
   pieces: LaidPiece[];
+  /** What the machine remembers (encounter v0.228.0), drawn as a strip
+   * above its states: the strip's word, then each flag and its starting
+   * value. Empty when it declares no flag. */
+  memory: LaidMemory[];
 }
+
+export interface LaidMemory extends LaidText {
+  /** The flag's `routine.flag` statement; null for the strip's word. */
+  statement: ReadBackStatement | null;
+}
+
+export const MEMORY_WORDS = 'Remembers';
+const MEMORY_H = 24;
 
 const estimate = (text: string, per: number): number =>
   Math.ceil(text.length * per);
@@ -533,7 +546,40 @@ export function layoutMachine(
 
   // PLACE THE BOXES.
   const rect = new Map<string, Rect>();
-  let y = MARGIN;
+  // WHAT IT REMEMBERS: one strip above the states, wrapped at the studio's
+  // width.
+  const memory: LaidMemory[] = [];
+  if (view.flags.length) {
+    let mx = MARGIN;
+    let my = MARGIN + 13;
+    const put = (text: string, statement: ReadBackStatement | null): void => {
+      const w = estimate(text, CHAR.line);
+      if (mx > MARGIN && mx + w > STUDIO_W - MARGIN) {
+        mx = MARGIN;
+        my += LINE_H;
+      }
+      memory.push({
+        text,
+        full: text,
+        x: mx,
+        y: my,
+        w,
+        anchor: 'start',
+        statement,
+      });
+      mx += w + 16;
+    };
+    put(MEMORY_WORDS, null);
+    for (const flag of view.flags)
+      put(
+        `${flag.name}: ${actValueOf(flag.is)?.text ?? ''}`.trim(),
+        flag.statement
+      );
+  }
+  const memoryH = memory.length
+    ? memory[memory.length - 1]!.y - MARGIN + MEMORY_H - 13
+    : 0;
+  let y = MARGIN + memoryH;
   const channelTop: number[] = [];
   let width = 0;
   rows.forEach((row, r) => {
@@ -901,7 +947,8 @@ export function layoutMachine(
       };
     })
   );
-  return { width, height, boxes, pieces: laidPieces };
+  for (const m of memory) width = Math.max(width, m.x + m.w + MARGIN);
+  return { width, height, boxes, pieces: laidPieces, memory };
 }
 
 /** A text's box, from its estimate. */
@@ -930,6 +977,12 @@ export function overlapsOf(layout: MachineLayout): [string, string][] {
     r.y >= 0 &&
     r.x + r.w <= layout.width &&
     r.y + r.h <= layout.height;
+  texts.push(
+    ...(layout.memory ?? []).map((m, i) => ({
+      name: `memory ${i}`,
+      rect: textRect(m),
+    }))
+  );
   for (const t of [...boxes, ...texts])
     if (!inside(t.rect)) out.push([t.name, 'the drawing']);
   for (let i = 0; i < boxes.length; i++)
