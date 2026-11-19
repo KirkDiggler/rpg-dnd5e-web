@@ -30,6 +30,7 @@ import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e
 import {
   beatLabel,
   holdLabel,
+  shortBeatLabel,
   stayLabel,
   type MachineEdge,
   type MachineState,
@@ -51,6 +52,9 @@ const BOX_MIN_W = 160;
 const BOX_MAX_W = 300;
 const GAP_MIN = 56;
 const GAP_MAX = 220;
+/** The studio's width for a drawing. A row its gaps' full labels would
+ * push past it narrows those gaps back to their short labels (rpg-project#1012). */
+const STUDIO_W = 1100;
 const LANE_GAP = 34;
 const CHANNEL_PAD = 12;
 const CHANNEL_EMPTY = 20;
@@ -315,7 +319,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
         to: edge.to,
         steps: edge.steps.filter((step) => from.includes(step.from)),
         full: beatLabel(edge),
-        short: `on ${edge.beat}`,
+        short: shortBeatLabel(edge),
         kind: adjacent ? 'adjacent' : 'channel',
         channel,
       });
@@ -348,13 +352,37 @@ export function layoutMachine(view: MachineView): MachineLayout {
           Number(colOf.get(b.from[0]!)! > colOf.get(b.to)!) ||
         pieces.indexOf(a) - pieces.indexOf(b)
     );
-  const gapOf = (left: string, right: string): number => {
+  const gapOf = (
+    left: string,
+    right: string,
+    words: 'full' | 'short'
+  ): number => {
     const list = pairs.get(pairKey(left, right)) ?? [];
     const widest = Math.max(
       0,
-      ...list.map((p) => estimate(p.full, CHAR.line) + 16)
+      ...list.map((p) => estimate(p[words], CHAR.line) + 16)
     );
     return Math.min(GAP_MAX, Math.max(GAP_MIN, widest));
+  };
+  // A row's gaps: wide enough for their full labels, unless that pushes
+  // the row past the studio's width; then the widest gaps fall back to
+  // their short labels, one at a time, until it fits or none is left. The
+  // full label stays the mark's tooltip and is in the detail pane.
+  const gapsOf = (row: readonly string[]): number[] => {
+    const gaps = row.slice(1).map((id, c) => gapOf(row[c]!, id, 'full'));
+    const floors = row.slice(1).map((id, c) => gapOf(row[c]!, id, 'short'));
+    const boxes = row.reduce((sum, id) => sum + drafts.get(id)!.w, 0);
+    const total = (): number =>
+      2 * MARGIN + boxes + gaps.reduce((sum, g) => sum + g, 0);
+    while (total() > STUDIO_W) {
+      let widest = -1;
+      gaps.forEach((g, c) => {
+        if (g > floors[c]! && (widest < 0 || g > gaps[widest]!)) widest = c;
+      });
+      if (widest < 0) break;
+      gaps[widest] = floors[widest]!;
+    }
+    return gaps;
   };
 
   // THE CHANNELS: one above the top row, one between each pair of rows,
@@ -380,8 +408,9 @@ export function layoutMachine(view: MachineView): MachineLayout {
     channelTop[r] = y;
     y += channelH[r]!;
     let x = MARGIN;
+    const gaps = gapsOf(row);
     row.forEach((id, c) => {
-      if (c > 0) x += gapOf(row[c - 1]!, id);
+      if (c > 0) x += gaps[c - 1]!;
       const w = drafts.get(id)!.w;
       rect.set(id, { x, y, w, h: rowH[r]! });
       x += w;
