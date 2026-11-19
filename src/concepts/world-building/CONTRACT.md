@@ -73,7 +73,18 @@ unchanged.
   its items before it is edited: by `id`, else by the longest common
   subsequence, so a delete, an insert or a reorder moves no item's fields onto
   another. An edit inside an anchored value is not shared with its aliases:
-  each alias the edit did not reach is written out as the value it had.
+  each alias the edit did not reach is written out as the value it had. A
+  compact list that starts on its parent's dash (`- - 3`) takes the same
+  edits; its first remaining row keeps the shared line.
+- **A write is checked before it is kept (rpg-project#1014).** The splice
+  parses its own output and compares it with the file's value with the edit
+  applied (`checkWrite`): lists in order, every key, every scalar and its type
+  count; key order, comments and layout do not. Every room edit commits
+  through `commitRoomDocument`, which first asks the file to take the edit
+  (`assertSourceWritable`). A write that does not parse or does not read back
+  as meant is refused: the document, the saved draft and undo stay as they
+  were, and the notice reads "The studio could not write this change safely,
+  so nothing was changed." with the reason.
 - **The file survives a reload.** The file text is kept in storage beside the
   draft (`DUNGEON_SOURCE_STORAGE_KEY`, `dungeonSources.ts`), and in memory for
   the few most recently used files. A draft whose file is in neither says so

@@ -251,10 +251,16 @@ function movedItemEdited(
   if (lines.some((line) => line.trim() !== '' && !line.startsWith(pad)))
     return null;
   try {
-    return spliceYaml(
-      `${lines.map((line) => line.slice(dash)).join('\n')}\n`,
+    // Its own small file, checked as any write is; not remembered beside
+    // the files the studio reads.
+    const text = `${lines.map((line) => line.slice(dash)).join('\n')}\n`;
+    const document = parseDocument(text);
+    if (document.errors.length) return null;
+    return checkWrite(
+      document.toJS(),
       [base],
-      [current]
+      [current],
+      spliceText(text, document, [base], [current])
     )
       .replace(/\n$/, '')
       .split('\n')
@@ -265,13 +271,118 @@ function movedItemEdited(
   }
 }
 
-export function spliceYaml(source: string, base: Json, current: Json): string {
-  if (sameValue(base, current)) return source;
+/** The sentence every refused write opens with (rpg-project#1014). */
+export const UNSAFE_WRITE =
+  'The studio could not write this change safely, so nothing was changed.';
+
+/** A write the splice produced that does not read back as the edit meant
+ * (rpg-project#1014). Its message is the sentence the studio shows. */
+export class UnsafeWriteError extends Error {
+  constructor(reason: string) {
+    super(`${UNSAFE_WRITE} ${reason}`);
+    this.name = 'UnsafeWriteError';
+  }
+}
+
+/** Where two values first differ, as a path (`room.regions[1].q`); null when
+ * they are the same under `sameValue`. */
+export function firstDifference(a: Json, b: Json, path = ''): string | null {
+  if (sameValue(a, b)) return null;
+  const here = path || 'the document';
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return here;
+    for (let i = 0; i < a.length; i++) {
+      const at = firstDifference(a[i], b[i], `${path}[${i}]`);
+      if (at) return at;
+    }
+  }
+  if (isObject(a) && isObject(b)) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of keys) {
+      const next = path ? `${path}.${key}` : key;
+      if (!Object.hasOwn(a, key) || !Object.hasOwn(b, key)) return next;
+      const at = firstDifference(a[key], b[key], next);
+      if (at) return at;
+    }
+  }
+  return here;
+}
+
+/**
+ * THE WRITE GUARD (rpg-project#1014): the splice's text must read back as
+ * the edit meant it, or it is refused. `own` is the file's value as it was
+ * read; the intended value is that with the studio's `base` → `current`
+ * changes applied (`mergeValue`: keys the studio does not author stay). The
+ * text must parse, and its value must equal the intended one under
+ * `sameValue`: list order, every key, every scalar and its type (`3` is not
+ * `"3"`, `null` is not missing) count; key order, comments, quoting and
+ * layout do not, since nothing that reads the file (the engine's decoder,
+ * the studio's) depends on them. Throws `UnsafeWriteError`, never returns
+ * a write it did not check.
+ */
+export function checkWrite(
+  own: Json,
+  base: Json,
+  current: Json,
+  out: string
+): string {
+  const written = parseDocument(out);
+  if (written.errors.length) {
+    const [error] = written.errors;
+    const line = error.linePos?.[0]?.line;
+    throw new UnsafeWriteError(
+      `The file it would write does not parse${line ? ` at line ${line}` : ''}.`
+    );
+  }
+  const at = firstDifference(written.toJS(), mergeValue(own, base, current));
+  if (at)
+    throw new UnsafeWriteError(
+      `The file it would write reads ${at} differently from the edit.`
+    );
+  return out;
+}
+
+/** The last few files read, parsed once: the studio splices the same source
+ * on every save and every check (rpg-project#1014). Neither the document nor
+ * its value is changed by a splice. */
+const reads: { source: string; document: Document; own: Json }[] = [];
+
+function readOf(source: string) {
+  const held = reads.find((read) => read.source === source);
+  if (held) return held;
   const document = parseDocument(source);
   if (document.errors.length || !document.contents)
     throw new Error(
       `the file this draft was read from no longer parses: ${document.errors[0]?.message ?? 'it is empty'}`
     );
+  const read = { source, document, own: document.toJS() as Json };
+  reads.unshift(read);
+  reads.length = Math.min(reads.length, 4);
+  return read;
+}
+
+/**
+ * The source with the studio's base → current changes spliced into its
+ * text, checked before it is returned (`checkWrite`): a write that does not
+ * read back as the edit meant throws `UnsafeWriteError` instead.
+ */
+export function spliceYaml(source: string, base: Json, current: Json): string {
+  if (sameValue(base, current)) return source;
+  const { document, own } = readOf(source);
+  return checkWrite(
+    own,
+    base,
+    current,
+    spliceText(source, document, base, current)
+  );
+}
+
+function spliceText(
+  source: string,
+  document: Document,
+  base: Json,
+  current: Json
+): string {
   const pad = /\{ \S/.test(source) || !/\{\S/.test(source);
   // Brackets keep their own spacing: the castle pads `{ q }` but not `[{`.
   const padBrackets = /\[ \S/.test(source) || !/\[\S/.test(source);
@@ -533,12 +644,37 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
       );
     }
     if (steady.length === 0) return whole();
-    for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
-    if (!changesShape) return;
     const dash = column(seq.range![0]);
     const spans = items.map((item) => itemSpan(item!, dash));
+    // A COMPACT LIST (rpg-project#1014) starts on its parent's dash line,
+    // `- - 3`: its first row shares that line, and every later row starts
+    // its own. The first row that stays (`firstSteady`) takes the shared
+    // line: the rows before it go as one run of text up to its value, and a
+    // row inserted before it is written at that value, followed by a new
+    // line and a dash for it. A comment line inside that run, or a later row
+    // that does not start its line, has no place on the shared line: the
+    // list is rewritten whole from its own value (formatting limited to it).
+    const compact =
+      changesShape &&
+      source.slice(lineStart(seq.range![0]), seq.range![0]).trim() !== '';
+    // Edits this list made before it found it must be rewritten whole.
+    const mark = edits.length;
+    const refuseCompact = () => {
+      edits.length = mark;
+      whole();
+    };
+    const firstSteady = steady[0][0];
+    const head = compact ? items[firstSteady]!.range![0] : -1;
+    if (compact) {
+      if (spans.some((span, i) => i > 0 && !span)) return whole();
+      const run = source.slice(items[0]!.range![0], head);
+      if (/^\s*#/m.test(run)) return whole();
+    }
+    for (const [i, j] of steady) walk(items[i]!, b[i], c[j], inner);
+    if (!changesShape) return;
+    if (compact && firstSteady > 0) edit(items[0]!.range![0], head, '');
     for (let i = 0; i < b.length; i++) {
-      if (stableOld.has(i)) continue;
+      if (stableOld.has(i) || (compact && i < firstSteady)) continue;
       const span = spans[i];
       if (span) edit(span.start, span.end, '');
       else
@@ -560,6 +696,16 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
       const span = spans[from];
       const merged = () =>
         fresh(mergeValue(ownValue(items[from]!), b[from], c[j]));
+      // The compact first row's own text is its value on the shared line
+      // and the lines under it, which already sit at the row's content
+      // column: given its own dash, it stands as a row.
+      if (compact && from === 0) {
+        const own = `${' '.repeat(dash)}- ${source
+          .slice(items[0]!.range![0], rowEnd(items[0]!, dash))
+          .replace(/\n$/, '')}`;
+        if (sameValue(b[from], c[j])) return own;
+        return movedItemEdited(own, dash, b[from], c[j]) ?? merged();
+      }
       if (!span) return merged();
       const own = source.slice(span.start, span.end).replace(/\n$/, '');
       if (sameValue(b[from], c[j])) return own;
@@ -569,7 +715,7 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     // Each new item goes after the steady item before it, or before the
     // first. After an item means after its span's last line, so the comment
     // lines that close it stay with it.
-    const firstSteady = steady[0][0];
+    const rowDash = `${' '.repeat(dash)}- `;
     for (let j = 0; j < c.length; j++) {
       if (stableNew.has(j)) continue;
       let before = -1;
@@ -578,7 +724,14 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
           before = stableNew.get(k)!;
           break;
         }
-      if (before === -1) {
+      if (before === -1 && compact) {
+        // Before the row on the shared line: this row takes the line, and
+        // that row gets a dash on the next. A row that opens with its own
+        // comment lines cannot sit on the shared line.
+        const text = itemText(j);
+        if (!text.startsWith(rowDash)) return refuseCompact();
+        edit(head, head, `${text.slice(rowDash.length)}\n${rowDash}`);
+      } else if (before === -1) {
         const at =
           spans[firstSteady]?.start ??
           commentsAbove(lineStart(items[firstSteady]!.range![0]) + dash, dash);
@@ -614,13 +767,23 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
     const line = lineStart(item.range[0]);
     const at = line + dash;
     if (source.slice(line, at).trim() !== '' || source[at] !== '-') return null;
+    return {
+      start: commentsAbove(at, dash),
+      dash: line,
+      end: rowEnd(item, dash),
+    };
+  }
+
+  /** Past the newline of an item's last line, and past the comment lines
+   * directly below it indented deeper than its dash, which close it. */
+  function rowEnd(item: Node, dash: number): number {
     let end = throughLine(endOf(item));
     while (end < source.length) {
       const next = source.slice(end, lineEnd(end));
       if (!/^\s*#/.test(next) || next.search(/\S/) <= dash) break;
       end = throughLine(end);
     }
-    return { start: commentsAbove(at, dash), dash: line, end };
+    return end;
   }
 
   walk(document.contents as Node, base, current, false);
@@ -637,8 +800,8 @@ export function spliceYaml(source: string, base: Json, current: Json): string {
       (earlier.start === later.start &&
         (earlier.end > earlier.start || later.end > later.start));
     if (meets)
-      throw new Error(
-        `the studio could not place its edits in the file it read (bytes ${earlier.start}–${later.end}); nothing was written`
+      throw new UnsafeWriteError(
+        `Its edits to the file meet each other (bytes ${earlier.start}–${later.end}).`
       );
   }
   let out = source;

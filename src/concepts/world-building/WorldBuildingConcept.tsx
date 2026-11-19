@@ -177,6 +177,7 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import { assertSourceWritable } from './singleRoomDungeon';
 import { SiteNamesContext, siteNamesOf } from './siteNames';
 import {
   AuthoredDispositions,
@@ -266,6 +267,7 @@ import {
   WorldBuildingViewport,
   type WorldBuildingViewportProps,
 } from './WorldBuildingViewport';
+import { UnsafeWriteError } from './yamlSplice';
 
 const EMPTY_STUDIO_SCENE_IDS: string[] = [];
 function studioTargetKey(target: StudioArrangeTarget | null): string {
@@ -861,8 +863,13 @@ export function WorldBuildingConcept({
 
   const editGeneration = viewportGenerationRef.current;
   const rejectEdit = useCallback((error: unknown): false => {
+    // A write the file splice could not make safely says so in its own
+    // sentence (rpg-project#1014): "The studio could not write this change
+    // safely, so nothing was changed. <reason>".
     setNotice(
-      `Edit rejected; the open scene was kept. ${error instanceof Error ? error.message : String(error)}`
+      error instanceof UnsafeWriteError
+        ? error.message
+        : `Edit rejected; the open scene was kept. ${error instanceof Error ? error.message : String(error)}`
     );
     return false;
   }, []);
@@ -924,6 +931,9 @@ export function WorldBuildingConcept({
           JSON.stringify(roomHistoryRef.current.present)
         )
           return true;
+        // The file this document was read from must take the edit safely
+        // before the edit is kept (rpg-project#1014).
+        assertSourceWritable(valid);
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
           present: structuredClone(valid),

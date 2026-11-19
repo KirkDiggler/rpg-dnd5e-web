@@ -1,7 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { mergeValue, sameValue, spliceYaml } from './yamlSplice';
+import served from '../encounter-studio/fixtures/the-mad-king-served.yaml?raw';
+import {
+  checkWrite,
+  mergeValue,
+  sameValue,
+  spliceYaml,
+  UNSAFE_WRITE,
+  UnsafeWriteError,
+} from './yamlSplice';
 
 /** `base` is what the studio read (the source without the keys it does not
  * author); `edit` turns it into what the studio writes now. The splice must
@@ -503,5 +511,222 @@ after: 1
   it('an unchanged list writes the source byte for byte', () => {
     expect(to([A, B, C, D])).toBe(source);
     expect(parse(to([D, C, B, A]))).toEqual({ rows: [D, C, B, A], after: 1 });
+  });
+});
+
+describe('the write guard: a write must read back as the edit meant (rpg-project#1014)', () => {
+  const file = `# the file
+key: castle
+cells:
+  - r: 1
+    q: [[2, 3]] # a run
+  - { r: 2, q: [[0, 1]] }
+note: "kept"
+`;
+  const own = parse(file);
+  /** The guard over `out`, as written for the edit `edit`. */
+  const guard = (out: string, edit: (v: never) => void = () => {}) => {
+    const current = structuredClone(own);
+    edit(current as never);
+    return () => checkWrite(own, own, current, out);
+  };
+  const refused = (run: () => unknown, reason: RegExp) => {
+    let error: unknown;
+    try {
+      run();
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(UnsafeWriteError);
+    const message = (error as Error).message;
+    expect(message.startsWith(`${UNSAFE_WRITE} `)).toBe(true);
+    expect(message.slice(UNSAFE_WRITE.length + 1)).toMatch(reason);
+  };
+
+  it('passes a write that differs only in comments, quoting, flow or block, and key order', () => {
+    const restyled = `note: kept
+cells:
+  - q:
+      - - 2
+        - 3
+    r: 1
+  # a comment the edit did not write
+  - r: 2
+    q: [[0, 1]]
+key: 'castle'
+`;
+    expect(guard(restyled)()).toBe(restyled);
+  });
+
+  it('refuses text that does not parse, naming the line', () => {
+    refused(
+      guard(`${file}- [ unclosed\n`),
+      /^The file it would write does not parse at line \d+\.$/
+    );
+  });
+
+  it('refuses a changed value, a dropped key, a reordered list and a changed type, naming where', () => {
+    refused(
+      guard(file.replace('[[2, 3]]', '[[2, 4]]')),
+      /reads cells\[0\]\.q\[0\]\[1\] differently/
+    );
+    refused(
+      guard(file.replace('note: "kept"\n', '')),
+      /reads note differently/
+    );
+    refused(
+      guard(file.replace('[[2, 3]]', '[[3, 2]]')),
+      /reads cells\[0\]\.q\[0\]\[0\] differently/
+    );
+    refused(
+      guard(file.replace('r: 1', 'r: "1"')),
+      /reads cells\[0\]\.r differently/
+    );
+    refused(
+      guard(file.replace('r: 1', 'r:')),
+      /reads cells\[0\]\.r differently/
+    );
+  });
+
+  it('refuses a write that lost the edit: the file unchanged', () => {
+    refused(
+      guard(file, (v: { key: string }) => {
+        v.key = 'mine';
+      }),
+      /reads key differently/
+    );
+  });
+
+  it('holds the keys the studio does not author: the intended value is the file’s own with the edit applied', () => {
+    const base = structuredClone(own);
+    delete base.note;
+    const current = structuredClone(base);
+    current.key = 'mine';
+    const out = file.replace('key: castle', 'key: mine');
+    expect(checkWrite(own, base, current, out)).toBe(out);
+    refused(
+      () => checkWrite(own, base, current, out.replace('note: "kept"\n', '')),
+      /reads note differently/
+    );
+  });
+
+  it('the castle round-trips byte for byte when nothing changed', () => {
+    const castle = parse(served);
+    expect(spliceYaml(served, castle, structuredClone(castle))).toBe(served);
+  });
+});
+
+describe('a compact list, `- - a`, takes every edit (rpg-project#1014)', () => {
+  // The castle's ground paint: each row of `q` is a run written as a list
+  // that starts on the row's own dash.
+  const file = `paint:
+  - r: -5
+    q:
+      - - 2
+        - 3
+  - r: -4
+    q:
+      - - 1
+        - 2
+      - - 5
+        - 6
+after: 1
+`;
+  const own = parse(file);
+  const to = (edit: (q: number[][][]) => void) => {
+    const current = structuredClone(own);
+    edit(current.paint.map((row: { q: number[][] }) => row.q));
+    return spliceYaml(file, own, current);
+  };
+
+  it('a row moved within the run keeps the run’s style', () => {
+    expect(to((q) => q[0][0].reverse())).toBe(
+      file.replace('      - - 2\n        - 3\n', '      - - 3\n        - 2\n')
+    );
+  });
+
+  it('an edited first value', () => {
+    expect(
+      to((q) => {
+        q[0][0][0] = 3;
+      })
+    ).toBe(file.replace('- - 2\n', '- - 3\n'));
+    expect(
+      to((q) => {
+        q[0][0][0] = 1;
+      })
+    ).toBe(file.replace('- - 2\n', '- - 1\n'));
+  });
+
+  it('the first value removed: the next takes the dash line', () => {
+    expect(to((q) => q[0][0].shift())).toBe(
+      file.replace('      - - 2\n        - 3\n', '      - - 3\n')
+    );
+  });
+
+  it('a value added at the front, in the middle and at the end', () => {
+    expect(to((q) => q[0][0].unshift(1))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 1\n        - 2\n        - 3\n'
+      )
+    );
+    expect(to((q) => q[0][0].splice(1, 0, 9))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 2\n        - 9\n        - 3\n'
+      )
+    );
+    expect(to((q) => q[0][0].push(4))).toBe(
+      file.replace(
+        '      - - 2\n        - 3\n',
+        '      - - 2\n        - 3\n        - 4\n'
+      )
+    );
+  });
+
+  it('whole runs move, go and come back as their own text', () => {
+    const swapped = to((q) => q[1].reverse());
+    expect(swapped).toBe(
+      file.replace(
+        '      - - 1\n        - 2\n      - - 5\n        - 6\n',
+        '      - - 5\n        - 6\n      - - 1\n        - 2\n'
+      )
+    );
+    expect(to((q) => q[1].shift())).toBe(
+      file.replace('      - - 1\n        - 2\n', '')
+    );
+  });
+
+  it('a run whose values are maps keeps their lines under the moved value', () => {
+    const maps = `q:
+  - - a: 1
+      b: 2
+    - c: 3
+      d: 4
+`;
+    const before = parse(maps);
+    const current = structuredClone(before);
+    current.q[0].reverse();
+    expect(spliceYaml(maps, before, current)).toBe(`q:
+  - - c: 3
+      d: 4
+    - a: 1
+      b: 2
+`);
+  });
+
+  it('a comment inside the run that the shared line cannot hold: the run is written whole, still exact', () => {
+    const commented = `q:
+  - - 2
+    # three
+    - 3
+`;
+    const before = parse(commented);
+    const current = structuredClone(before);
+    current.q[0].shift();
+    const out = spliceYaml(commented, before, current);
+    expect(parse(out)).toEqual(current);
+    expect(out.startsWith('q:\n  - ')).toBe(true);
   });
 });

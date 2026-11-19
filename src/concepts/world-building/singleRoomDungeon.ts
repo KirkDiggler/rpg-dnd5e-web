@@ -17,10 +17,11 @@ import {
   type SiteTemplates,
 } from './monsterTemplates';
 import {
-  ROOM_DRAFT_ENVELOPE_VERSION,
   parseRoomDocumentJson,
+  ROOM_DRAFT_ENVELOPE_VERSION,
   validateRoomDocument,
   type RoomDraft,
+  type RoomDraftDocument,
 } from './roomDraft';
 import {
   renderScope,
@@ -48,7 +49,7 @@ import {
   type SiteTables,
 } from './siteScope';
 import { carryUnknownKeys } from './strictShape';
-import { spliceYaml } from './yamlSplice';
+import { spliceYaml, UnsafeWriteError } from './yamlSplice';
 
 export interface EncodeSingleRoomDungeonInput {
   templates?: SiteTemplates;
@@ -227,7 +228,50 @@ export function encodeSingleRoomDungeon(
   // publish panels ask before this canonical encoding is saved.
   const source = dungeonSourceOf(token);
   if (token === undefined || source === undefined) return canonical;
-  return spliceYaml(source, baseOf(token, source), parse(canonical));
+  // The commit's check (`assertSourceWritable`) and the publish panel encode
+  // the same document one after the other: the second takes the first's
+  // checked write (rpg-project#1014).
+  if (lastWrite?.source === source && lastWrite.canonical === canonical)
+    return lastWrite.out;
+  const out = spliceYaml(source, baseOf(token, source), parse(canonical));
+  lastWrite = { source, canonical, out };
+  return out;
+}
+
+/** The last checked write: the file, the canonical text it was spliced
+ * from, and the result. */
+let lastWrite: { source: string; canonical: string; out: string } | null = null;
+
+/**
+ * THE EDIT IS CHECKED BEFORE IT IS KEPT (rpg-project#1014). A document read
+ * from a file is written back by splicing its changes into that file's
+ * text, and the splice checks its own output (`checkWrite`). Every room edit
+ * the studio commits calls this first: when the file the edit would write
+ * does not read back as the edit meant, it throws that `UnsafeWriteError`,
+ * and the commit refuses the edit, so the document and its undo history are
+ * left as they were. Any other refusal the encoder makes (a policy form
+ * part-way through, which commits may hold) is not this check's: export and
+ * publish name it, as before. A draft the studio made has no file to keep.
+ */
+export function assertSourceWritable(document: RoomDraftDocument): void {
+  const token = document.draft.sourceRef;
+  const source = dungeonSourceOf(token);
+  if (token === undefined || source === undefined) return;
+  let key: unknown;
+  try {
+    key = (baseOf(token, source) as { key?: unknown }).key;
+  } catch {
+    return;
+  }
+  try {
+    encodeSingleRoomDungeon({
+      key: typeof key === 'string' && key ? key : 'draft',
+      draft: document.draft,
+      ...renderScope(document.scope),
+    });
+  } catch (error) {
+    if (error instanceof UnsafeWriteError) throw error;
+  }
 }
 
 function withoutUnread(scope: SiteScope): SiteScope {
