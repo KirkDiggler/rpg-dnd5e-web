@@ -214,6 +214,7 @@ export interface MachineEdge {
   reads: StepRead[];
   conditions: StepCondition[];
   acts: StepAct[];
+  flagReads: StepRead[];
   steps: MachineStep[];
 }
 
@@ -374,10 +375,13 @@ export function machineOf(
   };
 }
 
-/** The order of an act's place: `to` first, then `do[i]` by index. */
+/** The order of an act's place: `to` first, then by its `do[i]`, whatever
+ * follows it (`do[1].clear[0]` is a clear of `do[1]`). Acts at one `do[i]`
+ * keep the order the engine sends them in, which is the order it applies
+ * them (rpg-toolkit `readback/routines.go` `actConnections`). */
 const actRank = (at: string): number => {
   if (at === 'to') return -1;
-  const m = /^do\[(\d+)\]$/.exec(at);
+  const m = /^do\[(\d+)\]/.exec(at);
   return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
 };
 
@@ -525,6 +529,7 @@ function edgesOf(steps: readonly MachineStep[]): MachineEdge[] {
         reads: step.reads,
         conditions: step.conditions,
         acts: step.acts,
+        flagReads: step.flagReads,
         steps: [step],
       });
   }
@@ -553,13 +558,21 @@ const readWords = (r: StepRead): string =>
 
 /** What a label is made from: a step or an edge. */
 export type Labelled = Pick<MachineStep, 'beat' | 'reads'> &
-  Partial<Pick<MachineStep, 'conditions' | 'acts'>>;
+  Partial<Pick<MachineStep, 'conditions' | 'acts' | 'flagReads'>>;
 
-/** The acts a label says: every act but the move and the picks, which the
- * arrow and the box's list lines already say (`to:X`, `pick:K`). */
-const ownActs = (step: Labelled): StepAct[] =>
+/** The acts a label says, in the author's order: every act but the move,
+ * which the arrow itself says (`to:X`). A staying step's picks are left out
+ * too (`picks: false`): its box says each as a line of its own ("acts from
+ * the post list"). A moving step's arrow says them among its acts. */
+const ownActs = (
+  step: Labelled,
+  { picks = true }: { picks?: boolean } = {}
+): StepAct[] =>
   (step.acts ?? []).filter(
-    (a) => !a.id.startsWith('to:') && !a.id.startsWith('pick:') && a.id !== 'to'
+    (a) =>
+      !a.id.startsWith('to:') &&
+      a.id !== 'to' &&
+      (picks || !a.id.startsWith('pick:'))
   );
 
 /** One act's words: the engine's act label, its open part and value
@@ -682,7 +695,10 @@ export function shortBeatLabel(
       : `on ${step.beat}`;
   const { conditions, reads } = partsOf(step, words);
   const n =
-    conditions.length + reads.length + (acts ? ownActs(step).length : 0);
+    conditions.length +
+    reads.length +
+    (acts ? ownActs(step).length : 0) +
+    (step.flagReads?.length ?? 0);
   return n ? `${beat} +${n}` : beat;
 }
 
@@ -708,7 +724,7 @@ export function stayParts(
     : [];
   // Its other acts (encounter v0.228.0) under its lists, in the author's
   // order; none from an older engine.
-  const acts = ownActs(step).map((a) => actSaid(a, words));
+  const acts = ownActs(step, { picks: false }).map((a) => actSaid(a, words));
   if (words && picked.length && picked.every((p) => p !== null))
     return [
       beatLabel(step, words, { acts: false }),

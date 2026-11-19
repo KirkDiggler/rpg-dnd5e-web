@@ -604,24 +604,81 @@ describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => 
     ];
   };
 
-  it('the castle draws as at v0.225.0, but where a step marks the moment', () => {
-    // The two steps of gate-1 that anchor say so; every other word of the
-    // ten machines is the same, and none says `to:` or `pick:` again.
-    const changed: string[] = [];
+  it('the castle draws as at v0.225.0, but where a moving step says what it does', () => {
+    // Gate-1's three arrows whose steps pick or anchor say so (review of
+    // #1462, finding B); every other word of the ten machines is the
+    // same, both ways, and no word says `to:` or `pick:` raw.
+    const appeared: string[] = [];
+    const gone: string[] = [];
     for (const id of routines) {
       const before = drawn(castleMachinesV225ReadBack(), id);
       const after = drawn(castleMachinesV228ReadBack(), id);
-      for (const text of after) if (!before.includes(text)) changed.push(text);
+      for (const text of after) if (!before.includes(text)) appeared.push(text);
+      for (const text of before) if (!after.includes(text)) gone.push(text);
       expect(
         after.some((t) => /\b(to|pick):/.test(t)),
         id
       ).toBe(false);
     }
-    expect(changed.sort()).toEqual(
+    expect(appeared.sort()).toEqual(
       [
         'hears something · within 6 cells and (NOT (it was a voice), or it was at least a shout) · marks the moment',
-        'someone walks into it +1',
+        'someone walks into it +2',
+        'time passes +2',
       ].sort()
+    );
+    // "someone walks into it" stays: a staying step's box line says it.
+    expect(gone.sort()).toEqual(
+      [
+        'hears something · within 6 cells and (NOT (it was a voice), or it was at least a shout)',
+        'time passes · at least 3 rounds since it marked the moment',
+      ].sort()
+    );
+  });
+
+  it('a moving step’s arrow says the list it acts from; a staying step’s box says it once', () => {
+    const readBack = castleMachinesV228ReadBack();
+    const layout = layoutMachine(machineOf(readBack, 'gate-1-policy')!, WORDS);
+    const full = (path: string) =>
+      layout.pieces.find((p) =>
+        p.steps.some((st) => st.statement.path === path)
+      )!.label.full;
+    const at = (state: string, i: number) =>
+      `behaviorDefinitions.gate-1-policy.recipe.states.${state}.transitions[${i}]`;
+    for (const path of [at('posted', 3), at('alert', 3)])
+      expect(full(path)).toBe(
+        'someone walks into it · acts from the barred list · marks the moment'
+      );
+    for (const path of [at('alert', 4), at('challenged', 4)])
+      expect(full(path)).toBe(
+        'time passes · at least 3 rounds since it marked the moment · acts from the post list'
+      );
+    const posted = layout.boxes.find((b) => b.state.id === 'posted')!;
+    const lines = posted.lines.map((l) => l.text);
+    expect(lines.filter((t) => t === 'acts from the post list')).toEqual([
+      'acts from the post list',
+    ]);
+  });
+
+  it('acts are said in the order the step does them: a clear, then a set', () => {
+    // The engine places a clear at `do[N].clear[k]` (review of #1462,
+    // finding C); `do: [pick post, clear [seen], set seen true]` ends true.
+    const readBack = castleMachinesV228ReadBack();
+    const step = wakeAt(readBack, NOTHING_CAME);
+    const act = step.connects.find((c) => c.kind === 'act')!;
+    step.connects.push(
+      { ...act, id: 'clear:seen', is: '', at: 'do[1].clear[0]' },
+      { ...act, id: 'set:seen', is: 'true', at: 'do[2]' }
+    );
+    const edge = edgeOf(readBack, NOTHING_CAME);
+    expect(edge.acts.map((a) => a.id)).toEqual([
+      'to:posted',
+      'pick:post',
+      'clear:seen',
+      'set:seen',
+    ]);
+    expect(beatLabel(edge, WORDS)).toBe(
+      'time passes · at least 3 rounds since it marked the moment · acts from the post list · forgets seen · sets seen to true'
     );
   });
 
@@ -713,7 +770,7 @@ describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => 
       expect.objectContaining({ id: 'rounds', is: '3', op: 'gte' }),
     ]);
     expect(beatLabel(edge, WORDS)).toBe(
-      'time passes · at least 3 rounds since it marked the moment'
+      'time passes · at least 3 rounds since it marked the moment · acts from the post list'
     );
   });
 
@@ -824,5 +881,7 @@ describe('a step’s acts and a machine’s memory (encounter v0.228.0)', () => 
       { kind: 'flag', id: 'warned', role: 'asks' },
     ]);
     expect(beatLabel(step, WORDS)).not.toMatch(/warned/);
+    // The split it makes is not invisible: the short form counts it.
+    expect(shortBeatLabel(step, WORDS)).toBe('hears something +3');
   });
 });

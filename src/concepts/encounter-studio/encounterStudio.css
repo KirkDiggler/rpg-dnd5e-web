@@ -2418,7 +2418,10 @@
   height: auto;
 }
 .es-watch-machine-scroll .es-machine {
-  overflow-x: auto;
+  /* The watch keeps its own frame: a tall machine scrolls inside it, as
+     before rpg-project#1015 uncapped the Behaviours drawing. */
+  max-height: 60vh;
+  overflow: auto;
 }
 .es-watch h3,
 .es-watch h4 {
