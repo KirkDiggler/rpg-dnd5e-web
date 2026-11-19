@@ -90,3 +90,19 @@ export function recordContextRows(
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   );
 }
+
+/** The whole-run path (the studio's watch, rpg-project#1013): every row is
+ * kept, so no related row is ever needed and the append is a copy of the
+ * row list, never a re-buffer of the run. `incoming` holds only ids newer
+ * than any held (the feed resumes after its last id). */
+export function appendRecordRows(
+  prior: RecordBufferOutput,
+  incoming: readonly RecordRow[]
+): RecordBufferOutput {
+  const added = incoming.filter(isSymbol);
+  return {
+    rows: [...prior.rows, ...incoming],
+    symbols: added.length ? [...prior.symbols, ...added] : prior.symbols,
+    related: prior.related,
+  };
+}

@@ -19,7 +19,11 @@ import type {
   GetRecordResponse,
   StreamRecordResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
-import { bufferRecordRows, RECORD_MAX_ROWS } from './recordBuffer';
+import {
+  appendRecordRows,
+  bufferRecordRows,
+  RECORD_MAX_ROWS,
+} from './recordBuffer';
 import { isRecordObject, parseRecordJSON } from './recordCapture';
 export { RECORD_MAX_ROWS } from './recordBuffer';
 
@@ -64,6 +68,10 @@ export interface RecordFeedDeps {
   related?: readonly RecordRow[];
   /** The notice those rows carried, so a restart's hole stays visible. */
   notice?: string;
+  /** The most rows held, newest last. The game's trace panel keeps
+   * RECORD_MAX_ROWS (the default); the studio's watch keeps the whole run
+   * (Infinity, rpg-project#1013). */
+  limit?: number;
 }
 
 export interface RecordFeed {
@@ -101,12 +109,14 @@ export function toRecordRow(event: RecordEvent): RecordRow {
 export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
   const controller = new AbortController();
   const signal = controller.signal;
+  const limit = deps.limit ?? RECORD_MAX_ROWS;
+  const whole = !Number.isFinite(limit);
   let buffer = bufferRecordRows({
     rows: deps.rows ?? [],
     symbols: deps.symbols,
     related: deps.related,
     incoming: [],
-    limit: RECORD_MAX_ROWS,
+    limit,
   });
   let lastId = deps.afterId ?? buffer.rows[buffer.rows.length - 1]?.id ?? '';
   let notice: string | undefined = deps.notice;
@@ -121,7 +131,9 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
       lastId = event.id;
     }
     if (incoming.length === 0) return;
-    buffer = bufferRecordRows({ ...buffer, incoming, limit: RECORD_MAX_ROWS });
+    buffer = whole
+      ? appendRecordRows(buffer, incoming)
+      : bufferRecordRows({ ...buffer, incoming, limit });
     publish();
   };
 

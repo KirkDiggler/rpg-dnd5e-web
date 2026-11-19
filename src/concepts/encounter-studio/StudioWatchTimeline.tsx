@@ -11,12 +11,8 @@
  * Clicking a cell shows that step (the same step Back and Forward choose,
  * by act id) and selects that creature. Arrow keys move along a row.
  */
-import {
-  RECORD_AGED_OUT_NOTICE,
-  RECORD_MAX_ROWS,
-} from '@/components/session/recordFeed';
+import { RECORD_AGED_OUT_NOTICE } from '@/components/session/recordFeed';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RoomDraft } from '../world-building/roomDraft';
 import {
   shownTimelineRows,
   stateColour,
@@ -25,7 +21,7 @@ import {
   timelineOf,
   type TimelineCell,
 } from './runTimeline';
-import type { RunWatch, WatchedRun } from './runWatch';
+import type { RunDraft, RunWatch, WatchedRun } from './runWatch';
 import { stopLinesOf } from './watchStop';
 import { WatchStopBanner } from './WatchStopBanner';
 
@@ -46,7 +42,7 @@ export function StudioWatchTimeline({
     RunWatch,
     'feed' | 'step' | 'setStep' | 'selected' | 'setSelected' | 'from' | 'upTo'
   >;
-  draft: Readonly<RoomDraft>;
+  draft: Readonly<RunDraft>;
   names?: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   const { feed, step, setStep, selected, setSelected } = run;
@@ -75,9 +71,9 @@ export function StudioWatchTimeline({
   const rows = shownTimelineRows(timeline, filtering, selected);
   const last = timeline.steps.length - 1;
   const at = step ?? last;
-  const agedOut =
-    feed.notice === RECORD_AGED_OUT_NOTICE ||
-    feed.rows.length >= RECORD_MAX_ROWS;
+  /** The watch holds the whole run (rpg-project#1013): steps are missing
+   * only when the server no longer held the run's start. */
+  const agedOut = feed.notice === RECORD_AGED_OUT_NOTICE;
   const pick = (index: number, id: string): void => {
     if (index < 0 || index > last) return;
     setStep(index >= last ? null : index);
@@ -144,9 +140,8 @@ export function StudioWatchTimeline({
             role="status"
             data-testid="timeline-aged-out"
           >
-            Earlier steps are no longer in the record (it keeps its newest{' '}
-            {RECORD_MAX_ROWS} beats); the timeline begins at the oldest step it
-            still holds.
+            Earlier steps are no longer in the record; the timeline begins at
+            the oldest step it still holds.
           </span>
         )}
       </header>
