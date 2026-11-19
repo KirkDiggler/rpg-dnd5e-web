@@ -56,6 +56,12 @@ const roleFixtures = vi.hoisted(() => {
       ref: 'dnd5e:env:dark-fortress:height_fit_fixture',
       url: '/models/synty/world-assets/env/dark-fortress/height-fit.glb',
       boundsMeters: [3, 3, 0.3],
+      heightFit: {
+        mode: 'repeat-above',
+        node: 'Height_Above',
+        baseHeight: 2,
+        rowHeight: 1,
+      },
       roles: [
         { role: 'frame', node: 'Height_Frame' },
         { role: 'leaf', node: 'Height_Leaf', door: 'entry' },
@@ -86,6 +92,17 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
       }
       if (ref === roleFixtures.heightRef) {
         return roleFixtures.heightAsset as unknown as GeneratedWorldAsset;
+      }
+      if (ref === 'height-profile-mismatch') {
+        return {
+          ...roleFixtures.heightAsset,
+          heightFit: {
+            mode: 'repeat-above',
+            node: 'Height_Above',
+            baseHeight: 2.1,
+            rowHeight: 0.9,
+          },
+        } as unknown as GeneratedWorldAsset;
       }
       if (ref === roleFixtures.missingRef) {
         return roleFixtures.missingAsset as unknown as GeneratedWorldAsset;
@@ -529,6 +546,17 @@ describe('WorldAssetModel named roles', () => {
     expect(size(shrunk)).toBeCloseTo(3);
     expect(size(shrunk.getObjectByName('Height_Leaf')!)).toBeCloseTo(1.8);
     await renderer.unmount();
+  });
+
+  it('refuses loaded repeat geometry that differs from its published height profile', async () => {
+    await expect(
+      ReactThreeTestRenderer.create(
+        <WorldAssetModel
+          assetRef="height-profile-mismatch"
+          position={[0, 0, 0]}
+        />
+      )
+    ).rejects.toThrow('Loaded repeat geometry disagrees');
   });
 
   it('leaves the bounds unchanged when roles have no above part', async () => {

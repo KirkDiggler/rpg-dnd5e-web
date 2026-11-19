@@ -322,6 +322,7 @@ function LoadedWorldAssetModel({
   url,
   boundsMeters,
   roles,
+  heightFit,
   position,
   rotationY,
   onBoundsMeasured,
@@ -352,6 +353,7 @@ function LoadedWorldAssetModel({
   url: string;
   boundsMeters: [number, number, number];
   roles: NonNullable<GeneratedWorldAsset['roles']> | undefined;
+  heightFit?: GeneratedWorldAsset['heightFit'];
   position: [number, number, number];
   rotationY: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
@@ -512,19 +514,31 @@ function LoadedWorldAssetModel({
     const rowHeight = resolved.aboveRestHeight * SYNTY_SCALE;
     if (!(rowHeight > 0) || !(boundsMeters[1] > 0)) return undefined;
     const baseHeight = Math.max(0, boundsMeters[1] - rowHeight);
+    if (
+      heightFit &&
+      (heightFit.mode !== 'repeat-above' ||
+        heightFit.node !== resolved.above.name ||
+        Math.abs(heightFit.rowHeight - rowHeight) >
+          1e-6 * Math.max(1, boundsMeters[1]) ||
+        Math.abs(heightFit.baseHeight - baseHeight) >
+          1e-6 * Math.max(1, boundsMeters[1]))
+    )
+      throw new Error(
+        'Loaded repeat geometry disagrees with the declared height profile.'
+      );
     return planAssetHeight({
       nativeHeight: boundsMeters[1],
       // Preserve legacy proportional-input behavior at this adapter. New
       // explicit-height authoring validates the fixed minimum before commit.
       targetHeight: Math.max(baseHeight, boundsMeters[1] * heightScale),
-      profile: {
+      profile: heightFit ?? {
         mode: 'repeat-above',
         node: resolved.above.name,
         baseHeight,
         rowHeight,
       },
     });
-  }, [boundsMeters, heightScale, resolved]);
+  }, [boundsMeters, heightScale, resolved, heightFit]);
   const aboveTiles = useMemo(() => {
     if (!resolved?.above || !aboveLayout) return undefined;
     const above = resolved.above;
@@ -886,6 +900,7 @@ export function WorldAssetModel({
       url={asset.url}
       boundsMeters={asset.boundsMeters}
       roles={asset.roles}
+      heightFit={asset.heightFit}
       position={position}
       rotationY={rotationY}
       onBoundsMeasured={onBoundsMeasured}
