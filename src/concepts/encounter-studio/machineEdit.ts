@@ -298,3 +298,48 @@ export function setBehaviorDefinition(
     },
   };
 }
+
+/** One engine refusal of a step of this machine (rpg-project#1018): the
+ * engine reports it at `behaviorDefinitions.<id>.recipe.states.<S>.
+ * transitions[<k>]`, and deeper for one condition or act (`rest`:
+ * `.when.all[0].fact`, `.do[1]`), else empty. */
+export interface StepRefusal {
+  state: string;
+  index: number;
+  rest: string;
+  message: string;
+}
+
+const escapeRe = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The refusals that name a step of routine `id`, in the server's order. A
+ * refusal of the routine elsewhere, or on a creature, is not one. */
+export function stepRefusalsOf(
+  refusals: readonly { path: string; message: string }[],
+  id: string
+): StepRefusal[] {
+  const re = new RegExp(
+    `^behaviorDefinitions\\.${escapeRe(id)}\\.recipe\\.states\\.([A-Za-z0-9_-]+)\\.transitions\\[(\\d+)\\](.*)$`
+  );
+  return refusals.flatMap((r) => {
+    const m = re.exec(r.path);
+    return m
+      ? [
+          {
+            state: m[1]!,
+            index: Number(m[2]),
+            rest: m[3]!,
+            message: r.message,
+          },
+        ]
+      : [];
+  });
+}
+
+/** Where a jump lands for one step's row in the Edit tab. */
+export const machineStepKey = (id: string, state: string, index: number) => ({
+  kind: 'machine-step',
+  id: `${id}|${state}`,
+  part: `transitions[${index}]`,
+});

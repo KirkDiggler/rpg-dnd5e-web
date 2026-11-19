@@ -25,17 +25,35 @@ import {
 } from './machineLayout';
 import { useRevealable } from './useReveal';
 
+/** An engine refusal of one step, shown on its box or arrow
+ * (rpg-project#1018). */
+export interface MarkRefusal {
+  state: string;
+  index: number;
+  message: string;
+}
+
+const refusedText = (list: readonly MarkRefusal[] | undefined): string[] =>
+  (list ?? []).map((r) => `Refused: ${r.message}`);
+
 export function MachineDrawing({
   routine,
   layout,
   selected,
   onSelect,
+  refused,
+  onOpenRefused,
 }: {
   routine: string;
   layout: MachineLayout;
   /** The marked box's or arrow's id. */
   selected: string | null;
   onSelect(id: string): void;
+  /** The engine's refusals of steps, by the box or arrow that draws the
+   * step. */
+  refused?: ReadonlyMap<string, readonly MarkRefusal[]>;
+  /** Open a refused step's row in its state's Edit tab. */
+  onOpenRefused?(state: string, index: number): void;
 }): React.JSX.Element {
   const choose = (id: string) => ({
     onClick: (event: ReactMouseEvent<SVGElement>): void => {
@@ -103,6 +121,7 @@ export function MachineDrawing({
             piece={piece}
             marker={marker}
             selected={selected === piece.id}
+            refused={refused?.get(piece.id)}
             choose={choose(piece.id)}
           />
         ))}
@@ -112,9 +131,64 @@ export function MachineDrawing({
             routine={routine}
             box={box}
             selected={selected === box.id}
+            refused={refused?.get(box.id)}
             choose={choose(box.id)}
           />
         ))}
+        {refused && refused.size > 0 && (
+          // The visible "refused" marks, apart from the marks they sit on so
+          // no control is nested in another: each opens its first step's
+          // row in Edit.
+          <g className="es-machine-refusals">
+            {[...refused.entries()].map(([id, list]) => {
+              const box = layout.boxes.find((b) => b.id === id);
+              const piece = layout.pieces.find((p) => p.id === id);
+              const at = box
+                ? {
+                    x: box.rect.x + box.rect.w,
+                    y: box.rect.y - 4,
+                    anchor: 'end' as const,
+                  }
+                : piece
+                  ? {
+                      x: piece.label.x,
+                      y: piece.label.y - 14,
+                      anchor: piece.label.anchor,
+                    }
+                  : null;
+              const first = list[0];
+              if (!at || !first) return null;
+              const words = refusedText(list).join(' ');
+              return (
+                <text
+                  key={id}
+                  className="es-machine-refused-mark"
+                  data-refused-mark={id}
+                  x={at.x}
+                  y={at.y}
+                  textAnchor={at.anchor}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Refused step ${first.index + 1} in ${first.state}: open it in Edit`}
+                  aria-description={words}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenRefused?.(first.state, first.index);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onOpenRefused?.(first.state, first.index);
+                  }}
+                >
+                  <title>{refusedText(list).join('\n')}</title>
+                  refused
+                </text>
+              );
+            })}
+          </g>
+        )}
       </svg>
     </div>
   );
@@ -129,11 +203,13 @@ function Box({
   routine,
   box,
   selected,
+  refused,
   choose,
 }: {
   routine: string;
   box: LaidBox;
   selected: boolean;
+  refused?: readonly MarkRefusal[];
   choose: Choose;
 }): React.JSX.Element {
   const { rect } = box;
@@ -149,14 +225,20 @@ function Box({
       data-selected={selected || undefined}
       data-final={box.state.final || undefined}
       data-no-way-out={box.state.noWayOut || undefined}
+      data-refused={refused?.length ? '' : undefined}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
       aria-label={boxName(box)}
+      aria-description={refusedText(refused).join(' ') || undefined}
       {...choose}
     >
       <title>
-        {[...box.statements.map((st) => st.sentence), alsoText(box.also)]
+        {[
+          ...refusedText(refused),
+          ...box.statements.map((st) => st.sentence),
+          alsoText(box.also),
+        ]
           .filter(Boolean)
           .join('\n')}
       </title>
@@ -216,12 +298,14 @@ function Piece({
   piece,
   marker,
   selected,
+  refused,
   choose,
 }: {
   routine: string;
   piece: LaidPiece;
   marker: string;
   selected: boolean;
+  refused?: readonly MarkRefusal[];
   choose: Choose;
 }): React.JSX.Element {
   const all = [piece.strokes, piece.bracket ?? '', piece.arrow]
@@ -237,11 +321,13 @@ function Piece({
       data-to={piece.to}
       data-beat={piece.edge.beat}
       data-selected={selected || undefined}
+      data-refused={refused?.length ? '' : undefined}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
       aria-label={pieceName(piece)}
       aria-description={[
+        ...refusedText(refused),
         ...piece.steps.map((step) => step.statement.sentence),
         alsoText(piece.also),
       ]
@@ -251,6 +337,7 @@ function Piece({
     >
       <title>
         {[
+          ...refusedText(refused),
           ...piece.steps.map((step) => step.statement.sentence),
           alsoText(piece.also),
         ]

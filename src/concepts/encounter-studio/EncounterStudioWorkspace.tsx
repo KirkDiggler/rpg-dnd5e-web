@@ -2438,6 +2438,7 @@ function StudioSurface({
                   onOpenFact={openFact}
                   onCommitDefinition={session.commitBehaviorDefinition}
                   machineWords={machineWords.words}
+                  refusals={shownRefusals}
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (

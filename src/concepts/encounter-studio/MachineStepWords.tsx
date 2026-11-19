@@ -41,9 +41,32 @@ import {
  * is not offered again among the other acts. */
 const PICK = 'pick';
 
-/** A refusal shown on a row: the engine's sentence. */
+/** A refusal shown on a row: the engine's sentence, and where in the step
+ * it points (`.when.all[0].fact`, `.do[1]`; empty for the step). */
 export interface RowRefusal {
+  rest: string;
   message: string;
+}
+
+/** Refusals grouped by the row a pattern's first number names; one that
+ * matches `whole` but not the pattern goes under -1. */
+function byRow(
+  list: readonly RowRefusal[] | undefined,
+  whole: string,
+  row: (rest: string) => number
+): Map<number, RowRefusal[]> {
+  const out = new Map<number, RowRefusal[]>();
+  for (const r of list ?? []) {
+    if (
+      r.rest !== whole &&
+      !r.rest.startsWith(`${whole}.`) &&
+      !r.rest.startsWith(`${whole}[`)
+    )
+      continue;
+    const at = row(r.rest);
+    out.set(at, [...(out.get(at) ?? []), r]);
+  }
+  return out;
 }
 
 const choiceList = (choices: StepChoices, arg: MachineArg): string[] =>
@@ -363,12 +386,18 @@ export function StepConditions({
   name: string;
   sentence: string | undefined;
   choices: StepChoices;
-  /** Refusals at a condition, by its index in the flat rows; `-1` is the
-   * condition as a whole. */
-  refusals?: ReadonlyMap<number, RowRefusal[]>;
+  /** The step's refusals; those under `.when` are shown here, on the
+   * condition they name, or on the condition as a whole. */
+  refusals?: readonly RowRefusal[];
   onStep(step: Node): boolean;
 }) {
   const shape = whenShapeOf(words, step.when);
+  const refused = byRow(refusals, '.when', (rest) => {
+    if (shape.kind !== 'flat') return -1;
+    if (shape.form === 'one') return 0;
+    const m = /^\.when\.all\[(\d+)\]/.exec(rest);
+    return m ? Number(m[1]) : -1;
+  });
   if (shape.kind === 'kept')
     return (
       <div className="es-machine-conditions" data-kept="">
@@ -379,7 +408,7 @@ export function StepConditions({
             ? 'A nested condition (either / or, or not over a group) is edited as text.'
             : 'It holds a condition the engine’s words do not name; it is edited as text.'}
         </p>
-        <Refused list={refusals?.get(-1)} />
+        <Refused list={refused.get(-1)} />
       </div>
     );
   const nodes = shape.rows.map((r) => r.node);
@@ -393,7 +422,7 @@ export function StepConditions({
   return (
     <div className="es-machine-conditions">
       <span className="es-help">When</span>
-      <Refused list={refusals?.get(-1)} />
+      <Refused list={refused.get(-1)} />
       <ul aria-label={`Conditions of ${name}`}>
         {shape.rows.map((row, i) => {
           const rowName = `${name} condition ${i + 1}`;
@@ -401,7 +430,7 @@ export function StepConditions({
           const options = offered.includes(row.word as never)
             ? offered
             : [row.word, ...offered];
-          const refused = refusals?.get(i);
+          const rowRefused = refused.get(i);
           return (
             <li
               key={i}
@@ -409,7 +438,7 @@ export function StepConditions({
               data-condition={i}
               data-word={row.word.word}
               data-not-allowed={allowed ? undefined : ''}
-              data-refused={refused?.length ? '' : undefined}
+              data-refused={rowRefused?.length ? '' : undefined}
             >
               <select
                 aria-label={rowName}
@@ -475,7 +504,7 @@ export function StepConditions({
                   {onlyOnWords(words, row.word)}
                 </p>
               )}
-              <Refused list={refused} />
+              <Refused list={rowRefused} />
             </li>
           );
         })}
@@ -505,12 +534,16 @@ export function StepActs({
   beat: string;
   name: string;
   choices: StepChoices;
-  /** Refusals at an act, by its index in `do`. */
-  refusals?: ReadonlyMap<number, RowRefusal[]>;
+  /** The step's refusals; those under `.do[n]` are shown on act n. */
+  refusals?: readonly RowRefusal[];
   onStep(step: Node): boolean;
 }) {
   const acts = Array.isArray(step.do) ? step.do : [];
   const rows = actRowsOf(words, acts, firstPickAt(acts));
+  const refused = byRow(refusals, '.do', (rest) => {
+    const m = /^\.do\[(\d+)\]/.exec(rest);
+    return m ? Number(m[1]) : -1;
+  });
   const write = (next: unknown[]) => onStep(withStepDo(step, next));
   const known = doWordsOf(words).filter((w) => w.word !== PICK);
   const offered = known.filter((w) => allowedOn(words, w, beat));
@@ -522,7 +555,7 @@ export function StepActs({
         <ul aria-label={`Acts of ${name}`}>
           {rows.map((row, n) => {
             const rowName = `${name} act ${n + 1}`;
-            const refused = refusals?.get(row.index);
+            const rowRefused = refused.get(row.index);
             const remove = (
               <button
                 type="button"
@@ -539,13 +572,13 @@ export function StepActs({
                   key={row.index}
                   className="es-machine-act"
                   data-act={row.index}
-                  data-refused={refused?.length ? '' : undefined}
+                  data-refused={rowRefused?.length ? '' : undefined}
                 >
                   <span className="es-help" data-kept="">
                     Kept as written: <code>{JSON.stringify(row.node)}</code>
                   </span>
                   {remove}
-                  <Refused list={refused} />
+                  <Refused list={rowRefused} />
                 </li>
               );
             const word = row.word;
@@ -557,7 +590,7 @@ export function StepActs({
                 data-act={row.index}
                 data-word={word.word}
                 data-not-allowed={allowed ? undefined : ''}
-                data-refused={refused?.length ? '' : undefined}
+                data-refused={rowRefused?.length ? '' : undefined}
               >
                 <span>{actSaid(word, row.node)}</span>
                 {authoredArgs(word).map((arg) => (
@@ -584,7 +617,7 @@ export function StepActs({
                     {onlyOnWords(words, word)}
                   </p>
                 )}
-                <Refused list={refused} />
+                <Refused list={rowRefused} />
               </li>
             );
           })}

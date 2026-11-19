@@ -23,6 +23,8 @@ import { isUseEntry } from '../world-building/answerTableShape';
 import { STATE_BEATS } from '../world-building/creatureStates';
 import { AnswerEntryRow, EntryList } from '../world-building/SitePolicies';
 import {
+  firstPickAt,
+  machineStepKey,
   newNameRefusal,
   newStep,
   statesOf,
@@ -40,10 +42,17 @@ import {
   withTableRows,
   withTransitions,
   type Node,
+  type StepRefusal,
 } from './machineEdit';
-import { BeatField, StepActs, StepConditions } from './MachineStepWords';
+import {
+  BeatField,
+  Refused,
+  StepActs,
+  StepConditions,
+} from './MachineStepWords';
 import type { MachineWords } from './machineWords';
 import type { RefusalTarget } from './refusalJump';
+import { RevealLi } from './RevealDiv';
 import { stepChoicesOf } from './stepWords';
 
 /** The studio root's class: its control and font styles are scoped under
@@ -82,6 +91,7 @@ export function MachineStateEdit({
   onCommit,
   onJump,
   words = null,
+  refusals = [],
 }: {
   routine: string;
   state: string;
@@ -98,6 +108,10 @@ export function MachineStateEdit({
    * beat, condition and acts are offered and written from the table
    * (rpg-project#1018); without them the editor is as before. */
   words?: MachineWords | null;
+  /** The engine's refusals of this state's steps (rpg-project#1018): each
+   * is shown on its step's row, on the condition or act it names where
+   * the row shows one. */
+  refusals?: readonly StepRefusal[];
 }): React.JSX.Element {
   const choices = words ? stepChoicesOf(definition, readBack, routine) : null;
   const steps = transitionsOf(definition, state);
@@ -131,8 +145,28 @@ export function MachineStateEdit({
           const sentence = readBackIsCurrent
             ? sentenceAt(readBack, transitionPath(routine, state, index))
             : undefined;
+          const refusedHere = refusals.filter((r) => r.index === index);
+          // A refusal the row shows no part for (the step itself, its beat,
+          // its target, its pick; or any, without words) is said on the row.
+          const pickAt = firstPickAt(
+            Array.isArray(stepNode(raw).do)
+              ? (stepNode(raw).do as unknown[])
+              : []
+          );
+          const stepLevel = refusedHere.filter((r) => {
+            if (!words) return true;
+            if (r.rest === '.when' || r.rest.startsWith('.when.')) return false;
+            const act = /^\.do\[(\d+)\]/.exec(r.rest);
+            return !act || Number(act[1]) === pickAt;
+          });
           return (
-            <li key={index} className="es-machine-step" data-step={index}>
+            <RevealLi
+              key={index}
+              revealKey={machineStepKey(routine, state, index)}
+              className="es-machine-step"
+              data-step={index}
+              data-refused={refusedHere.length ? '' : undefined}
+            >
               {words && choices ? (
                 <BeatField
                   words={words}
@@ -246,6 +280,7 @@ export function MachineStateEdit({
                     name={name}
                     sentence={sentence}
                     choices={choices}
+                    refusals={refusedHere}
                     onStep={(next) => setStep(index, next)}
                   />
                   <StepActs
@@ -254,6 +289,7 @@ export function MachineStateEdit({
                     beat={step.on}
                     name={name}
                     choices={choices}
+                    refusals={refusedHere}
                     onStep={(next) => setStep(index, next)}
                   />
                 </>
@@ -267,7 +303,8 @@ export function MachineStateEdit({
                   </p>
                 )
               )}
-            </li>
+              <Refused list={stepLevel} />
+            </RevealLi>
           );
         })}
       </ol>

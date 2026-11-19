@@ -2257,6 +2257,68 @@
   flex-basis: 100%;
   margin: 0;
 }
+/* A step's condition and other acts, under its row (rpg-project#1018). */
+.es-machine-conditions,
+.es-machine-acts {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-machine-conditions > ul,
+.es-machine-acts > ul {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+.es-machine-condition,
+.es-machine-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-machine-condition > p,
+.es-machine-act > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.es-machine-condition[data-not-allowed] > select:first-child {
+  outline: 1px dashed var(--es-warning-text);
+}
+/* A refused step: its row, its condition or act, its box or arrow. */
+li.es-machine-step[data-refused],
+.es-machine-condition[data-refused],
+.es-machine-act[data-refused] {
+  border-left: 3px solid var(--es-warning-text);
+  padding-left: 0.4rem;
+}
+.es-machine-refused {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--es-warning-text);
+  background: var(--es-warning-bg);
+}
+.es-machine-state[data-refused] .es-machine-box {
+  stroke: var(--es-warning-text);
+  stroke-dasharray: 5 3;
+}
+.es-machine-step[data-refused] .es-machine-stroke {
+  stroke: var(--es-warning-text);
+  stroke-dasharray: 5 3;
+}
+.es-machine-refused-mark {
+  fill: var(--es-warning-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.es-machine-refused-mark:focus-visible {
+  outline: 2px solid var(--wb-accent);
+}
 .es-dialog-backdrop {
   position: fixed;
   inset: 0;
