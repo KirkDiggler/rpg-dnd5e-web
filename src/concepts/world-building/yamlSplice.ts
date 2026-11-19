@@ -98,8 +98,8 @@ function idsOf(items: readonly Json[]): (string | number)[] | null {
  * old one outside it is that item, moved (rpg-project#998: a swap matches
  * only one of the two rows in common order; the other only moved, and keeps
  * its own text). Without ids, a row that moved AND changed in one write is
- * read as one removed and one added. An old item in no pair was removed; a
- * new item in no pair was added.
+ * read as one removed and one added. Equal rows (twins) pair in order. An
+ * old item in no pair was removed; a new item in no pair was added.
  */
 export function alignItems(
   base: readonly Json[],
@@ -154,6 +154,27 @@ export function alignItems(
     for (let k = 0; k < Math.min(olds.length, news.length); k++)
       pairs.push([olds[k], news[k]]);
     [pi, pj] = [ai + 1, aj + 1];
+  }
+  // TWINS PAIR IN ORDER: among pairs whose rows are equal, the k-th old row
+  // of a value is the k-th new row of it, so moving one of two identical
+  // rows past another row carries each twin's own comment (rpg-project#998
+  // review). The values are equal, so what is written does not change.
+  const equal = pairs.filter(([i, j]) => sameValue(base[i], current[j]));
+  const done = new Set<number>();
+  for (let a = 0; a < equal.length; a++) {
+    if (done.has(a)) continue;
+    const twins = equal
+      .map((pair, k) => [pair, k] as const)
+      .filter(
+        ([[i]], k) => !done.has(k) && sameValue(base[i], base[equal[a][0]])
+      );
+    const olds = twins.map(([[i]]) => i).sort((x, y) => x - y);
+    const news = twins.map(([[, j]]) => j).sort((x, y) => x - y);
+    twins.forEach(([pair, k], t) => {
+      done.add(k);
+      pair[0] = olds[t];
+      pair[1] = news[t];
+    });
   }
   return pairs.sort((x, y) => x[1] - y[1]);
 }

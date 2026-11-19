@@ -436,29 +436,50 @@ after: 1
     );
   });
 
-  it('a row moved and edited keeps its comment and layout, with the edit in it (rows with ids)', () => {
+  it('a row moved and edited keeps its comment and layout, with the edit spliced into its own text (rows with ids)', () => {
     const withIds = `places:
   # Hand edit: the post.
   - {id: post, at: {q: 1, r: 2}} # by the gate
   - id: hall
     at: {q: 3, r: 4}
+  - id: gate
+    at: {q: 5, r: 6}
 `;
-    const base = {
-      places: [
-        { id: 'post', at: { q: 1, r: 2 } },
-        { id: 'hall', at: { q: 3, r: 4 } },
-      ],
-    };
+    const [post, hall, gate] = [
+      { id: 'post', at: { q: 1, r: 2 } },
+      { id: 'hall', at: { q: 3, r: 4 } },
+      { id: 'gate', at: { q: 5, r: 6 } },
+    ];
+    // `post` is the row that moves, and it is the row that changes.
     expect(
-      spliceYaml(withIds, base, {
-        places: [base.places[1], { id: 'post', at: { q: 5, r: 2 } }],
-      })
+      spliceYaml(
+        withIds,
+        { places: [post, hall, gate] },
+        { places: [hall, gate, { ...post, at: { q: 9, r: 2 } }] }
+      )
     ).toBe(`places:
   - id: hall
     at: {q: 3, r: 4}
+  - id: gate
+    at: {q: 5, r: 6}
   # Hand edit: the post.
-  - {id: post, at: {q: 5, r: 2}} # by the gate
+  - {id: post, at: {q: 9, r: 2}} # by the gate
 `);
+  });
+
+  it('of two identical rows, the commented one carries its comment past another row', () => {
+    const twins =
+      'rows:\n  # about the first\n  - use: dasher\n  - use: pursuer\n  - use: dasher\n';
+    const X = { use: 'dasher' };
+    const Y = { use: 'pursuer' };
+    expect(spliceYaml(twins, { rows: [X, Y, X] }, { rows: [Y, X, X] })).toBe(
+      'rows:\n  - use: pursuer\n  # about the first\n  - use: dasher\n  - use: dasher\n'
+    );
+    const down =
+      'rows:\n  - use: dasher\n  - use: pursuer\n  # about the second\n  - use: dasher\n';
+    expect(spliceYaml(down, { rows: [X, Y, X] }, { rows: [X, X, Y] })).toBe(
+      'rows:\n  - use: dasher\n  # about the second\n  - use: dasher\n  - use: pursuer\n'
+    );
   });
 
   it('a comment set off from the first row by a blank line is the list’s and stays', () => {

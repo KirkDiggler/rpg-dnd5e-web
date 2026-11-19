@@ -63,6 +63,21 @@ function moveBundleRow(text: string, id: string, from: number, by: number) {
   );
 }
 
+/** Endings: move one ending, as `StudioEndings` does. */
+function moveEnding(text: string, from: number, by: number) {
+  const result = read(text);
+  return exportDraftYaml(
+    {
+      draft: result.draft,
+      scope: {
+        ...result.scope,
+        endings: moved(result.scope.endings!, from, by),
+      },
+    },
+    result.key
+  );
+}
+
 /** The text of the lines from the first whose trimmed text is `first`
  * through the next line that is exactly `last`. */
 function block(text: string, first: string, last: string): string {
@@ -154,5 +169,23 @@ describe('a moved row keeps its comment and its text (rpg-project#998)', () => {
     const top = moveBundleRow(served, 'guard-base', 1, -1);
     expectSwapped(served, top, pursuer, '      - use: dasher', 'before');
     expect(moveBundleRow(top, 'guard-base', 0, 1)).toBe(served);
+  });
+
+  it('Endings: king-deposed moves with the hand-edit block directly above it', () => {
+    // By the rule, the #716 block is king-deposed's: it sits directly above
+    // that row with no blank line, though its prose reads as the list's.
+    const deposed = block(
+      served,
+      '# Hand edit (rpg-project#716, decided 2026-10-29): every ending is at the',
+      '    outcome: success'
+    );
+    expect(deposed).toContain('- id: king-deposed');
+    const freed = block(served, '- id: freed', '    outcome: success');
+    const down = moveEnding(served, 1, 1);
+    expectSwapped(served, down, deposed, freed, 'after');
+    expect(moveEnding(down, 2, -1)).toBe(served);
+    const up = moveEnding(served, 1, -1);
+    expect(up).toContain(`endings:\n${deposed}\n  - id: king-slain`);
+    expect(moveEnding(up, 0, 1)).toBe(served);
   });
 });
