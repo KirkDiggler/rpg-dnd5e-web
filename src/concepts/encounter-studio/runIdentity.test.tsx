@@ -409,12 +409,13 @@ describe('a saved run says one line about the open encounter', () => {
   });
 
   it('the saved run’s start cells come from its record', () => {
+    const client = engineClient(ENGINE);
     const { result } = renderHook(() =>
       useSavedRunReplay({
         draft: DRAFT,
         names: new Map(),
         readBack: null,
-        engineClient: engineClient(ENGINE),
+        engineClient: client,
       })
     );
     act(() => void result.current.openText('run.jsonl', fileOf(NEW_EVENTS)));

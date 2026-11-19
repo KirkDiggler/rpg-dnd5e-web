@@ -16,7 +16,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import {
   castleMachinesReadBack,
+  castleMachinesV225ReadBack,
   castleRoutinesReadBack,
+  machineWordsV225,
 } from './fixtures/engineReadBack';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
@@ -384,6 +386,53 @@ describe('StudioBehaviours', () => {
       expect(
         within(panel()).getByRole('region', { name: 'Read back' }).textContent
       ).toContain('Routine `gate-1-policy`');
+    });
+  });
+
+  describe('the machine in the engine’s words (rpg-project#1015)', () => {
+    it('labels its arrows in plain words and keeps the engine’s sentence', () => {
+      const readBack: StudioReadBack = {
+        readBack: castleMachinesV225ReadBack(),
+        readBackIsCurrent: true,
+        unavailable: null,
+      };
+      const { rerender } = render(
+        <StudioBehaviours
+          document={castle}
+          readBack={readBack}
+          focus="captain-policy"
+          onSelect={vi.fn()}
+          machineWords={machineWordsV225()}
+        />
+      );
+      const drawing = within(panel()).getByRole('group', {
+        name: 'The machine of captain-policy',
+      });
+      // A drawn behaviour's section grows with its drawing (its CSS).
+      expect(panel().dataset.drawn).toBe('');
+      const lie = within(drawing).getByRole('button', {
+        name: 'Step from in-hall to back-to-gate, hears something · it was a claim that failed and has noted admitted about them',
+      });
+      expect(lie.textContent).toContain(
+        'hears something · it was a claim that failed and has noted admitted about them'
+      );
+      expect(lie.querySelector('title')!.textContent).toMatch(
+        /^In the state `in-hall`, when Guard Captain \(captain\) hears a sound/
+      );
+      // Without the words, the same drawing in its ids.
+      rerender(
+        <StudioBehaviours
+          document={castle}
+          readBack={readBack}
+          focus="captain-policy"
+          onSelect={vi.fn()}
+        />
+      );
+      expect(
+        within(panel()).getByRole('button', {
+          name: 'Step from in-hall to back-to-gate, on heard: heard.claim failed, noted:admitted',
+        })
+      ).toBeTruthy();
     });
   });
 });

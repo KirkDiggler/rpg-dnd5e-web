@@ -2,7 +2,8 @@
  * A BEHAVIOUR'S MACHINE, DRAWN (rpg-project#995): a box per state, an arrow
  * per step that changes state, what the creature does while it stays put
  * written inside the box. Hand-laid SVG from `layoutMachine`; the words in
- * it are the engine's ids and connection words (`machineView`), and every
+ * it are the engine's plain words (`GetMachineWords`, rpg-project#1015), or
+ * its ids and connection words without them (`machineView`), and every
  * mark's full sentences are in the detail pane.
  *
  * Every box and arrow is a mark, as the places marks are: focusable, named,
@@ -14,6 +15,7 @@ import type {
   MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
+  alsoText,
   boxName,
   machineMarkKey,
   pieceName,
@@ -75,6 +77,25 @@ export function MachineDrawing({
             <path d="M 0 0 L 10 5 L 0 10 z" className="es-machine-arrowhead" />
           </marker>
         </defs>
+        {layout.memory.length > 0 && (
+          // What the machine remembers (encounter v0.228.0): each flag
+          // with its starting value, its sentence on hover. Static.
+          <g className="es-machine-memory" data-memory="">
+            {layout.memory.map((m, i) => (
+              <text
+                key={i}
+                className="es-machine-line"
+                data-muted={m.statement ? undefined : true}
+                data-flag={m.flag ?? undefined}
+                x={m.x}
+                y={m.y}
+              >
+                {m.statement && <title>{m.statement.sentence}</title>}
+                {m.text}
+              </text>
+            ))}
+          </g>
+        )}
         {layout.pieces.map((piece) => (
           <Piece
             key={piece.id}
@@ -134,7 +155,11 @@ function Box({
       aria-label={boxName(box)}
       {...choose}
     >
-      <title>{box.statements.map((st) => st.sentence).join('\n')}</title>
+      <title>
+        {[...box.statements.map((st) => st.sentence), alsoText(box.also)]
+          .filter(Boolean)
+          .join('\n')}
+      </title>
       <rect
         className="es-machine-box"
         x={rect.x}
@@ -216,13 +241,21 @@ function Piece({
       tabIndex={0}
       aria-pressed={selected}
       aria-label={pieceName(piece)}
-      aria-description={piece.steps
-        .map((step) => step.statement.sentence)
+      aria-description={[
+        ...piece.steps.map((step) => step.statement.sentence),
+        alsoText(piece.also),
+      ]
+        .filter(Boolean)
         .join(' ')}
       {...choose}
     >
       <title>
-        {piece.steps.map((step) => step.statement.sentence).join('\n')}
+        {[
+          ...piece.steps.map((step) => step.statement.sentence),
+          alsoText(piece.also),
+        ]
+          .filter(Boolean)
+          .join('\n')}
       </title>
       <path className="es-machine-hit" d={all} />
       {piece.strokes && (
