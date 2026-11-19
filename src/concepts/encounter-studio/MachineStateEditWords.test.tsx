@@ -273,7 +273,14 @@ describe('acts besides the move and the pick', () => {
     );
     expect(offered).not.toContain('pick');
     expect(offered).toEqual(expect.arrayContaining(['set', 'clear', 'anchor']));
-    expect(screen.getAllByText(/declares no flags/).length).toBeGreaterThan(0);
+    // Said only where a flag is named, never under every step.
+    expect(screen.queryByText(/declares no flags/)).toBeNull();
+    fireEvent.change(select(`Add an act to ${BARRED}`), {
+      target: { value: 'clear' },
+    });
+    const notes = screen.getAllByText(/declares no flags/);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.closest('li')!.getAttribute('data-word')).toBe('clear');
   });
 
   it('a flag the bag declares is offered, its value of the flag’s kind', () => {
@@ -311,5 +318,42 @@ describe('with no words the editor is as before', () => {
       screen.getByRole('list', { name: 'Steps in alert' })
     ).getAllByRole('listitem');
     expect(steps[4]!.textContent).toContain('Kept as written: its condition');
+  });
+});
+
+describe('each step is a card', () => {
+  it('heads with its line in the engine’s words and Remove step', () => {
+    edit(WORDS);
+    const card = screen
+      .getByRole('list', { name: 'Steps in alert' })
+      .querySelector<HTMLLIElement>('li[data-step="4"]')!;
+    const head = card.querySelector('.es-machine-step-head')!;
+    expect(head.textContent).toContain('Step 5');
+    expect(
+      within(head as HTMLElement).getByRole('button', {
+        name: `Remove ${ROUNDS}`,
+      }).textContent
+    ).toBe('Remove step');
+    // A step with no condition and no other acts opens no rows for them.
+    const plain = screen
+      .getByRole('list', { name: 'Steps in alert' })
+      .querySelector<HTMLLIElement>('li[data-step="5"]')!;
+    expect(plain.querySelector('.es-machine-conditions')).toBeNull();
+    expect(plain.querySelector('.es-machine-acts')).toBeNull();
+    expect(
+      within(plain).getByLabelText<HTMLSelectElement>(
+        'Add a condition to alert step 6'
+      ).options[0]!.textContent
+    ).toBe('+ condition');
+  });
+
+  it('the summary is the drawn step’s line', () => {
+    edit(WORDS);
+    const summary = screen
+      .getByRole('list', { name: 'Steps in alert' })
+      .querySelector('li[data-step="4"] [data-summary]')!;
+    expect(summary.textContent).toContain('time passes');
+    expect(summary.textContent).toContain('3 rounds');
+    expect(summary.textContent).toContain('→ posted');
   });
 });

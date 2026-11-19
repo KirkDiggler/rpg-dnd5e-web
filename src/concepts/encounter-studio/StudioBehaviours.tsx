@@ -103,6 +103,9 @@ export function StudioBehaviours({
   const [chosenMark, setChosenMark] = useState<{
     routine: string;
     id: string;
+    /** The step's statement the mark was made from (a staying step's
+     * sentence), so Edit lands on its card. */
+    path?: string;
   } | null>(null);
   const mark =
     machine && chosenMark && chosenMark.routine === focus
@@ -113,9 +116,13 @@ export function StudioBehaviours({
   // detail pane, and a sentence's "On the drawing" lands on its box or
   // arrow, each through the studio's one reveal contract (it scrolls the
   // target into view within its own pane and moves focus to it).
-  const markIt = (id: string, from: 'drawing' | 'sentence'): void => {
+  const markIt = (
+    id: string,
+    from: 'drawing' | 'sentence',
+    path?: string
+  ): void => {
     if (!focus) return;
-    setChosenMark({ routine: focus, id });
+    setChosenMark({ routine: focus, id, path });
     reveal(
       from === 'drawing' ? machineMarkedKey(focus) : machineMarkKey(focus, id)
     );
@@ -126,16 +133,37 @@ export function StudioBehaviours({
   // on Read back.
   const [editing, setEditing] = useState<string | null>(null);
   const definition = focus ? definitionOf(document.scope, focus) : undefined;
+  // What Edit opens on: a marked box's state; a marked arrow's first step's
+  // state, at that step's card (rpg-project#1018); a box marked from a
+  // staying step's sentence, at that step's card.
+  const stepAt = (path: string | undefined) =>
+    path && focus
+      ? (stepRefusalsOf([{ path, message: '' }], focus)[0] ?? null)
+      : null;
+  const target: { state: string; step: number | null } | null = markedBox
+    ? {
+        state: markedBox.state.id,
+        step:
+          stepAt(chosenMark?.path)?.state === markedBox.state.id
+            ? stepAt(chosenMark?.path)!.index
+            : null,
+      }
+    : markedPiece
+      ? (() => {
+          const at = stepAt(markedPiece.steps[0]?.statement.path);
+          return at ? { state: at.state, step: at.index } : null;
+        })()
+      : null;
   const editable =
-    markedBox &&
+    target &&
     definition &&
     onCommitDefinition &&
     focus &&
     // A state the file no longer declares (an Undo, an outside change) has
     // nothing to edit: its box is the read-back's until the engine checks
     // again, so it offers Read back alone.
-    statesOf(definition).includes(markedBox.state.id)
-      ? markedBox
+    statesOf(definition).includes(target.state)
+      ? target
       : null;
   const editOpen = editable !== null && editing === `${focus}|${mark}`;
   // A REFUSED STEP IS MARKED (rpg-project#1018): on its row in Edit and on
@@ -267,7 +295,7 @@ export function StudioBehaviours({
               {editable && (
                 <div
                   role="tablist"
-                  aria-label={`State ${editable.state.id}`}
+                  aria-label={`State ${editable.state}`}
                   className="es-machine-tabs"
                 >
                   <button
@@ -282,17 +310,23 @@ export function StudioBehaviours({
                     type="button"
                     role="tab"
                     aria-selected={editOpen}
-                    onClick={() => setEditing(`${focus}|${mark}`)}
+                    onClick={() => {
+                      setEditing(`${focus}|${mark}`);
+                      if (editable.step !== null)
+                        reveal(
+                          machineStepKey(focus, editable.state, editable.step)
+                        );
+                    }}
                   >
                     Edit
                   </button>
                 </div>
               )}
               {editOpen && editable && definition && onCommitDefinition ? (
-                <div role="tabpanel" aria-label={`Edit ${editable.state.id}`}>
+                <div role="tabpanel" aria-label={`Edit ${editable.state}`}>
                   <MachineStateEdit
                     routine={focus}
-                    state={editable.state.id}
+                    state={editable.state}
                     definition={definition}
                     readBack={said}
                     readBackIsCurrent={readBack.readBackIsCurrent}
@@ -300,7 +334,7 @@ export function StudioBehaviours({
                     onJump={onJump}
                     words={machineWords}
                     refusals={stepRefusals.filter(
-                      (r) => r.state === editable.state.id
+                      (r) => r.state === editable.state
                     )}
                   />
                 </div>
@@ -326,7 +360,7 @@ export function StudioBehaviours({
                           markedKey: machineMarkedKey(focus),
                           onMark: (statement) => {
                             const id = machine.markOf.get(statement);
-                            if (id) markIt(id, 'sentence');
+                            if (id) markIt(id, 'sentence', statement.path);
                           },
                         }
                       : undefined

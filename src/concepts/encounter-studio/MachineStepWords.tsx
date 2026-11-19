@@ -379,7 +379,11 @@ export function StepConditions({
   choices,
   refusals,
   onStep,
+  show,
 }: {
+  /** `add`: only the compact "+ condition" control, on the step's line;
+   * `rows`: the conditions it has, under the line, or nothing. */
+  show: 'add' | 'rows';
   words: MachineWords;
   step: Node;
   beat: string;
@@ -399,7 +403,7 @@ export function StepConditions({
     return m ? Number(m[1]) : -1;
   });
   if (shape.kind === 'kept')
-    return (
+    return show === 'add' ? null : (
       <div className="es-machine-conditions" data-kept="">
         <p className="es-help es-machine-kept">
           Kept as written: its condition.{' '}
@@ -419,6 +423,16 @@ export function StepConditions({
   const leaves = leafWordsOf(words);
   const offered = leaves.filter((w) => allowedOn(words, w, beat));
   const negate = canNegate(words);
+  if (show === 'add')
+    return (
+      <AddWord
+        label={`Add a condition to ${name}`}
+        what="+ condition"
+        options={offered}
+        onAdd={(word) => write([...nodes, freshNode(word, choices)])}
+      />
+    );
+  if (shape.rows.length === 0 && !refused.size) return null;
   return (
     <div className="es-machine-conditions">
       <span className="es-help">When</span>
@@ -509,12 +523,6 @@ export function StepConditions({
           );
         })}
       </ul>
-      <AddWord
-        label={`Add a condition to ${name}`}
-        what="Add a condition…"
-        options={offered}
-        onAdd={(word) => write([...nodes, freshNode(word, choices)])}
-      />
     </div>
   );
 }
@@ -528,7 +536,10 @@ export function StepActs({
   choices,
   refusals,
   onStep,
+  show,
 }: {
+  /** As `StepConditions`'s: the "+ act" control, or the act rows. */
+  show: 'add' | 'rows';
   words: MachineWords;
   step: Node;
   beat: string;
@@ -547,7 +558,16 @@ export function StepActs({
   const write = (next: unknown[]) => onStep(withStepDo(step, next));
   const known = doWordsOf(words).filter((w) => w.word !== PICK);
   const offered = known.filter((w) => allowedOn(words, w, beat));
-  const flagged = known.some((w) => w.args.some((a) => a.names === 'flag'));
+  if (show === 'add')
+    return (
+      <AddWord
+        label={`Add an act to ${name}`}
+        what="+ act"
+        options={offered}
+        onAdd={(word) => write([...acts, freshNode(word, choices)])}
+      />
+    );
+  if (rows.length === 0) return null;
   return (
     <div className="es-machine-acts">
       <span className="es-help">Also does</span>
@@ -617,23 +637,18 @@ export function StepActs({
                     {onlyOnWords(words, word)}
                   </p>
                 )}
+                {!choices.hasFlags &&
+                  word.args.some((a) => a.names === 'flag') && (
+                    <p className="es-help" data-no-flags="">
+                      This machine declares no flags: name the flag as text.
+                    </p>
+                  )}
                 <Refused list={rowRefused} />
               </li>
             );
           })}
         </ul>
       )}
-      {flagged && !choices.hasFlags && (
-        <p className="es-help" data-no-flags="">
-          This machine declares no flags: a flag is named as free text.
-        </p>
-      )}
-      <AddWord
-        label={`Add an act to ${name}`}
-        what="Add an act…"
-        options={offered}
-        onAdd={(word) => write([...acts, freshNode(word, choices)])}
-      />
     </div>
   );
 }

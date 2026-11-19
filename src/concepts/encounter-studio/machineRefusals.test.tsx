@@ -11,6 +11,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -191,5 +192,32 @@ describe('a refusal on the creature', () => {
     expect(
       within(drawing()).queryByRole('button', { name: /^Refused step/ })
     ).toBeNull();
+  });
+});
+
+describe('marked from an arrow', () => {
+  it('Edit opens on its first step’s state at that step’s card, revealed', async () => {
+    studio([]);
+    // barred → challenged is drawn once, from posted and alert.
+    const arrow = arrowOf('alert', 'barred');
+    const first = arrow.getAttribute('data-from')!.split(' ')[0]!;
+    fireEvent.click(arrow);
+    fireEvent.click(screen.getByRole('tab', { name: 'Edit' }));
+    expect(
+      screen.getByRole('tabpanel', { name: `Edit ${first}` })
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('list', { name: `Steps in ${first}` })
+          .querySelector('li[data-revealed="true"] select')
+      ).toBeTruthy()
+    );
+    const revealed = screen
+      .getByRole('list', { name: `Steps in ${first}` })
+      .querySelector<HTMLLIElement>('li[data-revealed="true"]')!;
+    expect(
+      within(revealed).getByLabelText<HTMLSelectElement>(/^What fires/).value
+    ).toBe('barred');
   });
 });

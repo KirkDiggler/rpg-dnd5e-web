@@ -11,6 +11,8 @@ Slice [rpg-project#1018](https://github.com/KirkDiggler/rpg-project/issues/1018)
 
 ## Decided
 
+- After the lead's look at `e0100f9a`: each step is a card headed by its number, its drawn line in the engine's words (`→ <state>` for a moving step) and "Remove step"; "+ condition" / "+ act" sit inline and rows open only for what the step has; the no-flags note is said only on a flag act's row; marking an arrow (or a staying step's sentence) opens Edit on that step's state at its card, revealed — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
+
 - Every input is placed by the arg's `goes` (`open`, `value`, `field`, `implied`) and typed by `kind` / `kind_of`; the only words the web knows are the guard tree's `all` / `any` / `not` and the `pick` that "Does one of" already edits — [stepWords.ts](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 - A leaf spelled by its key alone (`scope`, `rounds`, `flag`) is the one candidate whose field args the node holds and nothing else; a `scope` with both `within` and `regions` matches neither and is kept as written — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 - The "not" toggle wraps the leaf in `not` and is offered wherever the table has the `not` word, not only where a word has a `label_not` — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
@@ -26,5 +28,7 @@ Slice [rpg-project#1018](https://github.com/KirkDiggler/rpg-project/issues/1018)
 - A label template for a dropdown has no slot-free form for open words (`{id} is done`); the editor shows the slot as "…" — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 
 ## Mistaken
+
+- The first cut repeated "This machine declares no flags" under every step and made each step three rows tall, so the pane showed two steps; seen on the live stack by the lead, not by a test — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
 
 - A new node's first draft filled every input from the document's first choice, so a fact's bool `value` took a fact name and wrote `false`; only an input that names a thing takes a choice now, and a test pins it — [rpg-dnd5e-web#1463](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1463).
