@@ -43,9 +43,11 @@
 import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {
   ReadBackSchema,
+  ReadBackStatementSchema,
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import claimStepJson from './engineReadBack.claimStep.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
@@ -107,4 +109,36 @@ export function castleRoutinesReadBack(): ReadBack {
  */
 export function castleMachinesReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(machinesJson) as JsonValue);
+}
+
+/**
+ * THE CAPTAIN'S STEP ON A LIE, WITH THE CLAIM IT ASKS (rpg-project#1000,
+ * #1012), recorded from `rulebooks/dnd5e/encounter` v0.222.2 (rpg-toolkit
+ * a53258e4, the first tag that says a step's heard claim as a connection):
+ * `readback.Of` on the toolkit's own castle,
+ * `dungeonspec/testdata/world-builder-v4-castle.yaml`, the one
+ * `routine.wake` at `behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]`,
+ * marshalled as the engine exports it. Its sentence is the one
+ * `castleMachinesReadBack` already holds at that path, word for word; the
+ * tag adds the `{claim, failed, asks}` connection. Unedited.
+ *
+ * `castleMachinesReadBack` with that statement in place of the pinned one:
+ * the castle's machines as the engine says them from v0.222.2 on.
+ */
+export function castleMachinesWithClaimReadBack(): ReadBack {
+  const readBack = castleMachinesReadBack();
+  const step = fromJson(
+    ReadBackStatementSchema,
+    JSON.parse(claimStepJson) as JsonValue
+  );
+  let replaced = false;
+  for (const group of readBack.sections.flatMap((section) => section.groups))
+    group.statements = group.statements.map((statement) => {
+      if (statement.kind !== step.kind || statement.path !== step.path)
+        return statement;
+      replaced = true;
+      return step;
+    });
+  if (!replaced) throw new Error(`no statement at ${step.path} to replace`);
+  return readBack;
 }

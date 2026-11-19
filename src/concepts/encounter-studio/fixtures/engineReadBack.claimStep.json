@@ -1,0 +1,36 @@
+{
+  "kind": "routine.wake",
+  "about": {
+    "kind": "routine",
+    "id": "captain-policy"
+  },
+  "sentence": "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate` (“an admitted guest lied to him”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+  "path": "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]",
+  "connects": [
+    {
+      "kind": "claim",
+      "id": "failed",
+      "role": "asks"
+    },
+    {
+      "kind": "topic",
+      "id": "admitted",
+      "role": "asks"
+    },
+    {
+      "kind": "state",
+      "id": "in-hall",
+      "role": "from"
+    },
+    {
+      "kind": "state",
+      "id": "back-to-gate",
+      "role": "to"
+    },
+    {
+      "kind": "beat",
+      "id": "heard",
+      "role": "on"
+    }
+  ]
+}
