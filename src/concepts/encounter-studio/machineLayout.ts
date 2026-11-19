@@ -28,15 +28,20 @@
  */
 import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
+  actValueOf,
+  ALSO_WORDS,
+  alsoOf,
   beatLabel,
   holdLabel,
   shortBeatLabel,
   stayLabel,
+  stayParts,
   type MachineEdge,
   type MachineState,
   type MachineStep,
   type MachineView,
 } from './machineView';
+import type { MachineWords } from './machineWords';
 
 export const STARTS_WORDS = 'starts here';
 export const FINAL_WORDS = 'final';
@@ -48,6 +53,8 @@ const MARGIN = 16;
 const PAD = 12;
 const TITLE_H = 26;
 const LINE_H = 18;
+/** How far a staying step's continued line sits in from its first. */
+const INDENT = 12;
 const BOX_MIN_W = 160;
 const BOX_MAX_W = 300;
 const GAP_MIN = 56;
@@ -103,6 +110,9 @@ export interface LaidBox {
   /** Every statement the box stands for: the state's, its staying steps'
    * and its holds'. */
   statements: ReadBackStatement[];
+  /** What its staying steps connect that the drawing does not know, raw:
+   * in its hover text only. */
+  also: string[];
 }
 
 export interface LaidPiece {
@@ -124,6 +134,9 @@ export interface LaidPiece {
   caption: LaidText | null;
   /** Every stroke above as an axis-aligned segment, for the checks. */
   segments: Segment[];
+  /** What its steps connect that the drawing does not know, raw
+   * (`role kind id`): in its hover text only, never drawn. */
+  also: string[];
 }
 
 /** One straight stroke, horizontal or vertical. */
@@ -139,7 +152,21 @@ export interface MachineLayout {
   height: number;
   boxes: LaidBox[];
   pieces: LaidPiece[];
+  /** What the machine remembers (encounter v0.228.0), drawn as a strip
+   * above its states: the strip's word, then each flag and its starting
+   * value. Empty when it declares no flag. */
+  memory: LaidMemory[];
 }
+
+export interface LaidMemory extends LaidText {
+  /** The flag's `routine.flag` statement; null for the strip's word. */
+  statement: ReadBackStatement | null;
+  /** The flag's name; null for the strip's word. */
+  flag: string | null;
+}
+
+export const MEMORY_WORDS = 'Remembers';
+const MEMORY_H = 24;
 
 const estimate = (text: string, per: number): number =>
   Math.ceil(text.length * per);
@@ -219,8 +246,12 @@ interface Attach {
   other: number;
 }
 
-/** Lay out a machine. */
-export function layoutMachine(view: MachineView): MachineLayout {
+/** Lay out a machine, its labels in the engine's words when the studio
+ * has them (`GetMachineWords`), else in its ids as before. */
+export function layoutMachine(
+  view: MachineView,
+  words: MachineWords | null = null
+): MachineLayout {
   const rows = rowsOf(view).filter((row) => row.length > 0);
   const rowOf = new Map<string, number>();
   const colOf = new Map<string, number>();
@@ -232,12 +263,31 @@ export function layoutMachine(view: MachineView): MachineLayout {
   );
   const stateOf = new Map(view.states.map((s) => [s.id, s]));
 
-  // THE BOXES' CONTENTS, AND THEIR WIDTHS.
+  // THE BOXES' CONTENTS, AND THEIR WIDTHS. A box has two forms: each
+  // staying step on one line, or, where a row would not fit the studio's
+  // width (plain words are long, rpg-project#1015), each step's parts on
+  // lines of their own, the lists it acts from indented under its label.
+  interface DraftLine {
+    text: string;
+    full: string;
+    indent: number;
+    muted: boolean;
+    statement: ReadBackStatement;
+  }
+  interface Form {
+    lines: DraftLine[];
+    w: number;
+    h: number;
+  }
   interface Draft {
     state: MachineState;
     title: string;
     pills: { text: string; kind: PillKind; w: number }[];
-    lines: { text: string; muted: boolean; statement: ReadBackStatement }[];
+    whole: Form;
+    split: Form;
+    /** The form drawn. */
+    form: 'whole' | 'split';
+    lines: DraftLine[];
     w: number;
     h: number;
   }
@@ -252,37 +302,71 @@ export function layoutMachine(view: MachineView): MachineLayout {
         ? [{ text: NO_WAY_OUT_WORDS, kind: 'no-way-out' as const }]
         : []),
     ].map((pill) => ({ ...pill, w: estimate(pill.text, CHAR.pill) + 14 }));
-    const lines = [
-      ...state.holds.map((hold) => ({
-        text: holdLabel(hold),
+    const holds: DraftLine[] = state.holds.map((hold) => {
+      const text = holdLabel(hold);
+      return {
+        text,
+        full: text,
+        indent: 0,
         muted: true,
         statement: hold.statement,
-      })),
-      ...state.stays.map((step) => ({
-        text: stayLabel(step),
-        muted: false,
-        statement: step.statement,
-      })),
-    ];
+      };
+    });
     const titleW =
       estimate(state.id, CHAR.title) +
       pills.reduce((sum, pill) => sum + pill.w + 8, 0);
-    const widest = Math.max(
-      titleW,
-      ...lines.map((line) => estimate(line.text, CHAR.line))
-    );
+    const formOf = (lines: DraftLine[]): Form & { cut: boolean } => {
+      const widest = Math.max(
+        titleW,
+        ...lines.map((line) => line.indent + estimate(line.text, CHAR.line))
+      );
+      return {
+        lines,
+        w: Math.min(BOX_MAX_W, Math.max(BOX_MIN_W, widest + 2 * PAD)),
+        h: 2 * PAD + TITLE_H + lines.length * LINE_H,
+        cut: widest + 2 * PAD > BOX_MAX_W,
+      };
+    };
+    const whole = formOf([
+      ...holds,
+      ...state.stays.map((step) => {
+        const text = stayLabel(step, words);
+        return {
+          text,
+          full: text,
+          indent: 0,
+          muted: false,
+          statement: step.statement,
+        };
+      }),
+    ]);
+    const split = formOf([
+      ...holds,
+      ...state.stays.flatMap((step) => {
+        const full = stayLabel(step, words);
+        return stayParts(step, words).map((text, i) => ({
+          text,
+          full,
+          indent: i === 0 ? 0 : INDENT,
+          muted: false,
+          statement: step.statement,
+        }));
+      }),
+    ]);
+    // A step's line the widest box would cut goes onto lines of its own.
+    const start = whole.cut && !split.cut ? split : whole;
     drafts.set(state.id, {
       state,
       title: state.id,
       pills,
-      lines,
-      w: Math.min(BOX_MAX_W, Math.max(BOX_MIN_W, widest + 2 * PAD)),
-      h: 2 * PAD + TITLE_H + lines.length * LINE_H,
+      whole,
+      split,
+      form: start === split ? 'split' : 'whole',
+      lines: start.lines,
+      w: start.w,
+      h: start.h,
     });
   }
-  const rowH = rows.map((row) =>
-    Math.max(...row.map((id) => drafts.get(id)!.h))
-  );
 
   // THE PIECES: each edge, split by the row of the states it leaves.
   interface PieceDraft {
@@ -306,10 +390,14 @@ export function layoutMachine(view: MachineView): MachineLayout {
     for (const [r, froms] of [...byRow].sort((a, b) => a[0] - b[0])) {
       const from = froms.sort((a, b) => colOf.get(a)! - colOf.get(b)!);
       const targetRow = rowOf.get(edge.to)!;
+      const full = beatLabel(edge, words);
+      // A step's whole words wider than any gap can be take a lane, where
+      // they have the drawing's width (rpg-project#1015).
       const adjacent =
         from.length === 1 &&
         targetRow === r &&
-        Math.abs(colOf.get(from[0]!)! - colOf.get(edge.to)!) === 1;
+        Math.abs(colOf.get(from[0]!)! - colOf.get(edge.to)!) === 1 &&
+        estimate(full, CHAR.line) + 16 <= GAP_MAX;
       const channel =
         targetRow !== r ? Math.max(r, targetRow) : r === 0 ? 0 : r + 1;
       pieces.push({
@@ -318,13 +406,72 @@ export function layoutMachine(view: MachineView): MachineLayout {
         from,
         to: edge.to,
         steps: edge.steps.filter((step) => from.includes(step.from)),
-        full: beatLabel(edge),
-        short: shortBeatLabel(edge),
+        full,
+        short: shortBeatLabel(edge, words),
         kind: adjacent ? 'adjacent' : 'channel',
         channel,
       });
     }
   }
+
+  // EACH ROW'S BOXES IN THE FORM THAT FITS: while a row with its gaps at
+  // their narrowest would be wider than the studio, its widest box whose
+  // steps can still go onto lines of their own does; then the arrow in its
+  // widest gap takes a lane instead, where its words have the drawing's
+  // width (rpg-project#1015).
+  const shortGap = (a: string, b: string): number => {
+    const between = pieces.filter(
+      (p) =>
+        p.kind === 'adjacent' &&
+        ((p.from[0] === a && p.to === b) || (p.from[0] === b && p.to === a))
+    );
+    return Math.min(
+      GAP_MAX,
+      Math.max(
+        GAP_MIN,
+        ...between.map((p) => estimate(p.short, CHAR.line) + 16)
+      )
+    );
+  };
+  rows.forEach((row, r) => {
+    const total = (): number =>
+      2 * MARGIN +
+      row.slice(1).reduce((sum, id, c) => sum + shortGap(row[c]!, id), 0) +
+      row.reduce((sum, id) => sum + drafts.get(id)!.w, 0);
+    while (total() > STUDIO_W) {
+      const narrower = row
+        .map((id) => drafts.get(id)!)
+        .filter((d) => d.form === 'whole' && d.split.w < d.whole.w)
+        .sort((a, b) => b.w - a.w)[0];
+      if (narrower) {
+        Object.assign(narrower, {
+          form: 'split',
+          lines: narrower.split.lines,
+          w: narrower.split.w,
+          h: narrower.split.h,
+        });
+        continue;
+      }
+      const widest = pieces
+        .filter(
+          (p) =>
+            p.kind === 'adjacent' &&
+            rowOf.get(p.to) === r &&
+            estimate(p.short, CHAR.line) + 16 > GAP_MIN
+        )
+        .sort(
+          (a, b) =>
+            estimate(b.short, CHAR.line) - estimate(a.short, CHAR.line) ||
+            pieces.indexOf(a) - pieces.indexOf(b)
+        )[0];
+      if (!widest) break;
+      widest.kind = 'channel';
+      widest.channel = r === 0 ? 0 : r + 1;
+    }
+  });
+  const rowH = rows.map((row) =>
+    Math.max(...row.map((id) => drafts.get(id)!.h))
+  );
 
   // THE GAPS between side-by-side boxes, wide enough for their labels; a
   // pair holds as many straight arrows as its height spaces out, and the
@@ -391,6 +538,14 @@ export function layoutMachine(view: MachineView): MachineLayout {
   const lanes: PieceDraft[][] = Array.from({ length: channels }, () => []);
   for (const piece of pieces)
     if (piece.kind === 'channel') lanes[piece.channel]!.push(piece);
+  // Above the top row, the outermost lane's words are crossed by no other
+  // arrow's stroke (every other one stops below it): the longest words go
+  // there, so they are drawn whole (rpg-project#1015).
+  lanes[0]!.sort(
+    (a, b) =>
+      estimate(b.full, CHAR.line) - estimate(a.full, CHAR.line) ||
+      pieces.indexOf(a) - pieces.indexOf(b)
+  );
   const channelH = lanes.map((list, c) =>
     list.length
       ? 2 * CHANNEL_PAD + list.length * LANE_GAP
@@ -401,7 +556,46 @@ export function layoutMachine(view: MachineView): MachineLayout {
 
   // PLACE THE BOXES.
   const rect = new Map<string, Rect>();
-  let y = MARGIN;
+  // WHAT IT REMEMBERS: one strip above the states, wrapped at the studio's
+  // width.
+  const memory: LaidMemory[] = [];
+  if (view.flags.length) {
+    let mx = MARGIN;
+    let my = MARGIN + 13;
+    const put = (
+      text: string,
+      statement: ReadBackStatement | null,
+      flag: string | null
+    ): void => {
+      const w = estimate(text, CHAR.line);
+      if (mx > MARGIN && mx + w > STUDIO_W - MARGIN) {
+        mx = MARGIN;
+        my += LINE_H;
+      }
+      memory.push({
+        text,
+        full: text,
+        x: mx,
+        y: my,
+        w,
+        anchor: 'start',
+        statement,
+        flag,
+      });
+      mx += w + 16;
+    };
+    put(MEMORY_WORDS, null, null);
+    for (const flag of view.flags)
+      put(
+        `${flag.name}: ${actValueOf(flag.is)?.text ?? ''}`.trim(),
+        flag.statement,
+        flag.name
+      );
+  }
+  const memoryH = memory.length
+    ? memory[memory.length - 1]!.y - MARGIN + MEMORY_H - 13
+    : 0;
+  let y = MARGIN + memoryH;
   const channelTop: number[] = [];
   let width = 0;
   rows.forEach((row, r) => {
@@ -542,6 +736,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
         from: piece.from,
         to: piece.to,
         steps: piece.steps,
+        also: alsoOfSteps(piece.steps),
         strokes: '',
         bracket: null,
         arrow: `M ${x1} ${ly} H ${x2 + (forward ? -2 : 2)}`,
@@ -564,6 +759,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
     hi: number;
     endX: number;
     laneY: number;
+    short: string;
   }[] = [];
   lanes.forEach((list, c) =>
     list.forEach((piece, lane) => {
@@ -584,6 +780,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
         from: piece.from,
         to: piece.to,
         steps: piece.steps,
+        also: alsoOfSteps(piece.steps),
         strokes: [...leads, run].filter(Boolean).join(' '),
         bracket: piece.from.length > 1 ? `M ${lo} ${laneY} H ${hi}` : null,
         arrow: `M ${end.x} ${laneY} V ${into}`,
@@ -621,7 +818,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
             : null,
       };
       laidPieces.push(laid);
-      placed.push({ laid, lo, hi, endX: end.x, laneY });
+      placed.push({ laid, lo, hi, endX: end.x, laneY, short: piece.short });
     })
   );
   // THE WORDS ON A LANE go where no other arrow's stroke crosses them: the
@@ -635,12 +832,14 @@ export function layoutMachine(view: MachineView): MachineLayout {
           (segment) => !crosses(segment, textRect(text, size))
         )
     );
-  const settle = (
+  /** Whether the words find a clear place on the lane, without widening
+   * the drawing; they are left there when they do. */
+  const clearPlace = (
     own: LaidPiece,
     text: LaidText,
     size: number,
     want: number
-  ): void => {
+  ): boolean => {
     const hi = Math.max(MARGIN, width - MARGIN - text.w);
     const at = (x: number): boolean => {
       text.x = x;
@@ -648,8 +847,41 @@ export function layoutMachine(view: MachineView): MachineLayout {
     };
     const start = Math.round(Math.min(Math.max(want, MARGIN), hi));
     for (let d = 0; d <= Math.max(start - MARGIN, hi - start); d += 2) {
-      if (start + d <= hi && at(start + d)) return;
-      if (start - d >= MARGIN && at(start - d)) return;
+      if (start + d <= hi && at(start + d)) return true;
+      if (start - d >= MARGIN && at(start - d)) return true;
+    }
+    return false;
+  };
+  const settle = (
+    own: LaidPiece,
+    text: LaidText,
+    size: number,
+    want: number,
+    short?: string
+  ): void => {
+    if (clearPlace(own, text, size, want)) return;
+    const rightmost = (): number =>
+      Math.max(
+        ...laidPieces.flatMap((p) => p.segments.flatMap((sg) => [sg.x1, sg.x2]))
+      );
+    // The full words find no clear place on the lane: past the rightmost
+    // stroke while the drawing stays within the studio's width, else the
+    // short ones where they are clear, before the drawing widens for them
+    // (rpg-project#1015: plain words are longer).
+    if (
+      short !== undefined &&
+      Math.round(rightmost() + 6) + text.w + MARGIN <= STUDIO_W
+    ) {
+      text.x = Math.round(rightmost() + 6);
+      width = Math.max(width, text.x + text.w + MARGIN);
+      return;
+    }
+    if (short !== undefined && short !== text.text) {
+      const [was, wasW] = [text.text, text.w];
+      text.text = fit(short, Math.max(width - 2 * MARGIN - 8, 0), CHAR.line);
+      text.w = estimate(text.text, CHAR.line);
+      if (clearPlace(own, text, size, want)) return;
+      [text.text, text.w] = [was, wasW];
     }
     const right = Math.max(
       ...laidPieces.flatMap((p) => p.segments.flatMap((sg) => [sg.x1, sg.x2]))
@@ -657,14 +889,14 @@ export function layoutMachine(view: MachineView): MachineLayout {
     text.x = Math.round(right + 6);
     width = Math.max(width, text.x + text.w + MARGIN);
   };
-  for (const { laid, lo, hi, endX } of placed) {
+  for (const { laid, lo, hi, endX, short } of placed) {
     const spanLo = Math.min(lo, endX);
     const spanHi = Math.max(hi, endX);
     const want =
       spanHi - spanLo >= laid.label.w + 12
         ? (spanLo + spanHi) / 2 - laid.label.w / 2
         : endX + 6;
-    settle(laid, laid.label, 12, want);
+    settle(laid, laid.label, 12, want, short);
     if (laid.caption) settle(laid, laid.caption, 11, lo + 4);
   }
   // In the order the engine says the steps.
@@ -713,11 +945,11 @@ export function layoutMachine(view: MachineView): MachineLayout {
         },
         pills: pills.reverse(),
         lines: draft.lines.map((line, i) => {
-          const text = fit(line.text, box.w - 2 * PAD, CHAR.line);
+          const text = fit(line.text, box.w - 2 * PAD - line.indent, CHAR.line);
           return {
             text,
-            full: line.text,
-            x: box.x + PAD,
+            full: line.full,
+            x: box.x + PAD + line.indent,
             y: box.y + PAD + TITLE_H + 13 + i * LINE_H,
             w: estimate(text, CHAR.line),
             anchor: 'start' as const,
@@ -725,6 +957,7 @@ export function layoutMachine(view: MachineView): MachineLayout {
             statement: line.statement,
           };
         }),
+        also: alsoOfSteps(state.stays),
         statements: [
           state.statement,
           ...state.holds.map((hold) => hold.statement),
@@ -733,7 +966,8 @@ export function layoutMachine(view: MachineView): MachineLayout {
       };
     })
   );
-  return { width, height, boxes, pieces: laidPieces };
+  for (const m of memory) width = Math.max(width, m.x + m.w + MARGIN);
+  return { width, height, boxes, pieces: laidPieces, memory };
 }
 
 /** A text's box, from its estimate. */
@@ -762,6 +996,12 @@ export function overlapsOf(layout: MachineLayout): [string, string][] {
     r.y >= 0 &&
     r.x + r.w <= layout.width &&
     r.y + r.h <= layout.height;
+  texts.push(
+    ...(layout.memory ?? []).map((m, i) => ({
+      name: `memory ${i}`,
+      rect: textRect(m),
+    }))
+  );
   for (const t of [...boxes, ...texts])
     if (!inside(t.rect)) out.push([t.name, 'the drawing']);
   for (let i = 0; i < boxes.length; i++)
@@ -811,12 +1051,22 @@ export function boxName(box: LaidBox): string {
   return `State ${box.state.id}${marks.length ? ` (${marks.join(', ')})` : ''}`;
 }
 
+/** Every unknown connection of some steps, each once, raw. */
+export const alsoOfSteps = (steps: readonly MachineStep[]): string[] => [
+  ...new Set(steps.flatMap((step) => alsoOf(step))),
+];
+
+/** The raw list a mark's hover and aria text ends with, or empty. */
+export const alsoText = (also: readonly string[]): string =>
+  also.length ? `${ALSO_WORDS} ${also.join(', ')}` : '';
+
 export function pieceName(piece: LaidPiece): string {
   const from =
     piece.from.length > 1
       ? `${piece.from.slice(0, -1).join(', ')} or ${piece.from.at(-1)}`
       : piece.from[0];
-  return `Step from ${from} to ${piece.to}, ${piece.label.full}`;
+  const also = alsoText(piece.also);
+  return `Step from ${from} to ${piece.to}, ${piece.label.full}${also ? `; ${also}` : ''}`;
 }
 
 const span = (a: number, b: number): [number, number] =>

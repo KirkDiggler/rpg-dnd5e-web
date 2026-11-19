@@ -1,0 +1,710 @@
+{
+  "encounter_version": "v0.225.0",
+  "beats": [
+    {
+      "word": "time",
+      "timed": true,
+      "picks": true,
+      "label": "time passes",
+      "short": "on its time (out of a fight)",
+      "long": "on {whose} own time (each round {who} is due, out of a fight)",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "turn",
+      "timed": true,
+      "picks": true,
+      "label": "its turn in a fight",
+      "short": "on its turn in a fight",
+      "long": "on {whose} turn in a fight",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "heard",
+      "scoped": true,
+      "names_someone": true,
+      "about": "the one {who} heard ({who} knows who only by seeing them)",
+      "label": "hears something",
+      "short": "on hearing a sound (a character's line at once)",
+      "long": "when {who} hears a sound (a line a character says is heard at once, as it is said)",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "deed",
+      "scoped": true,
+      "label": "a deed is done",
+      "short": "when a deed is done",
+      "long": "when a deed is done",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "seen",
+      "scoped": true,
+      "names_someone": true,
+      "about": "the one {who} saw",
+      "label": "sees someone opposed",
+      "short": "when an opposed creature comes into its sight",
+      "long": "when an opposed creature comes into {whose} sight",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "fact",
+      "label": "learns a fact",
+      "label_with": "learns {id}",
+      "short": "on learning a fact",
+      "long": "when {who} learns a fact",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "topic",
+      "label": "notes a topic about someone",
+      "label_with": "notes {id} about someone",
+      "short": "on noting a topic about someone (judged or heard)",
+      "long": "when {who} notes a topic about someone, by its own judgement or by hearing it",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "clock:world",
+      "label": "a round of world time",
+      "short": "on each round of world time",
+      "long": "on each round of world time (out of a fight)",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "clock:fight",
+      "label": "a round of its side's fight",
+      "short": "on each round of a fight its side is in",
+      "long": "on each round of a fight {whose} side is in",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "barred",
+      "scoped": true,
+      "names_someone": true,
+      "about": "the one who walked into {who}",
+      "picks": true,
+      "label": "someone walks into it",
+      "short": "when someone walks into it and its body stops them",
+      "long": "when someone walks into {who} and its body stops them",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "approached",
+      "scoped": true,
+      "names_someone": true,
+      "about": "the one {who} hailed",
+      "picks": true,
+      "label": "hails someone",
+      "short": "when it is the carrier that hails a character (only under the conversation's hail rule)",
+      "long": "when {who} hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one",
+      "written": {
+        "part": "on"
+      }
+    },
+    {
+      "word": "deed:",
+      "open": "deed",
+      "scoped": true,
+      "label": "{id} is done",
+      "short": "when the deed {id} is done",
+      "long": "when the deed {id} is done",
+      "written": {
+        "part": "on"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "deed",
+          "kind": "string",
+          "values": ["attacked", "intimidated", "persuaded", "fled", "fell"]
+        }
+      ]
+    },
+    {
+      "word": "clock:",
+      "open": "clock",
+      "label": "a round of {id}",
+      "short": "on the beat {beat}",
+      "long": "on the beat {beat}",
+      "written": {
+        "part": "on"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "clock",
+          "kind": "string"
+        }
+      ]
+    }
+  ],
+  "conditions": [
+    {
+      "word": "enemy",
+      "fact": true,
+      "kind": "string",
+      "values": ["seen", "remembered", "none"],
+      "states_form": "{ enemy }",
+      "label": "an enemy is {value}",
+      "value_labels": {
+        "none": "knows of no enemy",
+        "remembered": "remembers an enemy",
+        "seen": "sees an enemy"
+      },
+      "long": "{whose} {name} is {op} {value}",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "string",
+          "values": ["seen", "remembered", "none"]
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "fact:",
+      "open": "fact",
+      "fact": true,
+      "kind": "bool",
+      "states_form": "{ fact }",
+      "label": "has learned {id}",
+      "label_not": "has not learned {id}",
+      "long": "{who} knows the fact {id}",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "fact",
+          "kind": "string"
+        },
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "bool"
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "heard.kind",
+      "fact": true,
+      "kind": "string",
+      "values": ["boom", "crash", "clang", "voice"],
+      "label": "it was a {value}",
+      "value_labels": {
+        "boom": "it was a boom",
+        "clang": "it was a clang",
+        "crash": "it was a crash",
+        "voice": "it was a voice"
+      },
+      "long": "what {who} heard was a {value}",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "string",
+          "values": ["boom", "crash", "clang", "voice"]
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "heard.loudness:",
+      "open": "loudness",
+      "fact": true,
+      "kind": "bool",
+      "label": "it was at least a {id}",
+      "long": "what {who} heard was a voice{raised} (a clang, a crash or a boom is at no loudness)",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "loudness",
+          "kind": "string",
+          "values": ["whisper", "speak", "shout", "scream"]
+        },
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "bool"
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "heard.claim",
+      "fact": true,
+      "kind": "string",
+      "values": ["held", "failed"],
+      "on": ["heard"],
+      "label": "it was a claim that {value}",
+      "value_labels": {
+        "failed": "it was a claim that failed",
+        "held": "it was a claim that held"
+      },
+      "long": "what {who} heard was a claim that {value}",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "string",
+          "values": ["held", "failed"]
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "noted:",
+      "open": "topic",
+      "fact": true,
+      "kind": "bool",
+      "on": ["heard", "seen", "barred", "approached"],
+      "label": "has noted {id} about them",
+      "label_not": "has not noted {id} about them",
+      "long": "{who} {verb} {id} about {about}",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "topic",
+          "kind": "string"
+        },
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "bool"
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "noted.anyone:",
+      "open": "topic",
+      "fact": true,
+      "kind": "bool",
+      "label": "has noted {id} about anyone",
+      "label_not": "has not noted {id} about anyone",
+      "long": "{who} {verb} {id} about anyone",
+      "written": {
+        "part": "when",
+        "key": "fact",
+        "field": "name"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "open",
+          "names": "topic",
+          "kind": "string"
+        },
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "bool"
+        },
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "fixed": "eq"
+        }
+      ]
+    },
+    {
+      "word": "flag:",
+      "open": "flag",
+      "kind": "bool",
+      "label": "{id} is set",
+      "long": "{whose} flag {id} is set",
+      "written": {
+        "part": "when",
+        "key": "flag"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "value",
+          "names": "flag",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "word": "within",
+      "kind": "int",
+      "on": ["heard", "deed", "seen", "barred", "approached", "deed:"],
+      "label": "within {n} cells",
+      "long": "it happened within {n} cells of {who}",
+      "written": {
+        "part": "when",
+        "key": "scope"
+      },
+      "args": [
+        {
+          "name": "n",
+          "goes": "field",
+          "field": "within",
+          "kind": "int"
+        },
+        {
+          "name": "op",
+          "goes": "implied",
+          "names": "op",
+          "kind": "string",
+          "fixed": "lte"
+        }
+      ]
+    },
+    {
+      "word": "regions",
+      "kind": "int",
+      "on": ["heard", "deed", "seen", "barred", "approached", "deed:"],
+      "label": "within {n} rooms",
+      "long": "it happened within {n} rooms of {who}",
+      "written": {
+        "part": "when",
+        "key": "scope"
+      },
+      "args": [
+        {
+          "name": "n",
+          "goes": "field",
+          "field": "regions",
+          "kind": "int"
+        },
+        {
+          "name": "op",
+          "goes": "implied",
+          "names": "op",
+          "kind": "string",
+          "fixed": "lte"
+        }
+      ]
+    },
+    {
+      "word": "rounds",
+      "kind": "int",
+      "label": "{op} {n} rounds since it marked the moment",
+      "long": "{op} {n} rounds have passed since {who} set its anchor",
+      "written": {
+        "part": "when",
+        "key": "rounds"
+      },
+      "args": [
+        {
+          "name": "op",
+          "goes": "field",
+          "field": "op",
+          "names": "op",
+          "kind": "string",
+          "values": ["eq", "gte"]
+        },
+        {
+          "name": "n",
+          "goes": "field",
+          "field": "n",
+          "kind": "int",
+          "optional": true,
+          "default_value": "0"
+        }
+      ]
+    },
+    {
+      "word": "all",
+      "join": " and ",
+      "label": "all of these",
+      "long": "{parts}",
+      "written": {
+        "part": "when",
+        "key": "all"
+      },
+      "args": [
+        {
+          "name": "parts",
+          "goes": "value",
+          "names": "condition",
+          "kind": "condition",
+          "many": true
+        }
+      ]
+    },
+    {
+      "word": "any",
+      "join": ", or ",
+      "label": "any of these",
+      "long": "({parts})",
+      "written": {
+        "part": "when",
+        "key": "any"
+      },
+      "args": [
+        {
+          "name": "parts",
+          "goes": "value",
+          "names": "condition",
+          "kind": "condition",
+          "many": true
+        }
+      ]
+    },
+    {
+      "word": "not",
+      "states_form": "{ not }",
+      "label": "not this",
+      "long": "NOT ({inner})",
+      "written": {
+        "part": "when",
+        "key": "not"
+      },
+      "args": [
+        {
+          "name": "inner",
+          "goes": "value",
+          "names": "condition",
+          "kind": "condition"
+        }
+      ]
+    }
+  ],
+  "acts": [
+    {
+      "word": "to",
+      "label": "changes to {id}",
+      "short": "to {id}",
+      "long": "moves to the state {id}",
+      "written": {
+        "part": "step",
+        "key": "to"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "value",
+          "names": "state",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "word": "pick",
+      "on": ["time", "turn", "barred", "approached"],
+      "states_form": "{ pick: <key> }",
+      "label": "acts from the {id} list",
+      "short": "acts from its {id} rows",
+      "long": "acts from its own {id} rows",
+      "written": {
+        "part": "do",
+        "key": "pick"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "value",
+          "names": "list",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "word": "wake_in",
+      "states_form": "{ wake_in: N }",
+      "label": "waits {n} rounds",
+      "short": "wakes again in {n} rounds",
+      "long": "wakes again in {n} rounds",
+      "written": {
+        "part": "do",
+        "key": "wake_in"
+      },
+      "args": [
+        {
+          "name": "n",
+          "goes": "value",
+          "kind": "int"
+        }
+      ]
+    },
+    {
+      "word": "set",
+      "label": "sets {id} to {value}",
+      "short": "sets {id} to {value}",
+      "long": "sets {id} to {value}",
+      "written": {
+        "part": "do",
+        "key": "set"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "field",
+          "field": "key",
+          "names": "flag",
+          "kind": "string"
+        },
+        {
+          "name": "value",
+          "goes": "field",
+          "field": "value",
+          "kind": "of",
+          "kind_of": "id",
+          "kinds": ["bool", "int", "string"]
+        }
+      ]
+    },
+    {
+      "word": "clear",
+      "label": "forgets {id}",
+      "short": "clears {id}",
+      "long": "clears {id}",
+      "written": {
+        "part": "do",
+        "key": "clear"
+      },
+      "args": [
+        {
+          "name": "id",
+          "goes": "value",
+          "names": "flag",
+          "kind": "string",
+          "many": true
+        }
+      ]
+    },
+    {
+      "word": "anchor",
+      "states_form": "{ anchor: true }",
+      "label": "marks the moment",
+      "short": "sets its anchor",
+      "long": "sets its anchor to this moment",
+      "written": {
+        "part": "do",
+        "key": "anchor"
+      },
+      "args": [
+        {
+          "name": "value",
+          "goes": "value",
+          "kind": "bool",
+          "fixed": "true"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "op": "eq",
+      "words": "exactly"
+    },
+    {
+      "op": "gte",
+      "words": "at least"
+    },
+    {
+      "op": "lte",
+      "words": "at most"
+    }
+  ]
+}

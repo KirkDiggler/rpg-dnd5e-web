@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { RoomHexCell } from '../world-building/workspaceGeometry';
 import { layoutMachine, type MachineLayout } from './machineLayout';
 import { machineOf } from './machineView';
+import type { MachineWords } from './machineWords';
 import { foldRun, stepStartOf, type RunMember, type RunView } from './runView';
 
 export const WATCH_DEV_ONLY_SENTENCE =
@@ -140,7 +141,10 @@ const RUNS = 'runs';
  * the box of the state the run says it is in now. */
 export function machinesRunBy(
   readBack: ReadBack | null,
-  member: RunMember
+  member: RunMember,
+  /** The engine's machine words (`useMachineWords`, rpg-project#1015);
+   * null draws the ids as before. */
+  words: MachineWords | null = null
 ): { routine: string; layout: MachineLayout; live: string | null }[] {
   if (!readBack) return [];
   const states = new Set(
@@ -161,7 +165,7 @@ export function machinesRunBy(
       const routine = group.about!.id;
       const view = machineOf(readBack, routine);
       if (!view) return [];
-      const layout = layoutMachine(view);
+      const layout = layoutMachine(view, words);
       const live =
         layout.boxes.find((box) => states.has(box.state.id))?.id ?? null;
       return [{ routine, layout, live }];

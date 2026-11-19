@@ -14,6 +14,7 @@
 import { RECORD_AGED_OUT_NOTICE } from '@/components/session/recordFeed';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  roleSegments,
   shownTimelineRows,
   stateColour,
   stateSegments,
@@ -22,11 +23,16 @@ import {
   type TimelineCell,
 } from './runTimeline';
 import type { RunDraft, RunWatch, WatchedRun } from './runWatch';
+import { sightTextOf } from './watchSight';
 import { stopLinesOf } from './watchStop';
 import { WatchStopBanner } from './WatchStopBanner';
 
 /** One step's width in px. */
 export const TIMELINE_CELL = 72;
+/** A row's height with no other role, and what each other role's band adds
+ * (rpg-project#1016). */
+const ROW_HEIGHT = 34;
+const ROLE_BAND = 12;
 
 export function StudioWatchTimeline({
   watch,
@@ -126,8 +132,10 @@ export function StudioWatchTimeline({
           Only creatures that changed
         </label>
         <span className="es-help">
-          Band: machine state · mark: what it did · solid edge: state changed ·
-          dashed edge: what it did changed
+          Band: machine state (a thin band under it for each other role) · mark:
+          what it did, “sees” when its sight changed · solid edge: state changed
+          · dashed edge: what it did changed · a changed role or sight counts as
+          a change
         </span>
         <WatchStopBanner
           refusal={step === null ? refusal : null}
@@ -173,6 +181,11 @@ export function StudioWatchTimeline({
               role="row"
               data-testid="timeline-row"
               data-member={row.id}
+              style={
+                row.roles.length > 0
+                  ? { height: ROW_HEIGHT + ROLE_BAND * row.roles.length }
+                  : undefined
+              }
             >
               <div className="es-timeline-name" role="rowheader" title={row.id}>
                 {name(row.id)}
@@ -196,12 +209,37 @@ export function StudioWatchTimeline({
                     </div>
                   )
                 )}
+                {row.roles.map((role, r) =>
+                  roleSegments(row.cells, role).map((seg) =>
+                    seg.state === undefined ? null : (
+                      <div
+                        key={`${role}:${seg.from}`}
+                        className={`es-timeline-band es-timeline-role-band${seg.edge ? ' es-timeline-role-edge' : ''}`}
+                        style={{
+                          top: 17 + r * ROLE_BAND,
+                          left: seg.from * TIMELINE_CELL,
+                          width: seg.length * TIMELINE_CELL,
+                          background: stateColour(seg.state),
+                        }}
+                        title={`role ${role}: state ${seg.state}`}
+                        data-testid="timeline-role-band"
+                        data-role={role}
+                        data-state={seg.state}
+                        data-edge={seg.edge || undefined}
+                      >
+                        {role}: {seg.state}
+                      </div>
+                    )
+                  )
+                )}
                 {row.cells.map((cell) => (
                   <TimelineCellButton
                     key={cell.step}
                     cell={cell}
                     id={row.id}
                     name={name(row.id)}
+                    names={names}
+                    roleCount={row.roles.length}
                     current={cell.step === at}
                     stepLabel={
                       cell.step === 0
@@ -232,6 +270,8 @@ function TimelineCellButton({
   cell,
   id,
   name,
+  names,
+  roleCount,
   current,
   stepLabel,
   onPick,
@@ -240,6 +280,8 @@ function TimelineCellButton({
   cell: TimelineCell;
   id: string;
   name: string;
+  names?: ReadonlyMap<string, string>;
+  roleCount: number;
   current: boolean;
   stepLabel: string;
   onPick(): void;
@@ -250,10 +292,18 @@ function TimelineCellButton({
     cell.state
       ? `state ${cell.state}${cell.stateChanged ? ' (changed)' : ''}`
       : 'no state recorded',
+    ...Object.entries(cell.roles ?? {}).map(
+      ([role, state]) =>
+        `role ${role}: ${state}${cell.rolesChanged?.includes(role) ? ' (changed)' : ''}`
+    ),
     cell.did
       ? `did: ${cell.did.text}${cell.didChanged ? ' (changed)' : ''}`
       : 'did nothing recorded',
+    ...(cell.sight ? [`sight: ${sightTextOf(cell.sight, names)}`] : []),
   ].join('; ');
+  const mark = [cell.did?.mark, cell.sight ? 'sees' : '']
+    .filter(Boolean)
+    .join(' ');
   const classes = ['es-timeline-cell'];
   if (cell.stateChanged) classes.push('es-timeline-cell-state-edge');
   if (cell.didChanged) classes.push('es-timeline-cell-did-edge');
@@ -263,7 +313,11 @@ function TimelineCellButton({
       type="button"
       role="gridcell"
       className={classes.join(' ')}
-      style={{ left: cell.step * TIMELINE_CELL, width: TIMELINE_CELL }}
+      style={{
+        left: cell.step * TIMELINE_CELL,
+        width: TIMELINE_CELL,
+        ...(roleCount > 0 ? { paddingTop: 18 + ROLE_BAND * roleCount } : {}),
+      }}
       tabIndex={current ? 0 : -1}
       aria-label={label}
       aria-current={current ? 'step' : undefined}
@@ -280,7 +334,7 @@ function TimelineCellButton({
         onArrow(by);
       }}
     >
-      {cell.did?.mark ?? ''}
+      {mark}
     </button>
   );
 }

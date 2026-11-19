@@ -28,7 +28,7 @@ import {
   worldToClient,
   type LayoutTransform,
 } from './layoutGeometry';
-import type { RunMember } from './runView';
+import { runStateLabel, type RunMember } from './runView';
 import type { LayoutSteps, RunSaid } from './studioSession';
 
 const RING = 0.55;
@@ -148,7 +148,7 @@ export function LayoutRunOverlay({
               style={{ cursor: 'pointer' }}
             >
               <title>
-                {`${names?.get(member.id) ?? member.id}${member.state ? `: ${member.state}` : ''}`}
+                {`${names?.get(member.id) ?? member.id}${runStateLabel(member) ? `: ${runStateLabel(member)}` : ''}`}
               </title>
               <circle
                 cx={centre.x}
@@ -189,7 +189,7 @@ export function LayoutRunOverlay({
               style={{ userSelect: 'none' }}
             >
               {names?.get(member.id) ?? member.id}
-              {member.state && (
+              {runStateLabel(member) && (
                 <tspan
                   data-run-state-label=""
                   x={x}
@@ -197,7 +197,7 @@ export function LayoutRunOverlay({
                   fontWeight={400}
                   fill="#fde68a"
                 >
-                  {member.state}
+                  {runStateLabel(member)}
                 </tspan>
               )}
             </text>
