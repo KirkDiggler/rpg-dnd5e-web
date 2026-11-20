@@ -86,15 +86,17 @@ const stateItem = (name: string): HTMLElement =>
 
 function addRefused(state: string) {
   fireEvent.click(screen.getByLabelText(`Add a step to front-gate ${state}`));
-  const name = screen.getByLabelText(
-    `Step name for front-gate ${state} new step`
+  fireEvent.change(
+    screen.getByLabelText(`Step name for front-gate ${state} new step`),
+    { target: { value: 'refused' } }
   );
-  fireEvent.change(name, { target: { value: 'refused' } });
-  const to = screen.getByLabelText(
-    `Goes to for front-gate ${state} new step`
-  ) as HTMLSelectElement;
-  fireEvent.change(to, { target: { value: 'arrested' } });
-  fireEvent.blur(name);
+  fireEvent.change(
+    screen.getByLabelText(`Goes to for front-gate ${state} new step`),
+    { target: { value: 'arrested' } }
+  );
+  fireEvent.click(
+    screen.getByLabelText(`Add step front-gate ${state} new step`)
+  );
 }
 
 describe('the states of front-gate', () => {
@@ -142,17 +144,74 @@ describe('adding a step', () => {
     expect(saved.replace(step, '')).toBe(served);
   });
 
-  it('writes nothing for an invalid name and says why', () => {
+  it('writes nothing while typing or tabbing, then one commit with all three values on Add', () => {
+    const view = conversations();
+    fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
+    const name = screen.getByLabelText(
+      'Step name for front-gate fresh new step'
+    );
+    const because = screen.getByLabelText(
+      'Because for front-gate fresh new step'
+    );
+    fireEvent.change(name, { target: { value: 'refused' } });
+    name.focus();
+    because.focus();
+    fireEvent.blur(name);
+    fireEvent.change(because, { target: { value: 'turned away' } });
+    fireEvent.blur(because);
+    expect(view.commits()).toBe(0);
+    fireEvent.click(
+      screen.getByLabelText('Add step front-gate fresh new step')
+    );
+    expect(view.commits()).toBe(1);
+    const list = (view.scope().unread!.interactions as Loose)['front-gate']
+      .recipe.states.fresh.transitions;
+    expect(list[list.length - 1]).toEqual({
+      on: 'refused',
+      to: 'fresh',
+      reason: 'turned away',
+    });
+    // Focus lands on the new row's step name.
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Step name for front-gate fresh step 4')
+    );
+  });
+
+  it('Add is off for an invalid name, which is said under the field', () => {
     const view = conversations();
     fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
     const name = screen.getByLabelText(
       'Step name for front-gate fresh new step'
     );
     fireEvent.change(name, { target: { value: 'no spaces' } });
-    fireEvent.blur(name);
-    expect(view.commits()).toBe(0);
+    expect(
+      (
+        screen.getByLabelText(
+          'Add step front-gate fresh new step'
+        ) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
     expect(screen.getByRole('alert').textContent).toBe(
       'Letters, digits, - and _ only.'
+    );
+    expect(view.commits()).toBe(0);
+  });
+
+  it('Cancel discards the draft and returns focus to Add a step', async () => {
+    const view = conversations();
+    fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
+    fireEvent.change(
+      screen.getByLabelText('Step name for front-gate fresh new step'),
+      { target: { value: 'refused' } }
+    );
+    fireEvent.click(screen.getByLabelText('Cancel front-gate fresh new step'));
+    await Promise.resolve();
+    expect(view.commits()).toBe(0);
+    expect(
+      screen.queryByLabelText('Step name for front-gate fresh new step')
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Add a step to front-gate fresh')
     );
   });
 });
@@ -182,6 +241,20 @@ describe('editing and removing', () => {
     const t = (view.scope().unread!.interactions as Loose)['front-gate'].recipe
       .states.fresh.transitions[0];
     expect(t.to).toBe('jailed');
+    expect(view.commits()).toBe(1);
+  });
+});
+
+describe('a text field commits on blur, not on every keystroke', () => {
+  it('typing five characters then leaving is one commit', () => {
+    const view = conversations();
+    const because = screen.getByLabelText(
+      'Because for front-gate fresh step 1'
+    );
+    for (const text of ['a', 'ab', 'abc', 'abcd', 'abcde'])
+      fireEvent.change(because, { target: { value: text } });
+    expect(view.commits()).toBe(0);
+    fireEvent.blur(because);
     expect(view.commits()).toBe(1);
   });
 });
@@ -230,5 +303,23 @@ describe('the engine refuses', () => {
     expect(
       within(rows[0] as HTMLElement).queryByText('no such state')
     ).toBeNull();
+  });
+});
+
+describe('a refusal the section cannot place is still shown', () => {
+  it('lists it under the label with the engine’s message', () => {
+    conversations([
+      {
+        path: 'interactions.front-gate.recipe.states.admitted.transitions[0]',
+        message: 'a terminal state has no steps',
+      },
+    ]);
+    const section = screen.getByLabelText('States and steps of front-gate');
+    const list = within(section).getByLabelText('The engine’s refusals here');
+    expect(list.textContent).toContain('a terminal state has no steps');
+    expect(
+      section.querySelector('.es-conversation-state[data-state="admitted"]')!
+        .textContent
+    ).not.toContain('a terminal state has no steps');
   });
 });

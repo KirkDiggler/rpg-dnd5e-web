@@ -3238,13 +3238,50 @@ li.es-machine-step[data-refused],
 .encounter-studio .es-conversation-state {
   margin-top: 0.5rem;
 }
-.encounter-studio .es-conversation-state-head,
-.encounter-studio .es-conversation-step-line {
+.encounter-studio .es-conversation-state-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: baseline;
   gap: 0.5rem;
 }
 .encounter-studio .es-conversation-step {
   margin-top: 0.4rem;
+}
+/* One step is one row, fields in columns down a state's rows; below 900px
+ * Because may wrap to a second line. */
+.encounter-studio .es-conversation-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-conversation-step-row > .es-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+.encounter-studio .es-conversation-step-buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+.encounter-studio .es-conversation-step-refusal {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (min-width: 900px) {
+  .encounter-studio .es-conversation-step-row > .es-field:first-child input {
+    width: 12rem;
+  }
+  .encounter-studio .es-conversation-step-row > .es-field:nth-child(3) select {
+    width: 10rem;
+  }
+  .encounter-studio .es-conversation-step-row > .es-conversation-because {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+  .encounter-studio .es-conversation-because input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }

@@ -8012,3 +8012,51 @@ describe('a cells pick from the Build inspector returns to it (rpg-project#975 D
     expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
   });
 });
+
+describe('a conversation’s steps through the real session (rpg-project#1040)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('one commit changes only the recipe in the file, and one undo restores it exactly', async () => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    const fileOf = (): string => exportDraftYaml(storage.document(), read.key);
+    const before = fileOf();
+    const document = storage.document();
+    fireEvent.click(button('Encounter'));
+    encounterSection('Conversations');
+    fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
+    fireEvent.change(
+      screen.getByLabelText('Step name for front-gate fresh new step'),
+      { target: { value: 'refused' } }
+    );
+    fireEvent.change(
+      screen.getByLabelText('Goes to for front-gate fresh new step'),
+      { target: { value: 'arrested' } }
+    );
+    const writes = storage.roomWrites();
+    fireEvent.click(
+      screen.getByLabelText('Add step front-gate fresh new step')
+    );
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const after = fileOf();
+    // Only the new step's two lines differ; `approach` and `outcomes` are
+    // text-identical.
+    const step = '\n            - on: refused\n              to: arrested';
+    expect(after.split(step)).toHaveLength(2);
+    expect(after.replace(step, '')).toBe(before);
+    const kept = (text: string): string[] => {
+      const from = text.indexOf('  front-gate:');
+      const lines = text.slice(from).split('\n');
+      return lines.filter((line) => /^ {4}(approach|outcomes):/.test(line));
+    };
+    expect(kept(after)).toEqual(kept(before));
+    expect(storage.document().scope.unread!.interactions).not.toEqual(
+      document.scope.unread!.interactions
+    );
+    fireEvent.click(button('Undo'));
+    expect(fileOf()).toBe(before);
+  });
+});

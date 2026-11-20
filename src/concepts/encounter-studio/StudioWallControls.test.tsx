@@ -85,6 +85,7 @@ function fixture(): EncounterStudioSession {
     commitPartySharing: vi.fn(() => true),
     commitInteractionApproach: vi.fn(() => true),
     commitInteractionOutcomes: vi.fn(() => true),
+    commitInteractionRecipe: vi.fn(() => true),
     sharedLines: {
       setLines: vi.fn(() => true),
       addLine: vi.fn(() => true),

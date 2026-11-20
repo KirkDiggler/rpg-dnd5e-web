@@ -65,6 +65,7 @@ function conversations(
         session={{
           document: { draft: result.draft, scope },
           commitInteractionApproach: () => true,
+          commitInteractionRecipe: () => true,
           commitInteractionOutcomes: (id, outcomes) => {
             last = outcomes;
             setScope((was) => setInteractionOutcomes(was, id, outcomes));

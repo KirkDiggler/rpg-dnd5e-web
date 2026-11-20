@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   NAME_RE,
   newNameRefusal,
@@ -103,6 +103,21 @@ export function StudioConversationSteps({
     }
   const listId = useId();
   const placed = placeRefusals(id, refusals);
+  // A refusal the section draws no row or state for (a terminal state's
+  // step, an index that is not there, a state not listed) is never dropped:
+  // it is listed under the label.
+  const rest = [...placed.rest];
+  for (const [key, list] of placed.byStep) {
+    const [state, index] = key.split('#') as [string, string];
+    const node = stateNodes[state];
+    const drawn =
+      mapping(node) &&
+      node.terminal !== true &&
+      Number(index) < transitionsOf(holder, state).length;
+    if (!drawn) rest.push(...list);
+  }
+  for (const [state, list] of placed.byState)
+    if (!states.includes(state)) rest.push(...list);
   return (
     <section
       className="es-conversation-steps"
@@ -114,7 +129,7 @@ export function StudioConversationSteps({
           <option key={name} value={name} />
         ))}
       </datalist>
-      <Refused list={placed.rest} />
+      <Refused list={rest} />
       <ul className="es-conversation-states">
         {states.map((state) => {
           const node = stateNodes[state];
@@ -173,9 +188,10 @@ function StateSteps({
   refusals: ReadonlyMap<string, readonly RecipeRefusal[]>;
 }): React.JSX.Element {
   const steps = transitionsOf(holder, state);
-  const [draft, setDraft] = useState<{ to: string; reason: string } | null>(
-    null
-  );
+  const [draft, setDraft] = useState(false);
+  /** The index of the step just added: its name field takes the focus. */
+  const [added, setAdded] = useState<number | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
   /** One write: the step at `index` replaced by `next`, or removed. */
   const write = (index: number, next: ((step: unknown) => Node) | null) =>
     commit((current) => {
@@ -208,6 +224,7 @@ function StateSteps({
                 to={step.to ?? ''}
                 reason={step.reason}
                 targets={targets}
+                focusOnMount={added === index}
                 onOn={(on) => write(index, (s) => withStepOn(s, on))}
                 onTo={(to) => write(index, (s) => withStepTo(s, to))}
                 onReason={(reason) =>
@@ -221,38 +238,45 @@ function StateSteps({
         })}
         {draft && (
           <li className="es-conversation-step" data-draft="">
-            <StepRow
+            <DraftRow
               label={`${id} ${state} new step`}
               listId={listId}
-              on=""
-              to={draft.to}
-              reason={draft.reason}
               targets={states}
-              draft
-              onOn={(on) => {
+              onAdd={(on, to, reason) => {
+                const index = transitionsOf(holder, state).length;
                 const done = commit((current) => {
-                  const all = [...transitionsOf(current, state)];
-                  let added: Node = newStep(on);
-                  added = withStepTo(added, draft.to);
-                  added = withStepReason(added, draft.reason);
-                  return withTransitions(current, state, [...all, added]);
+                  let step: Node = newStep(on);
+                  step = withStepTo(step, to);
+                  step = withStepReason(step, reason);
+                  return withTransitions(current, state, [
+                    ...transitionsOf(current, state),
+                    step,
+                  ]);
                 });
-                if (done) setDraft(null);
-                return done;
+                if (done) {
+                  setAdded(index);
+                  setDraft(false);
+                }
               }}
-              onTo={(to) => setDraft({ ...draft, to })}
-              onReason={(reason) => setDraft({ ...draft, reason })}
-              onRemove={() => setDraft(null)}
+              onCancel={() => {
+                setDraft(false);
+                // After the draft row is gone.
+                queueMicrotask(() => addButton.current?.focus());
+              }}
             />
           </li>
         )}
       </ul>
       <button
+        ref={addButton}
         type="button"
         className="es-link"
         aria-label={`Add a step to ${id} ${state}`}
-        disabled={draft !== null || states.length === 0}
-        onClick={() => setDraft({ to: states[0] ?? '', reason: '' })}
+        disabled={draft || states.length === 0}
+        onClick={() => {
+          setAdded(null);
+          setDraft(true);
+        }}
       >
         Add a step
       </button>
@@ -260,9 +284,114 @@ function StateSteps({
   );
 }
 
-/** One row: "On [step] → [state]" and "Because [reason]". The text fields are
- * staged and apply on Enter or leaving; a name the engine would not read is
- * said on the row and nothing is written. */
+/** A new step, staged whole: nothing is written until Add. */
+function DraftRow({
+  label,
+  listId,
+  targets,
+  onAdd,
+  onCancel,
+}: {
+  label: string;
+  listId: string;
+  targets: readonly string[];
+  onAdd(on: string, to: string, reason: string): void;
+  onCancel(): void;
+}): React.JSX.Element {
+  const [name, setName] = useState('');
+  const [to, setTo] = useState(targets[0] ?? '');
+  const [why, setWhy] = useState('');
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => field.current?.focus(), []);
+  const next = name.trim();
+  const refusal = next === '' ? null : stepNameRefusal(next);
+  const ready = next !== '' && refusal === null;
+  const add = () => {
+    if (ready) onAdd(next, to, why);
+  };
+  return (
+    <div
+      className="es-conversation-step-row"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onCancel();
+      }}
+    >
+      <label className="es-field">
+        <span className="wb-option-label">On</span>
+        <input
+          ref={field}
+          aria-label={`Step name for ${label}`}
+          list={listId}
+          value={name}
+          aria-invalid={refusal !== null}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              add();
+            }
+          }}
+        />
+      </label>
+      <span aria-hidden="true">→</span>
+      <label className="es-field">
+        <span className="wb-option-label">goes to</span>
+        <select
+          aria-label={`Goes to for ${label}`}
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+        >
+          {targets.map((target) => (
+            <option key={target} value={target}>
+              {target}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="es-field es-conversation-because">
+        <span className="wb-option-label">Because</span>
+        <input
+          aria-label={`Because for ${label}`}
+          value={why}
+          onChange={(event) => setWhy(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              add();
+            }
+          }}
+        />
+      </label>
+      <span className="es-conversation-step-buttons">
+        <button
+          type="button"
+          aria-label={`Add step ${label}`}
+          disabled={!ready}
+          onClick={add}
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Cancel ${label}`}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </span>
+      {refusal && (
+        <p role="alert" className="es-warning es-conversation-step-refusal">
+          {refusal}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One existing row: `On [step] → goes to [state]  Because [reason]  Remove`.
+ * The text fields are staged and apply on Enter or leaving; a name the
+ * engine would not read is said on the row and nothing is written. */
 function StepRow({
   label,
   listId,
@@ -270,7 +399,7 @@ function StepRow({
   to,
   reason,
   targets,
-  draft = false,
+  focusOnMount = false,
   onOn,
   onTo,
   onReason,
@@ -282,7 +411,7 @@ function StepRow({
   to: string;
   reason: string;
   targets: readonly string[];
-  draft?: boolean;
+  focusOnMount?: boolean;
   onOn(on: string): boolean | void;
   onTo(to: string): boolean | void;
   onReason(reason: string): boolean | void;
@@ -293,6 +422,10 @@ function StepRow({
   const [why, setWhy] = useState(reason);
   const [seenWhy, setSeenWhy] = useState(reason);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusOnMount) field.current?.focus();
+  }, [focusOnMount]);
   if (seenOn !== on) {
     // An undo or an import changed the file under the field.
     setSeenOn(on);
@@ -305,9 +438,7 @@ function StepRow({
   }
   const applyName = () => {
     const next = name.trim();
-    // A new row that is still empty is not an error until it is used.
-    if (draft && next === '') return;
-    if (!draft && next === on) {
+    if (next === on) {
       setRefusal(null);
       return;
     }
@@ -317,54 +448,44 @@ function StepRow({
     onOn(next);
   };
   const applyWhy = () => {
-    if (!draft && why === reason) return;
-    onReason(why);
+    if (why !== reason) onReason(why);
   };
   return (
     <div className="es-conversation-step-row">
-      <div className="es-conversation-step-line">
-        <label className="es-field">
-          <span className="wb-option-label">On</span>
-          <input
-            aria-label={`Step name for ${label}`}
-            list={listId}
-            value={name}
-            aria-invalid={refusal !== null}
-            onChange={(event) => {
-              setName(event.target.value);
-              setRefusal(null);
-            }}
-            onBlur={applyName}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') applyName();
-            }}
-          />
-        </label>
-        <span aria-hidden="true">→</span>
-        <label className="es-field">
-          <span className="wb-option-label">goes to</span>
-          <select
-            aria-label={`Goes to for ${label}`}
-            value={to}
-            onChange={(event) => onTo(event.target.value)}
-          >
-            {targets.map((target) => (
-              <option key={target} value={target}>
-                {target}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="wb-danger"
-          aria-label={`Remove ${label}`}
-          onClick={onRemove}
-        >
-          Remove
-        </button>
-      </div>
       <label className="es-field">
+        <span className="wb-option-label">On</span>
+        <input
+          ref={field}
+          aria-label={`Step name for ${label}`}
+          list={listId}
+          value={name}
+          aria-invalid={refusal !== null}
+          onChange={(event) => {
+            setName(event.target.value);
+            setRefusal(null);
+          }}
+          onBlur={applyName}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') applyName();
+          }}
+        />
+      </label>
+      <span aria-hidden="true">→</span>
+      <label className="es-field">
+        <span className="wb-option-label">goes to</span>
+        <select
+          aria-label={`Goes to for ${label}`}
+          value={to}
+          onChange={(event) => onTo(event.target.value)}
+        >
+          {targets.map((target) => (
+            <option key={target} value={target}>
+              {target}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="es-field es-conversation-because">
         <span className="wb-option-label">Because</span>
         <input
           aria-label={`Because for ${label}`}
@@ -376,8 +497,18 @@ function StepRow({
           }}
         />
       </label>
+      <span className="es-conversation-step-buttons">
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Remove ${label}`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </span>
       {refusal && (
-        <p role="alert" className="es-warning">
+        <p role="alert" className="es-warning es-conversation-step-refusal">
           {refusal}
         </p>
       )}

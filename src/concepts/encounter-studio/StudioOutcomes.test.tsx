@@ -29,6 +29,7 @@ function renderOutcomes(text = served) {
           document,
           commitInteractionApproach: vi.fn(() => true),
           commitInteractionOutcomes: commit,
+          commitInteractionRecipe: vi.fn(() => true),
         }}
       />
     </SiteNamesContext.Provider>
