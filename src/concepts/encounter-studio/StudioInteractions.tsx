@@ -17,6 +17,7 @@ import {
   OUTCOME_KINDS,
   outcomeKindOf,
   outcomesOf,
+  recipeHolderOf,
   recipeStates,
   withAbout,
   withArrestCell,
@@ -44,6 +45,7 @@ import { SiteNamesContext } from '../world-building/siteNames';
 import { AboutPanel } from './FieldHelp';
 import type { RefusalTarget } from './refusalJump';
 import { RevealLi } from './RevealDiv';
+import { StudioConversationSteps } from './StudioConversationSteps';
 import type { StudioReadBack } from './studioPublishing';
 import type { EncounterStudioSession } from './studioSession';
 import { StudioSharedLines, type SharedLinesCheck } from './StudioSharedLines';
@@ -63,7 +65,10 @@ export function StudioInteractions({
 }: {
   session: Pick<
     EncounterStudioSession,
-    'document' | 'commitInteractionApproach' | 'commitInteractionOutcomes'
+    | 'document'
+    | 'commitInteractionApproach'
+    | 'commitInteractionOutcomes'
+    | 'commitInteractionRecipe'
   > &
     Partial<Pick<EncounterStudioSession, 'sharedLines'>>;
   /** The engine's read-back: who carries which conversation written once. */
@@ -123,6 +128,17 @@ export function StudioInteractions({
                   session.commitInteractionApproach(id, within)
                 }
               />
+              {(() => {
+                const holder = recipeHolderOf(session.document.scope, id);
+                return holder ? (
+                  <StudioConversationSteps
+                    id={id}
+                    holder={holder}
+                    commit={(edit) => session.commitInteractionRecipe(id, edit)}
+                    refusals={check?.state === 'refused' ? check.refusals : []}
+                  />
+                ) : null;
+              })()}
               <OutcomesField
                 id={id}
                 outcomes={outcomesOf(session.document.scope, id)}

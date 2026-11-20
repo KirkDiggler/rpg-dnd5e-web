@@ -30,6 +30,7 @@ function renderForm(approach: string | null) {
         document: castle(approach),
         commitInteractionApproach,
         commitInteractionOutcomes: vi.fn(() => true),
+        commitInteractionRecipe: vi.fn(() => true),
       }}
     />
   );

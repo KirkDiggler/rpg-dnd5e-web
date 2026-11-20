@@ -249,6 +249,42 @@ export function setInteractionOutcomes(
   };
 }
 
+/** The interaction's recipe wrapped as `{ recipe }`, the shape the machine
+ * helpers (`machineEdit`) take; undefined when the site authors no recipe
+ * for it. */
+export function recipeHolderOf(
+  scope: Readonly<SiteScope>,
+  id: string
+): Record<string, unknown> | undefined {
+  const interaction = interactionsOf(scope)[id];
+  return mapping(interaction) && mapping(interaction.recipe)
+    ? { recipe: interaction.recipe }
+    : undefined;
+}
+
+/** The scope with one interaction's `recipe` set whole (rpg-project#1040).
+ * Throws for an interaction the site does not author. The interaction's
+ * `approach`, `outcomes` and every other key ride along as written. */
+export function setInteractionRecipe(
+  scope: Readonly<SiteScope>,
+  id: string,
+  recipe: unknown
+): SiteScope {
+  const interactions = interactionsOf(scope);
+  const interaction = interactions[id];
+  if (!mapping(interaction))
+    throw new Error(
+      `interactions.${id}: this site authors no such interaction`
+    );
+  return {
+    ...scope,
+    unread: {
+      ...scope.unread,
+      interactions: { ...interactions, [id]: { ...interaction, recipe } },
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // ONE OUTCOME IS ONE KIND (rpg-project#975 C): a give, an arrest or a
 // jail (`dungeonspec` `OutcomeSpec`, `ArrestSpec`, `JailSpec`; judged by

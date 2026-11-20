@@ -18,6 +18,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OptionShape } from '../world-building/answerTableShape';
+import {
+  recipeHolderOf,
+  setInteractionRecipe,
+} from '../world-building/interactionOutcomes';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
   addConversationLine,
@@ -119,6 +123,14 @@ function renderPage(
           document,
           commitInteractionApproach: vi.fn(() => true),
           commitInteractionOutcomes: vi.fn(() => true),
+          commitInteractionRecipe: through((d, id: string, edit) => ({
+            ...d,
+            scope: setInteractionRecipe(
+              d.scope,
+              id,
+              edit(recipeHolderOf(d.scope, id)!).recipe
+            ),
+          })),
           sharedLines,
         }}
         readBack={readBack}
@@ -1115,6 +1127,37 @@ describe('authoring a line (rpg-project#1033)', () => {
       interaction: 'front-gate',
       success: 'came-quietly',
     });
+  });
+});
+
+describe('a step added in States and steps (rpg-project#1040)', () => {
+  it('is offered at once in a line’s step select', () => {
+    const page = castlePage();
+    fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
+    fireEvent.change(
+      screen.getByLabelText('Step name for front-gate fresh new step'),
+      { target: { value: 'refused' } }
+    );
+    fireEvent.click(
+      screen.getByLabelText('Add step front-gate fresh new step')
+    );
+    page.refresh();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit line 3 of the-gate' })
+    );
+    fireEvent.change(
+      screen.getByLabelText('Line 3 advances conversation for the-gate'),
+      { target: { value: 'front-gate' } }
+    );
+    const step = screen.getByLabelText(
+      'Line 3 on a win steps for the-gate'
+    ) as HTMLSelectElement;
+    // The name is there as soon as the step is written. Its description is
+    // the engine's read-back of it and arrives with the engine's next check
+    // of the draft, so it is not asserted here.
+    expect([...step.options].map((option) => option.value)).toContain(
+      'refused'
+    );
   });
 });
 

@@ -388,6 +388,15 @@ export interface EncounterStudioSession {
    * undoable transaction; an empty map removes the key. Refused, with the
    * notice naming why, for an interaction not authored. */
   commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
+  /** One conversation's recipe (rpg-project#1040): `edit` runs on
+   * `{ recipe }` as the document has it now, and only the recipe it returns
+   * is set, as one undoable transaction. `approach` and `outcomes` are never
+   * touched. Refused, with the notice naming why, for a conversation with no
+   * recipe or an edit that throws. */
+  commitInteractionRecipe(
+    id: string,
+    edit: (holder: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
   /** A conversation's lines written once (rpg-project#1027), root
    * `conversations.<id>`, and the `use:` entries that apply it to its
    * carriers. Each intent is one undoable transaction over
