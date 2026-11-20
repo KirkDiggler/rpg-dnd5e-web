@@ -1045,9 +1045,14 @@ function WordEntryRow({
   excludeWords = [],
   allowNoWord = false,
   collapsed = false,
+  alone = false,
   controls,
   at,
 }: {
+  /** The row is the only one on its side: its weight has nothing to weigh
+   * against, so the weight's help and the row's summary line are not shown
+   * (the Conversations page, rpg-project#1039). */
+  alone?: boolean;
   /** The row's engine paths (`tables.<id>.on.time[3]`): the validate-only
    * refusals under them are said at the row, and a jump to one opens it
    * (rpg-project#720, R17). */
@@ -1443,11 +1448,15 @@ function WordEntryRow({
           onCommit={onCommit}
         />
       )}
-      <p className="wb-help wb-entry-weight-help">
-        Weight changes relative chance among eligible entries, not execution
-        order.
-      </p>
-      <p className="wb-help">{entryText(entry, trigger)}</p>
+      {!alone && (
+        <>
+          <p className="wb-help wb-entry-weight-help">
+            Weight changes relative chance among eligible entries, not execution
+            order.
+          </p>
+          <p className="wb-help">{entryText(entry, trigger)}</p>
+        </>
+      )}
       <RowRefusalLines refusals={refusals} />
       {collapsed && (
         <button
@@ -2764,8 +2773,8 @@ export function CreatureOrders({
 // ---------------------------------------------------------------------------
 
 const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
-  success: 'When the check is beaten',
-  failure: 'When the check is missed',
+  success: 'On a pass',
+  failure: 'On a miss',
 };
 
 /** A line with no check (rpg-project#1033) is not beaten or missed: its
@@ -2931,7 +2940,7 @@ export function OptionsEditor({
               </>
             ) : (
               <label>
-                <span>Says</span>
+                <span className="wb-option-label">Says</span>
                 <textarea
                   aria-label={`Line ${n} for ${owner}`}
                   placeholder="What the character says"
@@ -2958,9 +2967,10 @@ export function OptionsEditor({
               </RevealDiv>
             )}
             <div className="wb-option-check">
-              <span>
+              <span className="wb-option-label">Check</span>
+              <span className="wb-help">
                 {(option.check ?? []).length > 0
-                  ? 'Check — any one of these'
+                  ? 'Any one of these'
                   : 'No check — the line is simply said'}
               </span>
               <CheckApproachRows
@@ -3010,8 +3020,7 @@ export function OptionsEditor({
                 className="wb-policy-trigger-block"
                 data-testid={`option-${owner}-${index}-${verdict}`}
               >
-                <p className="wb-policy-trigger">
-                  <code>{verdict}</code>{' '}
+                <p className="wb-policy-trigger wb-option-label">
                   {verdict === 'success' && (option.check ?? []).length === 0
                     ? UNCHECKED_SUCCESS_HEADING
                     : VERDICT_HEADINGS[verdict]}
@@ -3032,6 +3041,9 @@ export function OptionsEditor({
                         namesConversation: lineNamesConversation(option),
                       }}
                       excludeWords={isProp ? ['flee'] : []}
+                      // Weight is a chance among replies: with one reply
+                      // there is nothing to weigh it against.
+                      alone={(option[verdict] ?? []).length <= 1}
                       onCommit={(next) =>
                         commit(patchOptionRow(option, verdict, rowIndex, next))
                       }
@@ -3052,7 +3064,7 @@ export function OptionsEditor({
             ))}
             <button
               type="button"
-              className="wb-danger"
+              className="wb-danger wb-danger-strong"
               aria-label={`Remove line ${n} from ${owner}`}
               onClick={() => onRemove(index)}
             >

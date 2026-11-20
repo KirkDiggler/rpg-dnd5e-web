@@ -216,7 +216,9 @@ export function RequiresFields({
       role="group"
       aria-label={`Line ${line} requirements for ${owner}`}
     >
-      <span>Requires{items.length > 1 ? ' — every one must be true' : ''}</span>
+      <span className="wb-option-label">
+        Offered when{items.length > 1 ? ' — every one must be true' : ''}
+      </span>
       <ol className="wb-requirement-list">
         {rows.map((requirement, index) => {
           const k = index === 0 ? '' : ` ${index + 1}`;
@@ -329,6 +331,13 @@ export function RequiresFields({
   );
 }
 
+/** What the chosen step does, under its select, in full. */
+function StepDoes({ words }: { words: string | undefined }) {
+  return words === undefined ? null : (
+    <span className="wb-help wb-step-does">{words}</span>
+  );
+}
+
 /** A LINE ADVANCES A CONVERSATION: which one, and the beat a win steps it
  * on and the beat a miss does, offered from its recipe. A plain line (no
  * check) cannot be missed and is offered no miss; while only one beat is
@@ -367,11 +376,11 @@ export function AdvanceFields({
       : undefined;
   const beats = conversation?.beats ?? [];
   const steps = chosen !== undefined ? stepWords.stepsOf(chosen) : undefined;
-  const beatWords = (beat: string): string => {
+  /** What a beat does, in full: shown under its select, never cut short
+   * inside an option. */
+  const beatDoes = (beat: string): string | undefined => {
     const step = steps?.find((entry) => entry.beat === beat);
-    return step && step.moves.length > 0
-      ? `${beat}: ${movesInWords(step)}`
-      : beat;
+    return step && step.moves.length > 0 ? movesInWords(step) : undefined;
   };
   const beatTitle = (beat: string): string | undefined =>
     steps?.find((entry) => entry.beat === beat)?.sentences.join(' ');
@@ -382,7 +391,7 @@ export function AdvanceFields({
       )}
       {beats.map((beat) => (
         <option key={beat} value={beat} title={beatTitle(beat)}>
-          {beatWords(beat)}
+          {beat}
         </option>
       ))}
     </>
@@ -405,6 +414,7 @@ export function AdvanceFields({
           )}
           {beatOptions(value)}
         </select>
+        <StepDoes words={beatDoes(value)} />
       </label>
     );
   };
@@ -414,7 +424,7 @@ export function AdvanceFields({
       className="wb-advance"
     >
       <label>
-        <span>Advances</span>
+        <span className="wb-option-label">Moves the conversation</span>
         <select
           aria-label={`Line ${line} advances conversation for ${owner}`}
           value={chosen ?? ''}

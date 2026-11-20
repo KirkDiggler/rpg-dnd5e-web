@@ -347,11 +347,9 @@ function SharedConversationDetail({
   }
   return (
     <div className="es-shared-lines-detail" data-shared-lines={id}>
-      <h3>
-        The lines of <code>{id}</code>
-      </h3>
+      <h3 className="es-shared-lines-title">{id}</h3>
       <section aria-label={`Applied to for ${id}`} className="es-applied-to">
-        <h4>Applied to</h4>
+        <h4 className="es-section-label">Applied to</h4>
         <ul className="es-applied-to-list">
           {conversation.carriers.map((carrier) => {
             const words = carrierWords(carrier, names);
@@ -444,7 +442,7 @@ function SharedConversationDetail({
         </div>
       )}
       <section aria-label={`Lines of ${id}`} className="es-shared-lines-lines">
-        <h4>Its lines</h4>
+        <h4 className="es-section-label">Its lines</h4>
         {lines ? (
           <>
             <ol className="es-line-cards">
@@ -550,7 +548,7 @@ function SharedConversationDetail({
                   key={carrierKey(carrier)}
                   aria-label={`Only ${words} offers`}
                 >
-                  <h4>Only {words} offers</h4>
+                  <h4 className="es-section-label">Only {words} offers</h4>
                   <ol className="es-line-cards">
                     {ownBy.get(carrierKey(carrier))!.map((path, place) => {
                       const index = indexOfLine(path, document);
