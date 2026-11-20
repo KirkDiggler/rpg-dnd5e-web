@@ -279,6 +279,10 @@ export function connectionJump(
       return indexed('room.room.regions', document.draft.room.regions);
     case 'conversation':
       return through(`interactions.${id}`);
+    // A conversation's lines written once (rpg-project#1027) open on the
+    // Conversations page.
+    case 'shared-lines':
+      return through(`conversations.${id}`);
     case 'faction':
       return indexed('factions', scope.factions);
     case 'bundle':

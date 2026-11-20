@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import { patchOption } from '../world-building/optionEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
@@ -71,7 +72,7 @@ describe('the castle’s statuses survive the studio (rpg-project#1024)', () => 
       help: '(roll out the pastry)',
       taste: '(try a pie)',
     };
-    const options = cook.options!.map((o) =>
+    const options = linesOf(cook.options).map((o) =>
       reworded[o.id] ? patchOption(o, { say: reworded[o.id] }) : o
     );
     const draft = {

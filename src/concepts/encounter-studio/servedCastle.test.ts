@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import { setDoorBindingState } from '../world-building/doorBindingEdits';
 import {
   dungeonSourceLost,
@@ -366,7 +367,7 @@ describe('the served castle opens and writes back (rpg-project#857)', () => {
       'open'
     )!;
     const gate1 = room.monsterBindings!['gate-1'];
-    const options = gate1.options!.map((o) =>
+    const options = linesOf(gate1.options).map((o) =>
       o.id === 'troupe' ? patchOption(o, { say: 'We play tonight.' }) : o
     );
     const draft = {
@@ -589,7 +590,7 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
       expect(exportDraftYaml(result, result.key)).toBe(text);
     }
     const result = read(gate);
-    const options = result.draft.room.monsterBindings!.captain.options!;
+    const options = linesOf(result.draft.room.monsterBindings!.captain.options);
     const troupe = options.find((o) => o.id === 'troupe')!;
     expect(troupe.requires).toEqual([
       { fact: 'feast-tonight' },
@@ -609,7 +610,7 @@ describe('the entrance-remembers grammar loads and writes back (rpg-project#922)
     const result = read(gate);
     const room = result.draft.room;
     const captain = room.monsterBindings!.captain;
-    const options = captain.options!.map((o) =>
+    const options = linesOf(captain.options).map((o) =>
       o.id === 'troupe' ? patchOption(o, { say: 'We play tonight.' }) : o
     );
     const draft = structuredClone({

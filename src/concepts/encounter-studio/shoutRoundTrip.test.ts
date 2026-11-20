@@ -20,6 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import { patchOption, patchOptionRow } from '../world-building/optionEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
@@ -183,7 +184,7 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
     const result = read(served);
     const room = result.draft.room;
     const pedlar = room.monsterBindings!.pedlar;
-    const options = pedlar.options!.map((o) =>
+    const options = linesOf(pedlar.options).map((o) =>
       o.id === 'hail-the-pedlar' ? patchOption(o, { say: 'Oi! You there!' }) : o
     );
     const draft = {
@@ -224,7 +225,7 @@ describe('authored loudness loads and writes back (rpg-project#933)', () => {
     const result = read(served);
     const room = result.draft.room;
     const gate1 = room.monsterBindings!['gate-1'];
-    const options = gate1.options!.map((o) =>
+    const options = linesOf(gate1.options).map((o) =>
       o.id === 'friends-inside'
         ? patchOptionRow(o, 'success', 0, {
             ...o.success![0],

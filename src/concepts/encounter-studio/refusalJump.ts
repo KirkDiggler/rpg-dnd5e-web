@@ -126,6 +126,10 @@ export function targetOfPath(
       // refusal of its recipe, approach or outcomes opens the Interactions
       // section, which shows each (rpg-project#928).
       return { kind: 'home', section: 'interactions', id };
+    case 'shared-lines':
+      // A conversation's lines written once (rpg-project#1027) are on the
+      // same page; the reveal of the path lands on the conversation.
+      return { kind: 'home', section: 'interactions' };
     // Root `tables` have no section (rpg-project#970), a wall no studio noun
     // of its own, the key its own refusal (`keyRefusalOf`): a sentence.
     default:

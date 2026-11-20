@@ -123,6 +123,8 @@ export function pathOfKey(
         return `concealments.${key.id}`;
       case 'conversation':
         return `interactions.${key.id}`;
+      case 'shared-lines':
+        return `conversations.${key.id}`;
       case 'bundle':
         return `bundles.${key.id}`;
       case 'routine':
