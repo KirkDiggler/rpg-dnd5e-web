@@ -122,6 +122,8 @@ export function siteNamesOf(
       scope.intel,
       scope.endings,
       scope.unread?.interactions,
+      // A conversation's lines written once (rpg-project#1025).
+      scope.unread?.conversations,
     ],
     facts
   );
@@ -130,6 +132,10 @@ export function siteNamesOf(
     if (isRecord(binding)) lineTopics(binding.options, topics);
   for (const faction of scope.factions ?? [])
     lineTopics((faction as { options?: unknown }).options, topics);
+  const conversations = scope.unread?.conversations;
+  if (isRecord(conversations))
+    for (const conversation of Object.values(conversations))
+      if (isRecord(conversation)) lineTopics(conversation.lines, topics);
   return {
     records: (scope.intel ?? []).map((record) => record.id),
     regions: (room.regions ?? []).map((region) => ({

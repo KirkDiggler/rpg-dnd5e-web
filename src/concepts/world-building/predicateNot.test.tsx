@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import { createCastleReadBackDocument } from '../encounter-studio/fixtures/castleReadBack';
-import { validateOptions, type OptionShape } from './answerTableShape';
+import { linesOf, validateOptions, type OptionShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { PredicateEditor } from './PredicateEditor';
 import {
@@ -75,12 +75,14 @@ describe('the not predicate is read and written', () => {
       },
     ];
     expect(
-      validateOptions(line({ not: { fact: 'caught' } }), 'options', false)[0]!
-        .requires
+      linesOf(
+        validateOptions(line({ not: { fact: 'caught' } }), 'options', false)
+      )[0]!.requires
     ).toEqual({ not: { fact: 'caught' } });
     expect(
-      validateOptions(line({ not: { carries: 'purse' } }), 'options', false)[0]!
-        .requires
+      linesOf(
+        validateOptions(line({ not: { carries: 'purse' } }), 'options', false)
+      )[0]!.requires
     ).toEqual({ not: { carries: 'purse' } });
     expect(() =>
       validateOptions(line({ not: { not: { fact: 'x' } } }), 'options', false)
@@ -278,17 +280,17 @@ describe('the requires picker offers “unless”', () => {
         target: { value: 'caught-in-kitchen' },
       }
     );
-    expect(latest?.options?.[0]?.requires).toEqual({
+    expect(linesOf(latest?.options)[0]?.requires).toEqual({
       not: { fact: 'caught-in-kitchen' },
     });
 
     fireEvent.change(picker, { target: { value: 'not-carries' } });
-    expect(latest?.options?.[0]?.requires).toEqual({
+    expect(linesOf(latest?.options)[0]?.requires).toEqual({
       not: { carries: 'table' },
     });
 
     fireEvent.change(picker, { target: { value: 'fact' } });
-    expect(latest?.options?.[0]?.requires).toEqual({ fact: '' });
+    expect(linesOf(latest?.options)[0]?.requires).toEqual({ fact: '' });
   });
 });
 

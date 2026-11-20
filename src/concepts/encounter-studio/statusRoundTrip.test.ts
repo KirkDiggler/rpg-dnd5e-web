@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import { patchOption } from '../world-building/optionEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
@@ -54,7 +55,7 @@ describe('the castle’s status survives the studio (rpg-project#1024)', () => {
     const result = read(served);
     const room = result.draft.room;
     const cook = room.monsterBindings!['cook'];
-    const options = cook.options!.map((o) =>
+    const options = linesOf(cook.options).map((o) =>
       o.id === 'help' ? patchOption(o, { say: '(roll out the pastry)' }) : o
     );
     const draft = {

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { OptionShape } from '../world-building/answerTableShape';
 import type { RegionResolution } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type { Outcomes } from '../world-building/interactionOutcomes';
@@ -10,6 +11,7 @@ import type {
   RoomHexCell,
   RoomRegion,
 } from '../world-building/roomDraft';
+import type { LinesCarrier } from '../world-building/sharedLinesEdits';
 import type { SiteScope } from '../world-building/siteScope';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
@@ -386,6 +388,23 @@ export interface EncounterStudioSession {
    * undoable transaction; an empty map removes the key. Refused, with the
    * notice naming why, for an interaction not authored. */
   commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
+  /** A conversation's lines written once (rpg-project#1027), root
+   * `conversations.<id>`, and the `use:` entries that apply it to its
+   * carriers. Each intent is one undoable transaction over
+   * `world-building/sharedLinesEdits.ts`; a refusal returns false with its
+   * sentence as the notice. */
+  sharedLines: {
+    /** The conversation's lines, set whole: every line edit writes once, at
+     * the conversation. */
+    setLines(id: string, lines: readonly OptionShape[]): boolean;
+    addLine(id: string): boolean;
+    /** Written with its first line, applied to its first carrier. */
+    create(id: string, carrier: LinesCarrier, say: string): boolean;
+    /** `- use: <id>` at the end of the carrier's options. */
+    apply(id: string, carrier: LinesCarrier): boolean;
+    /** Remove the carrier's `use:` at `options[index]`. */
+    unapply(id: string, carrier: LinesCarrier, index: number): boolean;
+  };
   /** One behaviour definition (rpg-project#996): `edit` runs on the
    * document's definition as it is now, and the result is set whole as one
    * undoable transaction (`machineEdit.setBehaviorDefinition`). Refused,

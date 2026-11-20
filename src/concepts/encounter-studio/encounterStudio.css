@@ -2724,3 +2724,55 @@ li.es-machine-step[data-refused],
   padding: 0.4rem 0.9rem;
   border-bottom: 1px solid var(--wb-border, #33504d);
 }
+
+/* THE CONVERSATIONS WRITTEN ONCE (rpg-project#1027): the list beside the
+ * chosen conversation, its carriers as chips with a remove each and an
+ * apply-to control, its lines in the one line form, and the new
+ * conversation card, which is an outcome card's shape. */
+.encounter-studio .es-shared-lines {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+.encounter-studio .es-shared-lines-detail {
+  display: grid;
+  gap: 0.75rem;
+}
+.encounter-studio .es-shared-lines-detail h3,
+.encounter-studio .es-shared-lines-detail h4 {
+  margin: 0;
+}
+.encounter-studio .es-applied-to-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-applied-to-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-raised);
+}
+.encounter-studio .es-applied-to-add,
+.encounter-studio .es-shared-lines-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 0.75rem;
+}
+.encounter-studio .es-shared-lines-new {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-shared-lines-new > h4 {
+  flex-basis: 100%;
+  margin: 0;
+}

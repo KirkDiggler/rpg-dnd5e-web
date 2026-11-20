@@ -26,11 +26,12 @@ import {
   writtenNameMatches,
 } from '@/author/answerVocabulary';
 import {
+  isOptionUse,
   isUseEntry,
   validateAnswerRows,
   type AnswerEntryShape,
   type AnswerTableShape,
-  type OptionShape,
+  type OptionEntry,
 } from './answerTableShape';
 import { walkFacts } from './factWalk';
 import type { RoomDraft } from './roomDraft';
@@ -227,20 +228,26 @@ export function onLists(
 /** An options list's verdict rows, at `<path>.options[i].<verdict>`. */
 export function optionLists(
   path: string,
-  options: readonly OptionShape[] | undefined
+  options: readonly OptionEntry[] | undefined
 ): RowList[] {
-  return (options ?? []).flatMap((option, index) => [
-    {
-      path: `${path}.options[${index}].success`,
-      trigger: 'success',
-      rows: option.success ?? [],
-    },
-    {
-      path: `${path}.options[${index}].failure`,
-      trigger: 'failure',
-      rows: option.failure ?? [],
-    },
-  ]);
+  // A `use:` (rpg-project#1025) holds no rows here: its lines are the
+  // conversation's, at `conversations.<id>.lines[k]`.
+  return (options ?? []).flatMap((option, index) =>
+    isOptionUse(option)
+      ? []
+      : [
+          {
+            path: `${path}.options[${index}].success`,
+            trigger: 'success',
+            rows: option.success ?? [],
+          },
+          {
+            path: `${path}.options[${index}].failure`,
+            trigger: 'failure',
+            rows: option.failure ?? [],
+          },
+        ]
+  );
 }
 
 /** The scope's own lists: its root tables and its factions' orders. */

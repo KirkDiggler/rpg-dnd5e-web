@@ -27,6 +27,10 @@ import {
   type RoutePickRequest,
 } from '../world-building/routePicking';
 import { RowRefusalsContext } from '../world-building/rowRefusals';
+import {
+  SharedLinesContext,
+  type SharedLinesInForm,
+} from '../world-building/sharedLinesContext';
 import type { SiteScope } from '../world-building/siteScope';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
@@ -83,6 +87,7 @@ import {
   watchUnavailableReason,
   type WatchedRun,
 } from './runWatch';
+import { lineCounts, sharedConversationsOf } from './sharedLinesView';
 import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -2458,7 +2463,11 @@ function StudioSurface({
                   through the section's newest commit (rpg-project#975 C). */}
               <RoutePickContext.Provider value={routePicking}>
                 <div hidden={encounterSection !== 'interactions'}>
-                  <StudioInteractions session={session} />
+                  <StudioInteractions
+                    session={session}
+                    readBack={readBack}
+                    onJump={jumpTo}
+                  />
                 </div>
               </RoutePickContext.Provider>
               {home === 'encounter' && encounterSection === 'behaviours' && (
@@ -2513,10 +2522,20 @@ function StudioSurface({
       </div>
     </section>
   );
+  // A CARRIER'S `use:` IN ITS LINES (rpg-project#1027): how many lines the
+  // engine says the conversation holds, and the way to it on Conversations.
+  const sharedLineCounts = lineCounts(sharedConversationsOf(readBack.readBack));
+  const sharedLinesInForm: SharedLinesInForm = {
+    lineCount: (id) => sharedLineCounts.get(id),
+    open: (id) =>
+      jumpTo({ kind: 'home', section: 'interactions' }, `conversations.${id}`),
+  };
   return (
     <RevealContextProvider controller={revealController}>
       <RowRefusalsContext.Provider value={rowRefusals}>
-        {surface}
+        <SharedLinesContext.Provider value={sharedLinesInForm}>
+          {surface}
+        </SharedLinesContext.Provider>
       </RowRefusalsContext.Provider>
     </RevealContextProvider>
   );

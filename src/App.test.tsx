@@ -362,6 +362,13 @@ function createAppStudioSession(): EncounterStudioSession {
     commitPartySharing: vi.fn(() => true),
     commitInteractionApproach: vi.fn(() => true),
     commitInteractionOutcomes: vi.fn(() => true),
+    sharedLines: {
+      setLines: vi.fn(() => true),
+      addLine: vi.fn(() => true),
+      create: vi.fn(() => true),
+      apply: vi.fn(() => true),
+      unapply: vi.fn(() => true),
+    },
     commitBehaviorDefinition: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),

@@ -30,7 +30,7 @@ import {
   heaviestFirst,
   type AnswerEntryShape,
   type AnswerTableShape,
-  type OptionShape,
+  type OptionEntry,
 } from './answerTableShape';
 import { addOption, removeOption, replaceOption } from './optionEdits';
 import type { SiteDisposition, SiteFaction, SiteScope } from './siteScope';
@@ -120,7 +120,7 @@ export function setSiteFactionOption(
   scope: SiteScope,
   id: string,
   index: number,
-  option: OptionShape
+  option: OptionEntry
 ): SiteScope {
   const faction = (scope.factions ?? []).find((f) => f.id === id);
   return patchSiteFaction(scope, id, {

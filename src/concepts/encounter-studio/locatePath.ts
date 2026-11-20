@@ -57,6 +57,9 @@ export type LocatedKind =
   | 'record'
   | 'ending'
   | 'conversation'
+  /** A conversation's lines written once (rpg-project#1025): root
+   * `conversations.<id>`, the engine's subject kind `shared-lines`. */
+  | 'shared-lines'
   | 'table'
   | 'key';
 
@@ -236,9 +239,37 @@ export function locate(
       return named('concealment', scope.concealments);
     case 'interactions':
       return named('conversation', scope.unread?.interactions);
+    case 'conversations':
+      return named('shared-lines', scope.unread?.conversations);
     case 'tables':
       return named('table', scope.tables);
     default:
       return null;
   }
+}
+
+/** What the draft holds at a path the engine named: the located thing's
+ * entry, walked by the rest of the path. Undefined where the draft holds
+ * nothing there (a stale index, a removed id). */
+export function valueAt(
+  path: string,
+  document: Readonly<RoomDraftDocument>
+): unknown {
+  const located = locate(path, document);
+  if (!located) return undefined;
+  let value: unknown = located.entry;
+  for (const segment of located.rest) {
+    if (typeof segment === 'number')
+      value = Array.isArray(value) ? value[segment] : undefined;
+    else
+      value =
+        value !== null &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        Object.hasOwn(value, segment)
+          ? (value as Record<string, unknown>)[segment]
+          : undefined;
+    if (value === undefined) return undefined;
+  }
+  return value;
 }

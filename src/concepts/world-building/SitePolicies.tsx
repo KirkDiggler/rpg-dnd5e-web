@@ -66,6 +66,7 @@ import { useRevealable } from '../encounter-studio/useReveal';
 import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
+  isOptionUse,
   isUseEntry,
   OPTION_VERDICTS,
   paramRefOf,
@@ -79,7 +80,9 @@ import {
   type AnswerWaypointShape,
   type AnswerWhenCondition,
   type AnswerWhenShape,
+  type OptionEntry,
   type OptionShape,
+  type OptionUseShape,
   type OptionVerdict,
 } from './answerTableShape';
 import {
@@ -169,6 +172,7 @@ import {
 } from './rowRefusals';
 import { SayActivityFields } from './SayActivityFields';
 import { SelectorTarget } from './SelectorTarget';
+import { SharedLinesContext } from './sharedLinesContext';
 import {
   addSiteDisposition,
   addSiteFaction,
@@ -1740,8 +1744,8 @@ function FactionRow({
               <p className="wb-help">This faction has no lines.</p>
             ) : (
               <ul className="wb-policy-table">
-                {(faction.options ?? []).map((option) => (
-                  <li key={option.id} className="wb-help">
+                {(faction.options ?? []).map((option, index) => (
+                  <li key={index} className="wb-help">
                     {optionText(option)}
                   </li>
                 ))}
@@ -2679,7 +2683,11 @@ export function CreatureOrders({
                 data-testid="creature-options-from-faction"
               >
                 It has no lines of its own, so it speaks the {side.id}{' '}
-                faction’s: {side.options.map((o) => o.id).join(', ')}.
+                faction’s:{' '}
+                {side.options
+                  .map((o) => (isOptionUse(o) ? `the lines of ${o.use}` : o.id))
+                  .join(', ')}
+                .
               </p>
             );
           })()}
@@ -2705,8 +2713,8 @@ export function CreatureOrders({
           </p>
         ) : (
           <ul className="wb-policy-table">
-            {(binding?.options ?? []).map((option) => (
-              <li key={option.id} className="wb-help">
+            {(binding?.options ?? []).map((option, index) => (
+              <li key={index} className="wb-help">
                 {optionText(option)}
               </li>
             ))}
@@ -2776,6 +2784,7 @@ export function OptionsEditor({
   owner,
   at,
   titled = true,
+  listKey = 'options',
   options,
   room,
   isProp,
@@ -2791,7 +2800,12 @@ export function OptionsEditor({
   at?: string;
   /** The "Options" heading; CreatureOrders titles its own sub-section. */
   titled?: boolean;
-  options: readonly OptionShape[];
+  /** The key the lines sit under in the owner: a carrier's `options`, a
+   * conversation's `lines` (rpg-project#1027). */
+  listKey?: 'options' | 'lines';
+  /** A carrier's entries: its own lines, and any `use:` of a conversation
+   * (rpg-project#1025), shown as that conversation's lines. */
+  options: readonly OptionEntry[];
   room: RoomGameplayData;
   /** A prop's lines: its rows may not `flee`. */
   isProp: boolean;
@@ -2811,11 +2825,22 @@ export function OptionsEditor({
             : 'Nobody can speak to this creature yet — a creature with no lines cannot be talked to.'}
         </p>
       )}
-      {options.map((option, index) => {
+      {options.map((entry, index) => {
         const n = index + 1;
+        const line = at ? `${at}.${listKey}[${index}]` : undefined;
+        if (isOptionUse(entry))
+          return (
+            <UsedConversation
+              key={index}
+              owner={owner}
+              entry={entry}
+              at={line}
+              onRemove={() => onRemove(index)}
+            />
+          );
+        const option = entry;
         const of = `line ${n} of ${owner}`;
         const commit = (next: OptionShape) => onChange(index, next);
-        const line = at ? `${at}.options[${index}]` : undefined;
         return (
           <RevealDiv
             key={index}
@@ -3026,9 +3051,70 @@ export function OptionsEditor({
   );
 }
 
+/** A CARRIER'S `use:` OF A CONVERSATION (rpg-project#1025, #1027): the
+ * lines written once under `conversations:`, shown by the conversation's
+ * name and how many lines the engine says it holds, with the way to the
+ * Conversations page where they are edited. Removing it takes the entry
+ * out of this carrier's lines; the conversation stays. */
+function UsedConversation({
+  owner,
+  entry,
+  at,
+  onRemove,
+}: {
+  owner: string;
+  entry: OptionUseShape;
+  at: string | undefined;
+  onRemove(): void;
+}): React.JSX.Element {
+  const shared = useContext(SharedLinesContext);
+  const { refusals } = useRowRefusals();
+  const count = shared.lineCount(entry.use);
+  const open = shared.open;
+  return (
+    <RevealDiv
+      path={at}
+      className="wb-option wb-option-use wb-policy-block"
+      data-testid={`option-use-${owner}-${entry.use}`}
+    >
+      {at && <RowRefusalLines refusals={lineRefusals(refusals, at)} />}
+      <p>
+        Lines of <code>{entry.use}</code>
+        {count !== undefined && ` (${count})`}
+      </p>
+      <p className="wb-help">
+        Written once and said by everyone who carries it; edit them on the
+        Conversations page.
+      </p>
+      <div className="wb-actions">
+        {open && (
+          <button
+            type="button"
+            aria-label={`Open the lines of ${entry.use} in Conversations`}
+            onClick={() => open(entry.use)}
+          >
+            Open in Conversations
+          </button>
+        )}
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Stop ${owner} saying the lines of ${entry.use}`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
+    </RevealDiv>
+  );
+}
+
 /** A line as one sentence, for the read-only readout. A line done reads as
- * done (rpg-project#959), never as a line with empty words. */
-function optionText(option: OptionShape): string {
+ * done (rpg-project#959), never as a line with empty words; a `use:` reads
+ * as the conversation's lines (rpg-project#1025). */
+function optionText(entry: OptionEntry): string {
+  if (isOptionUse(entry)) return `the lines of ${entry.use}`;
+  const option = entry;
   const check = (option.check ?? [])
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');

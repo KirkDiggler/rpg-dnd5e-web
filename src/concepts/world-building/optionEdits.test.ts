@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { linesOf } from './answerTableShape';
 import {
   addMonsterOption,
   removeMonsterOption,
@@ -27,7 +28,7 @@ describe('option list mechanics (rpg-project#569)', () => {
   it('names a new line with an id this binding has not taken', () => {
     expect(nextOptionId(undefined)).toBe('line-1');
     expect(nextOptionId([{ ...line, id: 'line-1' }])).toBe('line-2');
-    expect(addOption([line]).map((option) => option.id)).toEqual([
+    expect(linesOf(addOption([line])).map((option) => option.id)).toEqual([
       'gossip',
       'line-1',
     ]);
@@ -59,7 +60,7 @@ describe('option list mechanics (rpg-project#569)', () => {
 
   it('puts lines on a creature and a prop, and removes the binding they leave empty', () => {
     const goblin = addMonsterOption(undefined);
-    expect(goblin?.options?.[0].id).toBe('line-1');
+    expect(linesOf(goblin?.options)[0].id).toBe('line-1');
     const named = setMonsterOption(goblin, 0, line);
     expect(named).toEqual({ options: [line] });
     expect(removeMonsterOption(named, 0)).toBeUndefined();
