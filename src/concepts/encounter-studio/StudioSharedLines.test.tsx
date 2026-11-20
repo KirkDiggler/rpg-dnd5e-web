@@ -1119,18 +1119,12 @@ describe('authoring a line (rpg-project#1033)', () => {
 });
 
 describe('the opened form reads well (rpg-project#1039)', () => {
-  const labelsOf = (form: HTMLElement): string[] =>
-    [...form.querySelectorAll('.wb-option-label')].map((el) =>
-      (el.textContent ?? '').replace(/\s+/g, ' ').trim()
-    );
-
   it('its section labels stand in the card’s order', () => {
     castlePage();
     fireEvent.click(
       screen.getByRole('button', { name: 'Edit line 1 of the-gate' })
     );
     const form = screen.getByRole('article', { name: 'Line 1 of the-gate' });
-    const labels = labelsOf(form);
     const order = [
       'Says',
       'Check',
@@ -1139,11 +1133,18 @@ describe('the opened form reads well (rpg-project#1039)', () => {
       'On a pass',
       'On a miss',
     ];
-    const at = order.map((word) =>
-      labels.findIndex((label) => label.startsWith(word))
+    const found = order.map((word) =>
+      [...form.querySelectorAll('.wb-option-label')].find((el) =>
+        (el.textContent ?? '').trim().startsWith(word)
+      )
     );
-    expect(at.every((index) => index >= 0)).toBe(true);
-    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(found.every((el) => el !== undefined)).toBe(true);
+    // Each label comes after the one before it, in the document.
+    for (let k = 1; k < found.length; k += 1)
+      expect(
+        found[k - 1]!.compareDocumentPosition(found[k]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
     expect(form.textContent).not.toContain('Advances');
     expect(form.textContent).not.toMatch(/Requires/);
     // The field labels are words, not keys.
@@ -1163,6 +1164,12 @@ describe('the opened form reads well (rpg-project#1039)', () => {
       (el) => el.textContent
     );
     expect(does.length).toBeGreaterThan(0);
+    // Each description is tied to its select.
+    for (const el of form.querySelectorAll('.wb-step-does')) {
+      const select = form.querySelector(`select[aria-describedby="${el.id}"]`);
+      expect(el.id).not.toBe('');
+      expect(select).not.toBeNull();
+    }
     for (const words of does) {
       expect(words).toContain('→');
       expect(words).not.toContain('…');

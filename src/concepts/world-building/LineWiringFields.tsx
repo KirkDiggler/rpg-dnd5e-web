@@ -332,9 +332,11 @@ export function RequiresFields({
 }
 
 /** What the chosen step does, under its select, in full. */
-function StepDoes({ words }: { words: string | undefined }) {
+function StepDoes({ id, words }: { id: string; words: string | undefined }) {
   return words === undefined ? null : (
-    <span className="wb-help wb-step-does">{words}</span>
+    <span id={id} className="wb-help wb-step-does">
+      {words}
+    </span>
   );
 }
 
@@ -367,6 +369,7 @@ export function AdvanceFields({
   const names = useContext(SiteNamesContext);
   const stepWords = useContext(StepWordsContext);
   const advance = advanceOf(option);
+  const stepsId = useId();
   // A conversation chosen but not yet written: its step is still to choose.
   const [pending, setPending] = useState<string | null>(null);
   const chosen = pending ?? advance?.interaction;
@@ -399,12 +402,15 @@ export function AdvanceFields({
   const beatSelect = (verdict: 'success' | 'failure', words: string) => {
     const value = advance?.[verdict] ?? '';
     const other = verdict === 'success' ? advance?.failure : advance?.success;
+    const doesId = `${stepsId}-${verdict}`;
+    const described = beatDoes(value) !== undefined;
     return (
       <label>
         <span>{words}</span>
         <select
           aria-label={`Line ${line} ${words.toLowerCase()} for ${owner}`}
           value={value}
+          aria-describedby={described ? doesId : undefined}
           onChange={(event) =>
             onCommit(withAdvanceBeat(option, verdict, event.target.value))
           }
@@ -414,7 +420,7 @@ export function AdvanceFields({
           )}
           {beatOptions(value)}
         </select>
-        <StepDoes words={beatDoes(value)} />
+        <StepDoes id={doesId} words={beatDoes(value)} />
       </label>
     );
   };
