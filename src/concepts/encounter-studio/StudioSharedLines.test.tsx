@@ -1067,8 +1067,8 @@ describe('authoring a line (rpg-project#1033)', () => {
     );
     const form = screen.getByRole('article', { name: 'Line 2 of the-gate' });
     expect(form.textContent).toContain('When it is said');
-    expect(form.textContent).not.toContain('When the check is beaten');
-    expect(form.textContent).not.toContain('When the check is missed');
+    expect(form.textContent).not.toContain('On a pass');
+    expect(form.textContent).not.toContain('On a miss');
   });
 
   it('choosing a conversation picks no step; each step says what it does; choosing one is one write', () => {
@@ -1097,12 +1097,10 @@ describe('authoring a line (rpg-project#1033)', () => {
     const words = new Map(
       [...step.options].map((option) => [option.value, option.textContent])
     );
-    expect(words.get('admitted')).toBe(
-      'admitted: fresh or warned-guest or warned-troupe → admitted'
-    );
-    expect(words.get('troupe-failed')).toBe(
-      'troupe-failed: fresh → warned-troupe; warned-guest → arrested'
-    );
+    // The select shows the step's name only; what it does is said in full
+    // under the select once a step is chosen (rpg-project#1039).
+    expect(words.get('admitted')).toBe('admitted');
+    expect(words.get('troupe-failed')).toBe('troupe-failed');
     fireEvent.change(step, { target: { value: 'came-quietly' } });
     expect(sharedLines.setLines).toHaveBeenCalledTimes(1);
     const saved = readDraftYaml(written());
@@ -1117,5 +1115,85 @@ describe('authoring a line (rpg-project#1033)', () => {
       interaction: 'front-gate',
       success: 'came-quietly',
     });
+  });
+});
+
+describe('the opened form reads well (rpg-project#1039)', () => {
+  it('its section labels stand in the card’s order', () => {
+    castlePage();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit line 1 of the-gate' })
+    );
+    const form = screen.getByRole('article', { name: 'Line 1 of the-gate' });
+    const order = [
+      'Says',
+      'Check',
+      'Offered when',
+      'Moves the conversation',
+      'On a pass',
+      'On a miss',
+    ];
+    const found = order.map((word) =>
+      [...form.querySelectorAll('.wb-option-label')].find((el) =>
+        (el.textContent ?? '').trim().startsWith(word)
+      )
+    );
+    expect(found.every((el) => el !== undefined)).toBe(true);
+    // Each label comes after the one before it, in the document.
+    for (let k = 1; k < found.length; k += 1)
+      expect(
+        found[k - 1]!.compareDocumentPosition(found[k]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    expect(form.textContent).not.toContain('Advances');
+    expect(form.textContent).not.toMatch(/Requires/);
+    // The field labels are words, not keys.
+    expect(form.textContent).toContain('Ability');
+    expect(form.textContent).toContain('DC');
+    // The verdict headings carry no monospace `success` / `failure` word.
+    expect(form.querySelector('.wb-policy-trigger code')).toBeNull();
+  });
+
+  it('a step’s description is in full under its select, not inside an option', () => {
+    castlePage();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit line 1 of the-gate' })
+    );
+    const form = screen.getByRole('article', { name: 'Line 1 of the-gate' });
+    const does = [...form.querySelectorAll('.wb-step-does')].map(
+      (el) => el.textContent
+    );
+    expect(does.length).toBeGreaterThan(0);
+    // Each description is tied to its select.
+    for (const el of form.querySelectorAll('.wb-step-does')) {
+      const select = form.querySelector(`select[aria-describedby="${el.id}"]`);
+      expect(el.id).not.toBe('');
+      expect(select).not.toBeNull();
+    }
+    for (const words of does) {
+      expect(words).toContain('→');
+      expect(words).not.toContain('…');
+    }
+    for (const select of form.querySelectorAll('.wb-advance select'))
+      for (const option of (select as HTMLSelectElement).options)
+        expect(option.textContent).not.toContain('→');
+  });
+
+  it('the weight helper shows only when a side has more than one reply', () => {
+    castlePage();
+    const help = 'Weight changes relative chance among eligible entries';
+    // "Stand aside or bleed." has two weighted replies on a pass, one on a miss.
+    fireEvent.click(
+      within(cardSaying('Stand aside or bleed.')).getByRole('button', {
+        name: /^Edit line/,
+      })
+    );
+    const form = document.querySelector<HTMLElement>('.es-line-card-form')!;
+    const pass = form.querySelector('[data-testid$="-success"]')!;
+    const miss = form.querySelector('[data-testid$="-failure"]')!;
+    expect(pass.querySelectorAll('.wb-entry-weight-help').length).toBe(2);
+    expect(pass.textContent).toContain(help);
+    expect(miss.textContent).not.toContain(help);
+    expect(miss.querySelector('.wb-entry-weight-help')).toBeNull();
   });
 });

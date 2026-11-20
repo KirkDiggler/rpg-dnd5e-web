@@ -3124,3 +3124,105 @@ li.es-machine-step[data-refused],
     border-top: 1px solid var(--wb-border);
   }
 }
+
+/* THE CONVERSATIONS PAGE, POLISHED (rpg-project#1039): a narrow list, the
+ * conversation's name as a heading, one section-label style, one pill per
+ * carrier, and the line form's labels above their fields. Visual only. */
+.encounter-studio #shared-lines-list-detail {
+  grid-template-columns: 13.75rem minmax(0, 1fr);
+}
+@media (max-width: 900px) {
+  .encounter-studio #shared-lines-list-detail {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .encounter-studio #shared-lines-list-detail > .es-ld-list-pane {
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-border);
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-row {
+    border-left: 0;
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-choose {
+    width: auto;
+    border: 1px solid var(--wb-border);
+    border-radius: 5px;
+  }
+  .encounter-studio
+    #shared-lines-list-detail
+    .es-ld-row[data-selected]
+    .es-ld-choose {
+    border-color: var(--wb-accent);
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-summary {
+    display: none;
+  }
+}
+.encounter-studio #shared-lines-list-detail .es-ld-choose {
+  font-family: inherit;
+}
+.encounter-studio .es-shared-lines-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--es-text-title);
+  font-weight: 600;
+}
+.encounter-studio .es-section-label,
+.encounter-studio .wb-option-label {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.encounter-studio .es-shared-lines-detail .es-section-label {
+  margin-top: 0.5rem;
+}
+.encounter-studio .es-shared-lines-detail .es-applied-to-list {
+  margin: 0;
+}
+/* One border: the name and the × share the pill. */
+.encounter-studio .es-applied-to-chip .es-link,
+.encounter-studio .es-applied-to-chip > span {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.encounter-studio .es-applied-to-chip .es-link:hover:not(:disabled) {
+  border: 0;
+}
+.encounter-studio .wb-option > label > .wb-option-label,
+.encounter-studio .wb-option-check > .wb-option-label,
+.encounter-studio .wb-requirements > .wb-option-label,
+.encounter-studio .wb-advance > label > .wb-option-label,
+.encounter-studio .wb-policy-trigger.wb-option-label {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.encounter-studio .wb-step-does {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+/* Quiet removes: text in the muted colour, no red border. "Remove line"
+ * keeps its emphasis. */
+.encounter-studio .wb-options .wb-danger:not(.wb-danger-strong),
+.encounter-studio .wb-options .wb-approach-row button {
+  border-color: transparent !important;
+  background: none;
+  color: var(--wb-muted) !important;
+  text-decoration: underline;
+}
+.encounter-studio
+  .wb-options
+  .wb-danger:not(.wb-danger-strong):hover:not(:disabled) {
+  color: var(--wb-text) !important;
+}
