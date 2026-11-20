@@ -3,7 +3,14 @@ import {
   type GeneratedWorldAsset,
   type WorldAssetResolutionDiagnostic,
 } from '@/generated/worldAssetCatalog';
+import {
+  assembleAssetHeightInstance,
+  expandPartBindings,
+  expandPartSelections,
+  legacyAssetHeightProfile,
+} from '@/rendering/assetHeightInstance';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import { clipWallSection } from '@/rendering/clipWallSection';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
   fitPlainWallInstance,
@@ -61,12 +68,6 @@ export interface WorldAssetRoleDiagnostic {
   node: string;
 }
 
-/** Upper bound on tiled `above` rows, so an asset whose row is a tiny
- * fraction of its body cannot mint unbounded clones. Past this the residual
- * scale absorbs the difference. The pool stays bounded even for large valid
- * presentation scales; editor slider limits do not clamp runtime rendering. */
-const MAX_ABOVE_ROWS = 64;
-
 export type WorldAssetModelDiagnostic =
   | WorldAssetResolutionDiagnostic
   | WorldAssetRoleDiagnostic;
@@ -80,6 +81,8 @@ export interface WorldAssetModelProps {
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   heightScale?: number;
+  /** Absolute rendered height; structural callers do not scale the parent Y. */
+  targetHeight?: number;
   remembered?: boolean;
   /** The remembered multiply tint (default `REMEMBERED_TINT`). */
   rememberedTint?: THREE.Color;
@@ -126,17 +129,6 @@ interface ResolvedDoor {
 
 interface ResolvedRoles {
   doors: ResolvedDoor[];
-  above?: THREE.Object3D;
-  /** The authored row's height IN WORLD UNITS — the same unit the assembly's
-   * own `boundsMeters[1]` is measured in. */
-  aboveRestHeight: number;
-  /** The same row's height in its PARENT's frame, which is the frame
-   * `position.y` is expressed in and therefore the distance between rows. */
-  aboveLocalRowHeight: number;
-  aboveRestScaleY: number;
-  /** The row's authored `position.y`, restored on every layout rather than
-   * compounded onto the last one. */
-  aboveRestY: number;
 }
 
 interface MissingRoleNode {
@@ -223,14 +215,10 @@ function resolveRoles(
     string,
     { position: THREE.Vector3; leaves: ResolvedLeaf[] }
   >();
-  let above: THREE.Object3D | undefined;
   for (const binding of roles) {
     const node = root.getObjectByName(binding.node);
     if (!node) return { role: binding.role, node: binding.node };
-    if (binding.role === 'above') {
-      above = node;
-      continue;
-    }
+    if (binding.role === 'above') continue;
     if (binding.role === 'leaf' && binding.door) {
       const group = doors.get(binding.door) ?? {
         position: new THREE.Vector3(),
@@ -250,36 +238,12 @@ function resolveRoles(
     }
     // `frame` is static by contract: binding it only proves the node exists.
   }
-  let aboveRestHeight = 0;
-  let aboveLocalRowHeight = 0;
-  let aboveRestScaleY = 1;
-  let aboveRestY = 0;
-  if (above) {
-    const box = new THREE.Box3().setFromObject(above);
-    aboveRestHeight = box.max.y - box.min.y;
-    aboveRestScaleY = above.scale.y;
-    aboveRestY = above.position.y;
-    // `position.y` is in the PARENT's frame, so the gap between tiled rows is
-    // the row's parent-frame height rather than its world one. A promoted
-    // authored asset's root is unscaled, which makes the two equal; dividing
-    // keeps a nested `above` honest anyway.
-    const parentScaleY = above.parent
-      ? above.parent.getWorldScale(new THREE.Vector3()).y
-      : 1;
-    aboveLocalRowHeight =
-      parentScaleY === 0 ? 0 : aboveRestHeight / parentScaleY;
-  }
   return {
     doors: [...doors.entries()].map(([id, group]) => ({
       id,
       position: group.position.toArray() as [number, number, number],
       leaves: group.leaves,
     })),
-    above,
-    aboveRestHeight,
-    aboveLocalRowHeight,
-    aboveRestScaleY,
-    aboveRestY,
   };
 }
 
@@ -319,9 +283,11 @@ function applyLeafSwing(leaves: ResolvedLeaf[], open: boolean) {
 
 function LoadedWorldAssetModel({
   assetRef,
+  glbSha256,
   url,
   boundsMeters,
   roles,
+  heightFit,
   position,
   rotationY,
   onBoundsMeasured,
@@ -332,6 +298,7 @@ function LoadedWorldAssetModel({
   hideDoorLeaves,
   onDoorClick,
   heightScale,
+  targetHeight,
   remembered,
   rememberedTint,
   visualLighting,
@@ -352,6 +319,7 @@ function LoadedWorldAssetModel({
   url: string;
   boundsMeters: [number, number, number];
   roles: NonNullable<GeneratedWorldAsset['roles']> | undefined;
+  heightFit?: GeneratedWorldAsset['heightFit'];
   position: [number, number, number];
   rotationY: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
@@ -362,6 +330,7 @@ function LoadedWorldAssetModel({
   hideDoorLeaves?: boolean;
   onDoorClick?: () => void;
   heightScale: number;
+  targetHeight?: number;
   remembered: boolean;
   rememberedTint?: THREE.Color;
   visualLighting?: RegionLightingMaterialBinding;
@@ -371,11 +340,14 @@ function LoadedWorldAssetModel({
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfaceCharts?: readonly WallSurfaceChart[];
 }) {
-  const { scene } = useGLTF(url);
+  const { scene } = useGLTF(`${url}?v=${glbSha256}`);
   const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
   const openingKey = openingDescriptor ? JSON.stringify(openingDescriptor) : '';
   const chartKey = JSON.stringify(surfaceCharts ?? []);
   const bindingKey = JSON.stringify(surfaces ?? []);
+  const heightProfileKey = JSON.stringify(heightFit ?? null);
+  const rolesKey = JSON.stringify(roles ?? []);
+  const nativeHeight = boundsMeters[1];
   const instance = useMemo(() => {
     const object = scene.clone(true);
     const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
@@ -387,32 +359,116 @@ function LoadedWorldAssetModel({
           )
         : fitPlainWallInstance(object, fit)
       : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
+    const owned = [...fitted.owned];
     try {
-      const charts = JSON.parse(chartKey) as WallSurfaceChart[];
+      const declaredProfile = JSON.parse(heightProfileKey) as
+        | GeneratedWorldAsset['heightFit']
+        | null;
+      const declaredRoles = JSON.parse(rolesKey) as NonNullable<
+        GeneratedWorldAsset['roles']
+      >;
+      const heightProfile =
+        declaredProfile ??
+        legacyAssetHeightProfile(object, declaredRoles, nativeHeight);
+      const legacyHeight =
+        heightProfile.mode === 'fixed'
+          ? nativeHeight
+          : Math.max(
+              heightProfile.mode === 'repeat-above'
+                ? heightProfile.baseHeight
+                : 0,
+              nativeHeight * heightScale
+            );
+      const requested = fit?.height ?? targetHeight ?? legacyHeight;
+      // This hierarchy is new and detached for every fit/height revision.
+      // Build all courses before charts/materials; never append to a live root.
+      const assembly = assembleAssetHeightInstance({
+        root: object,
+        nativeHeight,
+        targetHeight: requested,
+        profile: heightProfile,
+        ownedGeometry: owned,
+        protectedNodes: declaredRoles
+          .filter((role) => role.role === 'leaf')
+          .map((role) => role.node),
+      });
+      owned.push(...assembly.owned);
+      const profile =
+        fitted.profile && heightProfile.mode === 'repeat-above'
+          ? { ...fitted.profile, height: requested / SYNTY_SCALE }
+          : fitted.profile;
+      const expanded = expandPartBindings(
+        JSON.parse(bindingKey) as NonNullable<GeneratedWorldAsset['surfaces']>,
+        assembly.nodeCopies
+      );
+      const charts = expandPartSelections(
+        JSON.parse(chartKey) as WallSurfaceChart[],
+        expanded.ids
+      );
       if (charts.length) {
-        const bindings = JSON.parse(bindingKey) as NonNullable<
-          GeneratedWorldAsset['surfaces']
-        >;
-        if (!fit || !fitted.profile || !bindings.length)
+        if (!fit || !profile || !expanded.bindings.length)
           throw new Error(
             'Room finish charts require an enrolled fitted wall.'
           );
         applyWallSurfaceCharts({
           root: object,
           assetRef,
-          bindings,
+          bindings: expanded.bindings,
           charts,
           fit,
-          profile: fitted.profile,
-          owned: fitted.owned,
+          profile,
+          owned,
         });
       }
-      return { object, fit, ...fitted };
+      if (
+        fit &&
+        profile &&
+        (fit.clipStart !== undefined || fit.clipEnd !== undefined)
+      ) {
+        const start = fit.clipStart ?? 0,
+          end = fit.clipEnd ?? fit.width;
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end > fit.width ||
+          end <= start
+        )
+          throw Error('Invalid wall section visible interval.');
+        clipWallSection({
+          root: object,
+          min: profile.start + (start * profile.width) / fit.width,
+          max: profile.start + (end * profile.width) / fit.width,
+          owned,
+        });
+      }
+      return {
+        object,
+        fit,
+        profile,
+        owned,
+        layout: assembly.layout,
+        nodeCopies: assembly.nodeCopies,
+        bindings: expanded.bindings,
+        surfaceIds: expanded.ids,
+      };
     } catch (error) {
-      for (const geometry of fitted.owned) geometry.dispose();
+      for (const geometry of owned) geometry.dispose();
       throw error;
     }
-  }, [scene, fitKey, openingKey, chartKey, bindingKey, assetRef]);
+  }, [
+    scene,
+    fitKey,
+    openingKey,
+    chartKey,
+    bindingKey,
+    assetRef,
+    heightProfileKey,
+    rolesKey,
+    nativeHeight,
+    heightScale,
+    targetHeight,
+  ]);
   const cloned = instance.object;
   const fit = instance.fit;
   useEffect(
@@ -424,10 +480,28 @@ function LoadedWorldAssetModel({
   const surfaceTreatment = useMemo(
     () =>
       surfaceSelections?.length
-        ? { bindings: surfaces, selections: surfaceSelections }
+        ? {
+            bindings: instance.bindings,
+            selections: expandPartSelections(
+              surfaceSelections,
+              instance.surfaceIds
+            ),
+          }
         : undefined,
-    [surfaces, surfaceSelections]
+    [instance, surfaceSelections]
   );
+  const atlasHeightTreatment = useMemo(() => {
+    if (!atlasTreatment?.binding) return atlasTreatment;
+    const expanded = expandPartBindings(
+      atlasTreatment.binding.surfaces,
+      instance.nodeCopies
+    );
+    return {
+      ...atlasTreatment,
+      binding: { ...atlasTreatment.binding, surfaces: expanded.bindings },
+      selections: expandPartSelections(atlasTreatment.selections, expanded.ids),
+    };
+  }, [atlasTreatment, instance]);
   useRememberedModelTint(
     cloned,
     remembered,
@@ -437,7 +511,7 @@ function LoadedWorldAssetModel({
     'lit',
     surfaceTreatment,
     rememberedTint,
-    atlasTreatment
+    atlasHeightTreatment
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -483,108 +557,6 @@ function LoadedWorldAssetModel({
     }
   }, [open, openDoors, hideDoorLeaves, resolved]);
 
-  /**
-   * The authored `above` row, plus the clones that tile it upward. Row 0 IS
-   * the authored node, so a door at its rest height grows no extra objects
-   * and the rest pose stays the GLB's own.
-   *
-   * A door's extra height is the wall section over its opening, and the
-   * authored asset supplies that section as ONE course of bricks — this
-   * door's is 0.156 of a 3.006-unit body. Stretching one course to absorb a
-   * wall's worth of height turns bricks into vertical streaks, which is
-   * neither what the asset does when it is grown in the tool that authored it
-   * nor what setting a door and a wall to the same height is asking for.
-   * Repeating the course keeps every brick at its authored proportions.
-   *
-   * The clones are built DETACHED here and attached by the layout effect
-   * below, because ATTACHING THEM HERE IS THE BUG. This factory runs during
-   * render, and React discards render passes; a discarded pass's clones stay
-   * in the scene graph while the effect lays out the retained pass's array,
-   * so the live clones keep the `visible = false` they were built with. The
-   * result measured in the running app was a bounding box that grew to the
-   * right height above a door that never moved — only the authored course,
-   * the one object no pass ever detaches, was ever shown. Scene-graph
-   * mutation belongs in the commit phase, which is where the layout effect
-   * is, so that is where the attach now happens.
-   */
-  const aboveTiles = useMemo(() => {
-    if (!resolved?.above) return undefined;
-    const above = resolved.above;
-    const parent = above.parent;
-    const tiles = [above];
-    if (!parent) return tiles;
-    const rowWorld = resolved.aboveRestHeight * SYNTY_SCALE;
-    if (!(rowWorld > 0) || !(boundsMeters[1] > 0)) return tiles;
-    const openingWorld = Math.max(0, boundsMeters[1] - rowWorld);
-    const most = Math.min(
-      MAX_ABOVE_ROWS,
-      Math.max(
-        1,
-        Math.ceil((boundsMeters[1] * heightScale - openingWorld) / rowWorld)
-      )
-    );
-    for (let index = 1; index < most; index += 1) {
-      const tile = above.clone(true);
-      tile.visible = false;
-      tiles.push(tile);
-    }
-    return tiles;
-  }, [boundsMeters, resolved, heightScale]);
-
-  /**
-   * Grow the `above` section until the assembly reaches its authored height
-   * times `heightScale` — the same rule `PropModel` applies to a wall, and
-   * the reason a door and a wall set to one number end at one height instead
-   * of at two unrelated ones. The two are authored to match at rest (2.255
-   * against 2.259 world units).
-   *
-   * The opening never grows: everything past it is `above`. Rows are rounded
-   * to the nearest whole course and the small residual is shared by all of
-   * them, so the stack lands on the exact target while each course keeps its
-   * authored thickness to within half a course.
-   *
-   * Below the point where `above` would vanish the assembly stops shrinking,
-   * because a door cannot be shorter than the opening it is a door for.
-   */
-  useLayoutEffect(() => {
-    if (!resolved?.above || !aboveTiles) return;
-    const above = resolved.above;
-    const parent = above.parent;
-    if (!parent) return;
-    // Commit-phase attach: see the note on `aboveTiles`. Idempotent, so a
-    // re-run re-uses the clones already in the tree rather than stacking
-    // another set.
-    for (const tile of aboveTiles) {
-      if (tile !== above && tile.parent !== parent) parent.add(tile);
-    }
-    const {
-      aboveLocalRowHeight,
-      aboveRestHeight,
-      aboveRestScaleY,
-      aboveRestY,
-    } = resolved;
-    const rowWorld = aboveRestHeight * SYNTY_SCALE;
-    if (!(rowWorld > 0)) return;
-    const openingWorld = Math.max(0, boundsMeters[1] - rowWorld);
-    const targetWorld = Math.max(openingWorld, boundsMeters[1] * heightScale);
-    const aboveWorld = Math.max(0, targetWorld - openingWorld);
-    const rows =
-      aboveWorld > 0 ? Math.max(1, Math.round(aboveWorld / rowWorld)) : 0;
-    const residual = rows > 0 ? aboveWorld / (rows * rowWorld) : 1;
-    for (let index = 0; index < aboveTiles.length; index += 1) {
-      const tile = aboveTiles[index]!;
-      const shown = index < rows;
-      tile.visible = shown;
-      if (!shown) continue;
-      tile.scale.y = aboveRestScaleY * residual;
-      tile.position.y = aboveRestY + index * aboveLocalRowHeight * residual;
-    }
-    return () => {
-      for (const tile of aboveTiles)
-        if (tile !== above) tile.removeFromParent();
-    };
-  }, [aboveTiles, boundsMeters, heightScale, resolved]);
-
   const measuredBounds = useMemo<PropModelBounds>(() => {
     if (fit)
       return {
@@ -599,38 +571,14 @@ function LoadedWorldAssetModel({
             fit.depth) /
             2,
       };
-    if (resolved?.above) {
-      // The assembly's own height scales, and the opening is the floor: a
-      // door cannot report less than the doorway it is a door for.
-      const rowWorld = resolved.aboveRestHeight * SYNTY_SCALE;
-      const openingWorld = Math.max(0, boundsMeters[1] - rowWorld);
-      const totalHeight = Math.max(openingWorld, boundsMeters[1] * heightScale);
-      return {
-        minY: 0,
-        maxY: totalHeight,
-        width: boundsMeters[0],
-        height: totalHeight,
-        depth: boundsMeters[2],
-      };
-    }
-    if (resolved) {
-      // Roles without an `above` part do not grow: the group stays unscaled.
-      return {
-        minY: 0,
-        maxY: boundsMeters[1],
-        width: boundsMeters[0],
-        height: boundsMeters[1],
-        depth: boundsMeters[2],
-      };
-    }
     return {
       minY: 0,
-      maxY: boundsMeters[1] * heightScale,
+      maxY: instance.layout.height,
       width: boundsMeters[0],
-      height: boundsMeters[1] * heightScale,
+      height: instance.layout.height,
       depth: boundsMeters[2],
     };
-  }, [boundsMeters, heightScale, resolved, fit]);
+  }, [boundsMeters, fit, instance]);
   useEffect(
     () => onBoundsMeasured?.(measuredBounds),
     [measuredBounds, onBoundsMeasured]
@@ -667,7 +615,7 @@ function LoadedWorldAssetModel({
       scale={
         fittedScale ?? [
           SYNTY_SCALE,
-          SYNTY_SCALE * (resolved ? 1 : heightScale),
+          SYNTY_SCALE * instance.layout.scaleY,
           SYNTY_SCALE,
         ]
       }
@@ -738,7 +686,7 @@ function PreparedWorldAssetModel({
 }: React.ComponentProps<typeof LoadedWorldAssetModel> & {
   plans: NonNullable<WorldAssetModelProps['surfacePlans']>;
 }): React.JSX.Element | null {
-  const { scene } = useGLTF(props.url);
+  const { scene } = useGLTF(`${props.url}?v=${props.glbSha256}`);
   const planKey = JSON.stringify(plans);
   const requests = plans.flatMap((plan) =>
     (['baseColor', 'normal', 'metallicRoughness', 'occlusion'] as const)
@@ -824,6 +772,7 @@ export function WorldAssetModel({
   onBoundsMeasured,
   onDiagnostic,
   heightScale = 1,
+  targetHeight,
   remembered = false,
   rememberedTint,
   visualLighting,
@@ -859,7 +808,12 @@ export function WorldAssetModel({
     throw new Error(
       'This asset requires valid aperture fitting without wall miters.'
     );
-  if (plainWallFit && !asset.tags.includes('wall-miter-90'))
+  if (
+    plainWallFit &&
+    !asset.tags.some(
+      (tag) => tag === 'wall-body-fit' || tag === 'wall-miter-90'
+    )
+  )
     throw new Error('This asset is not enrolled for plain wall fitting.');
   if (
     surfaceProvider &&
@@ -883,6 +837,7 @@ export function WorldAssetModel({
       url={asset.url}
       boundsMeters={asset.boundsMeters}
       roles={asset.roles}
+      heightFit={asset.heightFit}
       position={position}
       rotationY={rotationY}
       onBoundsMeasured={onBoundsMeasured}
@@ -893,6 +848,7 @@ export function WorldAssetModel({
       open={open}
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
+      targetHeight={targetHeight}
       remembered={remembered}
       rememberedTint={rememberedTint}
       visualLighting={visualLighting}
@@ -903,6 +859,11 @@ export function WorldAssetModel({
               ...asset.wallOpening,
               frameNode: asset.roles!.find((role) => role.role === 'frame')!
                 .node,
+              fixedNodes: asset
+                .roles!.filter(
+                  (role) => role.role === 'frame' || role.role === 'above'
+                )
+                .map((role) => role.node),
             }
           : undefined
       }

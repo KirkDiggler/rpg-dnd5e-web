@@ -229,7 +229,7 @@ describe('StructuralWallPanel', () => {
   it('edits appearance without touching blocker, openings or walkability', () => {
     render(<Harness />);
     const before = selected();
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4.5' },
     });
     fireEvent.change(screen.getByLabelText('Wall label'), {

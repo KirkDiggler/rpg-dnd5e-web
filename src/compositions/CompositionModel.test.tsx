@@ -213,7 +213,9 @@ describe('CompositionModel', () => {
       rotation: [0, 0.45, 0],
     });
     expect(loadedWorldAssetUrls).toEqual([
-      '/models/synty/world-assets/props/dark-fortress/alchemy_tools_01.glb',
+      expect.stringMatching(
+        /^\/models\/synty\/world-assets\/props\/dark-fortress\/alchemy_tools_01\.glb\?v=[a-f0-9]{64}$/
+      ),
     ]);
   });
 

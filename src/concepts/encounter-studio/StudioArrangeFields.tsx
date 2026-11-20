@@ -155,7 +155,10 @@ export function arrangeFields(
             { value: 'end', label: 'End' },
           ],
         },
-        numeric('height', 'Appearance height', values.appearance.height),
+        {
+          ...numeric('height', 'Wall height', values.appearance.height),
+          help: 'Visual height only; does not change movement, sight, or door behavior.',
+        },
         numeric(
           'thickness',
           'Appearance thickness',

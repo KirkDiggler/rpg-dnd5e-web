@@ -1,3 +1,4 @@
+import { planAssetHeight } from '@/rendering/assetHeightLayout';
 import type { WallSurfaceChart } from '@/rendering/wallSurfaceCharts';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { wallLength } from './structuralWallEditing';
@@ -39,6 +40,13 @@ export function placeDoorFrame(
   snap: boolean,
   chart?: WallSurfaceChart
 ) {
+  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(assetRef);
+  if (entry?.source === 'generated' && entry.asset.heightFit)
+    planAssetHeight({
+      nativeHeight: entry.asset.boundsMeters[1],
+      targetHeight: wall.appearance.height,
+      profile: entry.asset.heightFit,
+    });
   const clamped = clampDoorFramePosition(wall, position, width, assetRef);
   if (snap && !chart)
     throw new Error(

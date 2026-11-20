@@ -18,6 +18,7 @@ export interface WorldPropModelProps {
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
+  targetHeight?: number;
   remembered?: boolean;
   /** The remembered multiply tint for a generated asset (default
    * `REMEMBERED_TINT`); structural surfaces pass `REMEMBERED_SURFACE_TINT`. */
@@ -51,6 +52,7 @@ export function WorldPropModel({
   position,
   rotationY,
   heightScale = 1,
+  targetHeight,
   remembered = false,
   rememberedTint,
   visualLighting,
@@ -74,6 +76,8 @@ export function WorldPropModel({
     throw new Error(
       'World surface selection requires a provider-enrolled asset.'
     );
+  if (targetHeight !== undefined && entry.source !== 'generated')
+    throw new Error('Explicit height requires a provider-configured asset.');
   // `open`/`onDoorClick` reach the generated branch only: a door is a
   // promoted exact asset carrying `roles`, so a legacy variant has no named
   // leaf to swing and no door-ness to be clicked.
@@ -92,6 +96,7 @@ export function WorldPropModel({
       position={position}
       rotationY={rotationY}
       heightScale={heightScale}
+      targetHeight={targetHeight}
       open={open}
       hideDoorLeaves={hideDoorLeaves}
       onDoorClick={onDoorClick}

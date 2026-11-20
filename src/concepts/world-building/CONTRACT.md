@@ -133,6 +133,31 @@ exit hex, cast member, table, faction, disposition, intel, concealment or
 ending is a jump; any other path is a sentence. Wall finishes, region wall
 finishes and region lighting say they do not reach play (R19).
 
+## Wall-owned visual sections
+
+`wall.appearance.sections` is an optional list of `{id, assetRef, position, width}`.
+Position is a centre distance from the wall start and width is its visual span,
+both scene units. The wall owns height, thickness, elevation, finishes and lifetime.
+Sections are not scene items, independent walls, gameplay openings or blockers.
+They fit the line and do not overlap each other or permitted door surrounds.
+
+New sections require explicit provider section/body-fit capabilities; asset names
+never grant eligibility. Imported opaque refs and unknown nested author fields
+remain preserved. A changed height must fit every known fixed feature/cap.
+Moving/rotating the wall carries its sections; endpoint resize protects section
+edges and preserves their world positions. Removal restores plain visual art.
+
+Plain repeats exclude section spans only in the rendering path. A section uses
+its full span fit and the wall's chart phase. Partial fog/finish stretches clip
+its detached instance buffers after height/chart preparation, never squeeze the
+feature into a smaller interval. No cached geometry is mutated or hidden
+stretch drawn. Rendering consumes supplied facts, not gameplay authority.
+
+The inspector's section edits use the existing wall edit/history transaction and
+apply immediately, outside the staged wall-placement form. Failed edits leave
+the document unchanged. Native files use the existing source-aware writer;
+captured Play requires the same facts through the wall's existing disclosure.
+
 ## Studio Layout walls and compact contexts (#1233)
 
 Wall opens searchable repeatable appearance choices, ranking case-insensitive
@@ -141,7 +166,9 @@ repeatable choices remain accessible. Generated asset previews use published
 provider PNG URLs, not a client model-capture queue. Loading is image-local;
 missing/error images retain named selectable fallbacks without loading a GLB,
 substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
-assets without a door leaf role. No appearance is armed by default.
+assets without a door leaf role. Explicit `wall-section` assets belong in the
+once-placed section chooser, not new repeating-wall choices; existing imported
+repeat intent remains readable/renderable. No appearance is armed by default.
 
 Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
 centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
@@ -207,9 +234,10 @@ walls and door bindings.
 
 ### Supported automatic visual corners
 
-Only catalog appearances declaring `wall-miter-90` opt into the plain-wall fit.
-The enrolled appearance is an explicit choice, not a silent replacement of older
-Castle walls. Two shared authored endpoints, perpendicular directions, matching
+Catalog appearances declaring `wall-body-fit` use the shared body/plane fitter
+for explicit size and finish charts. Only `wall-miter-90` additionally opts into
+automatic corner joining; adding height/finish support does not silently opt an
+existing appearance into a different corner policy. Two shared authored endpoints, perpendicular directions, matching
 authored height/thickness/elevation and solid terminal pieces longer than their
 depth allow a common miter. Junctions, opening conflicts, unequal dimensions and
 unsupported appearances retain unfitted art with a selected-wall explanation.

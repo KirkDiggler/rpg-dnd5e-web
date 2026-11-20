@@ -74,7 +74,11 @@ describe('Studio fixed surround rendering seam', () => {
     );
     const probe = renderer.scene.findByProps({ name: 'opening-probe' }).instance
       .userData;
-    expect(probe.plans).toHaveLength(1);
+    expect(
+      probe.plans.map(
+        (plan: { chart: { surfaceId: string } }) => plan.chart.surfaceId
+      )
+    ).toEqual(['front', 'upper-front']);
     expect(probe.plans[0].material.ref).toBe(finish.material.ref);
     expect(
       probe.plans[0].chart.phase / probe.plans[0].chart.repeat[0]
@@ -126,6 +130,25 @@ describe('Studio fixed surround rendering seam', () => {
     ).toMatch(/capture/);
     await renderer.unmount();
   });
+  it('shows a height refusal instead of attempting to squash an imported doorway', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <FittedDoorSurface
+        doorId="door"
+        assetRef={assetRef}
+        pose={{ ...pose, height: 1 }}
+        state="closed"
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'opening-probe' })
+    ).toHaveLength(0);
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-error-door' })
+        .instance.userData.reason
+    ).toMatch(/fixed region/);
+    await renderer.unmount();
+  });
+
   it('uses the frame envelope while retaining aperture pose and inherited chart phase', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <FittedDoorSurface

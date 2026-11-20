@@ -14,7 +14,10 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateWorldAssetCatalog } from './generate-world-asset-catalog.mjs';
+import {
+  generateWorldAssetCatalog,
+  parseHeightFit,
+} from './generate-world-asset-catalog.mjs';
 
 const temporary: string[] = [];
 const digest = (bytes: string | Buffer) =>
@@ -133,6 +136,80 @@ function addThumbnail(fixture: Fixture) {
 
 afterEach(() => {
   temporary.splice(0).forEach((root) => rmSync(root, { recursive: true }));
+});
+
+describe('world asset height profile boundary', () => {
+  const roles = [{ role: 'above', node: 'Upper' }];
+  const profile = {
+    mode: 'repeat-above',
+    node: 'Upper',
+    baseHeight: 1.5,
+    rowHeight: 0.5,
+  };
+
+  it('copies the declared profile and preserves legacy absence', () => {
+    expect(parseHeightFit(undefined, 'asset', undefined, 2)).toBeUndefined();
+    expect(parseHeightFit({ mode: 'scale' }, 'asset', undefined, 2)).toEqual({
+      mode: 'scale',
+    });
+    expect(parseHeightFit({ mode: 'fixed' }, 'asset', undefined, 2)).toEqual({
+      mode: 'fixed',
+    });
+    const parsed = parseHeightFit(profile, 'asset', roles, 2);
+    expect(parsed).toEqual(profile);
+    expect(parsed).not.toBe(profile);
+  });
+
+  it('refuses invented repetition, inconsistent heights and extra authority', () => {
+    for (const invalid of [
+      { ...profile, node: 'Unknown' },
+      { ...profile, baseHeight: -1 },
+      { ...profile, rowHeight: 0 },
+      { ...profile, rowHeight: NaN },
+      { ...profile, rowHeight: 1 },
+      { ...profile, parentWall: 'secret' },
+      { mode: 'guess' },
+      { mode: 'scale' },
+      { mode: 'fixed' },
+      null,
+    ]) {
+      expect(() => parseHeightFit(invalid, 'asset', roles, 2)).toThrow(
+        'heightFit'
+      );
+    }
+  });
+
+  it('carries a separately declared fixed cap and rejects incomplete cap facts', () => {
+    const capped = { ...profile, capNode: 'Cap', capHeight: 0.5 };
+    const parts = [...roles, { role: 'cap', node: 'Cap' }];
+    expect(parseHeightFit(capped, 'asset', parts, 2.5)).toEqual(capped);
+    for (const invalid of [
+      { ...capped, capNode: undefined },
+      { ...capped, capHeight: undefined },
+      { ...capped, capNode: 'Upper' },
+      { ...capped, capHeight: -0.5 },
+    ])
+      expect(() => parseHeightFit(invalid, 'asset', parts, 2.5)).toThrow(
+        'heightFit'
+      );
+  });
+
+  it('carries verified height fitting into the generated consumer catalog', () => {
+    const f = makeFixture();
+    f.catalog.assets[0]!.roles = roles;
+    f.catalog.assets[0]!.heightFit = profile;
+    rewriteCatalog(f);
+    generateWorldAssetCatalog({
+      providerRoot: f.provider,
+      runtimeRoot: f.runtime,
+      outputPath: f.output,
+    });
+    const source = readFileSync(f.output, 'utf8');
+    expect(source).toContain('heightFit:');
+    expect(source).toContain("mode: 'repeat-above'");
+    expect(source).toContain('baseHeight: 1.5');
+    expect(source).toContain('rowHeight: 0.5');
+  });
 });
 
 describe('world asset catalog generator', () => {

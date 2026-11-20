@@ -441,7 +441,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     change('Y facing (degrees)', '30');
     change('Wall length', '10');
     change('Fixed endpoint', 'end');
-    change('Appearance height', '4');
+    change('Wall height', '4');
     change('Appearance thickness', '0.5');
     change('Appearance elevation', '0.25');
     fireEvent.click(

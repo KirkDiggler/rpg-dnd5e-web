@@ -15,6 +15,7 @@ import {
 import { wallSolidIntervals } from './structuralWallGeometry';
 import type { StructuralWall, StructuralWallOpening } from './structuralWalls';
 import type { WorldPoint } from './types';
+import { assertEditableWallSections } from './wallSectionEditing';
 
 export interface StudioDoorTarget {
   readonly kind: 'door';
@@ -161,6 +162,7 @@ export function clampDoorPosition(
 function assertDoorGeometry(wall: StructuralWall): void {
   wallSolidIntervals({ wall, extent: { start: 0, end: wallLength(wall) } });
   doorwayVisualWall(wall);
+  if (wall.appearance.sections?.length) assertEditableWallSections(wall);
 }
 export function createStudioDoor(
   wall: StructuralWall,
