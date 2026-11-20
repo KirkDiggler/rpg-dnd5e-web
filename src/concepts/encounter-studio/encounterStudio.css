@@ -592,7 +592,7 @@
 .es-encounter-home > * {
   box-sizing: border-box;
   width: 100%;
-  max-width: 72rem;
+  max-width: 110rem;
   margin-left: auto;
   margin-right: auto;
 }
@@ -3283,6 +3283,31 @@ li.es-machine-step[data-refused],
   .encounter-studio .es-conversation-because input {
     flex: 1 1 auto;
     min-width: 0;
+  }
+}
+
+/* Room to work (rpg-project#1057): an opened line's form is two columns when
+   its card is wide. The card is a size container; at 60rem or more the line's
+   form flows in two CSS columns, and the second column starts at "Moves the
+   conversation". Below 60rem the form is one column, as before. */
+.encounter-studio .es-line-card-form {
+  container-type: inline-size;
+}
+@container (min-width: 60rem) {
+  .encounter-studio .es-line-card-form .wb-option {
+    display: block;
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+  .encounter-studio .es-line-card-form .wb-option > * + * {
+    margin-top: 0.75rem;
+  }
+  .encounter-studio .es-line-card-form .wb-option > * {
+    break-inside: avoid;
+  }
+  .encounter-studio .es-line-card-form .wb-option > .wb-advance {
+    break-before: column;
+    margin-top: 0;
   }
 }
 
