@@ -103,6 +103,35 @@ describe('placement-owned height assembly', () => {
     ).toThrow('protected');
   });
 
+  it('moves one top cap while preserving its shape and the lower feature', () => {
+    const cached = source();
+    const cap = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        2 / SYNTY_SCALE,
+        0.5 / SYNTY_SCALE,
+        0.4 / SYNTY_SCALE
+      )
+    );
+    cap.name = 'Cap';
+    cap.position.y = 3.25 / SYNTY_SCALE;
+    cached.add(cap);
+    const root = cached.clone(true);
+    const result = assembleAssetHeightInstance({
+      root,
+      nativeHeight: 3.5,
+      targetHeight: 6,
+      profile: { ...profile, capNode: 'Cap', capHeight: 0.5 },
+      protectedNodes: ['Leaf'],
+    });
+    expect(height(root)).toBeCloseTo(6);
+    const fitted = root.getObjectByName('Cap')!;
+    expect(height(fitted)).toBeCloseTo(0.5);
+    expect(fitted.scale.toArray()).toEqual([1, 1, 1]);
+    expect(result.nodeCopies.has('Cap')).toBe(false);
+    expect(height(root.getObjectByName('Leaf')!)).toBeCloseTo(1.8);
+    expect(height(cached)).toBeCloseTo(3.5);
+  });
+
   it('creates no names or geometry outside the owned hierarchy', () => {
     const cached = source(),
       instance = cached.clone(true);

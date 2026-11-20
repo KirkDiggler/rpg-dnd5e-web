@@ -9,6 +9,9 @@ export type AssetHeightProfile =
       readonly node: string;
       readonly baseHeight: number;
       readonly rowHeight: number;
+      /** Optional fixed top, translated once rather than copied with the band. */
+      readonly capNode?: string;
+      readonly capHeight?: number;
     };
 
 export interface AssetHeightLayoutInput {
@@ -24,6 +27,7 @@ export interface AssetHeightLayout {
   scaleY: number;
   /** Offsets from the authored repeat row, in rendered scene units. */
   rows: { offsetY: number; scaleY: number }[];
+  capOffsetY?: number;
 }
 
 export const MAX_ASSET_HEIGHT_ROWS = 64;
@@ -61,21 +65,36 @@ export function planAssetHeight({
       return { height: nativeHeight, scaleY: 1, rows: [] };
     case 'repeat-above': {
       const { baseHeight, rowHeight, node } = profile;
+      const hasCap =
+        profile.capNode !== undefined || profile.capHeight !== undefined;
+      const capHeight = profile.capHeight ?? 0;
+      if (
+        hasCap &&
+        (typeof profile.capNode !== 'string' ||
+          !profile.capNode.trim() ||
+          profile.capNode === node ||
+          !Number.isFinite(profile.capHeight) ||
+          capHeight <= 0)
+      )
+        throw new Error(
+          'Height profile requires a distinct cap and its positive height.'
+        );
       if (
         !node.trim() ||
         !Number.isFinite(baseHeight) ||
         baseHeight < 0 ||
         !Number.isFinite(rowHeight) ||
         rowHeight <= 0 ||
-        Math.abs(baseHeight + rowHeight - nativeHeight) >
+        Math.abs(baseHeight + rowHeight + capHeight - nativeHeight) >
           1e-6 * Math.max(1, nativeHeight)
       )
         throw new Error('Repeat profile disagrees with the native height.');
-      if (targetHeight < baseHeight)
+      const minimumHeight = baseHeight + capHeight;
+      if (targetHeight < minimumHeight)
         throw new Error(
-          `Requested height is below the fixed region (${baseHeight}); received ${targetHeight}.`
+          `Requested height is below the fixed region (${minimumHeight}); received ${targetHeight}.`
         );
-      const remaining = targetHeight - baseHeight;
+      const remaining = targetHeight - minimumHeight;
       // Preserve the existing above-row policy: nearest whole courses, with
       // the residual shared by those courses, never by the opening below.
       const count =
@@ -90,6 +109,7 @@ export function planAssetHeight({
       return {
         height: targetHeight,
         scaleY: 1,
+        ...(hasCap ? { capOffsetY: targetHeight - nativeHeight } : {}),
         rows: Array.from({ length: count }, (_, index) => ({
           offsetY: (remaining / count) * index,
           scaleY,

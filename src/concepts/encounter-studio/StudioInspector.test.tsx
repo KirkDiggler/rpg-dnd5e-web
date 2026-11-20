@@ -419,7 +419,13 @@ describe('StudioInspector', () => {
       selected(populated(), { kind: 'wall', id: 'studio-wall' })
     );
     const view = within(region());
-    expect(view.getByLabelText('Appearance height')).toBeTruthy();
+    expect(view.getByLabelText('Wall height')).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'About Wall height' }));
+    expect(
+      view.getByText(
+        'Visual height only; does not change movement, sight, or door behavior.'
+      )
+    ).toBeTruthy();
     expect(view.getByLabelText('Start X')).toBeTruthy();
     expect(view.getByLabelText('End Z')).toBeTruthy();
     expect(
@@ -721,14 +727,14 @@ describe('StudioInspector', () => {
     const live = selected(populated(), { kind: 'wall', id: 'studio-wall' });
     inspector({ ...live, commitArrange: vi.fn(() => false) });
     const view = within(region());
-    fireEvent.change(view.getByLabelText('Appearance height'), {
+    fireEvent.change(view.getByLabelText('Wall height'), {
       target: { value: '5' },
     });
     fireEvent.submit(view.getByRole('form', { name: 'Arrange selected noun' }));
     expect(view.getByRole('alert').textContent).toMatch(/refused/);
-    expect(
-      (view.getByLabelText('Appearance height') as HTMLInputElement).value
-    ).toBe('5');
+    expect((view.getByLabelText('Wall height') as HTMLInputElement).value).toBe(
+      '5'
+    );
   });
 
   describe('S1 the creature view names its cast member', () => {

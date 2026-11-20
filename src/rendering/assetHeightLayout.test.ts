@@ -145,6 +145,47 @@ describe('declared asset height layout', () => {
     ).toThrow('row limit');
   });
 
+  it('reserves a fixed top cap once instead of repeating or scaling it', () => {
+    const profile = {
+      mode: 'repeat-above',
+      node: 'Upper',
+      baseHeight: 2,
+      rowHeight: 1,
+      capNode: 'Cap',
+      capHeight: 0.5,
+    } as const;
+    const layout = planAssetHeight({
+      nativeHeight: 3.5,
+      targetHeight: 6,
+      profile,
+    });
+    expect(layout.scaleY).toBe(1);
+    expect(layout.capOffsetY).toBe(2.5);
+    expect(
+      layout.rows.reduce((height, row) => height + row.scaleY, 2.5)
+    ).toBeCloseTo(6);
+    const minimum = planAssetHeight({
+      nativeHeight: 3.5,
+      targetHeight: 2.5,
+      profile,
+    });
+    expect(minimum.rows).toEqual([]);
+    expect(minimum.capOffsetY).toBe(-1);
+    expect(() =>
+      planAssetHeight({ nativeHeight: 3.5, targetHeight: 2.49, profile })
+    ).toThrow('fixed region');
+    for (const bad of [
+      { ...profile, capNode: undefined },
+      { ...profile, capHeight: undefined },
+      { ...profile, capNode: 'Upper' },
+      { ...profile, capHeight: -1 },
+    ]) {
+      expect(() =>
+        planAssetHeight({ nativeHeight: 3.5, targetHeight: 6, profile: bad })
+      ).toThrow();
+    }
+  });
+
   it('is repeatable and cannot mutate its input or another layout', () => {
     const input = Object.freeze({
       nativeHeight: 3,

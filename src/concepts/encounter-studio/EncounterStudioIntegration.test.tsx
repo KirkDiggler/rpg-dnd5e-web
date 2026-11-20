@@ -1461,7 +1461,7 @@ describe('Studio authoring homes through the real owner', () => {
     const before = storage.document();
     selectWall(storage, before.draft.room.walls![0]);
     const writes = storage.roomWrites();
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
@@ -1478,7 +1478,7 @@ describe('Studio authoring homes through the real owner', () => {
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
     expect(
-      (screen.getByLabelText('Appearance height') as HTMLInputElement).value
+      (screen.getByLabelText('Wall height') as HTMLInputElement).value
     ).toBe('4');
     fireEvent.click(within(form).getByTitle(FIT_WALL_REF));
     fireEvent.click(button('Apply'));
@@ -1508,7 +1508,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
       target: { value: GRAY_REF },
     });
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     expect(storage.document()).toEqual(before);
@@ -1518,7 +1518,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
       target: { value: GRAY_REF },
     });
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.click(button('Apply'));
@@ -4470,7 +4470,7 @@ describe('Arrange joined presentation and canonical document receipts', () => {
     selectWall(storage, original.draft.room.walls![0]);
     const writes = storage.roomWrites();
     changeField('Wall midpoint X', '0.5');
-    changeField('Appearance height', '3.5');
+    changeField('Wall height', '3.5');
     changeField('Appearance elevation', '0.125');
     submitForm('Arrange selected noun');
     const numericWall = setWallAppearance(
@@ -5074,7 +5074,7 @@ describe('S0 inspector through the real owner', () => {
       inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
     ).toBeTruthy();
     const writes = storage.roomWrites();
-    fireEvent.change(inspector().getByLabelText('Appearance height'), {
+    fireEvent.change(inspector().getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.submit(
@@ -5090,8 +5090,7 @@ describe('S0 inspector through the real owner', () => {
       inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
     ).toBeTruthy();
     expect(
-      (inspector().getByLabelText('Appearance height') as HTMLInputElement)
-        .value
+      (inspector().getByLabelText('Wall height') as HTMLInputElement).value
     ).toBe(String(wall.appearance.height));
   });
 

@@ -373,8 +373,18 @@ export function StructuralWallSurfacePieces({
                         : undefined
                     }
                     surfaceProvider={segment.finishes[0]?.provider}
-                    surfacePlans={segment.finishes.map(
-                      ({ material, chart }) => ({ material, chart })
+                    surfacePlans={segment.finishes.flatMap(
+                      ({ material, chart, provider, side }) =>
+                        provider.bindings
+                          .filter(
+                            (binding) =>
+                              binding.side === side &&
+                              binding.family === material.family
+                          )
+                          .map((binding) => ({
+                            material,
+                            chart: { ...chart, surfaceId: binding.id },
+                          }))
                     )}
                     visualLighting={visualLighting}
                     position={[0, 0, 0]}

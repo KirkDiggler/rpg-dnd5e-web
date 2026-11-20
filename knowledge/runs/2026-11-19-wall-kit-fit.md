@@ -4,7 +4,9 @@
 
 - Initial implementation checkpoint: a pure declared-height planner and the existing upper-row renderer use one bounded layout; the wider kit is still unfinished — [Courtyard S6](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
-- First-pair integration now routes structural walls, doorway assemblies and generated props through the common height assembly; repeated parts get placement-local binding aliases so all courses receive the same finish/chart. The normal Studio visual checkpoint is still pending — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+- First-pair integration now routes structural walls, doorway assemblies and generated props through the common height assembly; repeated parts get placement-local binding aliases so all courses receive the same finish/chart. The first wall/door Studio checkpoint was accepted by the operator — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
+- Feature checkpoint: optional fixed caps and multi-part facade finishes render through the same assembly. Nine existing refs are pinned to candidate provider `05cfd6a`; the inspector now says Wall height with visual-only help. Actual Studio measurements for Wall04/Window03 reach 3.75 and 6 with unchanged fixed/cap geometry and chart error below 7e-8. The :3191 sample is one short wall per feature, not completed one-logical-wall section placement — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Decided
 
@@ -13,6 +15,8 @@
 
 - Build each height revision as a fresh detached hierarchy before UV/material treatment, rather than append rows to a live object after chart preparation; preserve source slot identities in saved data and expand only placement-local aliases — [plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/plan.md).
 - Keep Castle Wall 01's corner policy unchanged with body fitting separate from optional miter opt-in, and key GLTF loading by content hash so new configured bytes cannot reuse an older cached hierarchy — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
+- A single logical face choice expands over every declared compatible frame/above/cap binding; it must not be refused simply because a face has multiple parts, nor color unrelated trim or the opposite side — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Found
 
@@ -23,6 +27,8 @@
 - The actual pushed provider `19056c4` supplies measured height profiles through normal sync; strict parsing refuses incompatible roles/dimensions and the loaded upper-row path checks those metrics against its geometry. No new model/image bytes or material enrollment are part of this checkpoint — [provider work](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 - Focused checks now measure actual structural wall/door geometry at the requested height, continuous UVs across repeated masonry, unchanged leaf height, source/instance isolation, disposal and owner-side refusal below the fixed minimum — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
+- Feature checkpoint's focused cap/catalog/finish run passed 80 tests. Full Web tests passed 11296 (30 skipped), with lint/type/build and production guards passing; that first gate's format check caught only the local `_job_1022_features.html` launcher. Its formatting is corrected separately; no full-green claim from that failed gate — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Mistaken
 

@@ -179,6 +179,21 @@ describe('world asset height profile boundary', () => {
     }
   });
 
+  it('carries a separately declared fixed cap and rejects incomplete cap facts', () => {
+    const capped = { ...profile, capNode: 'Cap', capHeight: 0.5 };
+    const parts = [...roles, { role: 'cap', node: 'Cap' }];
+    expect(parseHeightFit(capped, 'asset', parts, 2.5)).toEqual(capped);
+    for (const invalid of [
+      { ...capped, capNode: undefined },
+      { ...capped, capHeight: undefined },
+      { ...capped, capNode: 'Upper' },
+      { ...capped, capHeight: -0.5 },
+    ])
+      expect(() => parseHeightFit(invalid, 'asset', parts, 2.5)).toThrow(
+        'heightFit'
+      );
+  });
+
   it('carries verified height fitting into the generated consumer catalog', () => {
     const f = makeFixture();
     f.catalog.assets[0]!.roles = roles;

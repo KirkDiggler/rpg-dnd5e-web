@@ -65,7 +65,7 @@ export function resolveWallFaceFinish(
   const matches = provider?.bindings.filter(
     (binding) => binding.side === side && binding.family === material.family
   );
-  if (!provider || matches?.length !== 1)
+  if (!provider || !matches?.length)
     throw new Error(
       `Wall ${wall.label || wall.id} has no compatible ${side === 'positive-z' ? 'A' : 'B'} face for this finish.`
     );

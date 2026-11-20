@@ -292,7 +292,7 @@ export function StructuralWallPanel({
             </label>
             {(
               [
-                ['height', 'Appearance height'],
+                ['height', 'Wall height'],
                 ['thickness', 'Appearance thickness'],
                 ['elevation', 'Appearance elevation'],
               ] as const

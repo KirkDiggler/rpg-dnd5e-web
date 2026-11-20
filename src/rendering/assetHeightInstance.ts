@@ -29,11 +29,21 @@ export function legacyAssetHeightProfile(
     new THREE.Box3()
       .setFromObject(matches[0]!, true)
       .getSize(new THREE.Vector3()).y * SYNTY_SCALE;
+  const caps = roles.filter((role) => role.role === 'cap');
+  if (caps.length > 1) throw Error('Height fitting permits one fixed top cap.');
+  const cap = caps[0] ? root.getObjectByName(caps[0].node) : undefined;
+  if (caps.length && !cap)
+    throw Error('Height fitting requires its declared cap.');
+  const capHeight = cap
+    ? new THREE.Box3().setFromObject(cap, true).getSize(new THREE.Vector3()).y *
+      SYNTY_SCALE
+    : 0;
   return {
     mode: 'repeat-above',
     node: rows[0]!.node,
-    baseHeight: nativeHeight - rowHeight,
+    baseHeight: nativeHeight - rowHeight - capHeight,
     rowHeight,
+    ...(cap ? { capNode: caps[0]!.node, capHeight } : {}),
   };
 }
 
@@ -84,6 +94,31 @@ export function assembleAssetHeightInstance(
   const whole = new THREE.Box3().setFromObject(root, true);
   const band = new THREE.Box3().setFromObject(above, true);
   const epsilon = 1e-6 * Math.max(1, nativeHeight);
+  let cap: THREE.Object3D | undefined;
+  if (profile.capNode) {
+    const matches: THREE.Object3D[] = [];
+    root.traverse((node) => {
+      if (node.name === profile.capNode) matches.push(node);
+    });
+    if (matches.length !== 1 || !matches[0]!.parent)
+      throw Error('Height profile requires one parented cap.');
+    cap = matches[0]!;
+    if (above.getObjectById(cap.id) || cap.getObjectById(above.id))
+      throw Error('Cap and repeat part cannot contain each other.');
+    if ((input.protectedNodes ?? []).some((name) => cap!.getObjectByName(name)))
+      throw Error('Height cap includes a protected moving part.');
+    const bounds = new THREE.Box3().setFromObject(cap, true);
+    if (
+      Math.abs(
+        (bounds.max.y - bounds.min.y) * SYNTY_SCALE - profile.capHeight!
+      ) > epsilon ||
+      Math.abs((bounds.min.y - band.max.y) * SYNTY_SCALE) > epsilon ||
+      Math.abs((bounds.max.y - whole.max.y) * SYNTY_SCALE) > epsilon
+    )
+      throw Error(
+        'Loaded cap geometry disagrees with the declared height profile.'
+      );
+  }
   if (
     Math.abs((whole.max.y - whole.min.y) * SYNTY_SCALE - nativeHeight) >
       epsilon ||
@@ -129,6 +164,19 @@ export function assembleAssetHeightInstance(
       result.owned.push(mesh.geometry);
     });
   try {
+    if (cap) {
+      const parentUp = new THREE.Vector3(0, 1, 0).transformDirection(
+        cap.parent!.matrixWorld
+      );
+      const scale = cap.parent!.getWorldScale(new THREE.Vector3()).y;
+      if (
+        parentUp.distanceTo(new THREE.Vector3(0, 1, 0)) > 1e-6 ||
+        !(scale > 0)
+      )
+        throw Error('Height cap parent must preserve the vertical axis.');
+      own(cap, true);
+      cap.position.y += layout.capOffsetY! / (SYNTY_SCALE * scale);
+    }
     own(above, true);
     above.visible = layout.rows.length > 0;
     for (let index = 0; index < layout.rows.length; index++) {
