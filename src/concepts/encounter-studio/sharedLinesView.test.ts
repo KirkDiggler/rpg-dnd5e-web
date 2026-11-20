@@ -47,12 +47,13 @@ describe('the conversations written once, from the read-back', () => {
         'conversations.gate-claims.lines[0]',
         'conversations.gate-claims.lines[1]',
         'conversations.gate-claims.lines[2]',
+        'conversations.gate-claims.lines[3]',
       ])
     );
     expect(
       gate!.linePaths.every((path) => path.startsWith('conversations.'))
     ).toBe(true);
-    expect(lineCounts(conversations).get('gate-claims')).toBe(3);
+    expect(lineCounts(conversations).get('gate-claims')).toBe(4);
   });
 
   it('keeps the captain’s own line beside the conversation, as his', () => {

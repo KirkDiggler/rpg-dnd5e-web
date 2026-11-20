@@ -1216,17 +1216,6 @@ export function linesOf(
   });
 }
 
-/** The carrier's own lines, each with its index in the written list. */
-export function ownLines(
-  entries: readonly OptionEntry[] | undefined
-): { option: OptionShape; index: number }[] {
-  const out: { option: OptionShape; index: number }[] = [];
-  (entries ?? []).forEach((entry, index) => {
-    if (!isOptionUse(entry)) out.push({ option: entry, index });
-  });
-  return out;
-}
-
 /** The two verdict keys, in the order the engine judges and writes them. */
 export const OPTION_VERDICTS = ['success', 'failure'] as const;
 export type OptionVerdict = (typeof OPTION_VERDICTS)[number];

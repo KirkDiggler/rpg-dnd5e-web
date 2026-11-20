@@ -46,7 +46,7 @@ import type { RefusalTarget } from './refusalJump';
 import { RevealLi } from './RevealDiv';
 import type { StudioReadBack } from './studioPublishing';
 import type { EncounterStudioSession } from './studioSession';
-import { StudioSharedLines } from './StudioSharedLines';
+import { StudioSharedLines, type SharedLinesCheck } from './StudioSharedLines';
 
 /**
  * The Encounter home's Conversations: the conversations written once
@@ -58,6 +58,7 @@ import { StudioSharedLines } from './StudioSharedLines';
 export function StudioInteractions({
   session,
   readBack,
+  check,
   onJump,
 }: {
   session: Pick<
@@ -67,6 +68,8 @@ export function StudioInteractions({
     Partial<Pick<EncounterStudioSession, 'sharedLines'>>;
   /** The engine's read-back: who carries which conversation written once. */
   readBack?: StudioReadBack;
+  /** Where the engine's check of the draft stands. */
+  check?: SharedLinesCheck;
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const ids = interactionIds(session.document.scope);
@@ -81,6 +84,7 @@ export function StudioInteractions({
         <StudioSharedLines
           session={{ document: session.document, sharedLines }}
           readBack={readBack}
+          check={check}
           onJump={onJump}
         />
       )}

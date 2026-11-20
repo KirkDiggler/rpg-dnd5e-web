@@ -22,6 +22,7 @@ import type {
   ReadBack,
   ReadBackStatement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import type { SharedLinesInForm } from '../world-building/sharedLinesContext';
 import type { LinesCarrier } from '../world-building/sharedLinesEdits';
 
 export const SHARED_LINES_KIND = 'shared-lines';
@@ -160,4 +161,14 @@ export function lineCounts(
       conversation.linePaths.length,
     ])
   );
+}
+
+/** What a carrier's line list is told of the conversations it uses: how
+ * many lines the engine says each holds, and the way to it. */
+export function sharedLinesInForm(
+  readBack: ReadBack | null | undefined,
+  open: (conversation: string) => void
+): SharedLinesInForm {
+  const counts = lineCounts(sharedConversationsOf(readBack));
+  return { lineCount: (id) => counts.get(id), open };
 }

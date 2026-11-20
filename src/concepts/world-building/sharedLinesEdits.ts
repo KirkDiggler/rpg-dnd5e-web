@@ -11,7 +11,11 @@
  * stood. Each edit returns a new document; one that cannot be written
  * throws its sentence, which the studio shows as the edit's notice.
  */
-import { isOptionUse, type OptionShape } from './answerTableShape';
+import {
+  isOptionUse,
+  type OptionEntry,
+  type OptionShape,
+} from './answerTableShape';
 import {
   addMonsterOption,
   removeMonsterOption,
@@ -21,6 +25,7 @@ import {
 import { addOption, normalizeOptions } from './optionEdits';
 import {
   addPropOption,
+  propBindingCandidateIds,
   removePropOption,
   setPropOption,
   withPropBinding,
@@ -138,6 +143,19 @@ export function createConversation(
   return applyConversation(written, id, carrier);
 }
 
+/** The props a conversation can be applied to: a declared prop that is not
+ * a door, or one that already carries a binding (`propBindingCandidateIds`,
+ * the engine's two rules). */
+export function propCarriers(document: Readonly<RoomDraftDocument>): string[] {
+  const room = document.draft.room;
+  return propBindingCandidateIds(
+    document.draft.scene.items,
+    room.propBindings,
+    new Set(Object.keys(room.propDeclarations ?? {})),
+    new Set(Object.keys(room.doorBindings ?? {}))
+  );
+}
+
 /** `- use: <id>` at the end of the carrier's options. */
 export function applyConversation(
   document: Readonly<RoomDraftDocument>,
@@ -166,6 +184,8 @@ export function applyConversation(
       };
     }
     case 'prop': {
+      if (!propCarriers(document).includes(carrier.id))
+        throw new Error(`No prop \`${carrier.id}\` can be spoken to here.`);
       const added = addPropOption(room.propBindings?.[carrier.id]);
       const next = setPropOption(added, (added?.options?.length ?? 1) - 1, use);
       const bindings = withPropBinding(room.propBindings, carrier.id, next);
@@ -216,7 +236,7 @@ export function unapplyConversation(
   const entry = entries?.[index];
   if (!entry || !isOptionUse(entry) || entry.use !== id)
     throw new Error(
-      `${carrier.id} no longer says the lines of \`${id}\` there; wait for the check to catch up.`
+      `${carrier.id} no longer says the lines of \`${id}\` at that place; the engine’s sentences are from the last draft that compiled.`
     );
   switch (carrier.kind) {
     case 'creature': {
@@ -244,4 +264,61 @@ export function unapplyConversation(
         scope: removeSiteFactionOption(document.scope, carrier.id, index),
       };
   }
+}
+
+/** The indexes of an options list's `use:` of `id`, last first. */
+function usesOf(
+  entries: readonly OptionEntry[] | undefined,
+  id: string
+): number[] {
+  const at: number[] = [];
+  (entries ?? []).forEach((entry, index) => {
+    if (isOptionUse(entry) && entry.use === id) at.unshift(index);
+  });
+  return at;
+}
+
+/** REMOVE A CONVERSATION WHOLE: its `conversations.<id>` and every `use:` of
+ * it, in every creature's, prop's and faction's options, in one write. The
+ * engine refuses a conversation nobody carries and one with no lines, and
+ * refuses a `use:` that names no conversation, so the last carrier or the
+ * last line goes with the conversation or not at all. Every carrier's own
+ * lines stay as written. */
+export function removeConversation(
+  document: Readonly<RoomDraftDocument>,
+  id: string
+): RoomDraftDocument {
+  const conversations = { ...conversationsOf(document) };
+  if (!Object.hasOwn(conversations, id))
+    throw new Error(
+      `conversations.${id}: this site writes no such conversation`
+    );
+  delete conversations[id];
+  let next = withConversations(document, conversations);
+  const room = next.draft.room;
+  for (const [carrier, binding] of Object.entries(room.monsterBindings ?? {}))
+    for (const index of usesOf(binding.options, id))
+      next = unapplyConversation(
+        next,
+        id,
+        { kind: 'creature', id: carrier },
+        index
+      );
+  for (const [carrier, binding] of Object.entries(room.propBindings ?? {}))
+    for (const index of usesOf(binding.options, id))
+      next = unapplyConversation(
+        next,
+        id,
+        { kind: 'prop', id: carrier },
+        index
+      );
+  for (const faction of next.scope.factions ?? [])
+    for (const index of usesOf(faction.options, id))
+      next = unapplyConversation(
+        next,
+        id,
+        { kind: 'faction', id: faction.id },
+        index
+      );
+  return next;
 }

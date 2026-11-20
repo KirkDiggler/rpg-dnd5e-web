@@ -404,6 +404,9 @@ export interface EncounterStudioSession {
     apply(id: string, carrier: LinesCarrier): boolean;
     /** Remove the carrier's `use:` at `options[index]`. */
     unapply(id: string, carrier: LinesCarrier, index: number): boolean;
+    /** The conversation and every `use:` of it, in one write: what the
+     * last carrier or the last line going means. */
+    remove(id: string): boolean;
   };
   /** One behaviour definition (rpg-project#996): `edit` runs on the
    * document's definition as it is now, and the result is set whole as one

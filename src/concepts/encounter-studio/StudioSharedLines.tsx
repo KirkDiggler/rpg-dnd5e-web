@@ -15,17 +15,17 @@ import { useState } from 'react';
 import type { OptionShape } from '../world-building/answerTableShape';
 import { removeOption, replaceOption } from '../world-building/optionEdits';
 import { documentPlacementNames } from '../world-building/placementNames';
-import { propBindingCandidateIds } from '../world-building/propBindingEdits';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
   conversationIdRefusal,
   conversationLines,
+  propCarriers,
   type LinesCarrier,
 } from '../world-building/sharedLinesEdits';
 import { OptionsEditor } from '../world-building/SitePolicies';
 import { AboutPanel } from './FieldHelp';
 import { locate, valueAt } from './locatePath';
-import { STALE_READ_BACK_SENTENCE } from './ReadBack';
+import { placeName } from './placeName';
 import type { RefusalTarget } from './refusalJump';
 import {
   SHARED_LINES_KIND,
@@ -38,6 +38,25 @@ import type { EncounterStudioSession } from './studioSession';
 
 export const NO_SHARED_LINES_SENTENCE =
   'No conversation is written once in this file yet.';
+export const CHECKING_SHARED_LINES_SENTENCE =
+  'Checking the latest edit. Who carries each conversation, below, is from the last draft that compiled; carriers can be changed once the check answers.';
+export const REFUSED_SHARED_LINES_SENTENCE =
+  'The engine refused this draft, so who carries each conversation, below, is from the last draft that compiled. Carriers can be changed once it compiles again.';
+export const REMOVED_SHARED_LINES_SENTENCE =
+  'This conversation is no longer in the draft. It is listed from the last draft that compiled.';
+
+/** Where the engine's check of the draft stands, for this page: whether the
+ * read-back describes the draft now, is being renewed, or the engine
+ * refused the draft (with its refusals). */
+export interface SharedLinesCheck {
+  state: 'current' | 'checking' | 'refused';
+  refusals: readonly { path: string; message: string }[];
+}
+
+/** A refusal this page shows: one in a conversation, or in a carrier's
+ * lines. The rest are in the studio's header. */
+const refusalHere = (path: string): boolean =>
+  path.startsWith('conversations.') || /\.options\[\d+\]/.test(path);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -70,12 +89,7 @@ function carrierCandidates(
   document: Readonly<RoomDraftDocument>
 ): LinesCarrier[] {
   const room = document.draft.room;
-  const props = propBindingCandidateIds(
-    document.draft.scene.items,
-    room.propBindings,
-    new Set(Object.keys(room.propDeclarations ?? {})),
-    new Set(Object.keys(room.doorBindings ?? {}))
-  );
+  const props = propCarriers(document);
   return [
     ...room.monsterDeclarations.map(
       (monster): LinesCarrier => ({ kind: 'creature', id: monster.id })
@@ -103,10 +117,14 @@ function indexOfUse(
 export function StudioSharedLines({
   session,
   readBack,
+  check,
   onJump,
 }: {
   session: Pick<EncounterStudioSession, 'document' | 'sharedLines'>;
   readBack: StudioReadBack | undefined;
+  /** Where the engine's check stands; absent, it is read from whether the
+   * read-back is current. */
+  check?: SharedLinesCheck;
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const document = session.document;
@@ -117,11 +135,26 @@ export function StudioSharedLines({
     conversations[0];
   const names = documentPlacementNames(document);
   const candidates = carrierCandidates(document);
+  const state: SharedLinesCheck['state'] = readBack?.readBackIsCurrent
+    ? 'current'
+    : (check?.state ?? 'checking');
+  const refusals =
+    state === 'refused'
+      ? (check?.refusals ?? []).filter((refusal) => refusalHere(refusal.path))
+      : [];
   const notice = !readBack?.readBack
     ? `${NO_SHARED_LINES_SENTENCE}${readBack?.unavailable ? ` ${readBack.unavailable}` : ''}`
-    : readBack.readBackIsCurrent
+    : state === 'current'
       ? null
-      : STALE_READ_BACK_SENTENCE;
+      : state === 'refused'
+        ? REFUSED_SHARED_LINES_SENTENCE
+        : CHECKING_SHARED_LINES_SENTENCE;
+  const written = (id: string): boolean =>
+    conversationLines(document, id) !== undefined ||
+    Object.hasOwn(
+      (document.scope.unread?.conversations as object | undefined) ?? {},
+      id
+    );
   return (
     <section aria-label="Written once" className="es-shared-lines">
       <h3>Written once</h3>
@@ -133,9 +166,25 @@ export function StudioSharedLines({
         </p>
       </AboutPanel>
       {notice && (
-        <p role="status" className="es-help es-readback-notice">
-          {notice}
-        </p>
+        <div role="status" className="es-help es-readback-notice">
+          <p>{notice}</p>
+          {state === 'refused' &&
+            (refusals.length > 0 ? (
+              <ul aria-label="The engine’s refusals here">
+                {refusals.map((refusal, at) => (
+                  <li key={at}>
+                    <span title={refusal.path}>
+                      {placeName(refusal.path, document)}
+                    </span>
+                    {': '}
+                    {refusal.message}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Its refusals are listed in the studio’s header.</p>
+            ))}
+        </div>
       )}
       <StudioListDetail
         id="shared-lines"
@@ -145,11 +194,13 @@ export function StudioSharedLines({
             rows: conversations.map((conversation) => ({
               key: { kind: SHARED_LINES_KIND, id: conversation.id },
               name: <span className="es-threads-id">{conversation.id}</span>,
-              summary: `${
-                conversation.carriers.length === 1
-                  ? '1 carries it'
-                  : `${conversation.carriers.length} carry it`
-              } · ${plural(conversation.linePaths.length, 'line', 'lines')}`,
+              summary: written(conversation.id)
+                ? `${
+                    conversation.carriers.length === 1
+                      ? '1 carries it'
+                      : `${conversation.carriers.length} carry it`
+                  } · ${plural(conversation.linePaths.length, 'line', 'lines')}`
+                : 'removed from the draft',
               rowData: { 'data-shared-lines': conversation.id },
             })),
           },
@@ -163,13 +214,16 @@ export function StudioSharedLines({
         }
         empty={<p className="es-help">{NO_SHARED_LINES_SENTENCE}</p>}
         detail={
-          selected ? (
+          selected && !written(selected.id) ? (
+            <p className="es-help">{REMOVED_SHARED_LINES_SENTENCE}</p>
+          ) : selected ? (
             <SharedConversationDetail
               key={selected.id}
               conversation={selected}
               session={session}
               names={names}
               candidates={candidates}
+              carriersEditable={state === 'current'}
               onJump={onJump}
             />
           ) : (
@@ -192,21 +246,36 @@ function SharedConversationDetail({
   session,
   names,
   candidates,
+  carriersEditable,
   onJump,
 }: {
   conversation: SharedConversation;
   session: Pick<EncounterStudioSession, 'document' | 'sharedLines'>;
   names: ReadonlyMap<string, string>;
   candidates: readonly LinesCarrier[];
+  /** The read-back describes the draft now, so who carries it is true and
+   * can be changed. */
+  carriersEditable: boolean;
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const { id } = conversation;
   const document = session.document;
   const written = conversationLines(document, id);
+  // No `lines:` yet is a list of none, edited like any other: the form keeps
+  // its Add. Only a value that is not a list of lines is kept as written.
   const lines =
-    written && written.every(isRecord)
-      ? (written as unknown as OptionShape[])
-      : undefined;
+    written === undefined
+      ? []
+      : written.every(isRecord)
+        ? (written as unknown as OptionShape[])
+        : undefined;
+  // THE LAST CARRIER OR THE LAST LINE (rpg-project#1027 review): the engine
+  // refuses a conversation nobody carries and one with no lines, so taking
+  // the last one away asks, here, whether the conversation goes with it.
+  const [removing, setRemoving] = useState<'carrier' | 'line' | null>(null);
+  const notEditable = carriersEditable
+    ? undefined
+    : 'Who carries it can be changed once the engine’s check describes this draft.';
   const carried = new Set(conversation.carriers.map(carrierKey));
   const open = candidates.filter((c) => !carried.has(carrierKey(c)));
   const [adding, setAdding] = useState('');
@@ -261,11 +330,14 @@ function SharedConversationDetail({
                   type="button"
                   className="wb-danger"
                   aria-label={`Stop ${words} saying the lines of ${id}`}
-                  disabled={index === null}
-                  onClick={() =>
-                    index !== null &&
-                    session.sharedLines.unapply(id, carrier, index)
-                  }
+                  disabled={!carriersEditable || index === null}
+                  title={notEditable}
+                  onClick={() => {
+                    if (index === null) return;
+                    if (conversation.carriers.length <= 1)
+                      setRemoving('carrier');
+                    else session.sharedLines.unapply(id, carrier, index);
+                  }}
                 >
                   Remove
                 </button>
@@ -273,7 +345,7 @@ function SharedConversationDetail({
             );
           })}
         </ul>
-        {open.length > 0 && addingCarrier && (
+        {carriersEditable && open.length > 0 && addingCarrier && (
           <form
             className="es-applied-to-add"
             aria-label={`Apply ${id} to another`}
@@ -302,6 +374,36 @@ function SharedConversationDetail({
           </form>
         )}
       </section>
+      {removing && (
+        <div
+          role="group"
+          aria-label={`Remove the conversation ${id}?`}
+          className="es-shared-lines-remove"
+        >
+          <p>
+            Remove the conversation <code>{id}</code>?{' '}
+            {removing === 'carrier'
+              ? 'Nobody would carry it.'
+              : 'It would have no lines.'}{' '}
+            Removing it takes it out of the file with every carrier’s use of it;
+            their own lines stay.
+          </p>
+          <div className="wb-actions">
+            <button
+              type="button"
+              className="wb-danger"
+              onClick={() => {
+                if (session.sharedLines.remove(id)) setRemoving(null);
+              }}
+            >
+              Remove the conversation
+            </button>
+            <button type="button" onClick={() => setRemoving(null)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
       <section aria-label={`Lines of ${id}`} className="es-shared-lines-lines">
         <h4>Its lines</h4>
         {lines ? (
@@ -320,12 +422,14 @@ function SharedConversationDetail({
                 (replaceOption(lines, index, option) ?? []) as OptionShape[]
               )
             }
-            onRemove={(index) =>
-              session.sharedLines.setLines(
-                id,
-                (removeOption(lines, index) ?? []) as OptionShape[]
-              )
-            }
+            onRemove={(index) => {
+              if (lines.length <= 1) setRemoving('line');
+              else
+                session.sharedLines.setLines(
+                  id,
+                  (removeOption(lines, index) ?? []) as OptionShape[]
+                );
+            }}
           />
         ) : (
           <p className="es-help">

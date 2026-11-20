@@ -7,16 +7,23 @@
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { linesOf } from '../world-building/answerTableShape';
+import { linesOf, validateOptions } from '../world-building/answerTableShape';
 import { setMonsterOption } from '../world-building/monsterOrderEdits';
 import { patchOption } from '../world-building/optionEdits';
 import { SharedLinesContext } from '../world-building/sharedLinesContext';
+import {
+  applyConversation,
+  unapplyConversation,
+} from '../world-building/sharedLinesEdits';
+import { siteNamesOf } from '../world-building/siteNames';
 import { OptionsEditor } from '../world-building/SitePolicies';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import site from './fixtures/conversations-site.yaml?raw';
+import { conversationsSiteReadBack } from './fixtures/engineReadBack';
 import { placeName } from './placeName';
 import { targetOfPath } from './refusalJump';
 import { keyOfPath } from './revealKey';
+import { sharedLinesInForm } from './sharedLinesView';
 
 afterEach(cleanup);
 
@@ -133,5 +140,86 @@ describe('a carrier’s `use:` of a conversation', () => {
       kind: 'shared-lines',
       id: 'gate-claims',
     });
+  });
+
+  it('a `use:` that is not a conversation’s id is refused where it is written', () => {
+    expect(() =>
+      validateOptions([{ use: 3 }], 'Monster binding for gate-1 options', false)
+    ).toThrow('options[0].use: expected the id of a conversation');
+    expect(() =>
+      validateOptions(
+        [{ use: '' }],
+        'Monster binding for gate-1 options',
+        false
+      )
+    ).toThrow('options[0].use');
+  });
+
+  it('removing a carrier refuses an index that does not hold its `use:`', () => {
+    const result = read();
+    // The captain's own line is at options[0]; his use is at options[1].
+    expect(() =>
+      unapplyConversation(
+        result,
+        'gate-claims',
+        { kind: 'creature', id: 'captain' },
+        0
+      )
+    ).toThrow('the engine’s sentences are from the last draft that compiled');
+    const next = unapplyConversation(
+      result,
+      'gate-claims',
+      { kind: 'creature', id: 'captain' },
+      1
+    );
+    expect(linesOf(next.draft.room.monsterBindings!.captain!.options)).toEqual([
+      expect.objectContaining({ id: 'guest' }),
+    ]);
+  });
+
+  it('applying to a prop the site cannot bind is refused', () => {
+    const result = read();
+    expect(() =>
+      applyConversation(result, 'gate-claims', { kind: 'prop', id: 'nothing' })
+    ).toThrow('No prop `nothing` can be spoken to here.');
+  });
+
+  it('the site’s names offer the facts and topics a conversation’s lines name', () => {
+    const result = read();
+    const scope = {
+      ...result.scope,
+      unread: {
+        ...result.scope.unread,
+        conversations: {
+          'gate-claims': {
+            lines: [
+              {
+                id: 'only-here',
+                say: 'Only here.',
+                requires: [{ fact: 'fact-only-in-a-conversation' }],
+                success: [
+                  {
+                    say: 'Noted.',
+                    give: { topic: 'topic-only-in-a-conversation' },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    };
+    const names = siteNamesOf(scope, result.draft.room);
+    expect(names.facts).toContain('fact-only-in-a-conversation');
+    expect(names.topics).toContain('topic-only-in-a-conversation');
+  });
+
+  it('a carrier’s line list is told how many lines the engine says, and the way there', () => {
+    const open = vi.fn();
+    const shown = sharedLinesInForm(conversationsSiteReadBack(), open);
+    expect(shown.lineCount('gate-claims')).toBe(4);
+    expect(shown.lineCount('nobody-wrote-this')).toBeUndefined();
+    shown.open!('gate-claims');
+    expect(open).toHaveBeenCalledWith('gate-claims');
   });
 });

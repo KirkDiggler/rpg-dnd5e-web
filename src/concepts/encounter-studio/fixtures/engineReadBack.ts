@@ -201,7 +201,7 @@ export function castleMachinesV228ReadBack(): ReadBack {
  * THE CONVERSATIONS SITE'S READ-BACK (rpg-project#1025, #1027), taken from
  * rpg-toolkit's golden `rulebooks/dnd5e/encounter/dungeonspec/readback/
  * testdata/conversations-site.readback.json` at `rulebooks/dnd5e/encounter`
- * v0.232.0 (rpg-toolkit f940c53f), the engine's read-back of
+ * v0.232.1 (rpg-toolkit d223f26a), the engine's read-back of
  * `conversations-site.yaml` (copied beside it). Trimmed to the three
  * creatures' groups and the group "The lines of `gate-claims`"; every kept
  * statement is the engine's, unedited.

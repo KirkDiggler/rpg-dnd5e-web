@@ -2776,3 +2776,14 @@ li.es-machine-step[data-refused],
   flex-basis: 100%;
   margin: 0;
 }
+.encounter-studio .es-shared-lines-remove {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-shared-lines-remove p {
+  margin: 0;
+}
