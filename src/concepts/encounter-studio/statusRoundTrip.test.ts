@@ -1,9 +1,10 @@
 /**
- * A STATUS THE STUDIO DOES NOT AUTHOR RIDES THROUGH AN EDIT (rpg-project#1024).
- * The served castle writes a `statuses:` section (well-fed) and a cook's line
- * whose success row gives it (`apply_status: well-fed`). The studio has no
- * form for either; an edit elsewhere, or to that very line, writes both back
- * unchanged.
+ * STATUSES THE STUDIO DOES NOT AUTHOR RIDE THROUGH AN EDIT (rpg-project#1024).
+ * The served castle writes a `statuses:` section (warmed-up, and feasted with
+ * its `when_given` heal) and two cook's lines whose success rows give them
+ * (`apply_status: warmed-up` on help, `apply_status: feasted` on taste). The
+ * studio has no form for either; an edit elsewhere, or to those very lines,
+ * writes them back unchanged.
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -24,22 +25,33 @@ function statusesOf(text: string): unknown {
   return parse(text).statuses;
 }
 
-/** The cook's help line, as written. */
-function helpOf(text: string): unknown {
+/** One of the cook's lines, as written. */
+function lineOf(text: string, id: string): unknown {
   const cook = parse(text).room.room.monsterBindings.cook;
-  return cook.options.find((o: { id: string }) => o.id === 'help');
+  return cook.options.find((o: { id: string }) => o.id === id);
 }
 
-describe('the castle’s status survives the studio (rpg-project#1024)', () => {
-  it('precondition: the served castle writes the status and the line that gives it', () => {
-    expect(statusesOf(served)).toHaveProperty(['well-fed', 'name'], 'Well fed');
-    expect(helpOf(served)).toHaveProperty(
+describe('the castle’s statuses survive the studio (rpg-project#1024)', () => {
+  it('precondition: the served castle writes both statuses and the lines that give them', () => {
+    expect(statusesOf(served)).toHaveProperty(
+      ['warmed-up', 'name'],
+      'Warmed up'
+    );
+    expect(statusesOf(served)).toHaveProperty(
+      ['feasted', 'when_given', 0, 'heal'],
+      2
+    );
+    expect(lineOf(served, 'help')).toHaveProperty(
       ['success', 0, 'apply_status'],
-      'well-fed'
+      'warmed-up'
+    );
+    expect(lineOf(served, 'taste')).toHaveProperty(
+      ['success', 0, 'apply_status'],
+      'feasted'
     );
   });
 
-  it('moving the pedlar keeps the statuses section and the cook’s line unchanged', () => {
+  it('moving the pedlar keeps the statuses section and the cook’s lines unchanged', () => {
     const result = read(served);
     const draft = structuredClone(result.draft);
     draft.room.monsterDeclarations.find(
@@ -48,15 +60,20 @@ describe('the castle’s status survives the studio (rpg-project#1024)', () => {
     const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
     expect(saved).not.toBe(served);
     expect(statusesOf(saved)).toEqual(statusesOf(served));
-    expect(helpOf(saved)).toEqual(helpOf(served));
+    expect(lineOf(saved, 'help')).toEqual(lineOf(served, 'help'));
+    expect(lineOf(saved, 'taste')).toEqual(lineOf(served, 'taste'));
   });
 
-  it('rewording the cook’s help line keeps its apply_status', () => {
+  it('rewording the cook’s help and taste lines keeps each apply_status', () => {
     const result = read(served);
     const room = result.draft.room;
     const cook = room.monsterBindings!['cook'];
+    const reworded: Record<string, string> = {
+      help: '(roll out the pastry)',
+      taste: '(try a pie)',
+    };
     const options = linesOf(cook.options).map((o) =>
-      o.id === 'help' ? patchOption(o, { say: '(roll out the pastry)' }) : o
+      reworded[o.id] ? patchOption(o, { say: reworded[o.id] }) : o
     );
     const draft = {
       ...result.draft,
@@ -70,9 +87,10 @@ describe('the castle’s status survives the studio (rpg-project#1024)', () => {
     };
     const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
     expect(statusesOf(saved)).toEqual(statusesOf(served));
-    expect(helpOf(saved)).toEqual({
-      ...(helpOf(served) as object),
-      say: '(roll out the pastry)',
-    });
+    for (const id of ['help', 'taste'])
+      expect(lineOf(saved, id)).toEqual({
+        ...(lineOf(served, id) as object),
+        say: reworded[id],
+      });
   });
 });

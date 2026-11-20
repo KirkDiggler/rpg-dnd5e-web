@@ -1,5 +1,5 @@
-# SYNCED FIXTURE (rpg-project#857, #1005, #1000, #1023, #1024): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the bytes rpg-api content/the-mad-king.yaml carries
-# at rulebooks/dnd5e/encounter/v0.231.0 (main 0d8049fa; unchanged at 072af96c), git blob fd9b4d1dda4171490bd2cec524a30e579b957319.
+# SYNCED FIXTURE (rpg-project#857, #1005, #1000, #1023, #1024, #990): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the bytes rpg-api content/the-mad-king.yaml carries
+# at rulebooks/dnd5e/encounter/v0.233.0 (main 18c0c9ea; unchanged at c4a63ea9), git blob 8641262b9ea949bfdc73de8113ad77baca8175b9.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -409,14 +409,25 @@ intel:
   - id: cell-weak-place
     reveals:
       concealment: cell-drain
-# Hand edit (rpg-project#1024): a status a line can give. Helping the cook
-# leaves the speaker well fed until their run ends.
+# Hand edit (rpg-project#1024): the Keep design's two kitchen rewards, each
+# a status a line on the cook gives. Helping her leaves the speaker warmed up
+# (+1 initiative) until their run ends; tasting the feast leaves them feasted
+# (+2 maximum hit points, and 2 healed once, when first given) until their run
+# ends. Neither stacks with itself; the two can be held together.
 statuses:
-  well-fed:
-    name: Well fed
+  warmed-up:
+    name: Warmed up
     changes:
-      - advantage: checks
-        when: { ability: charisma }
+      - initiative: 1
+    maintenance:
+      - ends_on: run
+    again: ignored
+  feasted:
+    name: Feasted
+    changes:
+      - max_hit_points: 2
+    when_given:
+      - heal: 2
     maintenance:
       - ends_on: run
     again: ignored
@@ -2223,8 +2234,9 @@ room:
                 fact: feast-tonight
             failure:
               - say: Keep your coin.
-          # Hand edit (rpg-project#1024): lend the cook a hand. Done well, she
-          # feeds the speaker, who is well fed until their run ends.
+          # Hand edit (rpg-project#1024): lend the cook a hand. Done well, the
+          # speaker is warmed up until their run ends: one of the Keep design's
+          # two kitchen rewards.
           - id: help
             say: (lend a hand with the pies)
             check:
@@ -2235,9 +2247,20 @@ room:
                 fact: caught-in-kitchen
             success:
               - say: Bless you. Here, eat.
-                apply_status: well-fed
+                apply_status: warmed-up
             failure:
               - say: Mind the pastry! Out from under my feet.
+          # Hand edit (rpg-project#1024): taste the feast. No check: she lets
+          # the speaker have a plate, and they are feasted until their run
+          # ends: the other of the Keep design's two kitchen rewards.
+          - id: taste
+            say: (taste the feast)
+            requires:
+              not:
+                fact: caught-in-kitchen
+            success:
+              - say: Go on, then. One plate, mind.
+                apply_status: feasted
       keep-1:
         faction: loyalists
         behaviors:
