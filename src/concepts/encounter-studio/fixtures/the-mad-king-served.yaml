@@ -1,5 +1,5 @@
-# SYNCED FIXTURE (rpg-project#857, #1005, #1000, #1023, #1024, #990): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the bytes rpg-api content/the-mad-king.yaml carries
-# at rulebooks/dnd5e/encounter/v0.233.0 (main 18c0c9ea; unchanged at c4a63ea9), git blob 8641262b9ea949bfdc73de8113ad77baca8175b9.
+# SYNCED FIXTURE (rpg-project#857, #1005, #1000, #1023, #1024, #990): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the castle rpg-api content/the-mad-king.yaml compiles to
+# at rulebooks/dnd5e/encounter/v0.234.0 (main 5cec1966; unchanged at 7d70c70e), git blob ed1d47a6dc9e6b6708b9a955d5dd8b0a1f27b9d9.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -429,6 +429,18 @@ statuses:
     when_given:
       - heal: 2
     maintenance:
+      - ends_on: run
+    again: ignored
+  # Hand edit (rpg-project#990), a small proof scene for the Keep's hold: the
+  # great hall guard stops a speaker who tries to shoulder past him. Held, the
+  # speaker cannot move by their own will; they can still speak and fight,
+  # and the hold ends when a fight they are in starts, or with their run.
+  held:
+    name: Held
+    changes:
+      - cannot: [move]
+    maintenance:
+      - ends_on: fight starts
       - ends_on: run
     again: ignored
 exits:
@@ -2002,6 +2014,21 @@ room:
                 r: 10
       hall-1:
         faction: garrison
+        options:
+          # Hand edit (rpg-project#990), a small proof scene for the Keep's
+          # hold: shoulder past the hall guard on his rounds. Fail, and he
+          # takes hold of the speaker, who is held where they stand; slip
+          # past, and he only grumbles.
+          - id: push-past
+            say: (shoulder past him)
+            check:
+              - ability: athletics
+                dc: 12
+            success:
+              - say: Oi! Mind where you’re going.
+            failure:
+              - say: Not so fast. You stay right there.
+                apply_status: held
         behaviors:
           - id: policy
             use: hall-1-policy

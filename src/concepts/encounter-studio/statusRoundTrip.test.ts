@@ -93,4 +93,54 @@ describe('the castle’s statuses survive the studio (rpg-project#1024)', () => 
         say: reworded[id],
       });
   });
+
+  // The hold (rpg-project#990): `held` takes away moving and ends when a
+  // fight starts, and the hall guard's push-past line gives it on a failure.
+  const pushPastOf = (text: string): unknown =>
+    parse(text).room.room.monsterBindings['hall-1'].options.find(
+      (o: { id: string }) => o.id === 'push-past'
+    );
+
+  it('precondition: the served castle writes the hold and the line that gives it', () => {
+    expect(statusesOf(served)).toHaveProperty(
+      ['held', 'changes', 0, 'cannot'],
+      ['move']
+    );
+    expect(statusesOf(served)).toHaveProperty(
+      ['held', 'maintenance', 0, 'ends_on'],
+      'fight starts'
+    );
+    expect(pushPastOf(served)).toHaveProperty(
+      ['failure', 0, 'apply_status'],
+      'held'
+    );
+  });
+
+  it('rewording the push-past line, and moving the pedlar, keep cannot: [move] and ends_on: fight starts', () => {
+    const result = read(served);
+    const room = result.draft.room;
+    const guard = room.monsterBindings!['hall-1'];
+    const options = linesOf(guard.options).map((o) =>
+      o.id === 'push-past' ? patchOption(o, { say: '(slip past him)' }) : o
+    );
+    const draft = structuredClone({
+      ...result.draft,
+      room: {
+        ...room,
+        monsterBindings: {
+          ...room.monsterBindings,
+          'hall-1': normalizeBinding({ ...guard, options })!,
+        },
+      },
+    });
+    draft.room.monsterDeclarations.find(
+      (m) => m.id === 'pedlar'
+    )!.startingCell!.location.q += 1;
+    const saved = exportDraftYaml({ draft, scope: result.scope }, result.key);
+    expect(statusesOf(saved)).toEqual(statusesOf(served));
+    expect(pushPastOf(saved)).toEqual({
+      ...(pushPastOf(served) as object),
+      say: '(slip past him)',
+    });
+  });
 });
