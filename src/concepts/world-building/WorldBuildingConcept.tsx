@@ -182,6 +182,7 @@ import {
   addConversationLine,
   applyConversation,
   createConversation,
+  editCarrierLine,
   removeConversation,
   setConversationLines,
   unapplyConversation,
@@ -5340,6 +5341,14 @@ export function WorldBuildingConcept({
                     ),
                   remove: (id: string) =>
                     write((document) => removeConversation(document, id)),
+                  setOwnLine: (
+                    carrier: LinesCarrier,
+                    index: number,
+                    option: OptionShape | null
+                  ) =>
+                    write((document) =>
+                      editCarrierLine(document, carrier, index, option)
+                    ),
                 };
               })(),
               mapLabelSelection: {

@@ -214,9 +214,10 @@ export function conversationsSiteReadBack(): ReadBack {
 /** THE CASTLE'S CONVERSATIONS (rpg-project#1030): `readback.Of` at
  * `rulebooks/dnd5e/encounter` v0.234.0 on rpg-api `dev` cf3b4125's
  * `content/the-mad-king.yaml` (`the-mad-king-conversations.yaml`), trimmed
- * to the statements at `conversations.*` paths (the conversations' own, and
- * the ways, hubs and per-carrier statements the engine also sets there) and
- * the carriers' `shared-lines.use` entries. Every kept statement is the
+ * to the statements at `conversations.*` paths and at every `…options[i]`
+ * path (the conversations' lines, every carrier's own lines and `use:`
+ * entries, and the ways, hubs and per-carrier statements the engine also
+ * sets at those paths). Every kept statement is the
  * engine's, unedited, but for a connection's `not`, renamed `negated` as the
  * api maps it. */
 export function castleConversationsReadBack(): ReadBack {

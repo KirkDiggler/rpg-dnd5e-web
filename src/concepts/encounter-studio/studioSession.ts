@@ -407,6 +407,14 @@ export interface EncounterStudioSession {
     /** The conversation and every `use:` of it, in one write: what the
      * last carrier or the last line going means. */
     remove(id: string): boolean;
+    /** One of a carrier's own lines, shown beside a conversation it
+     * carries (rpg-project#1030): set (or removed, with `null`) at the
+     * carrier's `options[index]`, one write at the carrier. */
+    setOwnLine(
+      carrier: LinesCarrier,
+      index: number,
+      option: OptionShape | null
+    ): boolean;
   };
   /** One behaviour definition (rpg-project#996): `edit` runs on the
    * document's definition as it is now, and the result is set whole as one

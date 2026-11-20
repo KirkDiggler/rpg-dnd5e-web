@@ -23,6 +23,7 @@ import {
   addConversationLine,
   applyConversation,
   createConversation,
+  editCarrierLine,
   removeConversation,
   setConversationLines,
   unapplyConversation,
@@ -100,6 +101,12 @@ function renderPage(
       )
     ),
     remove: vi.fn(through((d, id: string) => removeConversation(d, id))),
+    setOwnLine: vi.fn(
+      through(
+        (d, carrier: LinesCarrier, index: number, option: OptionShape | null) =>
+          editCarrierLine(d, carrier, index, option)
+      )
+    ),
   };
   const view = () => (
     <StudioInteractions
@@ -602,6 +609,64 @@ describe('a card per line (rpg-project#1030)', () => {
     const pass = within(troupe).getByRole('region', { name: 'On a pass' });
     expect(pass.textContent).toContain('Through to the hall, then.');
     expect(pass.textContent).toContain('advances front-gate: admitted');
+  });
+
+  it('a carrier’s own line is the same card, under “Only Guard Captain offers”, and its difficulty writes at the captain', () => {
+    const { sharedLines, written, before } = renderPage(
+      castleConversationsReadBack(),
+      castle
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^the-gate/ }));
+    const captain = screen.getByRole('region', {
+      name: 'Only Guard Captain offers',
+    });
+    const guest = within(captain).getByRole('article', {
+      name: 'Line 1 of captain',
+    });
+    expect(guest.textContent).toContain(
+      '“We’re invited guests of His Majesty, here for the feast.”'
+    );
+    const dc = within(guest).getByLabelText(
+      'Persuasion difficulty, line 1 of captain'
+    ) as HTMLInputElement;
+    expect(dc.value).toBe('11');
+    fireEvent.change(dc, { target: { value: '12' } });
+    expect(sharedLines.setOwnLine).toHaveBeenCalledTimes(1);
+    expect(sharedLines.setOwnLine.mock.calls[0]!.slice(0, 2)).toEqual([
+      { kind: 'creature', id: 'captain' },
+      0,
+    ]);
+    expect(sharedLines.setLines).not.toHaveBeenCalled();
+    // One line of the file changed: the captain's own `guest` difficulty.
+    const changed = changedLines(before, written());
+    expect(changed).toHaveLength(1);
+    expect(changed[0]!.trim()).toBe('dc: 12');
+    const saved = readDraftYaml(written());
+    if (!saved.ok) throw new Error(saved.refusal);
+    const guestLine = saved.draft.room.monsterBindings!.captain!.options![0]!;
+    expect(guestLine).toMatchObject({ id: 'guest' });
+    expect((guestLine as OptionShape).check).toEqual([
+      { ability: 'persuasion', dc: 12 },
+    ]);
+    expect(saved.scope.unread!.conversations).toEqual(
+      read(castle).scope.unread!.conversations
+    );
+  });
+
+  it('Edit on a carrier’s own line opens the carrier’s form for that line only', () => {
+    renderPage(castleConversationsReadBack(), castle);
+    fireEvent.click(screen.getByRole('button', { name: /^the-gate/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit line 1 of captain' })
+    );
+    expect(
+      (screen.getByLabelText('Line 1 for captain') as HTMLTextAreaElement).value
+    ).toBe('We’re invited guests of His Majesty, here for the feast.');
+    expect(screen.queryByLabelText('Line 1 for the-gate')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit line 1 of the-gate' })
+    );
+    expect(screen.queryByLabelText('Line 1 for captain')).toBeNull();
   });
 
   it('a connection the card does not know is counted as “+1 more”, which opens the engine’s words', () => {

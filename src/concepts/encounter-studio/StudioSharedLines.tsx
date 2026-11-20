@@ -12,7 +12,10 @@
  * `conversations.<id>.lines`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { OptionShape } from '../world-building/answerTableShape';
+import type {
+  OptionEntry,
+  OptionShape,
+} from '../world-building/answerTableShape';
 import {
   patchOptionApproach,
   removeOption,
@@ -107,8 +110,9 @@ function carrierCandidates(
   ];
 }
 
-/** The `options[i]` index of a `use:` the engine named. */
-function indexOfUse(
+/** The `options[i]` index of a carrier's entry the engine named: a `use:`,
+ * or one of its own lines. */
+function indexOfLine(
   path: string,
   document: Readonly<RoomDraftDocument>
 ): number | null {
@@ -296,8 +300,20 @@ function SharedConversationDetail({
   const open = candidates.filter((c) => !carried.has(carrierKey(c)));
   // ONE LINE OPEN AT A TIME (rpg-project#1030): its card shows the line's
   // form in place; every other line stays a closed card.
-  const [editing, setEditing] = useState<number | null>(null);
+  // A conversation's line is keyed by its index; a carrier's own line by
+  // its path, so the two never share a key.
+  const [editing, setEditing] = useState<number | string | null>(null);
   const closeEditing = useCallback(() => setEditing(null), []);
+  const sentencesAt = (
+    linePath: string,
+    owner: { kind: string; id: string }
+  ): LineSentences =>
+    check === 'current' && readBack
+      ? {
+          state: 'current',
+          readBack: lineReadBackOf(readBack, linePath, owner),
+        }
+      : { state: check === 'refused' ? 'refused' : 'checking' };
   const ownBy = new Map<string, string[]>();
   for (const own of conversation.ownLines) {
     const key = carrierKey(own.carrier);
@@ -316,7 +332,7 @@ function SharedConversationDetail({
             const use = conversation.uses.find(
               (entry) => carrierKey(entry.carrier) === carrierKey(carrier)
             );
-            const index = use ? indexOfUse(use.path, document) : null;
+            const index = use ? indexOfLine(use.path, document) : null;
             return (
               <li key={carrierKey(carrier)} className="es-applied-to-chip">
                 {onJump && use ? (
@@ -408,17 +424,14 @@ function SharedConversationDetail({
             <ol className="es-line-cards">
               {lines.map((line, index) => {
                 const linePath = `${conversation.path}.lines[${index}]`;
-                const sentences: LineSentences =
-                  check === 'current' && readBack
-                    ? {
-                        state: 'current',
-                        readBack: lineReadBackOf(readBack, linePath, id),
-                      }
-                    : { state: check === 'refused' ? 'refused' : 'checking' };
+                const sentences = sentencesAt(linePath, {
+                  kind: SHARED_LINES_KIND,
+                  id,
+                });
                 return (
                   <li key={index}>
                     <SharedLineCard
-                      conversation={id}
+                      owner={id}
                       index={index}
                       linePath={linePath}
                       option={line}
@@ -492,56 +505,95 @@ function SharedConversationDetail({
         )}
       </section>
       {ownBy.size > 0 && (
+        // A CARRIER'S OWN LINES, AS CARDS (rpg-project#1030): the same card
+        // and form as the conversation's lines, so everything said to this
+        // conversation's carriers is on one page with every difficulty on
+        // the surface. Each is the carrier's, written at its own path.
         <section
           aria-label={`Own lines beside ${id}`}
           className="es-shared-lines-own"
         >
-          <h4>Said on their own, beside these</h4>
           {conversation.carriers
             .filter((carrier) => ownBy.has(carrierKey(carrier)))
             .map((carrier) => {
               const words = carrierWords(carrier, names);
+              const owner = { kind: carrier.kind, id: carrier.id };
               return (
-                <div key={carrierKey(carrier)}>
-                  <p className="es-help">Only {words} offers:</p>
-                  <ul className="es-inspector-list">
+                <section
+                  key={carrierKey(carrier)}
+                  aria-label={`Only ${words} offers`}
+                >
+                  <h4>Only {words} offers</h4>
+                  <ol className="es-line-cards">
                     {ownBy.get(carrierKey(carrier))!.map((path) => {
+                      const index = indexOfLine(path, document);
                       const line = valueAt(path, document);
-                      const said =
-                        isRecord(line) && typeof line.say === 'string'
-                          ? `“${line.say}”`
-                          : isRecord(line) && typeof line.do === 'string'
-                            ? `does “${line.do}”`
-                            : 'a line';
+                      if (index === null || !isRecord(line))
+                        return (
+                          <li key={path} className="es-help">
+                            A line of {words} the draft no longer holds here.
+                          </li>
+                        );
+                      const option = line as unknown as OptionShape;
+                      // The carrier's own path: its `…options[i]` less the
+                      // entry, as the engine named it.
+                      const at = path.slice(0, path.lastIndexOf('.options['));
+                      const entries = valueAt(`${at}.options`, document);
                       return (
                         <li key={path}>
-                          {said}{' '}
-                          {onJump && (
-                            <button
-                              type="button"
-                              className="es-link"
-                              aria-label={`Edit ${words}'s own line ${said}`}
-                              onClick={() =>
-                                onJump(
-                                  carrier.kind === 'faction'
-                                    ? {
-                                        kind: 'home',
-                                        section: 'factions',
-                                        id: carrier.id,
-                                      }
-                                    : { kind: carrier.kind, id: carrier.id },
-                                  path
-                                )
-                              }
-                            >
-                              Edit
-                            </button>
-                          )}
+                          <SharedLineCard
+                            owner={carrier.id}
+                            index={index}
+                            linePath={path}
+                            option={option}
+                            sentences={sentencesAt(path, owner)}
+                            value={(p) => valueAt(p, document)}
+                            open={editing === path}
+                            onOpen={() => setEditing(path)}
+                            onClose={closeEditing}
+                            onDifficulty={(way, dc) =>
+                              session.sharedLines.setOwnLine(
+                                carrier,
+                                index,
+                                patchOptionApproach(option, way, { dc })
+                              )
+                            }
+                          >
+                            {Array.isArray(entries) && (
+                              <OptionsEditor
+                                titled={false}
+                                owner={carrier.id}
+                                at={at}
+                                only={index}
+                                options={entries as OptionEntry[]}
+                                room={document.draft.room}
+                                isProp={carrier.kind === 'prop'}
+                                onAdd={() => {}}
+                                onChange={(i, next) =>
+                                  session.sharedLines.setOwnLine(
+                                    carrier,
+                                    i,
+                                    next
+                                  )
+                                }
+                                onRemove={(i) => {
+                                  if (
+                                    session.sharedLines.setOwnLine(
+                                      carrier,
+                                      i,
+                                      null
+                                    )
+                                  )
+                                    setEditing(null);
+                                }}
+                              />
+                            )}
+                          </SharedLineCard>
                         </li>
                       );
                     })}
-                  </ul>
-                </div>
+                  </ol>
+                </section>
               );
             })}
         </section>

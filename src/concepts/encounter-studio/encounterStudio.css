@@ -3066,13 +3066,13 @@ li.es-machine-step[data-refused],
   gap: 0.6rem;
   flex-wrap: wrap;
 }
-.encounter-studio .es-shared-lines-own {
+.encounter-studio .es-shared-lines-own,
+.encounter-studio .es-shared-lines-own > section {
   display: grid;
-  gap: 0.35rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--wb-border);
-  color: var(--wb-muted);
-  font-size: var(--es-text-help);
+  gap: 0.6rem;
+}
+.encounter-studio .es-shared-lines-own h4 {
+  margin: 0.4rem 0 0;
 }
 @media (max-width: 640px) {
   .encounter-studio .es-line-card-branch + .es-line-card-branch {

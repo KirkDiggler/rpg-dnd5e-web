@@ -175,7 +175,7 @@ function allOf(read: LineReadBack): ReadBackStatement[] {
 }
 
 export function SharedLineCard({
-  conversation,
+  owner: conversation,
   index,
   linePath,
   option,
@@ -187,9 +187,13 @@ export function SharedLineCard({
   onDifficulty,
   children,
 }: {
-  conversation: string;
+  /** Whose line it is, as its form names it: the conversation's id, or the
+   * carrier's for one of its own lines. */
+  owner: string;
+  /** The line's index in its owner's list. */
   index: number;
-  /** `conversations.<id>.lines[k]`, the line's path. */
+  /** The line's path: `conversations.<id>.lines[k]`, or a carrier's
+   * `…options[i]`. */
   linePath: string;
   /** The line as the draft holds it. */
   option: OptionShape;

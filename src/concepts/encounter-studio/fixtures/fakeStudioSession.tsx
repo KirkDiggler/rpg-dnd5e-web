@@ -75,6 +75,7 @@ export function createFakeStudioSession(
       apply: vi.fn(() => true),
       unapply: vi.fn(() => true),
       remove: vi.fn(() => true),
+      setOwnLine: vi.fn(() => true),
     },
     commitBehaviorDefinition: vi.fn(() => true),
     cast: {

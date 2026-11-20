@@ -6,6 +6,188 @@
       "title": "The place",
       "groups": [
         {
+          "title": "The Mad King’s Castle (the-mad-king)",
+          "about": {
+            "kind": "site",
+            "id": "the-mad-king"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "prop",
+                "id": "altar"
+              },
+              "sentence": "The prop Altar (altar) offers something to do: the thing to do “You examine the altar.” (`examine`); the one who does it is told “You examine the altar.”. Nobody hears it; whoever sees them sees it done: one shown the prop Altar (altar) is told the doer “looks the altar over”, one not shown it only that something was done where they stand. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.propBindings.altar.options[0]",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "altar",
+                  "role": "done-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "prop",
+                "id": "altar"
+              },
+              "sentence": "To win the thing to do “You examine the altar.” (`examine`), the speaker rolls Religion against DC 12; beating the DC wins the line and missing it misses.",
+              "path": "room.room.propBindings.altar.options[0].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "prop",
+                "id": "altar"
+              },
+              "sentence": "On a win of the thing to do “You examine the altar.” (`examine`), the one who did it and every witness shown the prop Altar (altar) are told “The sigils are the Pale One’s. The king keeps a shrine to it.” and the one who did it and every witness shown the prop Altar (altar) learn the fact `king-is-cultist`.",
+              "path": "room.room.propBindings.altar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-is-cultist",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "prop",
+                "id": "altar"
+              },
+              "sentence": "On a miss of the thing to do “You examine the altar.” (`examine`), the one who did it and every witness shown the prop Altar (altar) are told “Old stone, old candles.”",
+              "path": "room.room.propBindings.altar.options[0].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "prop",
+                "id": "cell-drain"
+              },
+              "sentence": "The prop Drain at the Back of the Cell (cell-drain) offers something to do: the thing to do “You lift the drain and crawl into the passage.” (`to-armoury`); the one who does it is told “You lift the drain and crawl into the passage.”. Nobody hears it; whoever sees them sees it done: one shown the prop Drain at the Back of the Cell (cell-drain) is told the doer “lifts the drain at the back of the cell and crawls into the dark”, one not shown it only that something was done where they stand. It is hidden by the secret `cell-drain`: a watcher who sees it done, and sees where it stands, comes to know the secret by sight and is shown it. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.propBindings.cell-drain.options[0]",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "cell-drain",
+                  "role": "done-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "prop",
+                "id": "cell-drain"
+              },
+              "sentence": "When the thing to do “You lift the drain and crawl into the passage.” (`to-armoury`) is done, nothing is answered in words, and the row does what the next sentence says.",
+              "path": "room.room.propBindings.cell-drain.options[0].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "prop",
+                "id": "cell-drain"
+              },
+              "sentence": "When the thing to do “You lift the drain and crawl into the passage.” (`to-armoury`) is done, the speaker is set down on the first free cell of Armoury (region-armoury), without walking the way between, and is told “The passage runs under the yard, and you come up behind the racks in the armoury.”. One round passes on the world clock with it, and creatures due in it act. Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+              "path": "room.room.propBindings.cell-drain.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-armoury",
+                  "role": "sends-to"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate) offers something to do: the thing to do “You lift the grate and take the way up.” (`to-chapel`); the one who does it is told “You lift the grate and take the way up.”. Nobody hears it; whoever sees them sees it done: one shown the prop Grate by the Hearth (grate) is told the doer “lifts the grate by the hearth and climbs down into the dark”, one not shown it only that something was done where they stand. It is hidden by the secret `kitchen-passage`: a watcher who sees it done, and sees where it stands, comes to know the secret by sight and is shown it. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "done-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "When the thing to do “You lift the grate and take the way up.” (`to-chapel`) is done, nothing is answered in words, and the row does what the next sentence says.",
+              "path": "room.room.propBindings.grate.options[0].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "When the thing to do “You lift the grate and take the way up.” (`to-chapel`) is done, the speaker is set down on the first free cell of Chapel (region-chapel), without walking the way between, and is told “The tunnel climbs, and you come up through a flagstone behind the chapel's altar.”. One round passes on the world clock with it, and creatures due in it act. Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "sends-to"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate) offers something to do: the thing to do “You lift the grate and take the way down.” (`to-cells`); the one who does it is told “You lift the grate and take the way down.”. Nobody hears it; whoever sees them sees it done: one shown the prop Grate by the Hearth (grate) is told the doer “lifts the grate by the hearth and climbs down into the dark”, one not shown it only that something was done where they stand. It is hidden by the secret `kitchen-passage`: a watcher who sees it done, and sees where it stands, comes to know the secret by sight and is shown it. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "done-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "When the thing to do “You lift the grate and take the way down.” (`to-cells`) is done, nothing is answered in words, and the row does what the next sentence says.",
+              "path": "room.room.propBindings.grate.options[1].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "prop",
+                "id": "grate"
+              },
+              "sentence": "When the thing to do “You lift the grate and take the way down.” (`to-cells`) is done, the speaker is set down on the first free cell of Cells (region-cells), without walking the way between, and is told “The tunnel drops, and you squeeze out through a drain in the cells.”. One round passes on the world clock with it, and creatures due in it act. Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "sends-to"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "title": "Where the places join",
           "about": {
             "kind": "site",
@@ -652,6 +834,110 @@
               "kind": "place.way.line",
               "about": {
                 "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:guest"
+              },
+              "sentence": "The line `guest` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 11; it is offered while `front-gate` is in `fresh` or `warned-troupe`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to note `admitted` about the speaker and every member of the speaker's party the guard captain sees then, and the conversation `front-gate`'s other carriers who witness it note the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to `arrested` from `warned-troupe`; the guard captain answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`.",
+              "path": "room.room.monsterBindings.captain.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/guest",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 11
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "needs"
+                },
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "who",
+                  "id": "party_in_sight",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "spoken_to",
+                  "role": "takes",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "carriers_who_witnessed",
+                  "role": "takes",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "option",
+                  "id": "guest",
+                  "role": "on",
+                  "is": "win"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                },
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
                 "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:troupe"
               },
               "sentence": "The line `troupe` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Performance against DC 13, or Deception against DC 15; it is offered while the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or `warned-guest`; its win steps `front-gate` to `admitted`, whose outcome makes the creature it is said to note `admitted` about the speaker and every member of the speaker's party the guard captain sees then, and the conversation `front-gate`'s other carriers who witness it note the same, heard; each holder lets a walker through only when every requirement of its post's pass is met, so a holder who did not witness it keeps holding. On a miss: the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to `arrested` from `warned-guest`; the guard captain answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`.",
@@ -760,6 +1046,331 @@
                   "kind": "conversation",
                   "id": "front-gate",
                   "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:stand-aside"
+              },
+              "sentence": "The line `stand-aside` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Intimidation against DC 14; it is offered while the guard captain has NOT noted `wanted` about the speaker and the guard captain has NOT noted `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed); its win on the row of weight 3 of 4, teaches `gate-cowed` to whoever its words reach, and a holder that knows it leaves its post; a holder the words do not reach keeps holding. On a miss: the guard captain answers “You’ll bleed first.”, at `speak`; every member those words reach, seen or not, the guard captain included, learns the fact `party-recognized`.",
+              "path": "room.room.monsterBindings.captain.options[2]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/stand-aside",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:intimidation",
+                  "role": "by",
+                  "value": 14
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "teaches"
+                },
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "on-miss"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.line",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-courtyard:region-gatehouse:gate-wall-door:line:captain:turn"
+              },
+              "sentence": "The line `turn` of Guard Captain (captain) lifts the holders' bar of the join of Courtyard and Gatehouse at the door `gate-wall-door`, held by Guard (gate-1), Guard (gate-2) and Guard Captain (captain): it rolls Persuasion against DC 15; it is offered while the speaker knows the fact `king-burned-village`; its win teaches `guards-turned` to whoever its words reach, and a holder that knows it leaves its post; a holder the words do not reach keeps holding. On a miss: the guard captain answers “Lies. Get out before I change my mind.”, at `speak`.",
+              "path": "room.room.monsterBindings.captain.options[3]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-courtyard:region-gatehouse:gate-wall-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "line",
+                  "id": "captain/turn",
+                  "role": "by"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "skill:persuasion",
+                  "role": "by",
+                  "value": 15
+                },
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "needs"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "draws-off"
+                },
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-cells:region-armoury:prop-cell-drain"
+              },
+              "sentence": "The prop Drain at the Back of the Cell (cell-drain), standing in Cells (region-cells), is a passage to Armoury (region-armoury): the line `to-armoury` sets the speaker down in Armoury, without walking the way between.",
+              "path": "room.room.propBindings.cell-drain.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-armoury",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "cell-drain",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "cell-drain",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-cells:region-armoury:prop-cell-drain:line:prop-cell-drain:to-armoury"
+              },
+              "sentence": "The line `to-armoury` of the prop `cell-drain` carries the passage to Armoury by the prop `cell-drain`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `cell-drain` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.cell-drain.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-cells:region-armoury:prop-cell-drain",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "cell-drain/to-armoury",
+                  "role": "by"
+                },
+                {
+                  "kind": "prop",
+                  "id": "cell-drain",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "cell-drain",
+                  "role": "needs"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-chapel:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel"
+              },
+              "sentence": "The line `to-chapel` of the prop `grate` carries the passage to Chapel by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-chapel:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "grate/to-chapel",
+                  "role": "by"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "needs"
+                }
+              ]
+            },
+            {
+              "kind": "place.join.passage",
+              "about": {
+                "kind": "join",
+                "id": "passage:region-kitchen:region-cells:prop-grate"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.passage",
+              "about": {
+                "kind": "way",
+                "id": "way:passage:region-kitchen:region-cells:prop-grate:line:prop-grate:to-cells"
+              },
+              "sentence": "The line `to-cells` of the prop `grate` carries the passage to Cells by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "passage:region-kitchen:region-cells:prop-grate",
+                  "role": "through"
+                },
+                {
+                  "kind": "line",
+                  "id": "grate/to-cells",
+                  "role": "by"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "free",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "needs"
                 }
               ]
             },
@@ -966,6 +1577,104 @@
       ]
     },
     {
+      "title": "Sides",
+      "groups": [
+        {
+          "title": "Faction `loyalists`",
+          "about": {
+            "kind": "faction",
+            "id": "loyalists"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "The speaker can say the line “Yield and live.” (`yield`) to any creature of the faction `loyalists` that has no lines of its own. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "factions[1].options[0]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "To win the line “Yield and live.” (`yield`), the speaker rolls Persuasion against DC 12; beating the DC wins the line and missing it misses.",
+              "path": "factions[1].options[0].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "On a win of the line “Yield and live.” (`yield`), any creature of the faction `loyalists` that has no lines of its own answers “The king is dead. We yield.”, at `speak`: its words reach everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member any creature of the faction `loyalists` that has no lines of its own's words reach (everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see any creature of the faction `loyalists` that has no lines of its own, any creature of the faction `loyalists` that has no lines of its own included, learns the fact `loyalists-yielded` and whoever sees any creature of the faction `loyalists` that has no lines of its own answer and caught none of the line is told only that any creature of the faction `loyalists` that has no lines of its own answered and what any creature of the faction `loyalists` that has no lines of its own is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "factions[1].options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "loyalists-yielded",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "On a miss of the line “Yield and live.” (`yield`), any creature of the faction `loyalists` that has no lines of its own answers “Never.”, at `speak`: its words reach everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees any creature of the faction `loyalists` that has no lines of its own answer and caught none of the line is told only that any creature of the faction `loyalists` that has no lines of its own answered and what any creature of the faction `loyalists` that has no lines of its own is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "factions[1].options[0].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "The speaker can say the line “Die with your king, then.” (`refuse`) to any creature of the faction `loyalists` that has no lines of its own. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "factions[1].options[1]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "loyalists",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "To win the line “Die with your king, then.” (`refuse`), the speaker rolls Intimidation against DC 15; beating the DC wins the line and missing it misses.",
+              "path": "factions[1].options[1].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "faction",
+                "id": "loyalists"
+              },
+              "sentence": "On a miss of the line “Die with your king, then.” (`refuse`), any creature of the faction `loyalists` that has no lines of its own answers “Then we die fighting.”, at `speak`: its words reach everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees any creature of the faction `loyalists` that has no lines of its own answer and caught none of the line is told only that any creature of the faction `loyalists` that has no lines of its own answered and what any creature of the faction `loyalists` that has no lines of its own is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "factions[1].options[1].failure[0]"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "Creatures",
       "groups": [
         {
@@ -1058,6 +1767,81 @@
           },
           "statements": [
             {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “We’re invited guests of His Majesty, here for the feast.” (`guest`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.captain.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "To win the line “We’re invited guests of His Majesty, here for the feast.” (`guest`), the speaker rolls Persuasion against DC 11; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.captain.options[0].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “We’re invited guests of His Majesty, here for the feast.” (`guest`) is offered to a speaker only while the conversation `front-gate` is in one of the states `fresh` or `warned-troupe` (one state for the whole run, not per speaker).",
+              "path": "room.room.monsterBindings.captain.options[0].requires[0]",
+              "connects": [
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.advance",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "Said to Guard Captain (captain), the line “We’re invited guests of His Majesty, here for the feast.” (`guest`): winning it steps the conversation `front-gate` with the beat `admitted`, which moves it from `fresh` to `admitted` or from `warned-troupe` to `admitted`; missing it steps the conversation `front-gate` with the beat `guest-failed`, which moves it from `fresh` to `warned-guest` or from `warned-troupe` to `arrested` (the line is offered only in `fresh` or `warned-troupe`).",
+              "path": "room.room.monsterBindings.captain.options[0].advance",
+              "connects": [
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "advances"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a win of the line “We’re invited guests of His Majesty, here for the feast.” (`guest`), Guard Captain (captain) answers “Guests, is it? In you go. Mind your manners in the hall.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[0].success[0]"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a miss of the line “We’re invited guests of His Majesty, here for the feast.” (`guest`), Guard Captain (captain) answers “Guests? What’s going on here? Nobody told me of guests.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[0].failure[0]"
+            },
+            {
               "kind": "shared-lines.use",
               "about": {
                 "kind": "creature",
@@ -1072,6 +1856,995 @@
                   "role": "speaks-lines-of"
                 }
               ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “Stand aside or bleed.” (`stand-aside`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.captain.options[2]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "To win the line “Stand aside or bleed.” (`stand-aside`), the speaker rolls Intimidation against DC 14; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.captain.options[2].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `wanted` about the speaker.",
+              "path": "room.room.monsterBindings.captain.options[2].requires[0]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "wanted",
+                  "role": "asks",
+                  "negated": true
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "wanted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "wanted"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
+              "path": "room.room.monsterBindings.captain.options[2].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "arrested",
+                  "role": "asks",
+                  "negated": true
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "arrested"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "arrested"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a win of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “…go on, then. I saw nothing.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `gate-cowed` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words (weight 3 of 4: one row is picked by weight).",
+              "path": "room.room.monsterBindings.captain.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a win of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “Big words. GUARDS!”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words (weight 1 of 4: one row is picked by weight).",
+              "path": "room.room.monsterBindings.captain.options[2].success[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a miss of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “You’ll bleed first.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[2].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “He burned Ashford. Your own village. You know what he is.” (`turn`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.captain.options[3]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "To win the line “He burned Ashford. Your own village. You know what he is.” (`turn`), the speaker rolls Persuasion against DC 15; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.captain.options[3].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “He burned Ashford. Your own village. You know what he is.” (`turn`) is offered to a speaker only while the speaker knows the fact `king-burned-village`.",
+              "path": "room.room.monsterBindings.captain.options[3].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a win of the line “He burned Ashford. Your own village. You know what he is.” (`turn`), Guard Captain (captain) answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `guards-turned` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[3].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a miss of the line “He burned Ashford. Your own village. You know what he is.” (`turn`), Guard Captain (captain) answers “Lies. Get out before I change my mind.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[3].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.captain.options[4]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "To win the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), the speaker rolls Persuasion against DC 10; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.captain.options[4].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`) is offered to a speaker only while the speaker knows the fact `guards-turned`.",
+              "path": "room.room.monsterBindings.captain.options[4].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a win of the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), Guard Captain (captain) answers “Done. Go finish it.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `throne-taken` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[4].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "throne-taken",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "On a miss of the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), Guard Captain (captain) answers “We’ll hold what we can.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[4].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “Good evening, captain.” (`greet`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.captain.options[5]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "When the line “Good evening, captain.” (`greet`) is said, Guard Captain (captain) answers “Evening. Keep to the road and mind the guards.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[5].success[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The speaker can say the line “Where will the feast be, captain?” (`the-way-in`) to Guard Captain (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.captain.options[6]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) has noted `admitted` about the speaker.",
+              "path": "room.room.monsterBindings.captain.options[6].requires",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "admitted"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "captain"
+              },
+              "sentence": "When the line “Where will the feast be, captain?” (`the-way-in`) is said, Guard Captain (captain) answers “In the great hall. You’re expected.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[6].success[0]"
+            }
+          ]
+        },
+        {
+          "title": "Commoner (cook)",
+          "about": {
+            "kind": "creature",
+            "id": "cook"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “(lift a pie from the sill)” (`pilfer`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.cook.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "To win the line “(lift a pie from the sill)” (`pilfer`), the speaker rolls Sleight of Hand against DC 13; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.cook.options[0].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “(lift a pie from the sill)” (`pilfer`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[0].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “(lift a pie from the sill)” (`pilfer`), Commoner (cook) answers “The cook never looks round.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[0].success[0]"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a miss of the line “(lift a pie from the sill)” (`pilfer`), Commoner (cook) answers “Thief!”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `caught-in-kitchen` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[0].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “Busy night?” (`gossip`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.cook.options[1]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "To win the line “Busy night?” (`gossip`), the speaker rolls Persuasion against DC 10; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.cook.options[1].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “Busy night?” (`gossip`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[1].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “Busy night?” (`gossip`), Commoner (cook) answers “Feast for the whole court, and him sitting there grinning after what he did to Ashford.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[1].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a miss of the line “Busy night?” (`gossip`), Commoner (cook) answers “Out of my kitchen.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[1].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “What did he do to Ashford?” (`ashford`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.cook.options[2]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "To win the line “What did he do to Ashford?” (`ashford`), the speaker rolls Persuasion against DC 12; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.cook.options[2].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “What did he do to Ashford?” (`ashford`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.cook.options[2].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “What did he do to Ashford?” (`ashford`), Commoner (cook) answers “Burned it. Every house. The captain’s mother was in one.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `king-burned-village` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a miss of the line “What did he do to Ashford?” (`ashford`), Commoner (cook) answers “I’ve said too much already.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[2].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “Ten gold says you never saw us.” (`bribe`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.cook.options[3]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "To win the line “Ten gold says you never saw us.” (`bribe`), the speaker rolls Persuasion against DC 8; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.cook.options[3].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “Ten gold says you never saw us.” (`bribe`) is offered to a speaker only while the speaker carries the prop `purse`.",
+              "path": "room.room.monsterBindings.cook.options[3].requires",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "purse",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “Ten gold says you never saw us.” (`bribe`), Commoner (cook) answers “Saw who?”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[3].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a miss of the line “Ten gold says you never saw us.” (`bribe`), Commoner (cook) answers “Keep your coin.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[3].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “(lend a hand with the pies)” (`help`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.cook.options[4]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "To win the line “(lend a hand with the pies)” (`help`), the speaker rolls Athletics against DC 10; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.cook.options[4].check"
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “(lend a hand with the pies)” (`help`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[4].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “(lend a hand with the pies)” (`help`), Commoner (cook) answers “Bless you. Here, eat.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[4].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a win of the line “(lend a hand with the pies)” (`help`), the speaker is given the status “Warmed up” (`warmed-up`). The rules apply it to them; a second giving does what the status's `again` says.",
+              "path": "room.room.monsterBindings.cook.options[4].success[0].apply_status",
+              "connects": [
+                {
+                  "kind": "status",
+                  "id": "warmed-up",
+                  "role": "gives"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "On a miss of the line “(lend a hand with the pies)” (`help`), Commoner (cook) answers “Mind the pastry! Out from under my feet.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[4].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The speaker can say the line “(taste the feast)” (`taste`) to Commoner (cook). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.cook.options[5]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "cook",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "The line “(taste the feast)” (`taste`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[5].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "When the line “(taste the feast)” (`taste`) is said, Commoner (cook) answers “Go on, then. One plate, mind.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[5].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "cook"
+              },
+              "sentence": "When the line “(taste the feast)” (`taste`) is said, the speaker is given the status “Feasted” (`feasted`). The rules apply it to them; a second giving does what the status's `again` says.",
+              "path": "room.room.monsterBindings.cook.options[5].success[0].apply_status",
+              "connects": [
+                {
+                  "kind": "status",
+                  "id": "feasted",
+                  "role": "gives"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Guard (hall-1)",
+          "about": {
+            "kind": "creature",
+            "id": "hall-1"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "hall-1"
+              },
+              "sentence": "The speaker can say the line “(shoulder past him)” (`push-past`) to Guard (hall-1). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.hall-1.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "hall-1",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "hall-1"
+              },
+              "sentence": "To win the line “(shoulder past him)” (`push-past`), the speaker rolls Athletics against DC 12; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.hall-1.options[0].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "hall-1"
+              },
+              "sentence": "On a win of the line “(shoulder past him)” (`push-past`), Guard (hall-1) answers “Oi! Mind where you’re going.”, at `speak`: its words reach everyone in Guard (hall-1)'s room (the wall partition Guard (hall-1) stands in), and anyone in the next room within 30 feet of Guard (hall-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (hall-1) answer and caught none of the line is told only that Guard (hall-1) answered and what Guard (hall-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.hall-1.options[0].success[0]"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "hall-1"
+              },
+              "sentence": "On a miss of the line “(shoulder past him)” (`push-past`), Guard (hall-1) answers “Not so fast. You stay right there.”, at `speak`: its words reach everyone in Guard (hall-1)'s room (the wall partition Guard (hall-1) stands in), and anyone in the next room within 30 feet of Guard (hall-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (hall-1) answer and caught none of the line is told only that Guard (hall-1) answered and what Guard (hall-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.hall-1.options[0].failure[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "hall-1"
+              },
+              "sentence": "On a miss of the line “(shoulder past him)” (`push-past`), the speaker is given the status “Held” (`held`). The rules apply it to them; a second giving does what the status's `again` says.",
+              "path": "room.room.monsterBindings.hall-1.options[0].failure[0].apply_status",
+              "connects": [
+                {
+                  "kind": "status",
+                  "id": "held",
+                  "role": "gives"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Commoner (scullion)",
+          "about": {
+            "kind": "creature",
+            "id": "scullion"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The speaker can say the line “There's a coin in it if you know a way out of here.” (`favour`) to Commoner (scullion). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.scullion.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "scullion",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "The line “There's a coin in it if you know a way out of here.” (`favour`) is offered to a speaker only while the speaker carries the prop `purse`.",
+              "path": "room.room.monsterBindings.scullion.options[0].requires",
+              "connects": [
+                {
+                  "kind": "prop",
+                  "id": "purse",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, Commoner (scullion) answers “The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.”, at `speak`: its words reach everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (scullion) answer and caught none of the line is told only that Commoner (scullion) answered and what Commoner (scullion) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "scullion"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Prisoner (prisoner-1)",
+          "about": {
+            "kind": "creature",
+            "id": "prisoner-1"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "The speaker can say the line “Where is the king?” (`where-is-the-king`) to Prisoner (prisoner-1). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.prisoner-1.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prisoner-1",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "To win the line “Where is the king?” (`where-is-the-king`), the speaker rolls Persuasion against DC 8; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.prisoner-1.options[0].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "On a win of the line “Where is the king?” (`where-is-the-king`), Prisoner (prisoner-1) answers “Through the great hall, in the throne room. He holds court there, mad as a hare.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, Prisoner (prisoner-1) plays the activity `dnd5e:activities:thoughtful` 2 times, every member Prisoner (prisoner-1)'s words reach (everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Prisoner (prisoner-1), Prisoner (prisoner-1) included, learns the fact `king-in-throne-room` and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-in-throne-room",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "On a miss of the line “Where is the king?” (`where-is-the-king`), Prisoner (prisoner-1) answers “Why should I tell you? Get me out first.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, Prisoner (prisoner-1) plays the activity `dnd5e:activities:thoughtful` 2 times and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[0].failure[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "The speaker can say the line “Who holds the keys?” (`who-holds-the-keys`) to Prisoner (prisoner-1). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.prisoner-1.options[1]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prisoner-1",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "To win the line “Who holds the keys?” (`who-holds-the-keys`), the speaker rolls Persuasion against DC 10; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.prisoner-1.options[1].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "On a win of the line “Who holds the keys?” (`who-holds-the-keys`), Prisoner (prisoner-1) answers “The sergeant, the one on the left. Ring on his belt.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Prisoner (prisoner-1)'s words reach (everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Prisoner (prisoner-1), Prisoner (prisoner-1) included, learns the fact `sergeant-holds-keys` and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[1].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "sergeant-holds-keys",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prisoner-1"
+              },
+              "sentence": "On a miss of the line “Who holds the keys?” (`who-holds-the-keys`), Prisoner (prisoner-1) answers “Keys? Nobody tells us anything in here.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[1].failure[0]"
             }
           ]
         },
@@ -1147,6 +2920,277 @@
                   "role": "speaks-lines-of"
                 }
               ]
+            }
+          ]
+        },
+        {
+          "title": "The Rightful King (prince)",
+          "about": {
+            "kind": "creature",
+            "id": "prince"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The speaker can say the line “What are you in for?” (`in-for`) to The Rightful King (prince). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.prince.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prince",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “What are you in for?” (`in-for`) is said, The Rightful King (prince) answers “Being my father's son. And you?”, at `speak`: its words reach everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees The Rightful King (prince) answer and caught none of the line is told only that The Rightful King (prince) answered and what The Rightful King (prince) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prince.options[0].success[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The speaker can say the line “We're here to kill the king.” (`kill-the-king`) to The Rightful King (prince). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.prince.options[1]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prince",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “We're here to kill the king.” (`kill-the-king`) is said, The Rightful King (prince) answers “He's no king. He killed my father. I'm the rightful king now.”, at `speak`: its words reach everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees The Rightful King (prince) answer and caught none of the line is told only that The Rightful King (prince) answered and what The Rightful King (prince) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prince.options[1].success[0]"
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The speaker can say the line “Then take your throne back with us.” (`join-us`) to The Rightful King (prince). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.prince.options[2]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prince",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The line “Then take your throne back with us.” (`join-us`) is offered to a speaker only while the speaker does NOT know the fact `prince-recruited`.",
+              "path": "room.room.monsterBindings.prince.options[2].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “Then take your throne back with us.” (`join-us`) is said, The Rightful King (prince) answers “Gladly. Help me home and the vault is yours. And there is a way out of here, the drain at the back of the cell. It's rusted through. Lift it.”, at `speak`: its words reach everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, learns the fact `prince-recruited` and whoever sees The Rightful King (prince) answer and caught none of the line is told only that The Rightful King (prince) answered and what The Rightful King (prince) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prince.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “Then take your throne back with us.” (`join-us`) is said, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, comes to hold the record `cell-weak-place`, as one who carried it would, and learns what it reveals (the secret `cell-drain`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.prince.options[2].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cell-weak-place",
+                  "role": "tells"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The speaker can say the line “We go alone.” (`leave-him`) to The Rightful King (prince). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.prince.options[3]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "prince",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "The line “We go alone.” (`leave-him`) is offered to a speaker only while the speaker does NOT know the fact `prince-recruited`.",
+              "path": "room.room.monsterBindings.prince.options[3].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “We go alone.” (`leave-him`) is said, The Rightful King (prince) answers “Then go by the drain at the back of the cell. It's rusted through. Lift it, and remember who told you.”, at `speak`: its words reach everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees The Rightful King (prince) answer and caught none of the line is told only that The Rightful King (prince) answered and what The Rightful King (prince) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prince.options[3].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "creature",
+                "id": "prince"
+              },
+              "sentence": "When the line “We go alone.” (`leave-him`) is said, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, comes to hold the record `cell-weak-place`, as one who carried it would, and learns what it reveals (the secret `cell-drain`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.prince.options[3].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cell-weak-place",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Commoner (pedlar)",
+          "about": {
+            "kind": "creature",
+            "id": "pedlar"
+          },
+          "statements": [
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "The speaker can say the line “What’s all the bustle?” (`tonight`) to Commoner (pedlar). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.",
+              "path": "room.room.monsterBindings.pedlar.options[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "pedlar",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.check",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "To win the line “What’s all the bustle?” (`tonight`), the speaker rolls Persuasion against DC 5; beating the DC wins the line and missing it misses.",
+              "path": "room.room.monsterBindings.pedlar.options[0].check"
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "On a win of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast for the whole court tonight — they’ll want players.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "On a miss of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast, tonight. Now leave me be.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "The speaker can say the line “Oi! Pedlar! What have you got to sell?” (`hail-the-pedlar`) to Commoner (pedlar). It is said at `shout` (authored): its words reach everyone in the speaker's room and the next room over (a closed door on the way counts as a room), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "room.room.monsterBindings.pedlar.options[1]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "pedlar",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "creature",
+                "id": "pedlar"
+              },
+              "sentence": "When the line “Oi! Pedlar! What have you got to sell?” (`hail-the-pedlar`) is said, Commoner (pedlar) answers “Nothing for the likes of you at this hour. Off with you.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[1].success[0]"
             }
           ]
         }
@@ -2347,6 +4391,22 @@
                 "kind": "conversation",
                 "id": "front-gate"
               },
+              "sentence": "The line `guest` said to Guard Captain (captain) is offered only while `front-gate` is in `fresh` or `warned-troupe`.",
+              "path": "room.room.monsterBindings.captain.options[0].requires[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "carries"
+                }
+              ]
+            },
+            {
+              "kind": "conversation.asked",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
               "sentence": "The line `troupe` said to Guard Captain (captain) is offered only while `front-gate` is in `fresh` or `warned-guest`.",
               "path": "conversations.the-gate.lines[0].requires[1]",
               "connects": [
@@ -2572,6 +4632,34 @@
                 "kind": "topic",
                 "id": "admitted"
               },
+              "sentence": "The line “Where will the feast be, captain?” (`the-way-in`) is offered to a speaker only while Guard Captain (captain) has noted `admitted` about the speaker.",
+              "path": "room.room.monsterBindings.captain.options[6].requires",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "admitted"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
               "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while the carrier has noted `admitted` about the speaker.",
               "path": "conversations.past-the-gate.lines[0].requires[1]",
               "connects": [
@@ -2679,6 +4767,35 @@
             "id": "arrested"
           },
           "statements": [
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "arrested"
+              },
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `arrested` about the speaker, or does but the speaker is no longer held under the arrest (a fight broke the hold, or jailed).",
+              "path": "room.room.monsterBindings.captain.options[2].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "arrested",
+                  "role": "asks",
+                  "negated": true
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "arrested"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "arrested"
+                }
+              ]
+            },
             {
               "kind": "topic.ask",
               "about": {
@@ -2890,6 +5007,44 @@
               ]
             }
           ]
+        },
+        {
+          "title": "Topic `wanted`",
+          "about": {
+            "kind": "topic",
+            "id": "wanted"
+          },
+          "statements": [
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "wanted"
+              },
+              "sentence": "The line “Stand aside or bleed.” (`stand-aside`) is offered to a speaker only while Guard Captain (captain) has NOT noted `wanted` about the speaker.",
+              "path": "room.room.monsterBindings.captain.options[2].requires[0]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "wanted",
+                  "role": "asks",
+                  "negated": true
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "wanted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "wanted"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -2897,12 +5052,199 @@
       "title": "Facts",
       "groups": [
         {
+          "title": "Fact `caught-in-kitchen`",
+          "about": {
+            "kind": "fact",
+            "id": "caught-in-kitchen"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "The file does not say what the fact `caught-in-kitchen` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 4 places.",
+              "path": "room.room.monsterBindings.cook.options[0].failure[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "On a miss of the line “(lift a pie from the sill)” (`pilfer`), Commoner (cook) answers “Thief!”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `caught-in-kitchen` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[0].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "The line “(lift a pie from the sill)” (`pilfer`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[0].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "The line “Busy night?” (`gossip`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[1].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "The line “(lend a hand with the pies)” (`help`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[4].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "caught-in-kitchen"
+              },
+              "sentence": "The line “(taste the feast)” (`taste`) is offered to a speaker only while the speaker does NOT know the fact `caught-in-kitchen`.",
+              "path": "room.room.monsterBindings.cook.options[5].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "caught-in-kitchen",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "title": "Fact `feast-tonight`",
           "about": {
             "kind": "fact",
             "id": "feast-tonight"
           },
           "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The file does not say what the fact `feast-tonight` means: facts carry no declared meaning yet. It is taught in 4 places and asked for or woken on in 2 places.",
+              "path": "room.room.monsterBindings.cook.options[1].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “Busy night?” (`gossip`), Commoner (cook) answers “Feast for the whole court, and him sitting there grinning after what he did to Ashford.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[1].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “Ten gold says you never saw us.” (`bribe`), Commoner (cook) answers “Saw who?”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `feast-tonight` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[3].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a win of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast for the whole court tonight — they’ll want players.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "On a miss of the line “What’s all the bustle?” (`tonight`), Commoner (pedlar) answers “Feast, tonight. Now leave me be.”, at `speak`: its words reach everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (pedlar)'s words reach (everyone in Commoner (pedlar)'s room (the wall partition Commoner (pedlar) stands in), and anyone in the next room within 30 feet of Commoner (pedlar) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (pedlar), Commoner (pedlar) included, learns the fact `feast-tonight` and whoever sees Commoner (pedlar) answer and caught none of the line is told only that Commoner (pedlar) answered and what Commoner (pedlar) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.pedlar.options[0].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "feast-tonight"
+              },
+              "sentence": "The line “What did he do to Ashford?” (`ashford`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.",
+              "path": "room.room.monsterBindings.cook.options[2].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "feast-tonight",
+                  "role": "asks"
+                }
+              ]
+            },
             {
               "kind": "fact.ask",
               "about": {
@@ -2922,12 +5264,153 @@
           ]
         },
         {
+          "title": "Fact `gate-cowed`",
+          "about": {
+            "kind": "fact",
+            "id": "gate-cowed"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "gate-cowed"
+              },
+              "sentence": "The file does not say what the fact `gate-cowed` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 6 places.",
+              "path": "room.room.monsterBindings.captain.options[2].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "gate-cowed"
+              },
+              "sentence": "On a win of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “…go on, then. I saw nothing.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `gate-cowed` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words (weight 3 of 4: one row is picked by weight).",
+              "path": "room.room.monsterBindings.captain.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "gate-cowed",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `guards-turned`",
+          "about": {
+            "kind": "fact",
+            "id": "guards-turned"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The file does not say what the fact `guards-turned` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 17 places.",
+              "path": "room.room.monsterBindings.captain.options[3].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "On a win of the line “He burned Ashford. Your own village. You know what he is.” (`turn`), Guard Captain (captain) answers “…Gods forgive me. The garrison is yours. We take the keep.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `guards-turned` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[3].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "guards-turned"
+              },
+              "sentence": "The line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`) is offered to a speaker only while the speaker knows the fact `guards-turned`.",
+              "path": "room.room.monsterBindings.captain.options[4].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "guards-turned",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `king-burned-village`",
+          "about": {
+            "kind": "fact",
+            "id": "king-burned-village"
+          },
+          "statements": [
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "king-burned-village"
+              },
+              "sentence": "On a win of the line “What did he do to Ashford?” (`ashford`), Commoner (cook) answers “Burned it. Every house. The captain’s mother was in one.”, at `speak`: its words reach everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Commoner (cook)'s words reach (everyone in Commoner (cook)'s room (the wall partition Commoner (cook) stands in), and anyone in the next room within 30 feet of Commoner (cook) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (cook), Commoner (cook) included, learns the fact `king-burned-village` and whoever sees Commoner (cook) answer and caught none of the line is told only that Commoner (cook) answered and what Commoner (cook) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.cook.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "king-burned-village"
+              },
+              "sentence": "The line “He burned Ashford. Your own village. You know what he is.” (`turn`) is offered to a speaker only while the speaker knows the fact `king-burned-village`.",
+              "path": "room.room.monsterBindings.captain.options[3].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-burned-village",
+                  "role": "asks"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "title": "Fact `king-in-throne-room`",
           "about": {
             "kind": "fact",
             "id": "king-in-throne-room"
           },
           "statements": [
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "king-in-throne-room"
+              },
+              "sentence": "On a win of the line “Where is the king?” (`where-is-the-king`), Prisoner (prisoner-1) answers “Through the great hall, in the throne room. He holds court there, mad as a hare.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, Prisoner (prisoner-1) plays the activity `dnd5e:activities:thoughtful` 2 times, every member Prisoner (prisoner-1)'s words reach (everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Prisoner (prisoner-1), Prisoner (prisoner-1) included, learns the fact `king-in-throne-room` and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-in-throne-room",
+                  "role": "teaches"
+                }
+              ]
+            },
             {
               "kind": "fact.teach",
               "about": {
@@ -2941,6 +5424,181 @@
                   "kind": "fact",
                   "id": "king-in-throne-room",
                   "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `king-is-cultist`",
+          "about": {
+            "kind": "fact",
+            "id": "king-is-cultist"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "king-is-cultist"
+              },
+              "sentence": "The file does not say what the fact `king-is-cultist` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 0 places.",
+              "path": "room.room.propBindings.altar.options[0].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "king-is-cultist"
+              },
+              "sentence": "On a win of the thing to do “You examine the altar.” (`examine`), the one who did it and every witness shown the prop Altar (altar) are told “The sigils are the Pale One’s. The king keeps a shrine to it.” and the one who did it and every witness shown the prop Altar (altar) learn the fact `king-is-cultist`.",
+              "path": "room.room.propBindings.altar.options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "king-is-cultist",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `loyalists-yielded`",
+          "about": {
+            "kind": "fact",
+            "id": "loyalists-yielded"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "loyalists-yielded"
+              },
+              "sentence": "The file does not say what the fact `loyalists-yielded` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 0 places.",
+              "path": "factions[1].options[0].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "loyalists-yielded"
+              },
+              "sentence": "On a win of the line “Yield and live.” (`yield`), any creature of the faction `loyalists` that has no lines of its own answers “The king is dead. We yield.”, at `speak`: its words reach everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member any creature of the faction `loyalists` that has no lines of its own's words reach (everyone in any creature of the faction `loyalists` that has no lines of its own's room (the wall partition any creature of the faction `loyalists` that has no lines of its own stands in), and anyone in the next room within 30 feet of any creature of the faction `loyalists` that has no lines of its own by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see any creature of the faction `loyalists` that has no lines of its own, any creature of the faction `loyalists` that has no lines of its own included, learns the fact `loyalists-yielded` and whoever sees any creature of the faction `loyalists` that has no lines of its own answer and caught none of the line is told only that any creature of the faction `loyalists` that has no lines of its own answered and what any creature of the faction `loyalists` that has no lines of its own is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "factions[1].options[0].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "loyalists-yielded",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `party-recognized`",
+          "about": {
+            "kind": "fact",
+            "id": "party-recognized"
+          },
+          "statements": [
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "On a win of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “Big words. GUARDS!”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words (weight 1 of 4: one row is picked by weight).",
+              "path": "room.room.monsterBindings.captain.options[2].success[1]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "party-recognized"
+              },
+              "sentence": "On a miss of the line “Stand aside or bleed.” (`stand-aside`), Guard Captain (captain) answers “You’ll bleed first.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `party-recognized` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[2].failure[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "party-recognized",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `prince-recruited`",
+          "about": {
+            "kind": "fact",
+            "id": "prince-recruited"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "prince-recruited"
+              },
+              "sentence": "The file does not say what the fact `prince-recruited` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 6 places.",
+              "path": "room.room.monsterBindings.prince.options[2].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "prince-recruited"
+              },
+              "sentence": "When the line “Then take your throne back with us.” (`join-us`) is said, The Rightful King (prince) answers “Gladly. Help me home and the vault is yours. And there is a way out of here, the drain at the back of the cell. It's rusted through. Lift it.”, at `speak`: its words reach everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, learns the fact `prince-recruited` and whoever sees The Rightful King (prince) answer and caught none of the line is told only that The Rightful King (prince) answered and what The Rightful King (prince) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prince.options[2].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "prince-recruited"
+              },
+              "sentence": "The line “Then take your throne back with us.” (`join-us`) is offered to a speaker only while the speaker does NOT know the fact `prince-recruited`.",
+              "path": "room.room.monsterBindings.prince.options[2].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "fact.ask",
+              "about": {
+                "kind": "fact",
+                "id": "prince-recruited"
+              },
+              "sentence": "The line “We go alone.” (`leave-him`) is offered to a speaker only while the speaker does NOT know the fact `prince-recruited`.",
+              "path": "room.room.monsterBindings.prince.options[3].requires",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "prince-recruited",
+                  "role": "asks"
                 }
               ]
             }
@@ -2993,6 +5651,22 @@
                 "kind": "fact",
                 "id": "sergeant-holds-keys"
               },
+              "sentence": "On a win of the line “Who holds the keys?” (`who-holds-the-keys`), Prisoner (prisoner-1) answers “The sergeant, the one on the left. Ring on his belt.”, at `speak`: its words reach everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Prisoner (prisoner-1)'s words reach (everyone in Prisoner (prisoner-1)'s room (the wall partition Prisoner (prisoner-1) stands in), and anyone in the next room within 30 feet of Prisoner (prisoner-1) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Prisoner (prisoner-1), Prisoner (prisoner-1) included, learns the fact `sergeant-holds-keys` and whoever sees Prisoner (prisoner-1) answer and caught none of the line is told only that Prisoner (prisoner-1) answered and what Prisoner (prisoner-1) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.prisoner-1.options[1].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "sergeant-holds-keys",
+                  "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "sergeant-holds-keys"
+              },
               "sentence": "On a win of the line “Who holds the keys?” (`who-holds-the-keys`), the carrier answers “The sergeant, the one on the left. Ring on his belt.”, at `speak`: its words reach everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member the carrier's words reach (everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see the carrier, the carrier included, learns the fact `sergeant-holds-keys` and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.",
               "path": "conversations.the-prisoners.lines[1].success[0]",
               "connects": [
@@ -3000,6 +5674,275 @@
                   "kind": "fact",
                   "id": "sergeant-holds-keys",
                   "role": "teaches"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Fact `throne-taken`",
+          "about": {
+            "kind": "fact",
+            "id": "throne-taken"
+          },
+          "statements": [
+            {
+              "kind": "fact",
+              "about": {
+                "kind": "fact",
+                "id": "throne-taken"
+              },
+              "sentence": "The file does not say what the fact `throne-taken` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 1 place.",
+              "path": "room.room.monsterBindings.captain.options[4].success[0]"
+            },
+            {
+              "kind": "fact.teach",
+              "about": {
+                "kind": "fact",
+                "id": "throne-taken"
+              },
+              "sentence": "On a win of the line “Hold the gate. Let no one in or out until it’s done.” (`hold-the-castle`), Guard Captain (captain) answers “Done. Go finish it.”, at `speak`: its words reach everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand, every member Guard Captain (captain)'s words reach (everyone in Guard Captain (captain)'s room (the wall partition Guard Captain (captain) stands in), and anyone in the next room within 30 feet of Guard Captain (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Guard Captain (captain), Guard Captain (captain) included, learns the fact `throne-taken` and whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "room.room.monsterBindings.captain.options[4].success[0]",
+              "connects": [
+                {
+                  "kind": "fact",
+                  "id": "throne-taken",
+                  "role": "teaches"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Records",
+      "groups": [
+        {
+          "title": "Record `cell-weak-place`",
+          "about": {
+            "kind": "record",
+            "id": "cell-weak-place"
+          },
+          "statements": [
+            {
+              "kind": "record.tell",
+              "about": {
+                "kind": "record",
+                "id": "cell-weak-place"
+              },
+              "sentence": "When the line “Then take your throne back with us.” (`join-us`) is said, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, comes to hold the record `cell-weak-place`, as one who carried it would, and learns what it reveals (the secret `cell-drain`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.prince.options[2].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cell-weak-place",
+                  "role": "tells"
+                }
+              ]
+            },
+            {
+              "kind": "record.tell",
+              "about": {
+                "kind": "record",
+                "id": "cell-weak-place"
+              },
+              "sentence": "When the line “We go alone.” (`leave-him`) is said, every member The Rightful King (prince)'s words reach (everyone in The Rightful King (prince)'s room (the wall partition The Rightful King (prince) stands in), and anyone in the next room within 30 feet of The Rightful King (prince) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see The Rightful King (prince), The Rightful King (prince) included, comes to hold the record `cell-weak-place`, as one who carried it would, and learns what it reveals (the secret `cell-drain`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.prince.options[3].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "cell-weak-place",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Record `kitchen-way`",
+          "about": {
+            "kind": "record",
+            "id": "kitchen-way"
+          },
+          "statements": [
+            {
+              "kind": "record.tell",
+              "about": {
+                "kind": "record",
+                "id": "kitchen-way"
+              },
+              "sentence": "When the line “There's a coin in it if you know a way out of here.” (`favour`) is said, every member Commoner (scullion)'s words reach (everyone in Commoner (scullion)'s room (the wall partition Commoner (scullion) stands in), and anyone in the next room within 30 feet of Commoner (scullion) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand), whether or not they see Commoner (scullion), Commoner (scullion) included, comes to hold the record `kitchen-way`, as one who carried it would, and learns what it reveals (the secret `kitchen-passage`). One who holds it already is told nothing again.",
+              "path": "room.room.monsterBindings.scullion.options[0].success[0].tells",
+              "connects": [
+                {
+                  "kind": "record",
+                  "id": "kitchen-way",
+                  "role": "tells"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Secrets",
+      "groups": [
+        {
+          "title": "Secret `cell-drain`",
+          "about": {
+            "kind": "concealment",
+            "id": "cell-drain"
+          },
+          "statements": [
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "cell-drain"
+              },
+              "sentence": "The prop Drain at the Back of the Cell (cell-drain), standing in Cells (region-cells), is a passage to Armoury (region-armoury): the line `to-armoury` sets the speaker down in Armoury, without walking the way between.",
+              "path": "room.room.propBindings.cell-drain.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-armoury",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "cell-drain",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "cell-drain",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "cell-drain"
+              },
+              "sentence": "The line `to-armoury` of the prop `cell-drain` carries the passage to Armoury by the prop `cell-drain`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `cell-drain` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.cell-drain.options[0]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-cells:region-armoury:prop-cell-drain:line:prop-cell-drain:to-armoury",
+                  "role": "is"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Secret `kitchen-passage`",
+          "about": {
+            "kind": "concealment",
+            "id": "kitchen-passage"
+          },
+          "statements": [
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Chapel (region-chapel): the line `to-chapel` sets the speaker down in Chapel, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[0].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-chapel",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.bar",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The prop Grate by the Hearth (grate), standing in Kitchen (region-kitchen), is a passage to Cells (region-cells): the line `to-cells` sets the speaker down in Cells, without walking the way between.",
+              "path": "room.room.propBindings.grate.options[1].success[0].relocate",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-cells",
+                  "role": "to"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-kitchen",
+                  "role": "from"
+                },
+                {
+                  "kind": "prop",
+                  "id": "grate",
+                  "role": "by"
+                },
+                {
+                  "kind": "concealment",
+                  "id": "kitchen-passage",
+                  "role": "hidden-by"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-chapel` of the prop `grate` carries the passage to Chapel by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[0]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-chapel:prop-grate:line:prop-grate:to-chapel",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "secret.need",
+              "about": {
+                "kind": "concealment",
+                "id": "kitchen-passage"
+              },
+              "sentence": "The line `to-cells` of the prop `grate` carries the passage to Cells by the prop `grate`: it rolls nothing; its doing sets the speaker down at the far end. It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a member who knows the secret `kitchen-passage` is shown the prop and can use the line.",
+              "path": "room.room.propBindings.grate.options[1]",
+              "connects": [
+                {
+                  "kind": "way",
+                  "id": "way:passage:region-kitchen:region-cells:prop-grate:line:prop-grate:to-cells",
+                  "role": "is"
                 }
               ]
             }

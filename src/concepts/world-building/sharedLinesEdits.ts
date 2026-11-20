@@ -322,3 +322,71 @@ export function removeConversation(
       );
   return next;
 }
+
+/** The carrier's options as the draft holds them. */
+function carrierEntries(
+  document: Readonly<RoomDraftDocument>,
+  carrier: LinesCarrier
+): readonly OptionEntry[] | undefined {
+  const room = document.draft.room;
+  return carrier.kind === 'creature'
+    ? room.monsterBindings?.[carrier.id]?.options
+    : carrier.kind === 'prop'
+      ? room.propBindings?.[carrier.id]?.options
+      : (document.scope.factions ?? []).find((f) => f.id === carrier.id)
+          ?.options;
+}
+
+/** ONE OF A CARRIER'S OWN LINES (rpg-project#1030), set or removed at the
+ * carrier's own path (`…options[index]`), as its inspector writes it: the
+ * Conversations page shows a carrier's own lines beside the conversation's,
+ * and an edit there is the carrier's, not the conversation's. The entry at
+ * `index` must still be an own line (not a `use:`); a draft that moved under
+ * the read-back is refused rather than writing over another entry. */
+export function editCarrierLine(
+  document: Readonly<RoomDraftDocument>,
+  carrier: LinesCarrier,
+  index: number,
+  option: OptionShape | null
+): RoomDraftDocument {
+  const entry = carrierEntries(document, carrier)?.[index];
+  if (!entry || isOptionUse(entry))
+    throw new Error(
+      `${carrier.id} no longer says its own line at that place; the engine’s sentences are from the last draft that compiled.`
+    );
+  const room = document.draft.room;
+  switch (carrier.kind) {
+    case 'creature': {
+      const binding = room.monsterBindings?.[carrier.id];
+      const next =
+        option === null
+          ? removeMonsterOption(binding, index)
+          : setMonsterOption(binding, index, option);
+      const bindings = withBinding(room.monsterBindings, carrier.id, next);
+      const nextRoom = { ...room };
+      if (bindings === undefined) delete nextRoom.monsterBindings;
+      else nextRoom.monsterBindings = bindings;
+      return { ...document, draft: { ...document.draft, room: nextRoom } };
+    }
+    case 'prop': {
+      const binding = room.propBindings?.[carrier.id];
+      const next =
+        option === null
+          ? removePropOption(binding, index)
+          : setPropOption(binding, index, option);
+      const bindings = withPropBinding(room.propBindings, carrier.id, next);
+      const nextRoom = { ...room };
+      if (bindings === undefined) delete nextRoom.propBindings;
+      else nextRoom.propBindings = bindings;
+      return { ...document, draft: { ...document.draft, room: nextRoom } };
+    }
+    case 'faction':
+      return {
+        ...document,
+        scope:
+          option === null
+            ? removeSiteFactionOption(document.scope, carrier.id, index)
+            : setSiteFactionOption(document.scope, carrier.id, index, option),
+      };
+  }
+}
