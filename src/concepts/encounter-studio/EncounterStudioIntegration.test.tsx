@@ -1490,6 +1490,60 @@ describe('Studio authoring homes through the real owner', () => {
     });
   });
 
+  it('owns a once-placed visual section on one wall through edit, refusal, Undo and native reopen', () => {
+    const draft = finishRoomFixture();
+    draft.room.walls = [draft.room.walls![0]];
+    draft.room.walls[0].appearance.height = 6;
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    selectWall(storage, draft.room.walls[0]);
+    const before = storage.document(),
+      writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Section appearance'), {
+      target: { value: 'dnd5e:env:fantasy-kingdom:castle_wall_window_03' },
+    });
+    fireEvent.change(screen.getByLabelText('New section position'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Add wall section'));
+    const placed = storage.document(),
+      section = placed.draft.room.walls![0].appearance.sections![0];
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(placed.draft.room.walls).toHaveLength(1);
+    expect(placed.draft.room.walls![0].blocker).toEqual(
+      before.draft.room.walls![0].blocker
+    );
+    expect(placed.draft.room.walls![0].openings).toEqual([]);
+    expect(placed.draft.scene.items).toEqual(before.draft.scene.items);
+    fireEvent.change(screen.getByLabelText(`Section ${section.id} position`), {
+      target: { value: '0' },
+    });
+    fireEvent.click(button(`Move section ${section.id}`));
+    expect(storage.document()).toEqual(placed);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.change(screen.getByLabelText(`Section ${section.id} position`), {
+      target: { value: '5' },
+    });
+    fireEvent.click(button(`Move section ${section.id}`));
+    expect(
+      storage.document().draft.room.walls![0].appearance.sections![0].position
+    ).toBe(5);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(placed);
+    const native = encodeSingleRoomDungeon({
+      key: 'section-native',
+      draft: placed.draft,
+    });
+    expect(decodeSingleRoomDungeon(native).draft.room.walls).toEqual(
+      placed.draft.room.walls
+    );
+    fireEvent.click(button(`Remove section ${section.id}`));
+    expect(storage.document().draft.room.walls![0].appearance.sections).toEqual(
+      []
+    );
+    expect(storage.document().draft.room.walls![0].openings).toEqual([]);
+  });
+
   it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
     const { smallRef } = installFinishPreview(),
       draft = finishRoomFixture();

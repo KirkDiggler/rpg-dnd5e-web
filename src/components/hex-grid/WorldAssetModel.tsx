@@ -10,6 +10,7 @@ import {
   legacyAssetHeightProfile,
 } from '@/rendering/assetHeightInstance';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import { clipWallSection } from '@/rendering/clipWallSection';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
   fitPlainWallInstance,
@@ -416,6 +417,28 @@ function LoadedWorldAssetModel({
           charts,
           fit,
           profile,
+          owned,
+        });
+      }
+      if (
+        fit &&
+        profile &&
+        (fit.clipStart !== undefined || fit.clipEnd !== undefined)
+      ) {
+        const start = fit.clipStart ?? 0,
+          end = fit.clipEnd ?? fit.width;
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end > fit.width ||
+          end <= start
+        )
+          throw Error('Invalid wall section visible interval.');
+        clipWallSection({
+          root: object,
+          min: profile.start + (start * profile.width) / fit.width,
+          max: profile.start + (end * profile.width) / fit.width,
           owned,
         });
       }

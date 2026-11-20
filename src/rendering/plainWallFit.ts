@@ -7,6 +7,10 @@ export interface PlainWallFit {
   depth: number;
   /** Derived distance from the owning wall's start; not authored room phase. */
   offset?: number;
+  /** Visible subspan from this full fitted piece's left edge, in scene units.
+   * Clipping never changes the full fit or its texture origin. */
+  clipStart?: number;
+  clipEnd?: number;
   start?: number;
   end?: number;
 }

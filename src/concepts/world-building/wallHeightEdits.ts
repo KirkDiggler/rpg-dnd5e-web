@@ -22,6 +22,13 @@ export function assertWallHeightEdit(input: {
     const heightChanged = old?.appearance.height !== wall.appearance.height;
     if (heightChanged || old?.appearance.assetRef !== wall.appearance.assetRef)
       check(wall.appearance.assetRef, wall.appearance.height);
+    for (const section of wall.appearance.sections ?? []) {
+      const prior = old?.appearance.sections?.find(
+        (row) => row.id === section.id
+      );
+      if (heightChanged || prior?.assetRef !== section.assetRef)
+        check(section.assetRef, wall.appearance.height);
+    }
     for (const opening of wall.openings) {
       if (!opening.door) continue;
       const prior = old?.openings.find((row) => row.id === opening.id);

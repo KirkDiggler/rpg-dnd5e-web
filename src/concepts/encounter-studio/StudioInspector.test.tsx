@@ -990,9 +990,12 @@ describe('StudioInspector', () => {
       ).toBeTruthy();
     });
 
-    it('a wall view has one section', () => {
+    it('a wall view separates wall placement from immediate owned-section edits', () => {
       inspector(selected(populated(), { kind: 'wall', id: 'studio-wall' }));
-      expect(sectionTitles(3)).toEqual(['Placement']);
+      expect(sectionTitles(3)).toEqual(['Placement', 'Wall sections']);
+      expect(
+        within(region()).getByRole('region', { name: 'Wall sections' })
+      ).toBeTruthy();
       expect(
         within(
           within(region()).getByRole('region', { name: 'Placement' })

@@ -9,6 +9,11 @@ import {
   type WallOpeningGeometry,
 } from './structuralWallGeometry';
 import type { WorldPoint } from './types';
+import {
+  assertWallSections,
+  copyWallSections,
+  type WallSection,
+} from './wallSections';
 
 /** The wall keys this codec reads; any other is carried (rpg-project#857). */
 const WALL_KEYS = ['id', 'label', 'line', 'appearance', 'blocker', 'openings'];
@@ -18,6 +23,7 @@ const APPEARANCE_KEYS = [
   'thickness',
   'elevation',
   'materialOverrides',
+  'sections',
 ];
 const BLOCKER_KEYS = ['footprint', 'blocksMovement', 'blocksLineOfSight'];
 const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'];
@@ -51,6 +57,8 @@ export interface StructuralWall extends WallGeometry {
    * carry an attached-door record, and every editor helper must preserve it. */
   openings: readonly StructuralWallOpening[];
   appearance: {
+    /** Once-placed visual features; never mechanical openings. */
+    sections?: WallSection[];
     materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
     assetRef: string;
     height: number;
@@ -232,6 +240,14 @@ export function validateStructuralWalls(input: {
       }),
       appearance: carryUnknownKeys(appearance, APPEARANCE_KEYS, {
         assetRef,
+        ...(appearance.sections === undefined
+          ? {}
+          : {
+              sections: copyWallSections(
+                appearance.sections,
+                `${location}.appearance.sections`
+              ),
+            }),
         ...(appearance.materialOverrides === undefined
           ? {}
           : {
@@ -312,6 +328,7 @@ export function validateStructuralWalls(input: {
         `${location}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+    if (wall.appearance.sections !== undefined) assertWallSections(wall);
     return wall;
   });
 }

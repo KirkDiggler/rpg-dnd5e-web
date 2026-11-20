@@ -57,7 +57,9 @@ import {
   wallMidpoint,
 } from './structuralWallEditing';
 import type { StructuralWallSurface } from './structuralWalls';
+import { StructuralWallSections } from './StructuralWallSections';
 import type { WallEndFits } from './wallCornerFits';
+import { wallSectionSolidIntervals } from './wallSections';
 import { WorldPropModel } from './WorldPropModel';
 
 /** Where a wall's named marker belongs: at the wall itself, not the origin. A
@@ -233,10 +235,53 @@ export function StructuralWallSurfacePieces({
         targetHeight: wall.appearance.height,
         profile: entry.asset.heightFit,
       });
+    for (const section of wall.appearance.sections ?? []) {
+      const feature = WORLD_BUILDING_CATALOG_BY_REF.get(section.assetRef);
+      if (
+        feature?.source !== 'generated' ||
+        !feature.asset.tags.includes('wall-body-fit') ||
+        feature.asset.roles?.some((role) => role.role === 'leaf')
+      )
+        throw Error(
+          `Section ${section.id} has no configured static body fit: ${section.assetRef}.`
+        );
+      if (feature.asset.heightFit)
+        planAssetHeight({
+          nativeHeight: feature.asset.boundsMeters[1],
+          targetHeight: wall.appearance.height,
+          profile: feature.asset.heightFit,
+        });
+      for (const finish of finishSpans.filter(
+        (span) =>
+          span.end > section.position - section.width / 2 &&
+          span.start < section.position + section.width / 2
+      ))
+        if (
+          !feature.asset.surfaces?.some(
+            (binding) =>
+              binding.side === finish.side &&
+              binding.family === finish.material.family
+          )
+        )
+          throw Error(
+            `Section ${section.id} has no compatible surface for the wall finish.`
+          );
+    }
+    const visualWall = replaceDoorFrames
+      ? doorwayVisualWall(wall)
+      : wallWithCapturedFrameSpans(wall);
     layouts = layoutWallPieces({
-      wall: replaceDoorFrames
-        ? doorwayVisualWall(wall)
-        : wallWithCapturedFrameSpans(wall),
+      wall: visualWall,
+      visualSpans: wall.appearance.sections?.length
+        ? wallSectionSolidIntervals({
+            ...visualWall,
+            openings: visualWall.openings.map(({ id, position, width }) => ({
+              id,
+              position,
+              width,
+            })),
+          })
+        : undefined,
       sourceWidthMeters: widthMeters,
       sourceHeightMeters: heightMeters,
       sourceDepthMeters: depthMeters,
@@ -259,6 +304,14 @@ export function StructuralWallSurfacePieces({
       name={`structural-wall-pieces-${wall.id}`}
       userData={{ knowledge: remembered ? 'remembered' : 'seen' }}
     >
+      <StructuralWallSections
+        wall={wall}
+        finishSpans={finishSpans}
+        fogStretches={fogStretches}
+        remembered={remembered}
+        visualLighting={visualLighting}
+        onMeasured={onMeasured}
+      />
       {layouts.flatMap((layout, spanIndex) =>
         layout.pieces.flatMap((piece, pieceIndex) => {
           const length =

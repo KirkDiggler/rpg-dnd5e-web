@@ -28,6 +28,11 @@ import {
 } from './structuralWallGeometry';
 import type { StructuralWall, StructuralWallSurface } from './structuralWalls';
 import type { WorldPoint } from './types';
+import {
+  assertWallSections,
+  copyWallSections,
+  wallSectionExtents,
+} from './wallSections';
 
 /** Arithmetic tolerance for still-touching operations (a resize landing on its
  * own clamp must not be reported as a refusal). */
@@ -232,7 +237,14 @@ export function isRepeatableWallAsset(entry: {
 /** The catalog refs the wall tool may repeat today, in stable catalog order. */
 export function repeatableWallAssetRefs(): string[] {
   return [...WORLD_BUILDING_CATALOG_BY_REF.values()]
-    .filter((entry) => isRepeatableWallAsset(entry))
+    .filter(
+      (entry) =>
+        isRepeatableWallAsset(entry) &&
+        !(
+          entry.source === 'generated' &&
+          entry.asset.tags.includes('wall-section')
+        )
+    )
     .map((entry) => entry.ref);
 }
 
@@ -276,6 +288,8 @@ export function layoutWallPieces(input: {
   sourceWidthMeters: number;
   sourceHeightMeters: number;
   sourceDepthMeters: number;
+  /** Already resolved visual-only exclusions; never changes wall.openings. */
+  visualSpans?: readonly WallInterval[];
   maxPieces?: number;
 }): WallSpanPieces[] {
   finitePositive(input.sourceWidthMeters, 'sourceWidthMeters');
@@ -288,10 +302,26 @@ export function layoutWallPieces(input: {
   const length = wallLength(wall);
   finite(wall.appearance.height, 'appearance.height');
   if (wall.appearance.height <= 0) fail('appearance.height must be positive.');
-  const spans = wallSolidIntervals({
-    wall,
-    extent: { start: 0, end: length },
-  });
+  const spans =
+    input.visualSpans ??
+    wallSolidIntervals({
+      wall,
+      extent: { start: 0, end: length },
+    });
+  for (let i = 0; i < spans.length; i++) {
+    const span = spans[i];
+    if (
+      !Number.isFinite(span.start) ||
+      !Number.isFinite(span.end) ||
+      span.start < 0 ||
+      span.end > length ||
+      span.end <= span.start ||
+      (i > 0 && span.start < spans[i - 1].end)
+    )
+      fail(
+        'visual spans must be finite, ordered, disjoint and within the wall.'
+      );
+  }
   // The even-fit count and the per-piece scale must use the SAME units. The
   // asset's rendered native width is its measured metres times the shared
   // Synty scale, so the count divides the scene-unit span by that world width,
@@ -421,6 +451,7 @@ export function addWallOpening(
     { id: input.id, position: input.position, width: input.width },
   ];
   assertOpenings(next, next.openings);
+  if (next.appearance.sections) assertWallSections(next);
   return next;
 }
 
@@ -441,6 +472,7 @@ export function updateWallOpening(
       : { ...opening }
   );
   assertOpenings(next, next.openings, id);
+  if (next.appearance.sections) assertWallSections(next);
   return next;
 }
 
@@ -476,6 +508,7 @@ export function resizeWallLength(input: {
     wall: input.wall,
     endpoint: input.endpoint,
     distance,
+    protectedIntervals: wallSectionExtents(input.wall),
   });
   const appliedLength = wallLength(geometry.wall);
   const delta = appliedLength - originalLength;
@@ -488,6 +521,12 @@ export function resizeWallLength(input: {
     end: { ...geometry.wall.line.end },
   };
   next.openings = geometry.wall.openings.map((opening) => ({ ...opening }));
+  if (next.appearance.sections && input.endpoint === 'start')
+    next.appearance.sections = next.appearance.sections.map((section) => ({
+      ...section,
+      position: section.position + delta,
+    }));
+  if (next.appearance.sections) assertWallSections(next);
   next.blocker = {
     ...next.blocker,
     footprint: { ...next.blocker.footprint, width },
@@ -615,7 +654,10 @@ export function setWallAppearance(
   finite(appearance.elevation, 'appearance.elevation');
   const next = cloneWall(wall);
   next.appearance = {
-    ...appearance,
+    ...structuredClone(appearance),
+    ...(appearance.sections === undefined
+      ? {}
+      : { sections: copyWallSections(appearance.sections) }),
     ...(appearance.materialOverrides === undefined
       ? {}
       : {
@@ -625,6 +667,7 @@ export function setWallAppearance(
           ),
         }),
   };
+  if (next.appearance.sections) assertWallSections(next);
   return next;
 }
 
