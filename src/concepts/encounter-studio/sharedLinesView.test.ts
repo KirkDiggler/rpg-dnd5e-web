@@ -5,7 +5,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { conversationsSiteReadBack } from './fixtures/engineReadBack';
-import { lineCounts, sharedConversationsOf } from './sharedLinesView';
+import {
+  lineCounts,
+  sharedConversationsOf,
+  sharedLinesInForm,
+} from './sharedLinesView';
 
 describe('the conversations written once, from the read-back', () => {
   const conversations = sharedConversationsOf(conversationsSiteReadBack());
@@ -68,5 +72,41 @@ describe('the conversations written once, from the read-back', () => {
 
   it('says nothing without a read-back', () => {
     expect(sharedConversationsOf(null)).toEqual([]);
+  });
+});
+
+describe('what a carrier carries, from the read-back', () => {
+  const readBack = conversationsSiteReadBack();
+  const all = sharedConversationsOf(readBack);
+  const open = () => undefined;
+  const carriedBy = sharedLinesInForm(readBack, open).carriedBy!;
+
+  it('lists each conversation a creature carries, with its lines, in the engine order', () => {
+    const first = all.find((c) =>
+      c.carriers.some((k) => k.kind === 'creature')
+    )!;
+    const carrier = first.carriers.find((k) => k.kind === 'creature')!;
+    const expected = all
+      .filter((c) =>
+        c.carriers.some((k) => k.kind === 'creature' && k.id === carrier.id)
+      )
+      .map((c) => ({ id: c.id, lines: c.linePaths.length }));
+    expect(expected.length).toBeGreaterThan(0);
+    expect(carriedBy('creature', carrier.id)).toEqual(expected);
+  });
+
+  it('lists the gate guards’ conversation with its four lines', () => {
+    expect(carriedBy('creature', 'gate-1')).toContainEqual({
+      id: 'gate-claims',
+      lines: 4,
+    });
+  });
+
+  it('lists nothing for a creature that carries none', () => {
+    expect(carriedBy('creature', 'nobody-here')).toEqual([]);
+  });
+
+  it('lets the kind matter', () => {
+    expect(carriedBy('prop', 'gate-1')).toEqual([]);
   });
 });

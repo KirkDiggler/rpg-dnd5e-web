@@ -19,6 +19,13 @@ export interface SharedLinesInForm {
   /** Open the conversation on the Conversations page; absent where there is
    * no such page. */
   open?: (conversation: string) => void;
+  /** The conversations the engine says this carrier carries, in the
+   * engine's order, each with how many lines it holds. Absent where the
+   * read-back is not at hand. */
+  carriedBy?: (
+    kind: 'creature' | 'prop' | 'faction',
+    id: string
+  ) => readonly { id: string; lines: number }[];
 }
 
 export const NO_SHARED_LINES: SharedLinesInForm = Object.freeze({
