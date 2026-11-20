@@ -43,11 +43,11 @@ describe('the castle’s statuses survive the studio (rpg-project#1024)', () => 
     );
     expect(lineOf(served, 'help')).toHaveProperty(
       ['success', 0, 'apply_status'],
-      'warmed-up'
+      { status: 'warmed-up', to: 'speaker' }
     );
     expect(lineOf(served, 'taste')).toHaveProperty(
       ['success', 0, 'apply_status'],
-      'feasted'
+      { status: 'feasted', to: 'speaker' }
     );
   });
 
@@ -110,10 +110,10 @@ describe('the castle’s statuses survive the studio (rpg-project#1024)', () => 
       ['held', 'maintenance', 0, 'ends_on'],
       'fight starts'
     );
-    expect(pushPastOf(served)).toHaveProperty(
-      ['failure', 0, 'apply_status'],
-      'held'
-    );
+    expect(pushPastOf(served)).toHaveProperty(['failure', 0, 'apply_status'], {
+      status: 'held',
+      to: 'party_in_sight',
+    });
   });
 
   it('rewording the push-past line, and moving the pedlar, keep cannot: [move] and ends_on: fight starts', () => {
@@ -142,5 +142,15 @@ describe('the castle’s statuses survive the studio (rpg-project#1024)', () => 
       ...(pushPastOf(served) as object),
       say: '(slip past him)',
     });
+    expect(pushPastOf(saved)).toHaveProperty(['failure', 0, 'apply_status'], {
+      status: 'held',
+      to: 'party_in_sight',
+    });
+    // The mapping stays a mapping: exactly `status` and `to`, not a string.
+    const given = (
+      pushPastOf(saved) as { failure: { apply_status: unknown }[] }
+    ).failure[0].apply_status;
+    expect(typeof given).toBe('object');
+    expect(Object.keys(given as object).sort()).toEqual(['status', 'to']);
   });
 });

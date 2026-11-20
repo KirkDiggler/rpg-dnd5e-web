@@ -1,5 +1,5 @@
 # SYNCED FIXTURE (rpg-project#857, #1005, #1000, #1023, #1024, #990): rpg-toolkit rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-castle.yaml, the castle rpg-api content/the-mad-king.yaml compiles to
-# at rulebooks/dnd5e/encounter/v0.234.0 (main 5cec1966; unchanged at 7d70c70e), git blob ed1d47a6dc9e6b6708b9a955d5dd8b0a1f27b9d9.
+# at rulebooks/dnd5e/encounter/v0.236.0 (main ee93587d), git blob 93395fe37b9573883fe59d0dd9e7927af0165e46.
 # Everything below these three lines is that blob byte for byte (servedCastle.test.ts checks the sha).
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,
@@ -2017,8 +2017,8 @@ room:
         options:
           # Hand edit (rpg-project#990), a small proof scene for the Keep's
           # hold: shoulder past the hall guard on his rounds. Fail, and he
-          # takes hold of the speaker, who is held where they stand; slip
-          # past, and he only grumbles.
+          # takes hold of the speaker and every one of the party he sees,
+          # each held where they stand; slip past, and he only grumbles.
           - id: push-past
             say: (shoulder past him)
             check:
@@ -2027,8 +2027,8 @@ room:
             success:
               - say: Oi! Mind where you’re going.
             failure:
-              - say: Not so fast. You stay right there.
-                apply_status: held
+              - say: Not so fast. All of you, stay right there.
+                apply_status: { status: held, to: party_in_sight }
         behaviors:
           - id: policy
             use: hall-1-policy
@@ -2274,7 +2274,7 @@ room:
                 fact: caught-in-kitchen
             success:
               - say: Bless you. Here, eat.
-                apply_status: warmed-up
+                apply_status: { status: warmed-up, to: speaker }
             failure:
               - say: Mind the pastry! Out from under my feet.
           # Hand edit (rpg-project#1024): taste the feast. No check: she lets
@@ -2287,7 +2287,7 @@ room:
                 fact: caught-in-kitchen
             success:
               - say: Go on, then. One plate, mind.
-                apply_status: feasted
+                apply_status: { status: feasted, to: speaker }
       keep-1:
         faction: loyalists
         behaviors:
