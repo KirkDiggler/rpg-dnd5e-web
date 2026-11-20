@@ -4,7 +4,11 @@
  * (rpg-toolkit's golden at encounter v0.232.1) and writes through the
  * studio's edits, so each test reads the file the edit would save.
  */
-import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { create } from '@bufbuild/protobuf';
+import {
+  ReadBackConnectionSchema,
+  type ReadBack,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   cleanup,
   fireEvent,
@@ -26,15 +30,19 @@ import {
 } from '../world-building/sharedLinesEdits';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import site from './fixtures/conversations-site.yaml?raw';
-import { conversationsSiteReadBack } from './fixtures/engineReadBack';
+import {
+  castleConversationsReadBack,
+  conversationsSiteReadBack,
+} from './fixtures/engineReadBack';
+import castle from './fixtures/the-mad-king-conversations.yaml?raw';
 import { StudioInteractions } from './StudioInteractions';
 import type { StudioReadBack } from './studioPublishing';
 import type { SharedLinesCheck } from './StudioSharedLines';
 
 afterEach(cleanup);
 
-function read() {
-  const result = readDraftYaml(site);
+function read(yaml: string = site) {
+  const result = readDraftYaml(yaml);
   if (!result.ok) throw new Error(result.refusal);
   return result;
 }
@@ -45,8 +53,11 @@ function changedLines(a: string, b: string): string[] {
   return b.split('\n').filter((line, i) => line !== left[i]);
 }
 
-function renderPage(engine: ReadBack = conversationsSiteReadBack()) {
-  const result = read();
+function renderPage(
+  engine: ReadBack = conversationsSiteReadBack(),
+  yaml: string = site
+) {
+  const result = read(yaml);
   let readBack: StudioReadBack = {
     readBack: engine,
     readBackIsCurrent: true,
@@ -119,7 +130,7 @@ function renderPage(engine: ReadBack = conversationsSiteReadBack()) {
     }
     rerender(view());
   };
-  return { sharedLines, written, refresh, before: site };
+  return { sharedLines, written, refresh, before: yaml };
 }
 
 describe('the conversations written once (rpg-project#1027)', () => {
@@ -518,45 +529,112 @@ const card = (n: number) =>
   screen.getByRole('article', { name: `Line ${n} of gate-claims` });
 
 describe('a card per line (rpg-project#1030)', () => {
-  it('a closed card says the engine’s sentences for its line, not words from the file', () => {
+  it('a closed card’s face is built from the engine’s connections; each item’s tooltip is its sentence', () => {
     const line = 'conversations.gate-claims.lines[0]';
-    renderPage(
-      withSentences({
-        [`${line}.requires[0]`]: 'ENGINE SAYS: offered once the moon is up.',
-        [`${line}.success[0]`]: 'ENGINE SAYS: the guard waves them through.',
-        [`${line}.failure[0]`]: 'ENGINE SAYS: the guard reaches for a horn.',
-        [`${line}.advance`]: 'ENGINE SAYS: the gate moves on.',
-      })
+    const engine = withSentences({
+      [`${line}.requires[0]`]: 'ENGINE SAYS: offered once the moon is up.',
+    });
+    // The engine names a fact the file does not: the clause says the
+    // engine's id, so it was read from the connection, not the YAML.
+    for (const group of engine.sections.flatMap((section) => section.groups))
+      for (const statement of group.statements)
+        if (statement.path === `${line}.requires[0]`)
+          statement.connects[0]!.id = 'moon-up';
+    renderPage(engine);
+    const offered = within(card(1)).getByRole('group', {
+      name: 'Offered when, line 1 of gate-claims',
+    });
+    const clause = within(offered).getByText('moon-up').closest('[title]')!;
+    expect(clause.textContent).toBe('knows moon-up');
+    expect(clause.getAttribute('title')).toBe(
+      'ENGINE SAYS: offered once the moon is up.'
     );
-    const troupe = card(1);
-    // The headline is the value the line says, read at the line's path.
+    expect(offered.textContent).not.toContain('feast-tonight');
+    // The full sentence is in the card's details, not on its face.
+    const words = card(1).querySelector('details')!;
+    expect(words.textContent).toContain(
+      'ENGINE SAYS: offered once the moon is up.'
+    );
+    // No form is open: the cards are closed.
+    expect(screen.queryByLabelText('Line 1 for gate-claims')).toBeNull();
+  });
+
+  it('on the castle, the troupe card is short: two offered-when clauses, two difficulties, no speech range on its face', () => {
+    renderPage(castleConversationsReadBack(), castle);
+    fireEvent.click(screen.getByRole('button', { name: /^the-gate/ }));
+    const troupe = screen.getByRole('article', {
+      name: 'Line 1 of the-gate',
+    });
     expect(troupe.textContent).toContain(
       '“We’re the troupe for tonight’s feast.”'
     );
-    const offered = within(troupe).getByText(
-      'ENGINE SAYS: offered once the moon is up.'
-    );
-    expect(offered.getAttribute('data-engine-path')).toBe(
-      `${line}.requires[0]`
-    );
-    // The requirement's fact is in the file; the card does not say it,
-    // because the engine's sentence here does not.
-    expect(offered.closest('.es-line-card-when')!.textContent).not.toContain(
-      'feast-tonight'
+    const offered = within(troupe).getByRole('group', {
+      name: 'Offered when, line 1 of the-gate',
+    });
+    // The engine also says this line's requirements as a way through the
+    // gate, as the fact's hub and once per carrier; only the line's own two
+    // are its clauses.
+    expect(
+      [...offered.querySelectorAll('.es-line-card-item')].map(
+        (item) => item.textContent
+      )
+    ).toEqual(['knows feast-tonight', 'front-gate is fresh or warned-guest']);
+    expect(offered.textContent).not.toContain('more');
+    for (const [ability, dc] of [
+      ['Performance', '13'],
+      ['Deception', '15'],
+    ] as const)
+      expect(
+        (
+          within(troupe).getByLabelText(
+            `${ability} difficulty, line 1 of the-gate`
+          ) as HTMLInputElement
+        ).value
+      ).toBe(dc);
+    const face = troupe.cloneNode(true) as HTMLElement;
+    face.querySelector('details')!.remove();
+    expect(face.textContent).not.toContain('its words reach');
+    expect(face.textContent).not.toContain('Guard (gate-1)');
+    // The engine's words are one disclosure away.
+    expect(troupe.querySelector('details')!.textContent).toContain(
+      'its words reach'
     );
     const pass = within(troupe).getByRole('region', { name: 'On a pass' });
-    expect(pass.textContent).toContain(
-      'ENGINE SAYS: the guard waves them through.'
-    );
-    expect(pass.textContent).not.toContain('reaches for a horn');
+    expect(pass.textContent).toContain('Through to the hall, then.');
+    expect(pass.textContent).toContain('advances front-gate: admitted');
+  });
+
+  it('a connection the card does not know is counted as “+1 more”, which opens the engine’s words', () => {
+    const engine = castleConversationsReadBack();
+    for (const group of engine.sections.flatMap((section) => section.groups))
+      for (const statement of group.statements)
+        if (
+          statement.path === 'conversations.the-gate.lines[0].success[0]' &&
+          statement.about?.kind === 'shared-lines'
+        )
+          statement.connects.push(
+            create(ReadBackConnectionSchema, {
+              kind: 'omen',
+              id: 'red-moon',
+              role: 'portends',
+            })
+          );
+    renderPage(engine, castle);
+    fireEvent.click(screen.getByRole('button', { name: /^the-gate/ }));
+    const troupe = screen.getByRole('article', {
+      name: 'Line 1 of the-gate',
+    });
+    const pass = within(troupe).getByRole('region', { name: 'On a pass' });
+    expect(pass.textContent).not.toContain('red-moon');
+    const more = within(pass).getByRole('button', { name: /^1 more/ });
+    expect(more.textContent).toBe('+1 more');
     expect(
       within(troupe).getByRole('region', { name: 'On a miss' }).textContent
-    ).toContain('ENGINE SAYS: the guard reaches for a horn.');
-    expect(troupe.textContent).toContain('ENGINE SAYS: the gate moves on.');
-    // Another line's card does not take the troupe line's sentences.
-    expect(card(2).textContent).not.toContain('ENGINE SAYS');
-    // No form is open: the cards are closed.
-    expect(screen.queryByLabelText('Line 1 for gate-claims')).toBeNull();
+    ).not.toContain('more');
+    const words = troupe.querySelector('details')!;
+    expect(words.open).toBe(false);
+    fireEvent.click(more);
+    expect(words.open).toBe(true);
   });
 
   it('the check is on the surface, each way’s difficulty a number; a line with none says so', () => {
@@ -564,7 +642,7 @@ describe('a card per line (rpg-project#1030)', () => {
     const check = within(card(1)).getByRole('group', {
       name: 'Check of line 1 of gate-claims',
     });
-    expect(check.textContent).toContain('Check, best of:');
+    expect(check.textContent).toContain('Check, best of');
     expect(
       (
         within(check).getByLabelText(

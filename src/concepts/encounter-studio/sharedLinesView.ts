@@ -212,10 +212,15 @@ function under(statementPath: string, path: string, key: string): boolean {
 }
 
 /** The engine's statements at and under one line's path (as the engine
- * names it, `conversations.<id>.lines[k]`), in the engine's order. */
+ * names it, `conversations.<id>.lines[k]`), in the engine's order, that are
+ * ABOUT the conversation. The engine sets other subjects' statements at the
+ * same paths — a way through a door the line opens, a hub's ask, the same
+ * requirement once per carrier — and those are the other subject's to say,
+ * not this line's. */
 export function lineReadBackOf(
   readBack: ReadBack | null | undefined,
-  linePath: string
+  linePath: string,
+  conversation: string
 ): LineReadBack {
   const out: LineReadBack = {
     line: [],
@@ -228,6 +233,11 @@ export function lineReadBackOf(
   };
   if (!readBack) return out;
   for (const statement of statementsOf(readBack)) {
+    if (
+      statement.about?.kind !== SHARED_LINES_KIND ||
+      statement.about.id !== conversation
+    )
+      continue;
     if (statement.path === linePath) {
       out.line.push(statement);
       continue;

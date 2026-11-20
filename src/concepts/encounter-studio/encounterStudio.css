@@ -2923,11 +2923,6 @@ li.es-machine-step[data-refused],
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.encounter-studio .es-line-card-when {
-  display: grid;
-  gap: 0.2rem;
-  color: var(--wb-muted);
-}
 .encounter-studio .es-line-card-check {
   display: flex;
   flex-wrap: wrap;
@@ -2949,7 +2944,9 @@ li.es-machine-step[data-refused],
   background: var(--wb-raised);
 }
 .encounter-studio .es-line-card-way input {
+  flex: none;
   width: 3.6rem;
+  min-width: 3.6rem;
   border-color: var(--wb-accent);
   font-variant-numeric: tabular-nums;
 }
@@ -2982,31 +2979,66 @@ li.es-machine-step[data-refused],
 .encounter-studio .es-line-card-branch q {
   font-style: italic;
 }
-.encounter-studio .es-line-card-follows,
-.encounter-studio .es-line-card-steps {
-  display: grid;
-  gap: 0.25rem;
-  color: var(--wb-muted);
-  font-size: var(--es-text-help);
-}
-.encounter-studio .es-line-card-follows {
-  padding-left: 0.55rem;
-  border-left: 2px solid var(--wb-border);
-}
 .encounter-studio .es-line-card-pending {
   color: var(--wb-muted);
   font-style: italic;
 }
-.encounter-studio .es-line-card-more {
+.encounter-studio .es-line-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+}
+.encounter-studio .es-line-card-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.encounter-studio :is(.es-line-card-clauses, .es-line-card-chips) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-line-card-clauses > li + li::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--wb-muted);
+}
+.encounter-studio .es-line-card-chips > li {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-raised);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-item code {
+  font-size: 0.92em;
+}
+.encounter-studio .es-line-card-more-count {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+.encounter-studio .es-line-card-words {
   color: var(--wb-muted);
   font-size: var(--es-text-help);
 }
-.encounter-studio .es-line-card-more summary {
+.encounter-studio .es-line-card-words summary {
   cursor: pointer;
 }
-.encounter-studio .es-line-card-more p + p,
-.encounter-studio .es-line-card-more summary + p {
-  margin-top: 0.3rem;
+.encounter-studio .es-line-card-words p {
+  margin-top: 0.35rem;
 }
 /* The one line form, opened in a card: every label stands above its field
  * with room between them. */

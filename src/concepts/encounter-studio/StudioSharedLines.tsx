@@ -412,7 +412,7 @@ function SharedConversationDetail({
                   check === 'current' && readBack
                     ? {
                         state: 'current',
-                        readBack: lineReadBackOf(readBack, linePath),
+                        readBack: lineReadBackOf(readBack, linePath, id),
                       }
                     : { state: check === 'refused' ? 'refused' : 'checking' };
                 return (
@@ -423,6 +423,7 @@ function SharedConversationDetail({
                       linePath={linePath}
                       option={line}
                       sentences={sentences}
+                      value={(path) => valueAt(path, document)}
                       open={editing === index}
                       onOpen={() => setEditing(index)}
                       onClose={closeEditing}
