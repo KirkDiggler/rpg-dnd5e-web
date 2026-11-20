@@ -535,6 +535,13 @@ function CreatureView({
   return (
     <>
       {arrange?.kind === 'actor' && (
+        <CarriedConversations
+          kind="creature"
+          id={arrange.monster.id}
+          name={selectionName(arrange, session)}
+        />
+      )}
+      {arrange?.kind === 'actor' && (
         <ReadBack
           document={session.document}
           selection={{ kind: 'creature', id: arrange.monster.id }}
@@ -542,13 +549,6 @@ function CreatureView({
           onJump={onJump}
           onOpenFact={onOpenFact}
           wayOpener={wayOpener}
-        />
-      )}
-      {arrange?.kind === 'actor' && (
-        <CarriedConversations
-          kind="creature"
-          id={arrange.monster.id}
-          name={selectionName(arrange, session)}
         />
       )}
       <Form

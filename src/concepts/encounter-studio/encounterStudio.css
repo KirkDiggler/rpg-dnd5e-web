@@ -3288,6 +3288,8 @@ li.es-machine-step[data-refused],
 
 .encounter-studio .es-carried-conversations {
   margin-bottom: 0.75rem;
+  /* The read-back's inset: `.es-context-panel` padding. */
+  padding: 0 0.85rem;
 }
 
 .encounter-studio .es-carried-conversations ul {

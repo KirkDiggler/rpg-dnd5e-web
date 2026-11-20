@@ -705,7 +705,16 @@ describe('StudioInspector', () => {
     );
     inspector(live, {}, withLines);
     const view = within(region());
-    expect(view.getByText('Conversations')).toBeTruthy();
+    const heading = view.getByText('Conversations');
+    expect(heading).toBeTruthy();
+    // At the top of the Inspector: before the read-back, when it renders.
+    const readBackRoot = view.queryByText('Read back');
+    if (readBackRoot) {
+      expect(
+        heading.compareDocumentPosition(readBackRoot) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
     fireEvent.click(
       view.getByRole('button', { name: 'Open the-gate in Conversations' })
     );
