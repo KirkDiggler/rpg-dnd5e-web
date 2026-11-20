@@ -78,7 +78,12 @@ import { placeDoorFrame } from './doorwayPlacement';
 import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import { setInteractionApproach } from './interactionApproach';
-import { setInteractionOutcomes, type Outcomes } from './interactionOutcomes';
+import {
+  recipeHolderOf,
+  setInteractionOutcomes,
+  setInteractionRecipe,
+  type Outcomes,
+} from './interactionOutcomes';
 import {
   createMapLabel,
   deleteMapLabel,
@@ -5256,6 +5261,33 @@ export function WorldBuildingConcept({
                         current.scope,
                         id,
                         outcomes
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              commitInteractionRecipe: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    holder: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const holder = recipeHolderOf(current.scope, id);
+                    if (!holder)
+                      throw new Error(
+                        `interactions.${id}.recipe: this site authors no such conversation`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setInteractionRecipe(
+                        current.scope,
+                        id,
+                        edit(holder).recipe
                       ),
                     });
                   } catch (error) {

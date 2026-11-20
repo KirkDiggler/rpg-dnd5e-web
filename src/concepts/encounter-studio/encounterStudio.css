@@ -3175,6 +3175,7 @@ li.es-machine-step[data-refused],
   font-weight: 600;
 }
 .encounter-studio .es-section-label,
+.encounter-studio .es-conversation-steps h4,
 .encounter-studio .wb-option-label {
   margin: 0;
   color: var(--wb-muted);
@@ -3215,14 +3216,35 @@ li.es-machine-step[data-refused],
 /* Quiet removes: text in the muted colour, no red border. "Remove line"
  * keeps its emphasis. */
 .encounter-studio .wb-options .wb-danger:not(.wb-danger-strong),
+.encounter-studio .es-conversation-steps .wb-danger,
 .encounter-studio .wb-options .wb-approach-row button {
   border-color: transparent !important;
   background: none;
   color: var(--wb-muted) !important;
   text-decoration: underline;
 }
+.encounter-studio .es-conversation-steps .wb-danger:hover:not(:disabled),
 .encounter-studio
   .wb-options
   .wb-danger:not(.wb-danger-strong):hover:not(:disabled) {
   color: var(--wb-text) !important;
+}
+.encounter-studio .es-conversation-states,
+.encounter-studio .es-conversation-step-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-conversation-state {
+  margin-top: 0.5rem;
+}
+.encounter-studio .es-conversation-state-head,
+.encounter-studio .es-conversation-step-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.encounter-studio .es-conversation-step {
+  margin-top: 0.4rem;
 }
