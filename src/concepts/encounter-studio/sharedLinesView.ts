@@ -169,8 +169,23 @@ export function sharedLinesInForm(
   readBack: ReadBack | null | undefined,
   open: (conversation: string) => void
 ): SharedLinesInForm {
-  const counts = lineCounts(sharedConversationsOf(readBack));
-  return { lineCount: (id) => counts.get(id), open };
+  const conversations = sharedConversationsOf(readBack);
+  const counts = lineCounts(conversations);
+  return {
+    lineCount: (id) => counts.get(id),
+    open,
+    carriedBy: (kind, id) =>
+      conversations
+        .filter((conversation) =>
+          conversation.carriers.some(
+            (carrier) => carrier.kind === kind && carrier.id === id
+          )
+        )
+        .map((conversation) => ({
+          id: conversation.id,
+          lines: conversation.linePaths.length,
+        })),
+  };
 }
 
 /** What the engine says of one line of a conversation, sorted by WHERE each

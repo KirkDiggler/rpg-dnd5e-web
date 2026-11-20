@@ -3285,3 +3285,15 @@ li.es-machine-step[data-refused],
     min-width: 0;
   }
 }
+
+.encounter-studio .es-carried-conversations {
+  margin-bottom: 0.75rem;
+}
+
+.encounter-studio .es-carried-conversations ul {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

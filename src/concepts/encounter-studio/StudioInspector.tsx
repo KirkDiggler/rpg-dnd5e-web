@@ -18,6 +18,7 @@ import {
 import { DoorOpenedField } from '../world-building/DoorOpenedField';
 import { exitAt, setExitAt } from '../world-building/exitEdits';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
+import { CarriedConversations } from './CarriedConversations';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
 import { joinName, placesOf } from './placesView';
@@ -541,6 +542,13 @@ function CreatureView({
           onJump={onJump}
           onOpenFact={onOpenFact}
           wayOpener={wayOpener}
+        />
+      )}
+      {arrange?.kind === 'actor' && (
+        <CarriedConversations
+          kind="creature"
+          id={arrange.monster.id}
+          name={selectionName(arrange, session)}
         />
       )}
       <Form
