@@ -49,6 +49,7 @@ import {
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import castleConversationsJson from './engineReadBack.castleConversations.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
 import conversationsJson from './engineReadBack.conversations.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
@@ -208,4 +209,21 @@ export function castleMachinesV228ReadBack(): ReadBack {
  */
 export function conversationsSiteReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(conversationsJson) as JsonValue);
+}
+
+/** THE CASTLE'S CONVERSATIONS (rpg-project#1030): `readback.Of` at
+ * `rulebooks/dnd5e/encounter` v0.234.0 on rpg-api `dev` cf3b4125's
+ * `content/the-mad-king.yaml` (`the-mad-king-conversations.yaml`), trimmed
+ * to the statements at `conversations.*` paths and at every `…options[i]`
+ * path (the conversations' lines, every carrier's own lines and `use:`
+ * entries, and the ways, hubs and per-carrier statements the engine also
+ * sets at those paths), and each conversation's `conversation.transition`
+ * statements (its steps). Every kept statement is the
+ * engine's, unedited, but for a connection's `not`, renamed `negated` as the
+ * api maps it. */
+export function castleConversationsReadBack(): ReadBack {
+  return fromJson(
+    ReadBackSchema,
+    JSON.parse(castleConversationsJson) as JsonValue
+  );
 }

@@ -110,11 +110,10 @@ export function normalizeOptions(options: Options): Options {
 export function addOption(options: Options): OptionEntry[] {
   return [
     ...(options ?? []),
-    {
-      id: nextOptionId(options),
-      say: '',
-      check: [{ ...DEFAULT_OPTION_APPROACH }],
-    },
+    // A NEW LINE HAS NO CHECK (rpg-project#1033): a check is optional, as
+    // the engine reads a line (`come-quietly` has none); one is added with
+    // its own control.
+    { id: nextOptionId(options), say: '' },
   ];
 }
 
@@ -176,12 +175,12 @@ export function removeOptionApproach(
   option: OptionShape,
   index: number
 ): OptionShape {
-  return normalizeOption({
-    ...option,
-    ...(option.check !== undefined
-      ? { check: option.check.filter((_, i) => i !== index) }
-      : {}),
-  });
+  const check = option.check?.filter((_, i) => i !== index);
+  // The last way gone is no check at all (rpg-project#1033), never an empty
+  // list.
+  const next: OptionShape = { ...option, check };
+  if (check === undefined || check.length === 0) delete next.check;
+  return normalizeOption(next);
 }
 
 /** A new verdict row: a line and nothing else. It says nothing yet, which the

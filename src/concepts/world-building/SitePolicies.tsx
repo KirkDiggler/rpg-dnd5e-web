@@ -2768,6 +2768,10 @@ const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
   failure: 'When the check is missed',
 };
 
+/** A line with no check (rpg-project#1033) is not beaten or missed: its
+ * replies are what is said back when it is said. */
+const UNCHECKED_SUCCESS_HEADING = 'When it is said';
+
 /**
  * A binding's OPTIONS editor — a creature's or a prop's (rpg-project#569).
  *
@@ -2785,6 +2789,7 @@ export function OptionsEditor({
   at,
   titled = true,
   listKey = 'options',
+  only,
   options,
   room,
   isProp,
@@ -2803,6 +2808,10 @@ export function OptionsEditor({
   /** The key the lines sit under in the owner: a carrier's `options`, a
    * conversation's `lines` (rpg-project#1027). */
   listKey?: 'options' | 'lines';
+  /** Only the line at this index, in place (rpg-project#1030): the
+   * Conversations page opens one line's form from its card. The line keeps
+   * its own number and labels; the list's Add is the page's. */
+  only?: number;
   /** A carrier's entries: its own lines, and any `use:` of a conversation
    * (rpg-project#1025), shown as that conversation's lines. */
   options: readonly OptionEntry[];
@@ -2818,7 +2827,7 @@ export function OptionsEditor({
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
       {titled && <h6>Options — what a character can say</h6>}
-      {options.length === 0 && (
+      {only === undefined && options.length === 0 && (
         <p className="wb-help" data-testid={`options-none-${owner}`}>
           {isProp
             ? 'Nobody can speak to this prop yet.'
@@ -2826,6 +2835,7 @@ export function OptionsEditor({
         </p>
       )}
       {options.map((entry, index) => {
+        if (only !== undefined && index !== only) return null;
         const n = index + 1;
         const line = at ? `${at}.${listKey}[${index}]` : undefined;
         if (isOptionUse(entry))
@@ -2948,10 +2958,15 @@ export function OptionsEditor({
               </RevealDiv>
             )}
             <div className="wb-option-check">
-              <span>Check — any one of these</span>
+              <span>
+                {(option.check ?? []).length > 0
+                  ? 'Check — any one of these'
+                  : 'No check — the line is simply said'}
+              </span>
               <CheckApproachRows
                 id={of}
                 rows={option.check ?? []}
+                minimum={0}
                 onPatch={(approach, patch) =>
                   commit(patchOptionApproach(option, approach, patch))
                 }
@@ -2975,7 +2990,7 @@ export function OptionsEditor({
               line={n}
               at={line}
               option={option}
-              checked={option.check !== undefined}
+              checked={(option.check ?? []).length > 0}
               onCommit={commit}
             />
             {holdable.length === 0 && (
@@ -2984,14 +2999,22 @@ export function OptionsEditor({
                 one — mark a prop holdable in its orders.
               </p>
             )}
-            {OPTION_VERDICTS.map((verdict) => (
+            {OPTION_VERDICTS.filter(
+              (verdict) =>
+                verdict === 'success' ||
+                (option.check ?? []).length > 0 ||
+                (option.failure ?? []).length > 0
+            ).map((verdict) => (
               <div
                 key={verdict}
                 className="wb-policy-trigger-block"
                 data-testid={`option-${owner}-${index}-${verdict}`}
               >
                 <p className="wb-policy-trigger">
-                  <code>{verdict}</code> {VERDICT_HEADINGS[verdict]}
+                  <code>{verdict}</code>{' '}
+                  {verdict === 'success' && (option.check ?? []).length === 0
+                    ? UNCHECKED_SUCCESS_HEADING
+                    : VERDICT_HEADINGS[verdict]}
                 </p>
                 <EntryList rows={option[verdict] ?? []}>
                   {(row, rowIndex, key) => (
@@ -3038,15 +3061,17 @@ export function OptionsEditor({
           </RevealDiv>
         );
       })}
-      <div className="wb-actions">
-        <button
-          type="button"
-          aria-label={`Add a line to ${owner}`}
-          onClick={onAdd}
-        >
-          Add a line
-        </button>
-      </div>
+      {only === undefined && (
+        <div className="wb-actions">
+          <button
+            type="button"
+            aria-label={`Add a line to ${owner}`}
+            onClick={onAdd}
+          >
+            Add a line
+          </button>
+        </div>
+      )}
     </div>
   );
 }

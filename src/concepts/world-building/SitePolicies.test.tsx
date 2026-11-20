@@ -738,6 +738,11 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
     expect(screen.getByTestId('options-none-goblin-1')).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('Add a line to goblin-1'));
+    // A new line has no check (rpg-project#1033); one is added on purpose.
+    expect(latest?.options).toEqual([{ id: 'line-1', say: '' }]);
+    fireEvent.click(
+      screen.getByLabelText('Add approach to line 1 of goblin-1')
+    );
     expect(latest?.options).toEqual([
       { id: 'line-1', say: '', check: [{ ability: 'persuasion', dc: 10 }] },
     ]);

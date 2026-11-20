@@ -11,9 +11,17 @@
  * form every carrier's lines use (`OptionsEditor`), pointed at
  * `conversations.<id>.lines`.
  */
-import { useState } from 'react';
-import type { OptionShape } from '../world-building/answerTableShape';
-import { removeOption, replaceOption } from '../world-building/optionEdits';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  isOptionUse,
+  type OptionEntry,
+  type OptionShape,
+} from '../world-building/answerTableShape';
+import {
+  patchOptionApproach,
+  removeOption,
+  replaceOption,
+} from '../world-building/optionEdits';
 import { documentPlacementNames } from '../world-building/placementNames';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
@@ -23,11 +31,15 @@ import {
   type LinesCarrier,
 } from '../world-building/sharedLinesEdits';
 import { OptionsEditor } from '../world-building/SitePolicies';
+import { StepWordsContext } from '../world-building/stepWordsContext';
+import { stepWordsOf } from './conversationSteps';
 import { AboutPanel } from './FieldHelp';
 import { locate, valueAt } from './locatePath';
 import { placeName } from './placeName';
 import type { RefusalTarget } from './refusalJump';
+import { SharedLineCard, type LineSentences } from './SharedLineCard';
 import {
+  lineReadBackOf,
   SHARED_LINES_KIND,
   sharedConversationsOf,
   type SharedConversation,
@@ -101,8 +113,9 @@ function carrierCandidates(
   ];
 }
 
-/** The `options[i]` index of a `use:` the engine named. */
-function indexOfUse(
+/** The `options[i]` index of a carrier's entry the engine named: a `use:`,
+ * or one of its own lines. */
+function indexOfLine(
   path: string,
   document: Readonly<RoomDraftDocument>
 ): number | null {
@@ -155,89 +168,102 @@ export function StudioSharedLines({
       (document.scope.unread?.conversations as object | undefined) ?? {},
       id
     );
+  const stepWords = stepWordsOf(
+    readBack?.readBackIsCurrent ? readBack.readBack : null,
+    document
+  );
   return (
-    <section aria-label="Written once" className="es-shared-lines">
-      <h3>Written once</h3>
-      <AboutPanel>
-        <p>
-          A conversation is the lines a character can say, written once and
-          applied to every creature, prop or faction that says them. A change
-          here is a change for all of them.
-        </p>
-      </AboutPanel>
-      {notice && (
-        <div role="status" className="es-help es-readback-notice">
-          <p>{notice}</p>
-          {state === 'refused' &&
-            (refusals.length > 0 ? (
-              <ul aria-label="The engine’s refusals here">
-                {refusals.map((refusal, at) => (
-                  <li key={at}>
-                    <span title={refusal.path}>
-                      {placeName(refusal.path, document)}
-                    </span>
-                    {': '}
-                    {refusal.message}
-                  </li>
-                ))}
-              </ul>
+    <StepWordsContext.Provider value={stepWords}>
+      <section aria-label="Written once" className="es-shared-lines">
+        <h3>Written once</h3>
+        <AboutPanel>
+          <p>
+            A conversation is the lines a character can say, written once and
+            applied to every creature, prop or faction that says them. A change
+            here is a change for all of them.
+          </p>
+        </AboutPanel>
+        {notice && (
+          <div role="status" className="es-help es-readback-notice">
+            <p>{notice}</p>
+            {state === 'refused' &&
+              (refusals.length > 0 ? (
+                <ul aria-label="The engine’s refusals here">
+                  {refusals.map((refusal, at) => (
+                    <li key={at}>
+                      <span title={refusal.path}>
+                        {placeName(refusal.path, document)}
+                      </span>
+                      {': '}
+                      {refusal.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>Its refusals are listed in the studio’s header.</p>
+              ))}
+          </div>
+        )}
+        <StudioListDetail
+          id="shared-lines"
+          label="Conversations written once"
+          groups={[
+            {
+              rows: conversations.map((conversation) => ({
+                key: { kind: SHARED_LINES_KIND, id: conversation.id },
+                name: (
+                  <span className="es-shared-lines-name">
+                    {conversation.id}
+                  </span>
+                ),
+                summary: written(conversation.id)
+                  ? `${
+                      conversation.carriers.length === 1
+                        ? '1 carries it'
+                        : `${conversation.carriers.length} carry it`
+                    } · ${plural(conversation.linePaths.length, 'line', 'lines')}`
+                  : 'removed from the draft',
+                rowData: { 'data-shared-lines': conversation.id },
+              })),
+            },
+          ]}
+          selected={
+            selected ? { kind: SHARED_LINES_KIND, id: selected.id } : null
+          }
+          onSelect={(key) => setChosen(key.id)}
+          detailLabel={
+            selected ? `The lines of ${selected.id}` : 'No conversation chosen'
+          }
+          empty={<p className="es-help">{NO_SHARED_LINES_SENTENCE}</p>}
+          detail={
+            selected && !written(selected.id) ? (
+              <p className="es-help">{REMOVED_SHARED_LINES_SENTENCE}</p>
+            ) : selected ? (
+              <SharedConversationDetail
+                key={selected.id}
+                conversation={selected}
+                session={session}
+                names={names}
+                candidates={candidates}
+                carriersEditable={state === 'current'}
+                readBack={readBack?.readBack}
+                check={state}
+                refusals={refusals}
+                onJump={onJump}
+              />
             ) : (
-              <p>Its refusals are listed in the studio’s header.</p>
-            ))}
-        </div>
-      )}
-      <StudioListDetail
-        id="shared-lines"
-        label="Conversations written once"
-        groups={[
-          {
-            rows: conversations.map((conversation) => ({
-              key: { kind: SHARED_LINES_KIND, id: conversation.id },
-              name: <span className="es-threads-id">{conversation.id}</span>,
-              summary: written(conversation.id)
-                ? `${
-                    conversation.carriers.length === 1
-                      ? '1 carries it'
-                      : `${conversation.carriers.length} carry it`
-                  } · ${plural(conversation.linePaths.length, 'line', 'lines')}`
-                : 'removed from the draft',
-              rowData: { 'data-shared-lines': conversation.id },
-            })),
-          },
-        ]}
-        selected={
-          selected ? { kind: SHARED_LINES_KIND, id: selected.id } : null
-        }
-        onSelect={(key) => setChosen(key.id)}
-        detailLabel={
-          selected ? `The lines of ${selected.id}` : 'No conversation chosen'
-        }
-        empty={<p className="es-help">{NO_SHARED_LINES_SENTENCE}</p>}
-        detail={
-          selected && !written(selected.id) ? (
-            <p className="es-help">{REMOVED_SHARED_LINES_SENTENCE}</p>
-          ) : selected ? (
-            <SharedConversationDetail
-              key={selected.id}
-              conversation={selected}
-              session={session}
-              names={names}
-              candidates={candidates}
-              carriersEditable={state === 'current'}
-              onJump={onJump}
-            />
-          ) : (
-            <p className="es-help">Choose a conversation.</p>
-          )
-        }
-      />
-      <NewConversation
-        session={session}
-        names={names}
-        candidates={candidates}
-        onCreated={setChosen}
-      />
-    </section>
+              <p className="es-help">Choose a conversation.</p>
+            )
+          }
+        />
+        <NewConversation
+          session={session}
+          names={names}
+          candidates={candidates}
+          onCreated={setChosen}
+        />
+      </section>
+    </StepWordsContext.Provider>
   );
 }
 
@@ -247,6 +273,9 @@ function SharedConversationDetail({
   names,
   candidates,
   carriersEditable,
+  readBack,
+  check,
+  refusals,
   onJump,
 }: {
   conversation: SharedConversation;
@@ -256,6 +285,13 @@ function SharedConversationDetail({
   /** The read-back describes the draft now, so who carries it is true and
    * can be changed. */
   carriersEditable: boolean;
+  readBack: StudioReadBack['readBack'] | undefined;
+  /** Where the engine's check stands: a card's sentences are the engine's
+   * only while it is `current`. */
+  check: SharedLinesCheck['state'];
+  /** The engine's refusals on this page, each shown on the card whose path
+   * it concerns. */
+  refusals: SharedLinesCheck['refusals'];
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const { id } = conversation;
@@ -278,9 +314,32 @@ function SharedConversationDetail({
     : 'Who carries it can be changed once the engine’s check describes this draft.';
   const carried = new Set(conversation.carriers.map(carrierKey));
   const open = candidates.filter((c) => !carried.has(carrierKey(c)));
-  const [adding, setAdding] = useState('');
-  const addingCarrier =
-    open.find((c) => carrierKey(c) === adding) ?? open[0] ?? null;
+  // ONE LINE OPEN AT A TIME (rpg-project#1030): its card shows the line's
+  // form in place; every other line stays a closed card.
+  // A conversation's line is keyed by its index; a carrier's own line by
+  // its path, so the two never share a key.
+  const [editing, setEditing] = useState<number | string | null>(null);
+  const closeEditing = useCallback(() => setEditing(null), []);
+  const sentencesAt = (
+    linePath: string,
+    owner: { kind: string; id: string }
+  ): LineSentences =>
+    // A REFUSED DRAFT KEEPS THE LAST WORDS (rpg-project#1030 review): the
+    // read-back of the last draft that compiled, marked as from before the
+    // last edit, rather than every card going blank.
+    check !== 'checking' && readBack
+      ? {
+          state: check === 'current' ? 'current' : 'stale',
+          readBack: lineReadBackOf(readBack, linePath, owner),
+        }
+      : { state: 'checking' };
+  /** The refusals at or under a line's path. */
+  const refusalsAt = (linePath: string) =>
+    refusals.filter((refusal) => {
+      if (!refusal.path.startsWith(linePath)) return false;
+      const next = refusal.path.charAt(linePath.length);
+      return next === '' || next === '.' || next === '[';
+    });
   const ownBy = new Map<string, string[]>();
   for (const own of conversation.ownLines) {
     const key = carrierKey(own.carrier);
@@ -299,7 +358,7 @@ function SharedConversationDetail({
             const use = conversation.uses.find(
               (entry) => carrierKey(entry.carrier) === carrierKey(carrier)
             );
-            const index = use ? indexOfUse(use.path, document) : null;
+            const index = use ? indexOfLine(use.path, document) : null;
             return (
               <li key={carrierKey(carrier)} className="es-applied-to-chip">
                 {onJump && use ? (
@@ -328,10 +387,10 @@ function SharedConversationDetail({
                 )}
                 <button
                   type="button"
-                  className="wb-danger"
-                  aria-label={`Stop ${words} saying the lines of ${id}`}
+                  className="es-chip-remove"
+                  aria-label={`Remove ${words} from ${id}`}
                   disabled={!carriersEditable || index === null}
-                  title={notEditable}
+                  title={notEditable ?? `Remove ${words} from ${id}`}
                   onClick={() => {
                     if (index === null) return;
                     if (conversation.carriers.length <= 1)
@@ -339,39 +398,19 @@ function SharedConversationDetail({
                     else session.sharedLines.unapply(id, carrier, index);
                   }}
                 >
-                  Remove
+                  <span aria-hidden="true">×</span>
                 </button>
               </li>
             );
           })}
         </ul>
-        {carriersEditable && open.length > 0 && addingCarrier && (
-          <form
-            className="es-applied-to-add"
-            aria-label={`Apply ${id} to another`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (session.sharedLines.apply(id, addingCarrier)) setAdding('');
-            }}
-          >
-            <label>
-              <span>Apply to</span>
-              <select
-                aria-label={`Apply ${id} to`}
-                value={carrierKey(addingCarrier)}
-                onChange={(event) => setAdding(event.target.value)}
-              >
-                {open.map((carrier) => (
-                  <option key={carrierKey(carrier)} value={carrierKey(carrier)}>
-                    {carrierWords(carrier, names)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" aria-label={`Apply ${id}`}>
-              Apply
-            </button>
-          </form>
+        {carriersEditable && open.length > 0 && (
+          <CarrierPicker
+            conversation={id}
+            open={open}
+            names={names}
+            onApply={(carrier) => session.sharedLines.apply(id, carrier)}
+          />
         )}
       </section>
       {removing && (
@@ -407,30 +446,84 @@ function SharedConversationDetail({
       <section aria-label={`Lines of ${id}`} className="es-shared-lines-lines">
         <h4>Its lines</h4>
         {lines ? (
-          <OptionsEditor
-            titled={false}
-            owner={id}
-            at={`conversations.${id}`}
-            listKey="lines"
-            options={lines}
-            room={document.draft.room}
-            isProp={false}
-            onAdd={() => session.sharedLines.addLine(id)}
-            onChange={(index, option) =>
-              session.sharedLines.setLines(
-                id,
-                (replaceOption(lines, index, option) ?? []) as OptionShape[]
-              )
-            }
-            onRemove={(index) => {
-              if (lines.length <= 1) setRemoving('line');
-              else
-                session.sharedLines.setLines(
+          <>
+            <ol className="es-line-cards">
+              {lines.map((line, index) => {
+                const linePath = `${conversation.path}.lines[${index}]`;
+                const sentences = sentencesAt(linePath, {
+                  kind: SHARED_LINES_KIND,
                   id,
-                  (removeOption(lines, index) ?? []) as OptionShape[]
+                });
+                return (
+                  <li key={index}>
+                    <SharedLineCard
+                      owner={id}
+                      number={index + 1}
+                      linePath={linePath}
+                      refusals={refusalsAt(linePath)}
+                      option={line}
+                      sentences={sentences}
+                      value={(path) => valueAt(path, document)}
+                      open={editing === index}
+                      onOpen={() => setEditing(index)}
+                      onClose={closeEditing}
+                      onDifficulty={(way, dc) =>
+                        session.sharedLines.setLines(
+                          id,
+                          (replaceOption(
+                            lines,
+                            index,
+                            patchOptionApproach(line, way, { dc })
+                          ) ?? []) as OptionShape[]
+                        )
+                      }
+                    >
+                      <OptionsEditor
+                        titled={false}
+                        owner={id}
+                        at={`conversations.${id}`}
+                        listKey="lines"
+                        only={index}
+                        options={lines}
+                        room={document.draft.room}
+                        isProp={false}
+                        onAdd={() => session.sharedLines.addLine(id)}
+                        onChange={(at, option) =>
+                          session.sharedLines.setLines(
+                            id,
+                            (replaceOption(lines, at, option) ??
+                              []) as OptionShape[]
+                          )
+                        }
+                        onRemove={(at) => {
+                          if (lines.length <= 1) setRemoving('line');
+                          else if (
+                            session.sharedLines.setLines(
+                              id,
+                              (removeOption(lines, at) ?? []) as OptionShape[]
+                            )
+                          )
+                            setEditing(null);
+                        }}
+                      />
+                    </SharedLineCard>
+                  </li>
                 );
-            }}
-          />
+              })}
+            </ol>
+            <div className="wb-actions">
+              <button
+                type="button"
+                aria-label={`Add a line to ${id}`}
+                onClick={() => {
+                  // The new line opens, so its words can be written at once.
+                  if (session.sharedLines.addLine(id)) setEditing(lines.length);
+                }}
+              >
+                Add a line
+              </button>
+            </div>
+          </>
         ) : (
           <p className="es-help">
             Its lines are not written as a list of lines this form edits; they
@@ -439,59 +532,209 @@ function SharedConversationDetail({
         )}
       </section>
       {ownBy.size > 0 && (
+        // A CARRIER'S OWN LINES, AS CARDS (rpg-project#1030): the same card
+        // and form as the conversation's lines, so everything said to this
+        // conversation's carriers is on one page with every difficulty on
+        // the surface. Each is the carrier's, written at its own path.
         <section
           aria-label={`Own lines beside ${id}`}
           className="es-shared-lines-own"
         >
-          <h4>Said on their own, beside these</h4>
           {conversation.carriers
             .filter((carrier) => ownBy.has(carrierKey(carrier)))
             .map((carrier) => {
               const words = carrierWords(carrier, names);
+              const owner = { kind: carrier.kind, id: carrier.id };
               return (
-                <div key={carrierKey(carrier)}>
-                  <p className="es-help">Only {words} offers:</p>
-                  <ul className="es-inspector-list">
-                    {ownBy.get(carrierKey(carrier))!.map((path) => {
+                <section
+                  key={carrierKey(carrier)}
+                  aria-label={`Only ${words} offers`}
+                >
+                  <h4>Only {words} offers</h4>
+                  <ol className="es-line-cards">
+                    {ownBy.get(carrierKey(carrier))!.map((path, place) => {
+                      const index = indexOfLine(path, document);
                       const line = valueAt(path, document);
-                      const said =
-                        isRecord(line) && typeof line.say === 'string'
-                          ? `“${line.say}”`
-                          : isRecord(line) && typeof line.do === 'string'
-                            ? `does “${line.do}”`
-                            : 'a line';
+                      // While the check is behind the draft, the engine's
+                      // paths may have moved onto a `use:` or off the list:
+                      // such a place is said plainly, never shown as a line.
+                      if (
+                        index === null ||
+                        !isRecord(line) ||
+                        isOptionUse(line as unknown as OptionEntry)
+                      )
+                        return (
+                          <li key={path} className="es-help">
+                            A line of {words} the draft no longer holds here;
+                            the check is catching up.
+                          </li>
+                        );
+                      const option = line as unknown as OptionShape;
+                      // The carrier's own path: its `…options[i]` less the
+                      // entry, as the engine named it.
+                      const at = path.slice(0, path.lastIndexOf('.options['));
+                      const entries = valueAt(`${at}.options`, document);
                       return (
                         <li key={path}>
-                          {said}{' '}
-                          {onJump && (
-                            <button
-                              type="button"
-                              className="es-link"
-                              aria-label={`Edit ${words}'s own line ${said}`}
-                              onClick={() =>
-                                onJump(
-                                  carrier.kind === 'faction'
-                                    ? {
-                                        kind: 'home',
-                                        section: 'factions',
-                                        id: carrier.id,
-                                      }
-                                    : { kind: carrier.kind, id: carrier.id },
-                                  path
-                                )
-                              }
-                            >
-                              Edit
-                            </button>
-                          )}
+                          <SharedLineCard
+                            owner={words}
+                            number={place + 1}
+                            linePath={path}
+                            refusals={refusalsAt(path)}
+                            option={option}
+                            sentences={sentencesAt(path, owner)}
+                            value={(p) => valueAt(p, document)}
+                            open={editing === path}
+                            onOpen={() => setEditing(path)}
+                            onClose={closeEditing}
+                            onDifficulty={(way, dc) =>
+                              session.sharedLines.setOwnLine(
+                                carrier,
+                                index,
+                                patchOptionApproach(option, way, { dc })
+                              )
+                            }
+                          >
+                            {Array.isArray(entries) && (
+                              <OptionsEditor
+                                titled={false}
+                                owner={carrier.id}
+                                at={at}
+                                only={index}
+                                options={entries as OptionEntry[]}
+                                room={document.draft.room}
+                                isProp={carrier.kind === 'prop'}
+                                onAdd={() => {}}
+                                onChange={(i, next) =>
+                                  session.sharedLines.setOwnLine(
+                                    carrier,
+                                    i,
+                                    next
+                                  )
+                                }
+                                onRemove={(i) => {
+                                  if (
+                                    session.sharedLines.setOwnLine(
+                                      carrier,
+                                      i,
+                                      null
+                                    )
+                                  )
+                                    setEditing(null);
+                                }}
+                              />
+                            )}
+                          </SharedLineCard>
                         </li>
                       );
                     })}
-                  </ul>
-                </div>
+                  </ol>
+                </section>
               );
             })}
         </section>
+      )}
+    </div>
+  );
+}
+
+const PICKER_GROUPS: readonly {
+  kind: LinesCarrier['kind'];
+  title: string;
+}[] = [
+  { kind: 'creature', title: 'Creatures' },
+  { kind: 'prop', title: 'Things' },
+  { kind: 'faction', title: 'Factions' },
+];
+
+/** "+ apply to…" (rpg-project#1030): a short picker of who could carry the
+ * conversation, grouped as creatures, things and factions. Only carriers
+ * not already applied are offered; choosing one is the one apply write. */
+function CarrierPicker({
+  conversation,
+  open,
+  names,
+  onApply,
+}: {
+  conversation: string;
+  /** Who could carry it and does not yet. */
+  open: readonly LinesCarrier[];
+  names: ReadonlyMap<string, string>;
+  onApply(carrier: LinesCarrier): boolean;
+}): React.JSX.Element {
+  const [shown, setShown] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown) panel.current?.querySelector('button')?.focus();
+  }, [shown]);
+  const close = (): void => {
+    setShown(false);
+    toggle.current?.focus();
+  };
+  const panelId = `es-apply-to-${conversation}`;
+  return (
+    <div className="es-applied-to-add">
+      <button
+        ref={toggle}
+        type="button"
+        className="es-chip-add"
+        aria-expanded={shown}
+        aria-controls={shown ? panelId : undefined}
+        aria-label={`Apply ${conversation} to…`}
+        onClick={() => setShown((was) => !was)}
+      >
+        + apply to…
+      </button>
+      {shown && (
+        <div
+          ref={panel}
+          id={panelId}
+          role="group"
+          aria-label={`Apply ${conversation} to`}
+          className="es-apply-picker"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              close();
+            }
+          }}
+        >
+          {PICKER_GROUPS.map(({ kind, title }) => {
+            const offered = open.filter((carrier) => carrier.kind === kind);
+            if (offered.length === 0) return null;
+            return (
+              <section
+                key={kind}
+                aria-label={title}
+                className="es-apply-picker-group"
+              >
+                <h5 className="es-line-card-cap">{title}</h5>
+                <ul>
+                  {offered.map((carrier) => (
+                    <li key={carrierKey(carrier)}>
+                      <button
+                        type="button"
+                        title={carrier.id}
+                        aria-label={`Apply ${conversation} to ${carrierWords(carrier, names)}`}
+                        onClick={() => {
+                          if (onApply(carrier)) close();
+                        }}
+                      >
+                        {kind === 'creature'
+                          ? carrierWords(carrier, names)
+                          : carrier.id}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+          <button type="button" className="es-link" onClick={close}>
+            Cancel
+          </button>
+        </div>
       )}
     </div>
   );
