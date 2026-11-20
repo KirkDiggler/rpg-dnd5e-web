@@ -3,6 +3,7 @@ import {
   describeAct,
   formatRollBreakdown,
   formatRollFormula,
+  initiativeLines,
   type DescribeContext,
 } from '../describeAct';
 import type { FormLines } from './FormShell';
@@ -19,6 +20,7 @@ export function formLines(
 ): FormLines | null {
   const described = describeAct(act, context);
   if (!described) return null;
+  const rolls = initiativeLines(act, context);
   return {
     eyebrow: described.eyebrow,
     headline: described.headline,
@@ -29,5 +31,6 @@ export function formLines(
     breakdown: withRoll
       ? formatRollBreakdown(described.roll) || undefined
       : undefined,
+    rolls: rolls.length > 0 ? rolls : undefined,
   };
 }

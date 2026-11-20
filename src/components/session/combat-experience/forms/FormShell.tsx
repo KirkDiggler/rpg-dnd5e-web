@@ -13,6 +13,8 @@ export interface FormLines {
   readonly formula?: string;
   /** The roll's terms and modifiers, each source named once. */
   readonly breakdown?: string;
+  /** One line per roll when a row carries several: a fight's initiative rolls. */
+  readonly rolls?: readonly string[];
 }
 
 /**
@@ -63,6 +65,15 @@ export function FormShell({
           {lines.formula}
         </p>
       )}
+      {lines.rolls?.map((line, i) => (
+        <p
+          className={styles.formula}
+          data-testid="act-form-roll-line"
+          key={`${i}-${line}`}
+        >
+          {line}
+        </p>
+      ))}
       {lines.breakdown && (
         <details className={styles.breakdown}>
           <summary>Breakdown</summary>
