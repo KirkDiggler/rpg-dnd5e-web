@@ -2785,6 +2785,7 @@ export function OptionsEditor({
   at,
   titled = true,
   listKey = 'options',
+  only,
   options,
   room,
   isProp,
@@ -2803,6 +2804,10 @@ export function OptionsEditor({
   /** The key the lines sit under in the owner: a carrier's `options`, a
    * conversation's `lines` (rpg-project#1027). */
   listKey?: 'options' | 'lines';
+  /** Only the line at this index, in place (rpg-project#1030): the
+   * Conversations page opens one line's form from its card. The line keeps
+   * its own number and labels; the list's Add is the page's. */
+  only?: number;
   /** A carrier's entries: its own lines, and any `use:` of a conversation
    * (rpg-project#1025), shown as that conversation's lines. */
   options: readonly OptionEntry[];
@@ -2818,7 +2823,7 @@ export function OptionsEditor({
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
       {titled && <h6>Options — what a character can say</h6>}
-      {options.length === 0 && (
+      {only === undefined && options.length === 0 && (
         <p className="wb-help" data-testid={`options-none-${owner}`}>
           {isProp
             ? 'Nobody can speak to this prop yet.'
@@ -2826,6 +2831,7 @@ export function OptionsEditor({
         </p>
       )}
       {options.map((entry, index) => {
+        if (only !== undefined && index !== only) return null;
         const n = index + 1;
         const line = at ? `${at}.${listKey}[${index}]` : undefined;
         if (isOptionUse(entry))
@@ -3038,15 +3044,17 @@ export function OptionsEditor({
           </RevealDiv>
         );
       })}
-      <div className="wb-actions">
-        <button
-          type="button"
-          aria-label={`Add a line to ${owner}`}
-          onClick={onAdd}
-        >
-          Add a line
-        </button>
-      </div>
+      {only === undefined && (
+        <div className="wb-actions">
+          <button
+            type="button"
+            aria-label={`Add a line to ${owner}`}
+            onClick={onAdd}
+          >
+            Add a line
+          </button>
+        </div>
+      )}
     </div>
   );
 }

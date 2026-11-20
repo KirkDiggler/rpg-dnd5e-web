@@ -11,9 +11,13 @@
  * form every carrier's lines use (`OptionsEditor`), pointed at
  * `conversations.<id>.lines`.
  */
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { OptionShape } from '../world-building/answerTableShape';
-import { removeOption, replaceOption } from '../world-building/optionEdits';
+import {
+  patchOptionApproach,
+  removeOption,
+  replaceOption,
+} from '../world-building/optionEdits';
 import { documentPlacementNames } from '../world-building/placementNames';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import {
@@ -27,7 +31,9 @@ import { AboutPanel } from './FieldHelp';
 import { locate, valueAt } from './locatePath';
 import { placeName } from './placeName';
 import type { RefusalTarget } from './refusalJump';
+import { SharedLineCard, type LineSentences } from './SharedLineCard';
 import {
+  lineReadBackOf,
   SHARED_LINES_KIND,
   sharedConversationsOf,
   type SharedConversation,
@@ -193,7 +199,9 @@ export function StudioSharedLines({
           {
             rows: conversations.map((conversation) => ({
               key: { kind: SHARED_LINES_KIND, id: conversation.id },
-              name: <span className="es-threads-id">{conversation.id}</span>,
+              name: (
+                <span className="es-shared-lines-name">{conversation.id}</span>
+              ),
               summary: written(conversation.id)
                 ? `${
                     conversation.carriers.length === 1
@@ -224,6 +232,8 @@ export function StudioSharedLines({
               names={names}
               candidates={candidates}
               carriersEditable={state === 'current'}
+              readBack={readBack?.readBack}
+              check={state}
               onJump={onJump}
             />
           ) : (
@@ -247,6 +257,8 @@ function SharedConversationDetail({
   names,
   candidates,
   carriersEditable,
+  readBack,
+  check,
   onJump,
 }: {
   conversation: SharedConversation;
@@ -256,6 +268,10 @@ function SharedConversationDetail({
   /** The read-back describes the draft now, so who carries it is true and
    * can be changed. */
   carriersEditable: boolean;
+  readBack: StudioReadBack['readBack'] | undefined;
+  /** Where the engine's check stands: a card's sentences are the engine's
+   * only while it is `current`. */
+  check: SharedLinesCheck['state'];
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const { id } = conversation;
@@ -278,9 +294,10 @@ function SharedConversationDetail({
     : 'Who carries it can be changed once the engine’s check describes this draft.';
   const carried = new Set(conversation.carriers.map(carrierKey));
   const open = candidates.filter((c) => !carried.has(carrierKey(c)));
-  const [adding, setAdding] = useState('');
-  const addingCarrier =
-    open.find((c) => carrierKey(c) === adding) ?? open[0] ?? null;
+  // ONE LINE OPEN AT A TIME (rpg-project#1030): its card shows the line's
+  // form in place; every other line stays a closed card.
+  const [editing, setEditing] = useState<number | null>(null);
+  const closeEditing = useCallback(() => setEditing(null), []);
   const ownBy = new Map<string, string[]>();
   for (const own of conversation.ownLines) {
     const key = carrierKey(own.carrier);
@@ -328,10 +345,10 @@ function SharedConversationDetail({
                 )}
                 <button
                   type="button"
-                  className="wb-danger"
-                  aria-label={`Stop ${words} saying the lines of ${id}`}
+                  className="es-chip-remove"
+                  aria-label={`Remove ${words} from ${id}`}
                   disabled={!carriersEditable || index === null}
-                  title={notEditable}
+                  title={notEditable ?? `Remove ${words} from ${id}`}
                   onClick={() => {
                     if (index === null) return;
                     if (conversation.carriers.length <= 1)
@@ -339,39 +356,19 @@ function SharedConversationDetail({
                     else session.sharedLines.unapply(id, carrier, index);
                   }}
                 >
-                  Remove
+                  <span aria-hidden="true">×</span>
                 </button>
               </li>
             );
           })}
         </ul>
-        {carriersEditable && open.length > 0 && addingCarrier && (
-          <form
-            className="es-applied-to-add"
-            aria-label={`Apply ${id} to another`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (session.sharedLines.apply(id, addingCarrier)) setAdding('');
-            }}
-          >
-            <label>
-              <span>Apply to</span>
-              <select
-                aria-label={`Apply ${id} to`}
-                value={carrierKey(addingCarrier)}
-                onChange={(event) => setAdding(event.target.value)}
-              >
-                {open.map((carrier) => (
-                  <option key={carrierKey(carrier)} value={carrierKey(carrier)}>
-                    {carrierWords(carrier, names)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" aria-label={`Apply ${id}`}>
-              Apply
-            </button>
-          </form>
+        {carriersEditable && open.length > 0 && (
+          <CarrierPicker
+            conversation={id}
+            open={open}
+            names={names}
+            onApply={(carrier) => session.sharedLines.apply(id, carrier)}
+          />
         )}
       </section>
       {removing && (
@@ -407,30 +404,85 @@ function SharedConversationDetail({
       <section aria-label={`Lines of ${id}`} className="es-shared-lines-lines">
         <h4>Its lines</h4>
         {lines ? (
-          <OptionsEditor
-            titled={false}
-            owner={id}
-            at={`conversations.${id}`}
-            listKey="lines"
-            options={lines}
-            room={document.draft.room}
-            isProp={false}
-            onAdd={() => session.sharedLines.addLine(id)}
-            onChange={(index, option) =>
-              session.sharedLines.setLines(
-                id,
-                (replaceOption(lines, index, option) ?? []) as OptionShape[]
-              )
-            }
-            onRemove={(index) => {
-              if (lines.length <= 1) setRemoving('line');
-              else
-                session.sharedLines.setLines(
-                  id,
-                  (removeOption(lines, index) ?? []) as OptionShape[]
+          <>
+            <ol className="es-line-cards">
+              {lines.map((line, index) => {
+                const linePath = `${conversation.path}.lines[${index}]`;
+                const sentences: LineSentences =
+                  check === 'current' && readBack
+                    ? {
+                        state: 'current',
+                        readBack: lineReadBackOf(readBack, linePath),
+                      }
+                    : { state: check === 'refused' ? 'refused' : 'checking' };
+                return (
+                  <li key={index}>
+                    <SharedLineCard
+                      conversation={id}
+                      index={index}
+                      linePath={linePath}
+                      option={line}
+                      sentences={sentences}
+                      open={editing === index}
+                      onOpen={() => setEditing(index)}
+                      onClose={closeEditing}
+                      onDifficulty={(way, dc) =>
+                        session.sharedLines.setLines(
+                          id,
+                          (replaceOption(
+                            lines,
+                            index,
+                            patchOptionApproach(line, way, { dc })
+                          ) ?? []) as OptionShape[]
+                        )
+                      }
+                    >
+                      <OptionsEditor
+                        titled={false}
+                        owner={id}
+                        at={`conversations.${id}`}
+                        listKey="lines"
+                        only={index}
+                        options={lines}
+                        room={document.draft.room}
+                        isProp={false}
+                        onAdd={() => session.sharedLines.addLine(id)}
+                        onChange={(at, option) =>
+                          session.sharedLines.setLines(
+                            id,
+                            (replaceOption(lines, at, option) ??
+                              []) as OptionShape[]
+                          )
+                        }
+                        onRemove={(at) => {
+                          if (lines.length <= 1) setRemoving('line');
+                          else if (
+                            session.sharedLines.setLines(
+                              id,
+                              (removeOption(lines, at) ?? []) as OptionShape[]
+                            )
+                          )
+                            setEditing(null);
+                        }}
+                      />
+                    </SharedLineCard>
+                  </li>
                 );
-            }}
-          />
+              })}
+            </ol>
+            <div className="wb-actions">
+              <button
+                type="button"
+                aria-label={`Add a line to ${id}`}
+                onClick={() => {
+                  // The new line opens, so its words can be written at once.
+                  if (session.sharedLines.addLine(id)) setEditing(lines.length);
+                }}
+              >
+                Add a line
+              </button>
+            </div>
+          </>
         ) : (
           <p className="es-help">
             Its lines are not written as a list of lines this form edits; they
@@ -492,6 +544,108 @@ function SharedConversationDetail({
               );
             })}
         </section>
+      )}
+    </div>
+  );
+}
+
+const PICKER_GROUPS: readonly {
+  kind: LinesCarrier['kind'];
+  title: string;
+}[] = [
+  { kind: 'creature', title: 'Creatures' },
+  { kind: 'prop', title: 'Things' },
+  { kind: 'faction', title: 'Factions' },
+];
+
+/** "+ apply to…" (rpg-project#1030): a short picker of who could carry the
+ * conversation, grouped as creatures, things and factions. Only carriers
+ * not already applied are offered; choosing one is the one apply write. */
+function CarrierPicker({
+  conversation,
+  open,
+  names,
+  onApply,
+}: {
+  conversation: string;
+  /** Who could carry it and does not yet. */
+  open: readonly LinesCarrier[];
+  names: ReadonlyMap<string, string>;
+  onApply(carrier: LinesCarrier): boolean;
+}): React.JSX.Element {
+  const [shown, setShown] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown) panel.current?.querySelector('button')?.focus();
+  }, [shown]);
+  const close = (): void => {
+    setShown(false);
+    toggle.current?.focus();
+  };
+  const panelId = `es-apply-to-${conversation}`;
+  return (
+    <div className="es-applied-to-add">
+      <button
+        ref={toggle}
+        type="button"
+        className="es-chip-add"
+        aria-expanded={shown}
+        aria-controls={shown ? panelId : undefined}
+        aria-label={`Apply ${conversation} to…`}
+        onClick={() => setShown((was) => !was)}
+      >
+        + apply to…
+      </button>
+      {shown && (
+        <div
+          ref={panel}
+          id={panelId}
+          role="group"
+          aria-label={`Apply ${conversation} to`}
+          className="es-apply-picker"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              close();
+            }
+          }}
+        >
+          {PICKER_GROUPS.map(({ kind, title }) => {
+            const offered = open.filter((carrier) => carrier.kind === kind);
+            if (offered.length === 0) return null;
+            return (
+              <section
+                key={kind}
+                aria-label={title}
+                className="es-apply-picker-group"
+              >
+                <h5 className="es-line-card-cap">{title}</h5>
+                <ul>
+                  {offered.map((carrier) => (
+                    <li key={carrierKey(carrier)}>
+                      <button
+                        type="button"
+                        title={carrier.id}
+                        aria-label={`Apply ${conversation} to ${carrierWords(carrier, names)}`}
+                        onClick={() => {
+                          if (onApply(carrier)) close();
+                        }}
+                      >
+                        {kind === 'creature'
+                          ? carrierWords(carrier, names)
+                          : carrier.id}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+          <button type="button" className="es-link" onClick={close}>
+            Cancel
+          </button>
+        </div>
       )}
     </div>
   );

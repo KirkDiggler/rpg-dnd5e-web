@@ -172,3 +172,71 @@ export function sharedLinesInForm(
   const counts = lineCounts(sharedConversationsOf(readBack));
   return { lineCount: (id) => counts.get(id), open };
 }
+
+/** What the engine says of one line of a conversation, sorted by WHERE each
+ * statement stands under the line's path, never by reading its sentence:
+ * the line itself, what it requires, its check, its step, and the rows on
+ * a pass and on a miss (with whatever stands under them, a row's grant). */
+export interface LineReadBack {
+  /** The statement at the line's own path. */
+  line: ReadBackStatement[];
+  /** `<line>.requires…` */
+  offered: ReadBackStatement[];
+  /** `<line>.check…` */
+  check: ReadBackStatement[];
+  /** `<line>.advance…` */
+  advance: ReadBackStatement[];
+  /** `<line>.success…` */
+  pass: ReadBackStatement[];
+  /** `<line>.failure…` */
+  miss: ReadBackStatement[];
+  /** Anything else under the line, in the engine's order. */
+  more: ReadBackStatement[];
+}
+
+const LINE_PARTS = [
+  ['requires', 'offered'],
+  ['check', 'check'],
+  ['advance', 'advance'],
+  ['success', 'pass'],
+  ['failure', 'miss'],
+] as const;
+
+/** Under `path`, the next key is `key`: `<path>.key` then the end, `.` or
+ * `[`. A `lines[1]` never takes `lines[10]`'s statements. */
+function under(statementPath: string, path: string, key: string): boolean {
+  const head = `${path}.${key}`;
+  if (!statementPath.startsWith(head)) return false;
+  const next = statementPath.charAt(head.length);
+  return next === '' || next === '.' || next === '[';
+}
+
+/** The engine's statements at and under one line's path (as the engine
+ * names it, `conversations.<id>.lines[k]`), in the engine's order. */
+export function lineReadBackOf(
+  readBack: ReadBack | null | undefined,
+  linePath: string
+): LineReadBack {
+  const out: LineReadBack = {
+    line: [],
+    offered: [],
+    check: [],
+    advance: [],
+    pass: [],
+    miss: [],
+    more: [],
+  };
+  if (!readBack) return out;
+  for (const statement of statementsOf(readBack)) {
+    if (statement.path === linePath) {
+      out.line.push(statement);
+      continue;
+    }
+    if (!statement.path.startsWith(`${linePath}.`)) continue;
+    const part = LINE_PARTS.find(([key]) =>
+      under(statement.path, linePath, key)
+    );
+    out[part ? part[1] : 'more'].push(statement);
+  }
+  return out;
+}
