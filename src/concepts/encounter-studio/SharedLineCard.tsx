@@ -1,29 +1,35 @@
 /**
- * ONE LINE OF A CONVERSATION, AS A CARD (rpg-project#1030).
+ * ONE LINE, AS A CARD (rpg-project#1030): a conversation's line, or a
+ * carrier's own line beside it.
  *
  * Closed, a card is a few lines: what the player says, when it is offered,
  * the check with each way's difficulty editable in place, and what follows
- * on a pass and on a miss. Edit opens the one line form (`OptionsEditor`,
- * given `only`) for this line, in place.
+ * on a pass and on a miss, reply by reply. Edit opens the one line form
+ * (`OptionsEditor`, given `only`) for this line, in place.
  *
  * THE ENGINE IS THE ONLY VOICE. The card's face is built from the engine's
  * STRUCTURE (`lineFaceOf`): each clause and chip comes from a read-back
- * statement's connections at or under this line's path, about this
- * conversation, and carries that statement's full sentence as its tooltip.
- * Every sentence the engine says of the line is in the card's details; a
+ * statement's connections at or under this line's path, about the line's
+ * owner, and carries that statement's full sentence as its tooltip. Every
+ * sentence the engine says of the line is in the card's details; a
  * connection the face does not know is counted there ("+N more"), never
- * dropped. The card reads VALUES from the draft at the line's path, as the
- * form does: the words said and answered, and each way's ability and
- * difficulty. While the read-back is not of this draft, the card says
- * "checking…" where the engine's words would be.
+ * dropped.
+ *
+ * WHILE THE READ-BACK IS NOT OF THIS DRAFT: while the check runs, the card
+ * says "checking…" where the engine's words would be. When the engine
+ * refused the draft, the card keeps the words of the last draft that
+ * compiled, marked as from before the last edit, and shows the refusal that
+ * concerns it.
  */
 import { speakSkillName } from '@/components/session/combat-experience/speakOptions';
 import type { ReadBackStatement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import type { OptionShape } from '../world-building/answerTableShape';
 import {
+  difficultyOf,
   lineFaceOf,
   type FaceItem,
+  type FaceRow,
   type FaceSide,
   type ValueAt,
 } from './lineFace';
@@ -31,13 +37,17 @@ import type { LineReadBack } from './sharedLinesView';
 import { useRevealablePath } from './useReveal';
 
 export const CHECKING_LINE_SENTENCE = 'checking…';
-export const REFUSED_LINE_SENTENCE =
-  'not read back: the engine refused this draft';
+export const STALE_LINE_SENTENCE =
+  'From before your last edit: the engine refused the draft.';
+export const DIFFICULTY_REFUSAL =
+  'A difficulty is a whole number, 0 or more. Not written.';
 
-/** Whether the card's words are the engine's for this draft. */
+/** Whether the card's words are the engine's for this draft: `current`;
+ * `stale`, the last compiled draft's while the engine refuses this one; or
+ * `checking`, none yet. */
 export type LineSentences =
-  | { state: 'current'; readBack: LineReadBack }
-  | { state: 'checking' | 'refused' };
+  | { state: 'current' | 'stale'; readBack: LineReadBack }
+  | { state: 'checking' };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -57,11 +67,57 @@ function saidWords(option: OptionShape): string {
     : 'Nothing said yet';
 }
 
+/** A way's difficulty, edited in place on a closed card. Only a whole
+ * number, 0 or more, is written; anything else stays in the field, unwritten,
+ * and the field says why. */
+function DifficultyInput({
+  label,
+  dc,
+  onDifficulty,
+}: {
+  label: string;
+  dc: number;
+  onDifficulty(dc: number): void;
+}): React.JSX.Element {
+  const [text, setText] = useState(String(dc));
+  const errorId = useId();
+  // The draft moved (an undo, the form): show what it holds.
+  useEffect(() => {
+    setText((was) => (difficultyOf(was) === dc ? was : String(dc)));
+  }, [dc]);
+  const refused = difficultyOf(text) === null;
+  return (
+    <>
+      <input
+        type="text"
+        inputMode="numeric"
+        aria-label={label}
+        aria-invalid={refused || undefined}
+        aria-describedby={refused ? errorId : undefined}
+        value={text}
+        onChange={(event) => {
+          setText(event.target.value);
+          const next = difficultyOf(event.target.value);
+          if (next !== null && next !== dc) onDifficulty(next);
+        }}
+        onBlur={() => {
+          if (difficultyOf(text) === null) setText(String(dc));
+        }}
+      />
+      {refused && (
+        <span id={errorId} role="alert" className="es-line-card-invalid">
+          {DIFFICULTY_REFUSAL}
+        </span>
+      )}
+    </>
+  );
+}
+
 function Item({ item }: { item: FaceItem }): React.JSX.Element {
   return (
     <span
       className="es-line-card-item"
-      title={item.sentence}
+      title={item.sentence || undefined}
       data-engine-path={item.path}
     >
       {item.parts.map((part, at) =>
@@ -96,13 +152,48 @@ function More({
   );
 }
 
-function Pending({ sentences }: { sentences: LineSentences }) {
+function Chips({
+  items,
+  label,
+}: {
+  items: readonly FaceItem[];
+  label: string;
+}): React.JSX.Element | null {
+  if (items.length === 0) return null;
   return (
-    <span className="es-line-card-pending">
-      {sentences.state === 'refused'
-        ? REFUSED_LINE_SENTENCE
-        : CHECKING_LINE_SENTENCE}
-    </span>
+    <ul className="es-line-card-chips" aria-label={label}>
+      {items.map((chip, at) => (
+        <li key={at}>
+          <Item item={chip} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Reply({
+  row,
+  share,
+}: {
+  row: FaceRow;
+  share: string | null;
+}): React.JSX.Element {
+  return (
+    <div
+      className="es-line-card-reply"
+      data-engine-path={row.path}
+      title={row.sentence || undefined}
+    >
+      <p>
+        {share && <span className="es-line-card-share">{share}</span>}
+        {row.say !== null ? (
+          <q>{row.say}</q>
+        ) : (
+          <span className="es-help">No words.</span>
+        )}
+      </p>
+      <Chips items={row.chips} label="What this reply does" />
+    </div>
   );
 }
 
@@ -111,51 +202,64 @@ function Branch({
   tone,
   rows,
   face,
-  sentences,
   onMore,
 }: {
   title: string;
   tone: 'pass' | 'miss' | 'said';
+  /** The verdict's rows as the draft holds them: shown while the engine's
+   * words are not yet in. */
   rows: readonly unknown[];
   face: FaceSide | null;
-  sentences: LineSentences;
   onMore(): void;
 }): React.JSX.Element {
-  const answers = rows
-    .map((row) => (isRecord(row) && typeof row.say === 'string' ? row.say : ''))
-    .filter((say) => say !== '');
+  let body: React.ReactNode;
+  if (face === null) {
+    const answers = rows
+      .map((row) =>
+        isRecord(row) && typeof row.say === 'string' ? row.say : ''
+      )
+      .filter((say) => say !== '');
+    body = (
+      <>
+        {answers.map((say, at) => (
+          <p key={at}>
+            <q>{say}</q>
+          </p>
+        ))}
+        <span className="es-line-card-pending">{CHECKING_LINE_SENTENCE}</span>
+      </>
+    );
+  } else if (face.rows.length === 0) {
+    body = <p className="es-help">The listener answers nothing.</p>;
+  } else if (face.rows.length === 1) {
+    body = <Reply row={face.rows[0]!} share={null} />;
+  } else {
+    // THE ENGINE PICKS ONE ROW BY WEIGHT (`dungeonspec.AnswerSpec.Weight`).
+    body = (
+      <>
+        <p className="es-line-card-cap">One of:</p>
+        <ol className="es-line-card-replies">
+          {face.rows.map((row) => (
+            <li key={row.path}>
+              <Reply row={row} share={`${row.weight} in ${face.total}`} />
+            </li>
+          ))}
+        </ol>
+      </>
+    );
+  }
   return (
     <section
       className={`es-line-card-branch es-line-card-${tone}`}
       aria-label={title}
     >
       <h6 className="es-line-card-cap">{title}</h6>
-      {answers.length === 0 ? (
-        <p className="es-help">The listener answers nothing.</p>
-      ) : (
-        answers.map((say, at) => (
-          <p key={at}>
-            <q>{say}</q>
-          </p>
-        ))
-      )}
-      {face ? (
-        (face.chips.length > 0 || face.unknown > 0) && (
-          <ul className="es-line-card-chips" aria-label={`${title}, then`}>
-            {face.chips.map((chip, at) => (
-              <li key={at}>
-                <Item item={chip} />
-              </li>
-            ))}
-            {face.unknown > 0 && (
-              <li>
-                <More count={face.unknown} onOpen={onMore} />
-              </li>
-            )}
-          </ul>
-        )
-      ) : (
-        <Pending sentences={sentences} />
+      {body}
+      {face && (
+        <>
+          <Chips items={face.steps} label={`${title}, the step`} />
+          <More count={face.unknown} onOpen={onMore} />
+        </>
       )}
     </section>
   );
@@ -175,23 +279,24 @@ function allOf(read: LineReadBack): ReadBackStatement[] {
 }
 
 export function SharedLineCard({
-  owner: conversation,
-  index,
+  owner,
+  number,
   linePath,
   option,
   sentences,
   value,
+  refusals = [],
   open,
   onOpen,
   onClose,
   onDifficulty,
   children,
 }: {
-  /** Whose line it is, as its form names it: the conversation's id, or the
-   * carrier's for one of its own lines. */
+  /** Whose line it is, in words: the conversation's id, or the carrier's
+   * name for one of its own lines. */
   owner: string;
-  /** The line's index in its owner's list. */
-  index: number;
+  /** The card's number among its owner's cards, from 1. */
+  number: number;
   /** The line's path: `conversations.<id>.lines[k]`, or a carrier's
    * `…options[i]`. */
   linePath: string;
@@ -200,6 +305,8 @@ export function SharedLineCard({
   sentences: LineSentences;
   /** What the draft holds at a path the engine named. */
   value: ValueAt;
+  /** The engine's refusals at or under this line's path. */
+  refusals?: readonly { path: string; message: string }[];
   /** The line's full form is open, in place of the card's body. */
   open: boolean;
   onOpen(): void;
@@ -209,7 +316,7 @@ export function SharedLineCard({
   /** The line's full form, shown while open. */
   children: React.ReactNode;
 }): React.JSX.Element {
-  const n = index + 1;
+  const n = number;
   // A jump into this line opens its form; the form's own places take the
   // landing once it mounts (CONTRACT.md, Landing). Open, the form registers
   // the line's path itself.
@@ -223,15 +330,15 @@ export function SharedLineCard({
   const passRows = option.success ?? [];
   const missRows = option.failure ?? [];
   const face =
-    sentences.state === 'current'
-      ? lineFaceOf(sentences.readBack, value)
-      : null;
-  const words = sentences.state === 'current' ? allOf(sentences.readBack) : [];
+    sentences.state === 'checking'
+      ? null
+      : lineFaceOf(sentences.readBack, linePath, value);
+  const words = sentences.state === 'checking' ? [] : allOf(sentences.readBack);
   return (
     <article
       ref={ref}
       className={`es-line-card${open ? ' es-line-card-open' : ''}`}
-      aria-label={`Line ${n} of ${conversation}`}
+      aria-label={`Line ${n} of ${owner}`}
       data-line-card={linePath}
     >
       <header className="es-line-card-head">
@@ -241,7 +348,7 @@ export function SharedLineCard({
           {open ? (
             <button
               type="button"
-              aria-label={`Done editing line ${n} of ${conversation}`}
+              aria-label={`Done editing line ${n} of ${owner}`}
               onClick={onClose}
             >
               Done
@@ -249,7 +356,7 @@ export function SharedLineCard({
           ) : (
             <button
               type="button"
-              aria-label={`Edit line ${n} of ${conversation}`}
+              aria-label={`Edit line ${n} of ${owner}`}
               aria-expanded={false}
               onClick={onOpen}
             >
@@ -258,15 +365,30 @@ export function SharedLineCard({
           )}
         </span>
       </header>
+      {refusals.length > 0 && (
+        <ul
+          className="es-line-card-refusals"
+          aria-label={`The engine’s refusals in line ${n} of ${owner}`}
+        >
+          {refusals.map((refusal, at) => (
+            <li key={at} title={refusal.path}>
+              {refusal.message}
+            </li>
+          ))}
+        </ul>
+      )}
       {open ? (
         <div className="es-line-card-form">{children}</div>
       ) : (
         <>
+          {sentences.state === 'stale' && (
+            <p className="es-line-card-stale">{STALE_LINE_SENTENCE}</p>
+          )}
           <div className="es-line-card-row">
             <div
               className="es-line-card-when"
               role="group"
-              aria-label={`Offered when, line ${n} of ${conversation}`}
+              aria-label={`Offered when, line ${n} of ${owner}`}
             >
               <span className="es-line-card-cap">Offered when</span>{' '}
               {face ? (
@@ -287,13 +409,15 @@ export function SharedLineCard({
                   </ul>
                 )
               ) : (
-                <Pending sentences={sentences} />
+                <span className="es-line-card-pending">
+                  {CHECKING_LINE_SENTENCE}
+                </span>
               )}
             </div>
             <div
               className="es-line-card-check"
               role="group"
-              aria-label={`Check of line ${n} of ${conversation}`}
+              aria-label={`Check of line ${n} of ${owner}`}
             >
               {checked ? (
                 <>
@@ -307,15 +431,10 @@ export function SharedLineCard({
                         {j > 0 && <span className="es-line-card-or">or</span>}
                         <label className="es-line-card-way">
                           <span>{ability}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            aria-label={`${ability} difficulty, line ${n} of ${conversation}`}
-                            value={way.dc}
-                            onChange={(event) =>
-                              onDifficulty(j, Number(event.target.value))
-                            }
+                          <DifficultyInput
+                            label={`${ability} difficulty, line ${n} of ${owner}`}
+                            dc={way.dc}
+                            onDifficulty={(dc) => onDifficulty(j, dc)}
                           />
                         </label>
                       </span>
@@ -335,7 +454,6 @@ export function SharedLineCard({
                   tone="pass"
                   rows={passRows}
                   face={face?.pass ?? null}
-                  sentences={sentences}
                   onMore={showWords}
                 />
                 <Branch
@@ -343,7 +461,6 @@ export function SharedLineCard({
                   tone="miss"
                   rows={missRows}
                   face={face?.miss ?? null}
-                  sentences={sentences}
                   onMore={showWords}
                 />
               </>
@@ -354,7 +471,6 @@ export function SharedLineCard({
                   tone="said"
                   rows={passRows}
                   face={face?.pass ?? null}
-                  sentences={sentences}
                   onMore={showWords}
                 />
                 {missRows.length > 0 && (
@@ -363,7 +479,6 @@ export function SharedLineCard({
                     tone="miss"
                     rows={missRows}
                     face={face?.miss ?? null}
-                    sentences={sentences}
                     onMore={showWords}
                   />
                 )}

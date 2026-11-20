@@ -8,17 +8,28 @@
  * sentence. Each clause and chip keeps its statement's full sentence for the
  * tooltip and the card's details.
  *
- * Where a connection names a thing but not its value, the value is read
- * from the draft at the path the engine named, as the line form reads it:
- * the states a conversation is asked in (`<requires[k]>.interaction.in`), a
- * step's beat (`<advance>.success` / `.failure`), a row's loudness, and
- * whether a fact or a prop is asked under `not` (the engine marks a negated
- * topic on its connection, but not a negated fact or prop).
+ * Where a connection names a thing but not its value, or the engine gives a
+ * value no connection, the value is read from the draft at the path the
+ * engine named, as the line form reads it:
+ * - the states a conversation is asked in (`<requires[k]>.interaction.in`,
+ *   under `.not` when negated);
+ * - whether a requirement is negated (`<requires[k]>.not`): the engine marks
+ *   a negated topic on its connection, but a negated fact, prop or
+ *   conversation carries the same connection as the plain one;
+ * - a step's beat (`<advance>.success` / `.failure`);
+ * - each reply row's words, weight, loudness and activity (`<row>.say`,
+ *   `.weight`, `.loudness`, `.activity`).
+ *
+ * Replies are kept by ROW: each row's words with its own chips. When a
+ * verdict has more than one row the engine picks one by weight (an omitted
+ * weight is 1, `dungeonspec.AnswerSpec.Weight`), and the face says each
+ * row's share.
  *
  * A connection the face does not know is never dropped and never guessed:
  * it is counted, and the card shows "+N more" opening the engine's words
  * (the drawing's "also:" policy).
  */
+import { refId } from '@/utils/refs';
 import type {
   ReadBackConnection,
   ReadBackStatement,
@@ -35,8 +46,25 @@ export interface FaceItem {
   path: string;
 }
 
-export interface FaceSide {
+/** One reply row: its words and what it does. */
+export interface FaceRow {
+  /** The row's path, as the engine named it (`…success[0]`). */
+  path: string;
+  /** What the listener says, read at the row's path. */
+  say: string | null;
+  /** Its weight (1 when omitted). */
+  weight: number;
   chips: FaceItem[];
+  /** The row's sentence: the tooltip for its words. */
+  sentence: string;
+}
+
+export interface FaceSide {
+  rows: FaceRow[];
+  /** The sum of the rows' weights: a row's share is `weight in total`. */
+  total: number;
+  /** The step the verdict takes, if the line advances a conversation. */
+  steps: FaceItem[];
   /** Connections and statements here the face does not know. */
   unknown: number;
 }
@@ -128,30 +156,33 @@ function requirementClause(
 ): FacePart[] | null {
   const asks = statement.connects.find((c) => c.role === 'asks');
   if (!asks) return null;
-  const notWritten = value(`${statement.path}.not`) !== undefined;
+  const negatedWritten = value(`${statement.path}.not`) !== undefined;
+  const not = negatedWritten || asks.negated;
   switch (asks.kind) {
     case 'fact':
-      return notWritten || asks.negated
+      return not
         ? ['does not know ', { id: asks.id }]
         : ['knows ', { id: asks.id }];
     case 'prop':
-      return notWritten || asks.negated
+      return not
         ? ['does not carry ', { id: asks.id }]
         : ['carries ', { id: asks.id }];
     case 'conversation': {
-      const states = strings(value(`${statement.path}.interaction.in`));
+      const at = negatedWritten ? `${statement.path}.not` : statement.path;
+      const states = strings(value(`${at}.interaction.in`));
       return states.length > 0
-        ? [{ id: asks.id }, ' is ', ...orList(states)]
-        : [{ id: asks.id }, ' is in a state it names'];
+        ? [{ id: asks.id }, not ? ' is not ' : ' is ', ...orList(states)]
+        : [
+            { id: asks.id },
+            not ? ' is not in a state it names' : ' is in a state it names',
+          ];
     }
     case 'topic': {
       const about = statement.connects.find(
         (c) => c.role === 'about' && c.kind === 'who'
       );
       return [
-        asks.negated || notWritten
-          ? 'listener has not noted '
-          : 'listener has noted ',
+        not ? 'listener has not noted ' : 'listener has noted ',
         { id: asks.id },
         ...(about ? [` about ${who(about.id)}`] : []),
       ];
@@ -182,19 +213,13 @@ function grantChip(
   ];
 }
 
-function rowChips(
-  statement: ReadBackStatement,
-  value: ValueAt
-): { chips: FacePart[][]; unknown: number } {
+/** The chips one statement under a row gives from its connections. */
+function connectionChips(statement: ReadBackStatement): {
+  chips: FacePart[][];
+  unknown: number;
+} {
   const chips: FacePart[][] = [];
   let unknown = 0;
-  if (statement.kind === 'line.row') {
-    const row = value(statement.path);
-    const loudness =
-      isRecord(row) && typeof row.loudness === 'string' ? row.loudness : '';
-    if (loudness !== '' && loudness !== 'speak')
-      chips.push([LOUDNESS_WORDS[loudness] ?? loudness]);
-  } else if (statement.connects.length === 0) unknown += 1;
   for (const c of statement.connects) {
     if (!ROW_KNOWN.has(pair(c))) {
       unknown += 1;
@@ -221,28 +246,112 @@ function rowChips(
   return { chips, unknown };
 }
 
+/** The chips a row's own values give: how loudly it is said and the
+ * activity it plays. The engine gives these no connection. */
+function valueChips(row: unknown): FacePart[][] {
+  if (!isRecord(row)) return [];
+  const chips: FacePart[][] = [];
+  if (
+    typeof row.loudness === 'string' &&
+    row.loudness !== '' &&
+    row.loudness !== 'speak'
+  )
+    chips.push([LOUDNESS_WORDS[row.loudness] ?? row.loudness]);
+  if (isRecord(row.activity) && typeof row.activity.ref === 'string') {
+    const cycles =
+      typeof row.activity.cycles === 'number' ? row.activity.cycles : null;
+    chips.push([
+      'plays ',
+      { id: refId(row.activity.ref) ?? row.activity.ref },
+      ...(cycles !== null ? [` ×${cycles}`] : []),
+    ]);
+  }
+  return chips;
+}
+
 const key = (parts: readonly FacePart[]): string => JSON.stringify(parts);
+
+/** The row a statement under `<line>.<verdict>[k]` belongs to: the path up
+ * to and including `[k]`. */
+function rowPathOf(
+  statementPath: string,
+  linePath: string,
+  verdict: 'success' | 'failure'
+): string | null {
+  const head = `${linePath}.${verdict}[`;
+  if (!statementPath.startsWith(head)) return null;
+  const close = statementPath.indexOf(']', head.length);
+  if (close < 0) return null;
+  const index = statementPath.slice(head.length, close);
+  return /^\d+$/.test(index) ? `${head}${index}]` : null;
+}
 
 function side(
   statements: readonly ReadBackStatement[],
+  linePath: string,
+  verdict: 'success' | 'failure',
   value: ValueAt
 ): FaceSide {
-  const out: FaceSide = { chips: [], unknown: 0 };
-  const seen = new Set<string>();
+  const rows = new Map<string, FaceRow>();
+  const seen = new Map<string, Set<string>>();
+  let unknown = 0;
   for (const statement of statements) {
-    const { chips, unknown } = rowChips(statement, value);
-    out.unknown += unknown;
-    for (const parts of chips) {
-      if (seen.has(key(parts))) continue;
-      seen.add(key(parts));
-      out.chips.push({
+    const rowPath = rowPathOf(statement.path, linePath, verdict);
+    if (rowPath === null) {
+      unknown += 1;
+      continue;
+    }
+    let row = rows.get(rowPath);
+    if (!row) {
+      const written = value(rowPath);
+      const weight =
+        isRecord(written) && typeof written.weight === 'number'
+          ? written.weight
+          : 1;
+      row = {
+        path: rowPath,
+        say:
+          isRecord(written) &&
+          typeof written.say === 'string' &&
+          written.say !== ''
+            ? written.say
+            : null,
+        weight,
+        chips: [],
+        sentence: '',
+      };
+      rows.set(rowPath, row);
+      seen.set(rowPath, new Set());
+      for (const parts of valueChips(written)) {
+        seen.get(rowPath)!.add(key(parts));
+        row.chips.push({ parts, sentence: '', path: rowPath });
+      }
+    }
+    if (statement.path === rowPath) {
+      row.sentence = statement.sentence;
+      for (const chip of row.chips)
+        if (chip.sentence === '') chip.sentence = statement.sentence;
+    } else if (statement.kind !== 'line.row' && statement.connects.length === 0)
+      unknown += 1;
+    const found = connectionChips(statement);
+    unknown += found.unknown;
+    for (const parts of found.chips) {
+      if (seen.get(rowPath)!.has(key(parts))) continue;
+      seen.get(rowPath)!.add(key(parts));
+      row.chips.push({
         parts,
         sentence: statement.sentence,
         path: statement.path,
       });
     }
   }
-  return out;
+  const ordered = [...rows.values()];
+  return {
+    rows: ordered,
+    total: ordered.reduce((sum, row) => sum + row.weight, 0),
+    steps: [],
+    unknown,
+  };
 }
 
 /** The step a line takes on a pass and on a miss: "advances `front-gate`:
@@ -273,7 +382,11 @@ function advanceChips(
   return { chips, unknown };
 }
 
-export function lineFaceOf(read: LineReadBack, value: ValueAt): LineFace {
+export function lineFaceOf(
+  read: LineReadBack,
+  linePath: string,
+  value: ValueAt
+): LineFace {
   const offered: FaceItem[] = [];
   let offeredUnknown = 0;
   const seen = new Set<string>();
@@ -294,21 +407,30 @@ export function lineFaceOf(read: LineReadBack, value: ValueAt): LineFace {
     seen.add(key(parts));
     offered.push({ parts, sentence: statement.sentence, path: statement.path });
   }
-  const pass = side(read.pass, value);
-  const miss = side(read.miss, value);
+  const pass = side(read.pass, linePath, 'success', value);
+  const miss = side(read.miss, linePath, 'failure', value);
   const passStep = advanceChips(read.advance, value, 'success');
   const missStep = advanceChips(read.advance, value, 'failure');
   return {
     offered,
     offeredUnknown,
     pass: {
-      chips: [...pass.chips, ...passStep.chips],
+      ...pass,
+      steps: passStep.chips,
       unknown: pass.unknown + passStep.unknown,
     },
     miss: {
-      chips: [...miss.chips, ...missStep.chips],
+      ...miss,
+      steps: missStep.chips,
       unknown: miss.unknown + missStep.unknown,
     },
     moreUnknown: read.more.length,
   };
+}
+
+/** A difficulty as typed on a card: a whole number, 0 or more, or null for
+ * anything else (empty, negative, a fraction, an exponent), which is not
+ * written. */
+export function difficultyOf(text: string): number | null {
+  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : null;
 }

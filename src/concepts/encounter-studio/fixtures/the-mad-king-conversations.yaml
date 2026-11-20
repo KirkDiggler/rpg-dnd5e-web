@@ -1,6 +1,7 @@
 # Copied from rpg-api dev cf3b4125 content/the-mad-king.yaml, unedited below this line.
 # Its read-back (rulebooks/dnd5e/encounter v0.234.0, readback.Of), trimmed to the
-# statements at `conversations.*` paths and the `shared-lines.use` entries, is
+# statements at `conversations.*` and `…options[i]` paths, the `shared-lines.use`
+# entries and the `conversation.transition` statements, is
 # engineReadBack.castleConversations.json.
 # THE MAD KING'S CASTLE (rpg-project#605; the use case is rpg-project
 # ideas/living-world/the-mad-king/use-case.md) — one castle, many ways in,

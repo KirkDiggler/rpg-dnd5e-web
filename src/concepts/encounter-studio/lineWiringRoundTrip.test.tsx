@@ -328,10 +328,17 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
   });
 
   it('a give’s witnesses can be set once the line advances a conversation (part A’s field)', () => {
-    const { result } = steps('scullion', () =>
-      fireEvent.change(field('Line 1 advances conversation for scullion'), {
-        target: { value: 'front-gate' },
-      })
+    const { result } = steps(
+      'scullion',
+      () =>
+        fireEvent.change(field('Line 1 advances conversation for scullion'), {
+          target: { value: 'front-gate' },
+        }),
+      // Choosing a conversation picks no step (rpg-project#1033).
+      () =>
+        fireEvent.change(field('Line 1 on a win steps for scullion'), {
+          target: { value: 'admitted' },
+        })
     );
     editor(result, 'scullion');
     fireEvent.change(field('Grants for line 1 of scullion success entry'), {
@@ -437,12 +444,14 @@ describe('a new requirement starts complete (rpg-project#975 B review)', () => {
     fireEvent.change(field('Line 1 advances conversation for scullion'), {
       target: { value: 'side-door' },
     });
-    expect(
-      [
-        ...field<HTMLSelectElement>('Line 1 on a win steps for scullion')
-          .options,
-      ].map((o) => o.value)
-    ).toEqual(['knocked', 'hushed']);
+    const step = field<HTMLSelectElement>('Line 1 on a win steps for scullion');
+    // No step is picked for the author (rpg-project#1033).
+    expect(step.value).toBe('');
+    expect([...step.options].map((o) => o.value)).toEqual([
+      '',
+      'knocked',
+      'hushed',
+    ]);
   });
 });
 

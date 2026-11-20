@@ -217,7 +217,8 @@ export function conversationsSiteReadBack(): ReadBack {
  * to the statements at `conversations.*` paths and at every `…options[i]`
  * path (the conversations' lines, every carrier's own lines and `use:`
  * entries, and the ways, hubs and per-carrier statements the engine also
- * sets at those paths). Every kept statement is the
+ * sets at those paths), and each conversation's `conversation.transition`
+ * statements (its steps). Every kept statement is the
  * engine's, unedited, but for a connection's `not`, renamed `negated` as the
  * api maps it. */
 export function castleConversationsReadBack(): ReadBack {

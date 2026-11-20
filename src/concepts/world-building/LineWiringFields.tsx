@@ -9,7 +9,7 @@
  * studio does not edit (the retired `recognized` and `holds`) is shown as written and
  * kept; the engine's refusal names its new word.
  */
-import { useContext, useId } from 'react';
+import { useContext, useId, useState } from 'react';
 import { RevealDiv } from '../encounter-studio/RevealDiv';
 import type { OptionShape } from './answerTableShape';
 import {
@@ -18,6 +18,7 @@ import {
   REQUIREMENT_CHOICES,
   requirementFor,
   setRequirement,
+  withAdvance,
   withAdvanceBeat,
   withAdvanceConversation,
   withConversation,
@@ -35,6 +36,7 @@ import {
   type OptionRequires,
 } from './predicateNot';
 import { SiteNamesContext } from './siteNames';
+import { movesInWords, StepWordsContext } from './stepWordsContext';
 
 /** One requirement's own fields, by its kind. */
 function RequirementFields({
@@ -330,7 +332,13 @@ export function RequiresFields({
 /** A LINE ADVANCES A CONVERSATION: which one, and the beat a win steps it
  * on and the beat a miss does, offered from its recipe. A plain line (no
  * check) cannot be missed and is offered no miss; while only one beat is
- * set it cannot be cleared, since an advance steps on at least one. */
+ * set it cannot be cleared, since an advance steps on at least one.
+ *
+ * CHOOSING A CONVERSATION PICKS NO STEP (rpg-project#1033): a conversation
+ * newly chosen is held here, unwritten, with its step select on "choose a
+ * step…"; choosing the step writes both. Each step is offered with what it
+ * does, from the engine's read-back (`StepWordsContext`): the states it
+ * moves the conversation from and to. */
 export function AdvanceFields({
   owner,
   line,
@@ -348,11 +356,37 @@ export function AdvanceFields({
   onCommit(option: OptionShape): void;
 }): React.JSX.Element {
   const names = useContext(SiteNamesContext);
+  const stepWords = useContext(StepWordsContext);
   const advance = advanceOf(option);
-  const conversation = advance
-    ? names.conversations.find((entry) => entry.id === advance.interaction)
-    : undefined;
+  // A conversation chosen but not yet written: its step is still to choose.
+  const [pending, setPending] = useState<string | null>(null);
+  const chosen = pending ?? advance?.interaction;
+  const conversation =
+    chosen !== undefined
+      ? names.conversations.find((entry) => entry.id === chosen)
+      : undefined;
   const beats = conversation?.beats ?? [];
+  const steps = chosen !== undefined ? stepWords.stepsOf(chosen) : undefined;
+  const beatWords = (beat: string): string => {
+    const step = steps?.find((entry) => entry.beat === beat);
+    return step && step.moves.length > 0
+      ? `${beat}: ${movesInWords(step)}`
+      : beat;
+  };
+  const beatTitle = (beat: string): string | undefined =>
+    steps?.find((entry) => entry.beat === beat)?.sentences.join(' ');
+  const beatOptions = (value: string) => (
+    <>
+      {value !== '' && !beats.includes(value) && (
+        <option value={value}>{value}</option>
+      )}
+      {beats.map((beat) => (
+        <option key={beat} value={beat} title={beatTitle(beat)}>
+          {beatWords(beat)}
+        </option>
+      ))}
+    </>
+  );
   const beatSelect = (verdict: 'success' | 'failure', words: string) => {
     const value = advance?.[verdict] ?? '';
     const other = verdict === 'success' ? advance?.failure : advance?.success;
@@ -369,14 +403,7 @@ export function AdvanceFields({
           {(other !== undefined || value === '') && (
             <option value="">None</option>
           )}
-          {value !== '' && !beats.includes(value) && (
-            <option value={value}>{value}</option>
-          )}
-          {beats.map((beat) => (
-            <option key={beat} value={beat}>
-              {beat}
-            </option>
-          ))}
+          {beatOptions(value)}
         </select>
       </label>
     );
@@ -390,14 +417,20 @@ export function AdvanceFields({
         <span>Advances</span>
         <select
           aria-label={`Line ${line} advances conversation for ${owner}`}
-          value={advance?.interaction ?? ''}
-          onChange={(event) =>
-            onCommit(withAdvanceConversation(option, event.target.value, names))
-          }
+          value={chosen ?? ''}
+          onChange={(event) => {
+            const id = event.target.value;
+            if (id === '') {
+              setPending(null);
+              if (advance) onCommit(withAdvanceConversation(option, '', names));
+              return;
+            }
+            setPending(id === advance?.interaction ? null : id);
+          }}
         >
           <option value="">None</option>
-          {advance && conversation === undefined && (
-            <option value={advance.interaction}>{advance.interaction}</option>
+          {chosen !== undefined && conversation === undefined && (
+            <option value={chosen}>{chosen}</option>
           )}
           {names.conversations.map((entry) => (
             <option key={entry.id} value={entry.id}>
@@ -406,10 +439,32 @@ export function AdvanceFields({
           ))}
         </select>
       </label>
-      {advance && beatSelect('success', 'On a win steps')}
-      {advance &&
-        (checked || advance.failure !== undefined) &&
-        beatSelect('failure', 'On a miss steps')}
+      {pending !== null ? (
+        <label>
+          <span>On a win steps</span>
+          <select
+            aria-label={`Line ${line} on a win steps for ${owner}`}
+            value=""
+            onChange={(event) => {
+              if (event.target.value === '') return;
+              onCommit(withAdvance(option, pending, event.target.value));
+              setPending(null);
+            }}
+          >
+            <option value="" disabled>
+              choose a step…
+            </option>
+            {beatOptions('')}
+          </select>
+        </label>
+      ) : (
+        <>
+          {advance && beatSelect('success', 'On a win steps')}
+          {advance &&
+            (checked || advance.failure !== undefined) &&
+            beatSelect('failure', 'On a miss steps')}
+        </>
+      )}
     </RevealDiv>
   );
 }

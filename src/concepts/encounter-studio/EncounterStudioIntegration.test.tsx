@@ -729,6 +729,8 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
 
   // Line 1 — lean on it: Intimidation DC 12.
   fireEvent.click(label('Add a line to goblin-1'));
+  // A new line has no check (rpg-project#1033); its check is added.
+  fireEvent.click(label(`Add approach to ${line1}`));
   set('Line 1 id for goblin-1', 'lean-on-it');
   set('Line 1 for goblin-1', "Where's the cellar? Tell me or you're next.");
   set(`Ability for approach 0 of ${line1}`, 'intimidation');
@@ -751,8 +753,10 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
     'Big talk, for someone standing in my doorway.'
   );
 
-  // Line 2 — talk it round: Persuasion DC 10, which is where a line starts.
+  // Line 2 — talk it round: Persuasion DC 10, which is where a new check
+  // starts.
   fireEvent.click(label('Add a line to goblin-1'));
+  fireEvent.click(label(`Add approach to ${line2}`));
   set('Line 2 id for goblin-1', 'talk-it-round');
   set(
     'Line 2 for goblin-1',

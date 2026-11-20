@@ -3040,6 +3040,50 @@ li.es-machine-step[data-refused],
 .encounter-studio .es-line-card-words p {
   margin-top: 0.35rem;
 }
+.encounter-studio .es-line-card-replies {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-line-card-reply {
+  display: grid;
+  gap: 0.25rem;
+}
+.encounter-studio .es-line-card-share {
+  margin-right: 0.45rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.encounter-studio .es-line-card-stale {
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-refusals {
+  margin: 0;
+  padding: 0.4rem 0.75rem 0.4rem 1.6rem;
+  border-left: 3px solid #b45309;
+  background: var(--es-warning-bg, #332b20);
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-invalid {
+  flex-basis: 100%;
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-way input[aria-invalid='true'] {
+  border-color: #b45309;
+}
+.encounter-studio .es-line-card-way {
+  flex-wrap: wrap;
+}
 /* The one line form, opened in a card: every label stands above its field
  * with room between them. */
 .encounter-studio .es-line-card-form .wb-option {

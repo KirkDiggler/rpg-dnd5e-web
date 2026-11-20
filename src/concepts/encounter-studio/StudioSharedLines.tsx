@@ -12,9 +12,10 @@
  * `conversations.<id>.lines`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  OptionEntry,
-  OptionShape,
+import {
+  isOptionUse,
+  type OptionEntry,
+  type OptionShape,
 } from '../world-building/answerTableShape';
 import {
   patchOptionApproach,
@@ -30,6 +31,8 @@ import {
   type LinesCarrier,
 } from '../world-building/sharedLinesEdits';
 import { OptionsEditor } from '../world-building/SitePolicies';
+import { StepWordsContext } from '../world-building/stepWordsContext';
+import { stepWordsOf } from './conversationSteps';
 import { AboutPanel } from './FieldHelp';
 import { locate, valueAt } from './locatePath';
 import { placeName } from './placeName';
@@ -165,93 +168,102 @@ export function StudioSharedLines({
       (document.scope.unread?.conversations as object | undefined) ?? {},
       id
     );
+  const stepWords = stepWordsOf(
+    readBack?.readBackIsCurrent ? readBack.readBack : null,
+    document
+  );
   return (
-    <section aria-label="Written once" className="es-shared-lines">
-      <h3>Written once</h3>
-      <AboutPanel>
-        <p>
-          A conversation is the lines a character can say, written once and
-          applied to every creature, prop or faction that says them. A change
-          here is a change for all of them.
-        </p>
-      </AboutPanel>
-      {notice && (
-        <div role="status" className="es-help es-readback-notice">
-          <p>{notice}</p>
-          {state === 'refused' &&
-            (refusals.length > 0 ? (
-              <ul aria-label="The engine’s refusals here">
-                {refusals.map((refusal, at) => (
-                  <li key={at}>
-                    <span title={refusal.path}>
-                      {placeName(refusal.path, document)}
-                    </span>
-                    {': '}
-                    {refusal.message}
-                  </li>
-                ))}
-              </ul>
+    <StepWordsContext.Provider value={stepWords}>
+      <section aria-label="Written once" className="es-shared-lines">
+        <h3>Written once</h3>
+        <AboutPanel>
+          <p>
+            A conversation is the lines a character can say, written once and
+            applied to every creature, prop or faction that says them. A change
+            here is a change for all of them.
+          </p>
+        </AboutPanel>
+        {notice && (
+          <div role="status" className="es-help es-readback-notice">
+            <p>{notice}</p>
+            {state === 'refused' &&
+              (refusals.length > 0 ? (
+                <ul aria-label="The engine’s refusals here">
+                  {refusals.map((refusal, at) => (
+                    <li key={at}>
+                      <span title={refusal.path}>
+                        {placeName(refusal.path, document)}
+                      </span>
+                      {': '}
+                      {refusal.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>Its refusals are listed in the studio’s header.</p>
+              ))}
+          </div>
+        )}
+        <StudioListDetail
+          id="shared-lines"
+          label="Conversations written once"
+          groups={[
+            {
+              rows: conversations.map((conversation) => ({
+                key: { kind: SHARED_LINES_KIND, id: conversation.id },
+                name: (
+                  <span className="es-shared-lines-name">
+                    {conversation.id}
+                  </span>
+                ),
+                summary: written(conversation.id)
+                  ? `${
+                      conversation.carriers.length === 1
+                        ? '1 carries it'
+                        : `${conversation.carriers.length} carry it`
+                    } · ${plural(conversation.linePaths.length, 'line', 'lines')}`
+                  : 'removed from the draft',
+                rowData: { 'data-shared-lines': conversation.id },
+              })),
+            },
+          ]}
+          selected={
+            selected ? { kind: SHARED_LINES_KIND, id: selected.id } : null
+          }
+          onSelect={(key) => setChosen(key.id)}
+          detailLabel={
+            selected ? `The lines of ${selected.id}` : 'No conversation chosen'
+          }
+          empty={<p className="es-help">{NO_SHARED_LINES_SENTENCE}</p>}
+          detail={
+            selected && !written(selected.id) ? (
+              <p className="es-help">{REMOVED_SHARED_LINES_SENTENCE}</p>
+            ) : selected ? (
+              <SharedConversationDetail
+                key={selected.id}
+                conversation={selected}
+                session={session}
+                names={names}
+                candidates={candidates}
+                carriersEditable={state === 'current'}
+                readBack={readBack?.readBack}
+                check={state}
+                refusals={refusals}
+                onJump={onJump}
+              />
             ) : (
-              <p>Its refusals are listed in the studio’s header.</p>
-            ))}
-        </div>
-      )}
-      <StudioListDetail
-        id="shared-lines"
-        label="Conversations written once"
-        groups={[
-          {
-            rows: conversations.map((conversation) => ({
-              key: { kind: SHARED_LINES_KIND, id: conversation.id },
-              name: (
-                <span className="es-shared-lines-name">{conversation.id}</span>
-              ),
-              summary: written(conversation.id)
-                ? `${
-                    conversation.carriers.length === 1
-                      ? '1 carries it'
-                      : `${conversation.carriers.length} carry it`
-                  } · ${plural(conversation.linePaths.length, 'line', 'lines')}`
-                : 'removed from the draft',
-              rowData: { 'data-shared-lines': conversation.id },
-            })),
-          },
-        ]}
-        selected={
-          selected ? { kind: SHARED_LINES_KIND, id: selected.id } : null
-        }
-        onSelect={(key) => setChosen(key.id)}
-        detailLabel={
-          selected ? `The lines of ${selected.id}` : 'No conversation chosen'
-        }
-        empty={<p className="es-help">{NO_SHARED_LINES_SENTENCE}</p>}
-        detail={
-          selected && !written(selected.id) ? (
-            <p className="es-help">{REMOVED_SHARED_LINES_SENTENCE}</p>
-          ) : selected ? (
-            <SharedConversationDetail
-              key={selected.id}
-              conversation={selected}
-              session={session}
-              names={names}
-              candidates={candidates}
-              carriersEditable={state === 'current'}
-              readBack={readBack?.readBack}
-              check={state}
-              onJump={onJump}
-            />
-          ) : (
-            <p className="es-help">Choose a conversation.</p>
-          )
-        }
-      />
-      <NewConversation
-        session={session}
-        names={names}
-        candidates={candidates}
-        onCreated={setChosen}
-      />
-    </section>
+              <p className="es-help">Choose a conversation.</p>
+            )
+          }
+        />
+        <NewConversation
+          session={session}
+          names={names}
+          candidates={candidates}
+          onCreated={setChosen}
+        />
+      </section>
+    </StepWordsContext.Provider>
   );
 }
 
@@ -263,6 +275,7 @@ function SharedConversationDetail({
   carriersEditable,
   readBack,
   check,
+  refusals,
   onJump,
 }: {
   conversation: SharedConversation;
@@ -276,6 +289,9 @@ function SharedConversationDetail({
   /** Where the engine's check stands: a card's sentences are the engine's
    * only while it is `current`. */
   check: SharedLinesCheck['state'];
+  /** The engine's refusals on this page, each shown on the card whose path
+   * it concerns. */
+  refusals: SharedLinesCheck['refusals'];
   onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const { id } = conversation;
@@ -308,12 +324,22 @@ function SharedConversationDetail({
     linePath: string,
     owner: { kind: string; id: string }
   ): LineSentences =>
-    check === 'current' && readBack
+    // A REFUSED DRAFT KEEPS THE LAST WORDS (rpg-project#1030 review): the
+    // read-back of the last draft that compiled, marked as from before the
+    // last edit, rather than every card going blank.
+    check !== 'checking' && readBack
       ? {
-          state: 'current',
+          state: check === 'current' ? 'current' : 'stale',
           readBack: lineReadBackOf(readBack, linePath, owner),
         }
-      : { state: check === 'refused' ? 'refused' : 'checking' };
+      : { state: 'checking' };
+  /** The refusals at or under a line's path. */
+  const refusalsAt = (linePath: string) =>
+    refusals.filter((refusal) => {
+      if (!refusal.path.startsWith(linePath)) return false;
+      const next = refusal.path.charAt(linePath.length);
+      return next === '' || next === '.' || next === '[';
+    });
   const ownBy = new Map<string, string[]>();
   for (const own of conversation.ownLines) {
     const key = carrierKey(own.carrier);
@@ -432,8 +458,9 @@ function SharedConversationDetail({
                   <li key={index}>
                     <SharedLineCard
                       owner={id}
-                      index={index}
+                      number={index + 1}
                       linePath={linePath}
+                      refusals={refusalsAt(linePath)}
                       option={line}
                       sentences={sentences}
                       value={(path) => valueAt(path, document)}
@@ -525,13 +552,21 @@ function SharedConversationDetail({
                 >
                   <h4>Only {words} offers</h4>
                   <ol className="es-line-cards">
-                    {ownBy.get(carrierKey(carrier))!.map((path) => {
+                    {ownBy.get(carrierKey(carrier))!.map((path, place) => {
                       const index = indexOfLine(path, document);
                       const line = valueAt(path, document);
-                      if (index === null || !isRecord(line))
+                      // While the check is behind the draft, the engine's
+                      // paths may have moved onto a `use:` or off the list:
+                      // such a place is said plainly, never shown as a line.
+                      if (
+                        index === null ||
+                        !isRecord(line) ||
+                        isOptionUse(line as unknown as OptionEntry)
+                      )
                         return (
                           <li key={path} className="es-help">
-                            A line of {words} the draft no longer holds here.
+                            A line of {words} the draft no longer holds here;
+                            the check is catching up.
                           </li>
                         );
                       const option = line as unknown as OptionShape;
@@ -542,9 +577,10 @@ function SharedConversationDetail({
                       return (
                         <li key={path}>
                           <SharedLineCard
-                            owner={carrier.id}
-                            index={index}
+                            owner={words}
+                            number={place + 1}
                             linePath={path}
+                            refusals={refusalsAt(path)}
                             option={option}
                             sentences={sentencesAt(path, owner)}
                             value={(p) => valueAt(p, document)}

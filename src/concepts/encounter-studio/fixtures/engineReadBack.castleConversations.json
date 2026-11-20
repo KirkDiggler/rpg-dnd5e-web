@@ -4194,6 +4194,87 @@
           },
           "statements": [
             {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `fresh`, the beat `guest-failed` moves the conversation to `warned-guest` (“the guest claim failed”). The beat is sent by missing `guest` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.fresh.transitions[0]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `fresh`, the beat `troupe-failed` moves the conversation to `warned-troupe` (“the troupe claim failed”). The beat is sent by missing `troupe` said to Guard (gate-1), missing `troupe` said to Guard (gate-2) or missing `troupe` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.fresh.transitions[1]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `troupe` said to Guard (gate-1), winning `troupe` said to Guard (gate-2), winning `guest` said to Guard Captain (captain) or winning `troupe` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.fresh.transitions[2]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `arrested`, the beat `came-quietly` moves the conversation to `jailed` (“the arrested went quietly”). The beat is sent by saying `come-quietly` to Guard (gate-1), saying `come-quietly` to Guard (gate-2) or saying `come-quietly` to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.arrested.transitions[0]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `jailed`, the beat `came-quietly` moves the conversation to `jailed` (“another arrested went quietly”). The beat is sent by saying `come-quietly` to Guard (gate-1), saying `come-quietly` to Guard (gate-2) or saying `come-quietly` to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.jailed.transitions[0]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `warned-guest`, the beat `troupe-failed` moves the conversation to `arrested` (“the second claim failed”). The beat is sent by missing `troupe` said to Guard (gate-1), missing `troupe` said to Guard (gate-2) or missing `troupe` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.warned-guest.transitions[0]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `warned-guest`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `troupe` said to Guard (gate-1), winning `troupe` said to Guard (gate-2) or winning `troupe` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.warned-guest.transitions[1]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `warned-troupe`, the beat `guest-failed` moves the conversation to `arrested` (“the second claim failed”). The beat is sent by missing `guest` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.warned-troupe.transitions[0]"
+            },
+            {
+              "kind": "conversation.transition",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "In the state `warned-troupe`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `guest` said to Guard Captain (captain).",
+              "path": "interactions.front-gate.recipe.states.warned-troupe.transitions[1]"
+            },
+            {
               "kind": "conversation.asked",
               "about": {
                 "kind": "conversation",

@@ -54,8 +54,14 @@ describe('option list mechanics (rpg-project#569)', () => {
     });
   });
 
-  it('keeps an emptied check, so the author meets the engine’s sentence', () => {
-    expect(removeOptionApproach(line, 0).check).toEqual([]);
+  it('removing the last way leaves no check at all, never an empty list (rpg-project#1033)', () => {
+    const plain = removeOptionApproach(line, 0);
+    expect(plain.check).toBeUndefined();
+    expect(Object.hasOwn(plain, 'check')).toBe(false);
+  });
+
+  it('a new line starts with no check (rpg-project#1033)', () => {
+    expect(linesOf(addOption(undefined))).toEqual([{ id: 'line-1', say: '' }]);
   });
 
   it('puts lines on a creature and a prop, and removes the binding they leave empty', () => {

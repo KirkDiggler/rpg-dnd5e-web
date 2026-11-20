@@ -29,6 +29,7 @@ import {
 import { RowRefusalsContext } from '../world-building/rowRefusals';
 import { SharedLinesContext } from '../world-building/sharedLinesContext';
 import type { SiteScope } from '../world-building/siteScope';
+import { StepWordsContext } from '../world-building/stepWordsContext';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
   useRoomPublishing,
@@ -37,6 +38,7 @@ import {
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
+import { stepWordsOf } from './conversationSteps';
 import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
 import {
@@ -2532,11 +2534,19 @@ function StudioSurface({
   const sharedLinesShown = sharedLinesInForm(readBack.readBack, (id) =>
     jumpTo({ kind: 'home', section: 'interactions' }, `conversations.${id}`)
   );
+  // WHAT EACH STEP DOES (rpg-project#1033), for a line's Advances: from
+  // the read-back while it describes the draft.
+  const stepWords = stepWordsOf(
+    readBack.readBackIsCurrent ? readBack.readBack : null,
+    session.document
+  );
   return (
     <RevealContextProvider controller={revealController}>
       <RowRefusalsContext.Provider value={rowRefusals}>
         <SharedLinesContext.Provider value={sharedLinesShown}>
-          {surface}
+          <StepWordsContext.Provider value={stepWords}>
+            {surface}
+          </StepWordsContext.Provider>
         </SharedLinesContext.Provider>
       </RowRefusalsContext.Provider>
     </RevealContextProvider>
