@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 
@@ -200,7 +201,7 @@ describe('the captain goes back to his gate (rpg-project#1000)', () => {
   it('an edit elsewhere keeps the new state, its step and its post byte for byte', () => {
     const result = read(served);
     const draft = structuredClone(result.draft);
-    const greet = draft.room.monsterBindings!.captain.options!.find(
+    const greet = linesOf(draft.room.monsterBindings!.captain.options).find(
       (o) => o.id === 'greet'
     )!;
     greet.say = 'Good evening.';

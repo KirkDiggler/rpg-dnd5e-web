@@ -21,6 +21,7 @@
  */
 
 import {
+  isOptionUse,
   validateOptions,
   type OptionRequiresShape as OptionRequires,
   type OptionShape,
@@ -2047,11 +2048,20 @@ export function parseDungeon(text: string): DungeonDoc {
     // The lines a character can say (rpg-project#569). A placement whose ref
     // is not a monster is a prop, and a prop's rows may not `flee`.
     if (p.options !== undefined && p.options !== null) {
-      placement.options = validateOptions(
+      const entries = validateOptions(
         p.options,
         `${path}.options`,
         parseRef(placement.ref)?.type !== 'monsters'
       );
+      // A conversation's lines are written once only in a version 5 site
+      // (rpg-project#1025); the engine refuses a `use:` here in these words.
+      entries.forEach((entry, j) => {
+        if (isOptionUse(entry))
+          throw new DungeonParseError(
+            `${path}.options[${j}].use: \`use\` names a conversation, and only a version 5 site declares \`conversations:\``
+          );
+      });
+      placement.options = entries as OptionShape[];
     }
     // Carried verbatim and NOT read: what a weapon ref means is the
     // compiler's and the catalogue's business (rpg-project#448).

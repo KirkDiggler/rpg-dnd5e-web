@@ -26,18 +26,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 function insideWords(rest: readonly Segment[], owner: unknown): string[] {
   const words: string[] = [];
   let index = 0;
-  const options = isRecord(owner) ? owner.options : undefined;
   while (index < rest.length) {
     const head = rest[index];
     const next = rest[index + 1];
-    if (head === 'options' && typeof next === 'number') {
-      const option = Array.isArray(options) ? options[next] : undefined;
+    // A carrier's `options`, or a conversation's `lines` (rpg-project#1025).
+    if ((head === 'options' || head === 'lines') && typeof next === 'number') {
+      const list = isRecord(owner) ? owner[head] : undefined;
+      const option = Array.isArray(list) ? list[next] : undefined;
       // A line is named by its id; one the draft does not hold (or one with
-      // no id) is said by its place, plainly — never an invented id.
+      // no id) is said by its place, plainly — never an invented id. A
+      // `use:` names the conversation whose lines it says.
       words.push(
-        isRecord(option) && typeof option.id === 'string'
-          ? `line ${code(option.id)}`
-          : `line ${next + 1}`
+        isRecord(option) && typeof option.use === 'string'
+          ? `the lines of ${code(option.use)}`
+          : isRecord(option) && typeof option.id === 'string'
+            ? `line ${code(option.id)}`
+            : `line ${next + 1}`
       );
       index += 2;
       const verdict = rest[index];
@@ -191,6 +195,8 @@ export function placeName(
       return join(`secret ${code(id)}`, insideWords(rest, undefined));
     case 'conversation':
       return join(`conversation ${code(id)}`, insideWords(rest, undefined));
+    case 'shared-lines':
+      return join(`the lines of ${code(id)}`);
     case 'bundle':
       return join(`bundle ${code(id)}`, insideWords(rest, undefined));
     case 'template':

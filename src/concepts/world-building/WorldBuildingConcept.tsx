@@ -29,6 +29,7 @@ import type {
   EncounterStudioPresentation,
   StudioWallAppearanceOption,
 } from '../encounter-studio/studioSession';
+import type { OptionShape } from './answerTableShape';
 import { SiteBundlesContext } from './bundlesContext';
 import {
   adoptCastMember,
@@ -177,6 +178,15 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import {
+  addConversationLine,
+  applyConversation,
+  createConversation,
+  removeConversation,
+  setConversationLines,
+  unapplyConversation,
+  type LinesCarrier,
+} from './sharedLinesEdits';
 import { assertSourceWritable } from './singleRoomDungeon';
 import { SiteNamesContext, siteNamesOf } from './siteNames';
 import {
@@ -5292,6 +5302,46 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              sharedLines: (() => {
+                // A CONVERSATION WRITTEN ONCE (rpg-project#1027): each edit is
+                // one undoable transaction over `sharedLinesEdits.ts`; a
+                // refusal is the edit's notice.
+                const write = guardSnapshotIntent(
+                  (
+                    edit: (document: RoomDraftDocument) => RoomDraftDocument
+                  ): boolean => {
+                    try {
+                      return commitRoomDocument(
+                        edit(roomHistoryRef.current.present)
+                      );
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                );
+                return {
+                  setLines: (id: string, lines: readonly OptionShape[]) =>
+                    write((document) =>
+                      setConversationLines(document, id, lines)
+                    ),
+                  addLine: (id: string) =>
+                    write((document) => addConversationLine(document, id)),
+                  create: (id: string, carrier: LinesCarrier, say: string) =>
+                    write((document) =>
+                      createConversation(document, id, carrier, say)
+                    ),
+                  apply: (id: string, carrier: LinesCarrier) =>
+                    write((document) =>
+                      applyConversation(document, id, carrier)
+                    ),
+                  unapply: (id: string, carrier: LinesCarrier, index: number) =>
+                    write((document) =>
+                      unapplyConversation(document, id, carrier, index)
+                    ),
+                  remove: (id: string) =>
+                    write((document) => removeConversation(document, id)),
+                };
+              })(),
               mapLabelSelection: {
                 selectedId:
                   activeStudioTarget?.kind === 'label' ? selectedLabelId : null,

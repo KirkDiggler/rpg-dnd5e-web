@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf, type OptionShape } from '../world-building/answerTableShape';
 import { setConcealment } from '../world-building/concealmentEdits';
 import {
   asDone,
@@ -37,9 +38,7 @@ function read(text: string) {
 }
 type Read = ReturnType<typeof read>;
 type Draft = Read['draft'];
-type Option = NonNullable<
-  NonNullable<Draft['room']['propBindings']>[string]['options']
->[number];
+type Option = OptionShape;
 
 function changedLines(a: string, b: string): string[] {
   const left = a.split('\n');
@@ -59,7 +58,7 @@ function grateEdit(
   draft.room.propBindings!.grate = setPropOption(
     grate,
     index,
-    change(grate.options![index]!)
+    change(linesOf(grate.options)[index]!)
   )!;
   return save(result, draft);
 }
@@ -69,7 +68,7 @@ describe('a line done loads and writes back (rpg-project#959)', () => {
     expect(castle).toContain(DONE);
     const result = read(castle);
     expect(save(result, result.draft)).toBe(castle);
-    const option = result.draft.room.propBindings!.grate.options![0]!;
+    const option = linesOf(result.draft.room.propBindings!.grate.options)[0]!;
     expect(option).not.toHaveProperty('say');
     expect(option.do).toBe('You lift the grate and take the way up.');
     expect(option.seen).toBe(

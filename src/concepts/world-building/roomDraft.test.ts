@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
+import { linesOf } from './answerTableShape';
 import { createMapLabel } from './mapLabelEdits';
 import { createRegion, setRegionLighting } from './regionEdits';
 import {
@@ -1745,9 +1746,13 @@ describe('options on a binding (rpg-project#569)', () => {
     const roundTrip = parseRoomDraftJson(stringifyRoomDraft(draft));
     expect(roundTrip).toEqual(draft);
     expect(
-      roundTrip.room.monsterBindings?.['goblin-1'].options?.map((o) => o.id)
+      linesOf(roundTrip.room.monsterBindings?.['goblin-1'].options).map(
+        (o) => o.id
+      )
     ).toEqual(['lean-on-it', 'bribe']);
-    expect(roundTrip.room.propBindings?.altar.options?.[0].requires).toEqual({
+    expect(
+      linesOf(roundTrip.room.propBindings?.altar.options)[0].requires
+    ).toEqual({
       fact: 'altar-noticed',
     });
   });
@@ -1759,8 +1764,9 @@ describe('options on a binding (rpg-project#569)', () => {
       return () => stringifyRoomDraft(draft);
     };
     const goblin = (draft: RoomDraft) =>
-      draft.room.monsterBindings!['goblin-1'].options!;
-    const altar = (draft: RoomDraft) => draft.room.propBindings!.altar.options!;
+      linesOf(draft.room.monsterBindings!['goblin-1'].options);
+    const altar = (draft: RoomDraft) =>
+      linesOf(draft.room.propBindings!.altar.options);
 
     expect(refusal((d) => (goblin(d)[0].id = ''))).toThrow(
       'Monster binding for goblin-1 options[0].id: the option has no id'

@@ -45,7 +45,7 @@ import {
   validateAnswerTable,
   validateOptions,
   type AnswerTableShape,
-  type OptionShape,
+  type OptionEntry,
 } from './answerTableShape';
 import {
   documentStatePicks,
@@ -87,8 +87,9 @@ export interface SiteFaction {
   /** The lines a character can say to ANY member of this faction
    * (rpg-project#718): a placement's `options`, written once for the side.
    * LAYERED THE WAY `on:` IS: a member that writes its own options speaks
-   * those and none of these; a member that writes none speaks these. */
-  options?: OptionShape[];
+   * those and none of these; a member that writes none speaks these. A
+   * `use:` entry says a conversation's lines (rpg-project#1025). */
+  options?: OptionEntry[];
 }
 
 /** `errOptionsEmpty` (`dungeonspec/grammar.go`): `options` is a layered key,

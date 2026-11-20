@@ -23,6 +23,7 @@ import {
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OptionShape } from '../world-building/answerTableShape';
+import { linesOf } from '../world-building/answerTableShape';
 import {
   SiteNamesContext,
   siteNamesOf,
@@ -59,8 +60,8 @@ function editor(
   const room = result.draft.room;
   const options =
     kind === 'creature'
-      ? room.monsterBindings![owner]!.options!
-      : room.propBindings![owner]!.options!;
+      ? linesOf(room.monsterBindings![owner]!.options)
+      : linesOf(room.propBindings![owner]!.options);
   const onChange = vi.fn();
   const names: SiteNames = siteNamesOf(result.scope, result.draft.room);
   // The lines held in state, as their owner holds them: an edit is shown,
@@ -251,7 +252,9 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
 
   it('a new give on a line that requires a conversation can be witnessed: friends-inside', () => {
     const result = read(served);
-    const options = result.draft.room.monsterBindings!['gate-1']!.options!;
+    const options = linesOf(
+      result.draft.room.monsterBindings!['gate-1']!.options
+    );
     const at = options.findIndex((o) => o.id === 'friends-inside');
     const label = `line ${at + 1} of gate-1 success`;
     const { last } = editor(result, 'gate-1', 'creature');
@@ -325,7 +328,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
 describe('a loudness, from the form (rpg-project#975 A)', () => {
   it('a line’s loudness: the pedlar’s hail reads Shout; Whisper writes that one line; Speak removes it', () => {
     const result = read(served);
-    const options = result.draft.room.monsterBindings!.pedlar!.options!;
+    const options = linesOf(result.draft.room.monsterBindings!.pedlar!.options);
     const n = options.findIndex((o) => o.id === 'hail-the-pedlar') + 1;
     const { last } = editor(result, 'pedlar', 'creature');
     const loudness = screen.getByLabelText(
@@ -373,7 +376,9 @@ describe('a loudness, from the form (rpg-project#975 A)', () => {
 
   it('a row’s loudness: a shouted answer reads Shout; Scream writes that one line', () => {
     const result = read(served);
-    const options = result.draft.room.monsterBindings!['gate-1']!.options!;
+    const options = linesOf(
+      result.draft.room.monsterBindings!['gate-1']!.options
+    );
     const at = options.findIndex((o) => o.id === 'friends-inside');
     const label = `line ${at + 1} of gate-1 success`;
     const { last } = editor(result, 'gate-1', 'creature');

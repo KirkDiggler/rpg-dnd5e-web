@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf, type OptionShape } from '../world-building/answerTableShape';
 import { setConcealment } from '../world-building/concealmentEdits';
 import { normalizeBinding } from '../world-building/monsterOrderEdits';
 import {
@@ -84,17 +85,13 @@ function withDraft(result: Read, edit: (draft: Draft) => void): Draft {
 
 function scullionEdit(
   result: Read,
-  change: (
-    option: NonNullable<
-      NonNullable<Draft['room']['monsterBindings']>[string]['options']
-    >[number]
-  ) => typeof option
+  change: (option: OptionShape) => OptionShape
 ): Draft {
   return withDraft(result, (draft) => {
     const scullion = draft.room.monsterBindings!.scullion;
     draft.room.monsterBindings!.scullion = normalizeBinding({
       ...scullion,
-      options: scullion.options!.map((o) =>
+      options: linesOf(scullion.options).map((o) =>
         o.id === 'favour' ? change(o) : o
       ),
     })!;
@@ -104,18 +101,14 @@ function scullionEdit(
 function grateEdit(
   result: Read,
   index: number,
-  change: (
-    option: NonNullable<
-      NonNullable<Draft['room']['propBindings']>[string]['options']
-    >[number]
-  ) => typeof option
+  change: (option: OptionShape) => OptionShape
 ): Draft {
   return withDraft(result, (draft) => {
     const grate = draft.room.propBindings!.grate;
     draft.room.propBindings!.grate = setPropOption(
       grate,
       index,
-      change(grate.options![index]!)
+      change(linesOf(grate.options)[index]!)
     )!;
   });
 }
@@ -126,16 +119,16 @@ describe('the kitchen passage loads and writes back (rpg-project#958)', () => {
     const result = read(served);
     expect(save(result, result.draft)).toBe(served);
 
-    const favour = result.draft.room.monsterBindings!.scullion.options!.find(
-      (o) => o.id === 'favour'
-    )!;
+    const favour = linesOf(
+      result.draft.room.monsterBindings!.scullion.options
+    ).find((o) => o.id === 'favour')!;
     expect(favour.success).toEqual([
       {
         say: 'The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.',
         tells: 'kitchen-way',
       },
     ]);
-    const grate = result.draft.room.propBindings!.grate.options!;
+    const grate = linesOf(result.draft.room.propBindings!.grate.options);
     expect(grate.map((o) => o.id)).toEqual(['to-chapel', 'to-cells']);
     expect(grate[0]!.success).toEqual([
       {
@@ -244,7 +237,7 @@ describe('the kitchen passage loads and writes back (rpg-project#958)', () => {
       result,
       withDraft(result, (draft) => {
         const grate = draft.room.propBindings!.grate;
-        const options = addOption(grate.options);
+        const options = linesOf(addOption(grate.options));
         options[2] = patchOption(options[2]!, { say: '(listen at the grate)' });
         draft.room.propBindings!.grate = { ...grate, options };
       })

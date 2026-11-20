@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { exportDraftYaml, readDraftYaml } from '../encounter-studio/draftFile';
 import survivorsWalkYaml from '../encounter-studio/fixtures/stack-sites/survivors-walk.yaml?raw';
+import { linesOf } from './answerTableShape';
 import {
   addSiteFactionOption,
   removeSiteFactionOption,
@@ -24,7 +25,10 @@ describe('a faction’s lines (rpg-project#718)', () => {
   it('opens the survivors walk with the band’s two lines', () => {
     const read = opened(survivorsWalkYaml);
     const band = read.scope.factions?.find((f) => f.id === 'band');
-    expect(band?.options?.map((o) => o.id)).toEqual(['yield', 'refuse']);
+    expect(linesOf(band?.options).map((o) => o.id)).toEqual([
+      'yield',
+      'refuse',
+    ]);
     expect(band?.options?.[0]).toEqual({
       id: 'yield',
       say: 'Yield and live.',
