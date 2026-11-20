@@ -216,6 +216,24 @@ export function formatRollBreakdown(roll: Roll | undefined): string {
   return `${head}${roll.total}${against}${beaten}`;
 }
 
+/**
+ * A fight forming, as one line per member who rolled: the member's name and
+ * the roll's breakdown, in the fight's order. Empty for any other act and
+ * for a fight that carried no rolls.
+ */
+export function initiativeLines(act: Act, context: DescribeContext): string[] {
+  if (act.body.case !== 'clock') return [];
+  if (act.body.value.mark !== ClockMark.FIGHT_FORMED) return [];
+  const lines: string[] = [];
+  for (const entry of act.body.value.fight?.rolls ?? []) {
+    if (!entry.roll) continue;
+    lines.push(
+      `${partyName(entry.member, context)}: ${formatRollBreakdown(entry.roll)}`
+    );
+  }
+  return lines;
+}
+
 function withRoll(text: string, roll: Roll | undefined): string {
   const short = formatRollShort(roll);
   return short ? (text ? `${text}, ${short}` : short) : text;

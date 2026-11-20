@@ -21,6 +21,7 @@ import {
   formatRollBreakdown,
   formatRollFormula,
   formatRollShort,
+  initiativeLines,
 } from './describeAct';
 
 const context = {
@@ -804,5 +805,61 @@ describe('a bystander reads the gate conversation (rpg-project#923)', () => {
     expect(reply?.headline).toBe(
       `Alice says to Gate Guard: “We're the troupe for the feast.”`
     );
+  });
+});
+
+describe('initiativeLines', () => {
+  const aliceRoll = create(RollSchema, {
+    dice: [14],
+    total: 17,
+    terms: [{ count: 1, dieSize: 20, faces: [14], sourceName: 'Initiative' }],
+    modifiers: [
+      { source: 'Dexterity', value: 2 },
+      { source: 'Warmed up', value: 1 },
+    ],
+  });
+  const gateRoll = create(RollSchema, {
+    dice: [11],
+    total: 12,
+    terms: [{ count: 1, dieSize: 20, faces: [11], sourceName: 'Initiative' }],
+    modifiers: [{ source: 'Dexterity', value: 1 }],
+  });
+  const formed = (rolls: { member: typeof alice; roll: typeof aliceRoll }[]) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_FORMED,
+        fight: { order: [alice, gate], rolls },
+      },
+    });
+
+  it('writes one line per member in the log’s one roll format', () => {
+    const lines = initiativeLines(
+      formed([
+        { member: alice, roll: aliceRoll },
+        { member: gate, roll: gateRoll },
+      ]),
+      context
+    );
+    expect(lines).toEqual([
+      `Alice: ${formatRollBreakdown(aliceRoll)}`,
+      `Gate Guard: ${formatRollBreakdown(gateRoll)}`,
+    ]);
+    expect(lines[0]).toContain('Dexterity');
+    expect(lines[0]).toContain('Warmed up');
+    expect(lines[0].endsWith('= 17')).toBe(true);
+    expect(lines[1].endsWith('= 12')).toBe(true);
+  });
+
+  it('is empty for a fight that carried no rolls', () => {
+    expect(initiativeLines(formed([]), context)).toEqual([]);
+  });
+
+  it('is empty for any other clock act', () => {
+    const turn = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.TURN_ENDED },
+    });
+    expect(initiativeLines(turn, context)).toEqual([]);
   });
 });
