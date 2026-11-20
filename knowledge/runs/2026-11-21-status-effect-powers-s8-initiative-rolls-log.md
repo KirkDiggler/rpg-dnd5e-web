@@ -6,7 +6,7 @@ One line per entry. Every line ends with a link.
 
 ## Shipped
 
-- The "A fight begins" row draws one visible line per member with its initiative roll; the wire format pin is `v0.1.285` — [PR_LINK](PR_LINK).
+- The "A fight begins" row draws one visible line per member with its initiative roll; the wire format pin is `v0.1.285` — [https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1475](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1475).
 
 ## Decided
 
