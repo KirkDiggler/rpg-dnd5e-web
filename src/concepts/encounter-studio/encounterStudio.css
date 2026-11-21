@@ -484,6 +484,9 @@
 .encounter-studio[data-inspector='docked'] .es-map-workspace {
   right: calc(var(--es-inspector-width) + 1.5rem);
 }
+.encounter-studio[data-inspector='docked'] .es-encounter-home {
+  right: calc(var(--es-inspector-width) + 1.5rem);
+}
 .encounter-studio[data-inspector='docked'] .es-context-layer {
   height: calc(var(--es-work-height, calc(100dvh - 9rem)) - 1rem);
   max-height: none;

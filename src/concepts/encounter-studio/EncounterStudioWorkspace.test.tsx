@@ -11,6 +11,7 @@ import type {
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { inspectorDocks, mapFloor } from './inspectorWidth';
 import type {
   EncounterStudioPresentation,
   EncounterStudioSession,
@@ -916,6 +917,19 @@ describe('shared Arrange context lifecycle', () => {
         document: createPopulatedStudioDocument(),
       };
     };
+    /** The real session's select puts the placement in the arrange; the
+     * fake's does not, so this test's selection is set by hand. */
+    const selectsGoblin = (): void => {
+      const session = observed.session!;
+      observed.session = {
+        ...session,
+        arrange: projectStudioArrange({
+          draft: session.document.draft,
+          target: { kind: 'actor', id: 'goblin-1' },
+          selectionRevision: 1,
+        }),
+      };
+    };
     const count = (): HTMLElement | null =>
       within(document.querySelector('.es-header') as HTMLElement).queryByRole(
         'button',
@@ -999,9 +1013,10 @@ describe('shared Arrange context lifecycle', () => {
       expect(document.activeElement).toBe(count());
     });
 
-    it('the jump selects the creature and opens its inspector on Build', () => {
+    it('the jump selects the creature and opens its inspector beside the Encounter page', () => {
       refusals.current = [refused];
       placeGoblin();
+      selectsGoblin();
       render(<EncounterStudioWorkspace compositionSource={source} />);
       click('Encounter');
       fireEvent.click(count()!);
@@ -1016,15 +1031,51 @@ describe('shared Arrange context lifecycle', () => {
       );
       expect(
         screen
-          .getByRole('button', { name: 'Build' })
+          .getByRole('button', { name: 'Encounter' })
           .getAttribute('aria-pressed')
       ).toBe('true');
+      expect(
+        screen
+          .getByRole('button', { name: 'Build' })
+          .getAttribute('aria-pressed')
+      ).not.toBe('true');
+      expect(document.getElementById('studio-sidebar')!.hidden).toBe(false);
       expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
       // The list closes on the jump; the count stays while the refusal does.
       expect(
         screen.queryByRole('group', { name: 'Current refusals' })
       ).toBeNull();
       expect(count()?.textContent).toBe('1 refusal');
+    });
+
+    it('an Encounter-side inspector closes when nothing placed is selected', () => {
+      refusals.current = [refused];
+      placeGoblin();
+      selectsGoblin();
+      const mounted = render(
+        <EncounterStudioWorkspace compositionSource={source} />
+      );
+      click('Encounter');
+      fireEvent.click(count()!);
+      const name = documentPlacementNames(observed.session!.document).get(
+        'goblin-1'
+      )!;
+      fireEvent.click(
+        screen.getByRole('button', { name: `${name}: ${SAYS_AND_DOES}` })
+      );
+      const root = screen.getByRole('region', {
+        name: 'Encounter Studio workspace',
+      });
+      expect(document.getElementById('studio-sidebar')!.hidden).toBe(false);
+      observed.session = { ...observed.session!, arrange: null };
+      mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+      expect(document.getElementById('studio-sidebar')!.hidden).toBe(true);
+      expect(root.getAttribute('data-inspector')).toBeNull();
+      expect(
+        screen
+          .getByRole('button', { name: 'Encounter' })
+          .getAttribute('aria-pressed')
+      ).toBe('true');
     });
   });
 });
@@ -1121,6 +1172,12 @@ describe('the author sets the inspector width (rpg-project#979)', () => {
     });
     fireEvent.pointerUp(handle(), { clientX: -2000, pointerId: 2 });
     expect(now()).toBe(640);
+  });
+
+  it('the Encounter page docks an inspector from 1048 px, keeping 640 px for itself', () => {
+    expect(mapFloor('encounter')).toBe(640);
+    expect(inspectorDocks(1047, 'encounter')).toBe(false);
+    expect(inspectorDocks(1048, 'encounter')).toBe(true);
   });
 
   const resizeWindow = (width: number): void =>
