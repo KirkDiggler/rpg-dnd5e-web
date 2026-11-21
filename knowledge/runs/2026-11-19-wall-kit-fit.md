@@ -10,6 +10,8 @@
 
 - One-wall Studio continuation adds owned visual sections, fixed-span clipping, section controls through the existing wall edit port, and native-file round-trip. A real wall containing both a door and window measures 3.75/6; a wall-height edit changes both to 5.25, Undo restores the owner, and moving a section keeps one wall row. Captured Play is not delivered: the current engine explicitly reports `sections` as an unknown appearance key — [continuation plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/sections-plan.md).
 
+- Runtime adapter checkpoint adopts actual generated SDK v0.1.286, converts captured wall-section lengths from feet once, retains opaque references without a source lookup, validates spans and preserves them through v2 reveal bridging/opening-only updates. Joined browser Play remains a separate check — [merged contract](https://github.com/KirkDiggler/rpg-api-protos/pull/449).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
