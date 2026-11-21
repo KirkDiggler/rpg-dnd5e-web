@@ -1297,22 +1297,33 @@ function StudioSurface({
   /** While a concealment is armed, a Layout click on a hex, prop, door or
    * wall toggles membership instead of selecting it (rpg-project#578). */
   const pickMember = armedConcealment !== null;
-  /** The Layout answers an armed party start or creature move with the same
-   * writers the 3D floor calls, so one gesture works on both maps. */
+  /** The Layout answers an armed party start or creature move through the
+   * session's any-view intents, so one gesture works on both maps. The 3D
+   * viewport callbacks stay fenced to the 3D presentation. */
   const placeOnLayout = (cell: RoomHexCell): boolean => {
     const authoring = session.viewportProps.roomAuthoring;
     if (!authoring) return false;
     if (authoring.tool === 'start') {
-      authoring.onStartGesture?.(cell);
+      session.placePartyStartAt(cell);
       return true;
     }
     if (authoring.tool !== 'move') return false;
     if (session.arrange?.kind === 'actor') {
-      authoring.onMoveMonster?.(session.arrange.target.id, cell);
+      session.commitArrange({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: session.arrange.target.id },
+        location: cell,
+      });
+      session.setPropTool('select');
       return true;
     }
     if (session.arrange?.kind === 'start') {
-      authoring.onStartGesture?.(cell);
+      session.commitArrange({
+        kind: 'start-position',
+        target: { kind: 'start' },
+        location: cell,
+      });
+      session.setPropTool('select');
       return true;
     }
     return false;

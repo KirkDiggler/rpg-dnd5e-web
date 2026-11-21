@@ -80,6 +80,7 @@ function fixture(): EncounterStudioSession {
     selectPartyStart: vi.fn(() => true),
     selectRegion: vi.fn(() => true),
     armPartyStart: vi.fn(() => true),
+    placePartyStartAt: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitBundles: vi.fn(() => true),
     commitPartySharing: vi.fn(() => true),

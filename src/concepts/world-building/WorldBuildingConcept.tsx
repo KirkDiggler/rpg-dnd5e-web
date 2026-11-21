@@ -4878,6 +4878,14 @@ export function WorldBuildingConcept({
                 setTool('select');
                 return true;
               }),
+              placePartyStartAt: guardSnapshotIntent(
+                (cell: RoomHexCell): boolean => {
+                  if (refuseWhilePublishing() || roomTool !== 'start')
+                    return false;
+                  startGestureAt(cell);
+                  return true;
+                }
+              ),
               clearSelection: guardSnapshotIntent((): boolean => {
                 if (refuseWhilePublishing()) return false;
                 clearStudioSelection();
