@@ -327,6 +327,10 @@ export interface ActionDockProps {
   /** Clear the selected declaration locally without spending anything. */
   onCancelSelection?: () => void;
   onEndTurn: (declaration: Declaration) => void;
+  /** Wait: the client's own world-clock control, drawn where End Turn sits in
+   * a fight. Not a server-offered row; the server refuses with words. */
+  onWait?: () => void;
+  waitLoading?: boolean;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
    * dock: see `standingActionsBlocked`. */
@@ -565,6 +569,8 @@ function ActionDockContents({
   onCancelCastOption,
   onCancelSelection,
   onEndTurn,
+  onWait,
+  waitLoading = false,
   standingActions = [],
   explorationControls,
   actionUtilityControls,
@@ -903,6 +909,26 @@ function ActionDockContents({
     (declaration) => declaration.verb !== Verb.MOVE
   );
 
+  // WAIT is the world clock's End Turn: one control, in End Turn's place, that
+  // costs the character one round and does nothing else. It is drawn LAST in
+  // both world-clock branches (nothing ahead of `{standing}` moves) and never
+  // on the turn clock, where End Turn owns the place.
+  const waitControl = onWait ? (
+    <EndTurnPlacement target={endTurnTarget}>
+      <button
+        type="button"
+        className={styles.endTurn}
+        disabled={!authorityFresh || waitLoading}
+        title={
+          authorityFresh ? 'Let one round pass' : 'Actions may be out of date'
+        }
+        onClick={onWait}
+      >
+        {waitLoading ? 'Waiting…' : 'Wait'}
+      </button>
+    </EndTurnPlacement>
+  ) : null;
+
   if (clock === ClockKind.WORLD && actionPresentation?.desktopIcons) {
     // Same two-level composition as combat: offers, then one utility footer.
     // The compact/mobile branch below retains its existing standing-control
@@ -921,6 +947,7 @@ function ActionDockContents({
           externalCancel={targetingControlsActive}
         />
         {reactionContent}
+        {waitControl}
       </div>
     );
   }
@@ -1006,6 +1033,7 @@ function ActionDockContents({
             dock LAST, after the actions group, for the same by-position
             reason `{standing}` keeps slot 1. */}
         {reactionContent}
+        {waitControl}
       </div>
     );
   }

@@ -54,6 +54,8 @@ import { hopsPhrase, speechWords } from './speechLine';
  * (encounter v0.148.0): the walk act carries it as `cause`.
  */
 export const DASH_CAUSE = 'encounter:table:dash';
+/** A `stay` act with this cause is a player's Wait, not a creature held in place. */
+export const WAIT_CAUSE = 'encounter:intent:wait';
 
 export interface DescribeContext {
   readonly viewerMember: string;
@@ -522,6 +524,14 @@ function describeWith(
       };
     }
     case 'stay':
+      if (body.value.cause === WAIT_CAUSE) {
+        return {
+          eyebrow: 'Wait',
+          headline: `${name(body.value.member)} waits`,
+          detail: '',
+          tone: 'neutral',
+        };
+      }
       return {
         eyebrow: 'Stay',
         headline: `${name(body.value.member)} stays put`,
