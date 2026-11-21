@@ -1071,7 +1071,12 @@ function StudioSurface({
     onViewChange(next);
   };
   const spatial = home !== 'encounter';
-  const panelOpen = spatial ? inspectorOpen : encounterInspector;
+  /** The Encounter-side panel shows a placed creature or prop only: with
+   * nothing placed selected it closes rather than show the room view. */
+  const encounterPanel =
+    encounterInspector &&
+    (session.arrange?.kind === 'actor' || session.arrange?.kind === 'scene');
+  const panelOpen = spatial ? inspectorOpen : encounterPanel;
   // Once per studio session: the first visit to 3D mounts the viewport.
   const [visited3d, setVisited3d] = useState(view === '3d');
   useEffect(() => {
@@ -2029,7 +2034,7 @@ function StudioSurface({
               spatial ? toggleInspector : () => setEncounterInspector(false)
             }
             keyboardEnabled={spatial}
-            compact={home === 'build' || encounterInspector}
+            compact={home === 'build' || encounterPanel}
             resize={
               <StudioInspectorResize
                 width={inspectorShown}
@@ -2049,7 +2054,7 @@ function StudioSurface({
               />
             )}
             {((home === 'build' && !placesView.selectedJoin) ||
-              (home === 'encounter' && encounterInspector)) && (
+              (home === 'encounter' && encounterPanel)) && (
               // A post's cells are picked on the map from here
               // (rpg-project#975 D).
               <RoutePickContext.Provider value={routePicking}>

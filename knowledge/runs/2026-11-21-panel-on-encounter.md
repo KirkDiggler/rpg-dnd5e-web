@@ -16,6 +16,8 @@ Slice [rpg-project#1067](https://github.com/KirkDiggler/rpg-project/issues/1067)
 - The slice issue missed two existing tests asserting the old jump landing (refusal-row jump, thread entry on a prop) — [gap](https://github.com/KirkDiggler/rpg-project/issues/1067#issuecomment-7055025434).
 - "selecting the captain shows his routine from the check's read-back" failed once in a full run and passes alone, with and without this change; a one-off, not acted on — [gap](https://github.com/KirkDiggler/rpg-project/issues/1067#issuecomment-7055025434).
 - The close, leave-Encounter, dock and Move tests pass before the change; each carries an Encounter-pressed assertion so it checks the new behaviour — [rpg-project#1067](https://github.com/KirkDiggler/rpg-project/issues/1067).
+- The x on the Encounter side keeps the tooltip "Hide options (N)" although the N key is Build-only; recorded, not acted on — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1480#issuecomment-7055155870).
+- The fake session's `creatures.select` does not set `arrange`, so the refusal-jump test sets the placement's selection by hand once the panel depends on a placed selection — [review](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1480#issuecomment-7055155870).
 
 ## Mistaken
 
