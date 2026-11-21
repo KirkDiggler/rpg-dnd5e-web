@@ -369,9 +369,13 @@ export interface EncounterStudioSession {
   /** Select one authored region (rpg-project#725), or nothing. Refused for
    * an unknown id, while publishing, or from a retired snapshot. */
   selectRegion(id: string | null): boolean;
-  /** Arm the party-start gesture: the next 3D floor click places or moves
-   * it. Refused while publishing or from a retired snapshot. */
+  /** Arm the party-start gesture: the next floor click, on either map,
+   * places or moves it. Refused while publishing or from a retired snapshot. */
   armPartyStart(): boolean;
+  /** Answer an armed party start from a view that is not the 3D floor: places
+   * or moves it at this cell. Refused unless the party start is armed, while
+   * publishing, or from a retired snapshot. */
+  placePartyStartAt(cell: RoomHexCell): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;

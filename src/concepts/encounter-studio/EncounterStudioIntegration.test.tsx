@@ -5252,12 +5252,15 @@ describe('S0 one selection across the homes', () => {
     }
   });
 
-  it('Move from an Encounter-side inspector goes to the map', async () => {
+  it('Move creature from an Encounter-side inspector goes to the map view last used', async () => {
     await choosePlacement();
     expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
     expect(button('Build').getAttribute('aria-pressed')).toBe('true');
-    expect(button('3D').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByText(/^Moving .* · click the destination hex$/)
+    ).toBeTruthy();
   });
 
   it("a creature selected on the map presses its cast member's row", async () => {
@@ -7218,6 +7221,100 @@ describe('S3 the overview through the real owner', () => {
     expect(inspector().getByRole('region', { name: 'Region' })).toBeTruthy();
     expect(pressed('Build')).toBe('true');
     expect(row('Courtyard').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  /** A pointer-down on the Layout floor at a hex. */
+  const clickCell = (cell: { q: number; r: number }): void => {
+    const point = onSurface(layoutCellCenter(cell));
+    fireEvent.pointerDown(surface(), {
+      clientX: bounds.left + point.x,
+      clientY: bounds.top + point.y,
+      button: 0,
+      pointerId: 3,
+    });
+  };
+  const courtyardCell = (index: number) =>
+    keepRoomCells(KEEP_ROOMS.find((room) => room.id === 'courtyard')!)[index];
+  const creatureCell = (storage: MemoryStorage, id: string) =>
+    storage
+      .document()
+      .draft.room.monsterDeclarations.find((entry) => entry.id === id)!
+      .startingCell;
+  const isPressed = (name: string): string | null =>
+    button(name).getAttribute('aria-pressed');
+
+  it('a party start armed on the Layout is placed by a floor click there', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-start] polygon'), { button: 0 });
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Move party start' })
+    );
+    expect(isPressed('Layout')).toBe('true');
+    expect(isPressed('3D')).not.toBe('true');
+    expect(
+      screen.getByText('Placing party start · click the floor')
+    ).toBeTruthy();
+    const target = courtyardCell(40);
+    expect(storage.document().draft.room.partyStart).not.toEqual(target);
+    clickCell(target);
+    await settled();
+    expect(storage.document().draft.room.partyStart).toEqual(target);
+  });
+
+  it('a creature move armed on the Layout moves it to the clicked cell, once', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    const facing = creatureCell(storage, 'cook').facing;
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(isPressed('Layout')).toBe('true');
+    expect(isPressed('3D')).not.toBe('true');
+    expect(
+      screen.getByText(/^Moving .* · click the destination hex$/)
+    ).toBeTruthy();
+    const first = courtyardCell(40);
+    clickCell(first);
+    await settled();
+    expect(creatureCell(storage, 'cook').location).toEqual(first);
+    expect(creatureCell(storage, 'cook').facing).toEqual(facing);
+    expect(screen.queryByText(/click the destination hex/)).toBeNull();
+    clickCell(courtyardCell(60));
+    expect(creatureCell(storage, 'cook').location).toEqual(first);
+  });
+
+  it('a cancelled creature move leaves the next floor click a selection', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    const before = creatureCell(storage, 'cook').location;
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(screen.getByText(/click the destination hex/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel creature move' })
+    );
+    const cell = courtyardCell(40);
+    clickCell(cell);
+    expect(creatureCell(storage, 'cook').location).toEqual(before);
+    expect(inspector().getByText(`Cell q ${cell.q}, r ${cell.r}`)).toBeTruthy();
+  });
+
+  it('from the 3D view, Move creature stays on 3D', async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    switchTo('3D');
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(isPressed('3D')).toBe('true');
   });
 
   // Rewritten (rpg-project#725): a region's label is its name, so removing

@@ -990,7 +990,7 @@ function PartyStartView({
             Move party start
           </button>
           <FieldHelp field="Move party start">
-            The next floor click in 3D places it.
+            The next floor click, on either map, places it.
           </FieldHelp>
         </div>
       }
