@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 import { SYNTY_SCALE } from './calibrationConstants';
-import type { PlainWallProfile } from './plainWallFit';
+import type { PlainWallFit, PlainWallProfile } from './plainWallFit';
+
+/** Doors keep aperture anchoring. A leafless visual section occupies its whole body span. */
+export interface WallOpeningFit extends PlainWallFit {
+  anchor?: 'opening' | 'body';
+}
 
 export interface WallOpeningDescriptor {
+  anchor?: 'opening' | 'body';
   openingId: string;
   frameNode: string;
   /** Static frame plus any declared repeatable masonry parts; never leaves. */
@@ -102,7 +108,10 @@ export function fitWallOpeningInstance(
       body,
       start: bounds.min.x,
       end: bounds.max.x,
-      centerX: origin.x,
+      centerX:
+        descriptor.anchor === 'body'
+          ? (bounds.min.x + bounds.max.x) / 2
+          : origin.x,
       centerZ: (front.z + back.z) / 2,
       baseY: bounds.min.y,
       width,

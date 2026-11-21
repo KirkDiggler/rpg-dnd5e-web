@@ -141,9 +141,14 @@ both scene units. The wall owns height, thickness, elevation, finishes and lifet
 Sections are not scene items, independent walls, gameplay openings or blockers.
 They fit the line and do not overlap each other or permitted door surrounds.
 
-New sections require explicit provider section/body-fit capabilities; asset names
-never grant eligibility. Imported opaque refs and unknown nested author fields
-remain preserved. A changed height must fit every known fixed feature/cap.
+New sections require explicit provider section/body-fit capabilities or a
+measured leafless opening fit; asset names never grant eligibility. Leafless
+surrounds use their full frame span and body centre, not their aperture width
+or aperture centre. Door placements retain aperture anchoring and their existing
+owners. Imported opaque refs and unknown nested author fields remain preserved.
+A changed height must fit every known fixed feature/cap. A newly added section
+or changed explicit wall finish must have a compatible declared surface before
+owner commit; unchanged imported intent remains editable.
 Moving/rotating the wall carries its sections; endpoint resize protects section
 edges and preserves their world positions. Removal restores plain visual art.
 
@@ -157,6 +162,22 @@ The inspector's section edits use the existing wall edit/history transaction and
 apply immediately, outside the staged wall-placement form. Failed edits leave
 the document unchanged. Native files use the existing source-aware writer;
 captured Play requires the same facts through the wall's existing disclosure.
+
+## Original maps and height adapters
+
+A repeat-above assembly does not stretch the fixed region's Original UVs.
+Explicitly enrolled moving masonry parts retain their authored chart density
+and phase across residual scaling, repeated rows and the translated cap.
+Only their declared paired color/normal channel changes; unbound trim/atlas
+channels remain authored. Selected finish charts still own their mapping.
+Original does not force different assets' defaults to become one material.
+
+Legacy static props retain their existing proportional behavior. An explicit
+physical-height input uses the same scale-profile planner against the actual
+complete loaded assembly, including companions, and waits for those bounds
+before drawing/reporting. It does not invent protected parts or material
+capabilities. Existing percentage-only callers retain their old anchor and
+primary-bound reporting contract. All source/cache geometry stays immutable.
 
 ## Studio Layout walls and compact contexts (#1233)
 

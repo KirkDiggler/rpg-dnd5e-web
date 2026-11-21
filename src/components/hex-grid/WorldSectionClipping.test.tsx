@@ -8,15 +8,30 @@ const source = new THREE.Group(),
 body.name = 'WallBody_v1';
 source.add(body);
 function part(name: string, base: number, height: number) {
-  const geometry = new THREE.BoxGeometry(5, height, 0.5);
-  geometry.translate(0, height / 2, 0);
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
-  mesh.name = name;
-  mesh.position.y = base;
-  body.add(mesh);
-  return mesh;
+  const group = new THREE.Group();
+  group.name = name;
+  group.position.y = base;
+  body.add(group);
+  // Honor the fixture's declared facade bindings even when no finish is selected.
+  for (const [side, z] of [
+    ['front', 0.25],
+    ['back', -0.25],
+  ] as const) {
+    const geometry = new THREE.PlaneGeometry(5, height);
+    if (z < 0) geometry.rotateY(Math.PI);
+    geometry.translate(0, height / 2, z);
+    const material = new THREE.MeshStandardMaterial({
+      map: new THREE.Texture(),
+      normalMap: new THREE.Texture(),
+    });
+    material.name = `Masonry_${side}_0`;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `${name}_${side}`;
+    group.add(mesh);
+  }
+  return group;
 }
-const fixed = part('Wall_Frame', 0, 3.25);
+const fixed = part('Wall_Frame', 0, 3.25).children[0] as THREE.Mesh;
 part('Wall_Above', 3.25, 1.5);
 part('Wall_Cap', 4.75, 0.25);
 for (const [name, p] of Object.entries({

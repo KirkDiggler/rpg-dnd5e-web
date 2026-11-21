@@ -11,7 +11,8 @@ vi.mock('./WorldPropModel', () => ({
       name="section-model-probe"
       userData={{
         ref: props.entry.ref,
-        fit: props.plainWallFit,
+        fit: props.plainWallFit ?? props.wallOpeningFit,
+        fitKind: props.wallOpeningFit ? 'opening' : 'body',
         height: props.targetHeight,
       }}
     />
@@ -32,6 +33,49 @@ function wall() {
     { id: 'window', assetRef: ref, position: 6 }
   );
 }
+it('keeps an imported leafless-opening repeat intent on the same measured body anchor', async () => {
+  const model = wall();
+  delete model.appearance.sections;
+  model.appearance.assetRef =
+    'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_01';
+  const view = await ReactThreeTestRenderer.create(
+    <StructuralWallSurfacePieces
+      wall={model}
+      fogStretches={[
+        { from: 0, to: 0.5, state: 'seen' },
+        { from: 0.5, to: 1, state: 'absent' },
+      ]}
+    />
+  );
+  const probes = view.scene.findAllByProps({ name: 'section-model-probe' });
+  expect(probes.length).toBeGreaterThan(0);
+  for (const probe of probes) {
+    expect(probe.instance.userData.fitKind).toBe('opening');
+    expect(probe.instance.userData.fit.anchor).toBe('body');
+    expect(probe.instance.userData.fit.width).toBeCloseTo(4);
+  }
+  expect(probes.map((probe) => probe.instance.userData.fit.clipEnd)).toEqual([
+    4, 2,
+  ]);
+  await view.unmount();
+});
+it('fits a leafless opening section by body span while leaving door semantics absent', async () => {
+  const model = wall();
+  const opening = 'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_01';
+  model.appearance.sections![0].assetRef = opening;
+  const view = await ReactThreeTestRenderer.create(
+    <StructuralWallSurfacePieces wall={model} />
+  );
+  const probe = view.scene
+    .findAllByProps({ name: 'section-model-probe' })
+    .find((node) => node.instance.userData.ref === opening);
+  expect(probe).toBeDefined();
+  expect(probe!.instance.userData.fitKind).toBe('opening');
+  expect(probe!.instance.userData.fit.anchor).toBe('body');
+  expect(probe!.instance.userData.fit.width).toBeCloseTo(3.75, 4);
+  expect(model.openings).toEqual([]);
+  await view.unmount();
+});
 it('renders a section once inside the owning wall and excludes that span from ordinary repeats', async () => {
   const view = await ReactThreeTestRenderer.create(
     <StructuralWallSurfacePieces wall={wall()} />

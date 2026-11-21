@@ -45,6 +45,23 @@ it('offers only explicitly configured static sections, not leaves or unrelated p
   );
   expect(refs).not.toContain('dnd5e:env:fantasy-kingdom:castle_wall_01');
 });
+it('uses an already configured leafless opening as visual art, without creating a gameplay opening', () => {
+  const opening = 'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_01';
+  expect(wallSectionOptions().map((row) => row.ref)).toContain(opening);
+  expect(repeatableWallAssetRefs()).not.toContain(opening);
+  const before = makeWall(),
+    after = addWallSection(before, {
+      id: 'frame',
+      assetRef: opening,
+      position: 6,
+    });
+  expect(after.appearance.sections![0].width).toBeCloseTo(3.75, 4);
+  expect(after.openings).toEqual([]);
+  expect(after.blocker).toEqual(before.blocker);
+  expect(wallSectionOptions().map((row) => row.ref)).not.toContain(
+    'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01'
+  );
+});
 it('adds, moves and removes a section as an immutable edit of one wall', () => {
   const original = makeWall(),
     placed = addWallSection(original, {

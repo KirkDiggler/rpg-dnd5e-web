@@ -12,6 +12,8 @@
 
 - Runtime adapter checkpoint adopts actual generated SDK v0.1.286, converts captured wall-section lengths from feet once, retains opaque references without a source lookup, validates spans and preserves them through v2 reveal bridging/opening-only updates. Joined browser Play remains a separate check — [merged contract](https://github.com/KirkDiggler/rpg-api-protos/pull/449).
 
+- Original-height/adaptor checkpoint: fixed regions keep their authored UVs; declared moving masonry extends its actual source chart across repeat rows and one cap. Leafless surrounds can use full-body anchoring as static sections, and legacy absolute height measures companions through the shared scale planner. The accepted editor origins now serve detached d4fcddc5; their drafts and :3193 Play stack remain unchanged — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
@@ -23,6 +25,9 @@
 - A single logical face choice expands over every declared compatible frame/above/cap binding; it must not be refused simply because a face has multiple parts, nor color unrelated trim or the opposite side — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 - Keep visual sections under `appearance`, never in mechanical openings; preserve the old repeat intent for imported documents but exclude explicitly tagged feature sections from new repeat choices. Fog clips the full configured feature instead of squeezing a second copy into each stretch — [continuation plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/sections-plan.md).
+
+- Original remains the artist's own mapping, not a guessed common material/repeat size. Reuse declared surface scopes and paired channels; leave unbound trim and atlas coordinates alone. Legacy static props retain proportional semantics, while an explicit target measures the complete loaded assembly rather than guessing from the primary mesh — [plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/plan.md).
+- Leafless opening metadata is a fitting capability, not gameplay authority. Static placement uses its measured full frame width/body centre; existing doors retain aperture anchoring. New incompatible section/finish choices refuse atomically instead of committing an unrenderable wall — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Found
 
@@ -38,7 +43,12 @@
 
 - One-wall geometry/native editor checks passed 180 focused tests; loaded clipping preserves the fixed lower/cap sizes and its omission mutant fails. Real source meshes retain chart agreement below 2e-7 at the off-repeat-aligned window position. One UI grouping assertion needed updating for the separate immediate section controls — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
+- Actual Original Window03/Wall04 checks keep fixed UV values unchanged at heights 3.75/6; moving chart continuation errors stay below 5.3e-7. The actual opening-only Single01 fits width3.75 and height3.75/6 at the correct section centre, without a leaf or extra mechanical opening. This is narrow renderer/adaptor evidence, not full kit/Play completion — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
 ## Mistaken
+
+- The plain fitter stretched Original UVs over the whole target before fixed/repeat assembly, and copied rows reset their authored phase. RED/GREEN loaded-model cases exposed both, plus unbound fixed trim being re-mapped. Fit the fixed source at native height and continue only explicitly enrolled moving charts after assembly — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+- The proportional minimum omitted cap height, refusing a valid legacy minimum on capped assets. Its actual visible-geometry regression now includes base plus cap. The clipping fixture also needed the real facade identities/maps declared by its provider rather than anonymous untextured boxes — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 - The section checkpoint's first full gate found one old palette/history fixture choosing Castle Wall02 as a repeater. That configured feature now belongs to the section chooser; the test explicitly verifies its absence and exercises the existing swap/history contract with Fit01 instead — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 

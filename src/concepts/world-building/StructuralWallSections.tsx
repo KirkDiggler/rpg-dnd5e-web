@@ -8,6 +8,7 @@ import {
 import { wallDirectionYaw, wallLength } from './structuralWallEditing';
 import type { StructuralWallSurface } from './structuralWalls';
 import type { WallFogState, WallFogStretch } from './StructuralWallSurfaces';
+import { staticWallFit } from './wallSectionAssets';
 import { WorldPropModel } from './WorldPropModel';
 
 /** Visual children of the existing wall owner. Each full feature is fitted
@@ -50,6 +51,8 @@ export function StructuralWallSections({
         const entry = WORLD_BUILDING_CATALOG_BY_REF.get(section.assetRef);
         if (entry?.source !== 'generated')
           throw Error(`Unknown section appearance ${section.assetRef}.`);
+        const kind = staticWallFit(entry)?.kind;
+        if (!kind) throw Error(`Section ${section.id} has no static wall fit.`);
         const start = section.position - section.width / 2,
           end = section.position + section.width / 2;
         const provider = {
@@ -111,6 +114,14 @@ export function StructuralWallSections({
                       chart: { ...chart, surfaceId: binding.id },
                     }))
               );
+              const fit = {
+                width: section.width,
+                height: wall.appearance.height,
+                depth: wall.appearance.thickness,
+                offset: start,
+                clipStart: Math.max(0, segment.start - start),
+                clipEnd: Math.min(section.width, segment.end - start),
+              };
               return (
                 <group
                   key={index}
@@ -129,14 +140,12 @@ export function StructuralWallSections({
                     rotationY={0}
                     heightScale={1}
                     targetHeight={wall.appearance.height}
-                    plainWallFit={{
-                      width: section.width,
-                      height: wall.appearance.height,
-                      depth: wall.appearance.thickness,
-                      offset: start,
-                      clipStart: Math.max(0, segment.start - start),
-                      clipEnd: Math.min(section.width, segment.end - start),
-                    }}
+                    plainWallFit={kind === 'body' ? fit : undefined}
+                    wallOpeningFit={
+                      kind === 'opening'
+                        ? { ...fit, anchor: 'body' }
+                        : undefined
+                    }
                     surfaceProvider={provider}
                     surfacePlans={plans}
                     remembered={remembered || state === 'remembered'}

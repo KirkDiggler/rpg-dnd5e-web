@@ -13,6 +13,10 @@ import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { clipWallSection } from '@/rendering/clipWallSection';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
+  applyOriginalHeightUvs,
+  captureOriginalHeightUvs,
+} from '@/rendering/originalHeightUvs';
+import {
   fitPlainWallInstance,
   type PlainWallFit,
 } from '@/rendering/plainWallFit';
@@ -53,6 +57,7 @@ export type WorldAssetRole = NonNullable<
 import {
   fitWallOpeningInstance,
   type WallOpeningDescriptor,
+  type WallOpeningFit,
 } from '@/rendering/wallOpeningFit';
 
 export interface WorldAssetDoor {
@@ -89,8 +94,8 @@ export interface WorldAssetModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
-  /** Aperture-anchored fixed surround; distinct from a miterable wall body. */
-  wallOpeningFit?: PlainWallFit;
+  /** Measured surround fit; aperture anchor for doors, body anchor for static sections. */
+  wallOpeningFit?: WallOpeningFit;
   /** Transient, fully loaded finish sets for explicit provider surface bindings.
    * The caller supplies a fitted compatible chart; no persisted room state here. */
   surfaceSelections?: readonly WorldSurfaceSelection[];
@@ -351,31 +356,53 @@ function LoadedWorldAssetModel({
   const instance = useMemo(() => {
     const object = scene.clone(true);
     const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
+    const declaredProfile = JSON.parse(heightProfileKey) as
+      | GeneratedWorldAsset['heightFit']
+      | null;
+    const declaredRoles = JSON.parse(rolesKey) as NonNullable<
+      GeneratedWorldAsset['roles']
+    >;
+    const heightProfile =
+      declaredProfile ??
+      legacyAssetHeightProfile(object, declaredRoles, nativeHeight);
     const fitted = fit
       ? openingKey
         ? fitWallOpeningInstance(
             object,
             JSON.parse(openingKey) as WallOpeningDescriptor
           )
-        : fitPlainWallInstance(object, fit)
+        : fitPlainWallInstance(
+            object,
+            heightProfile.mode === 'repeat-above'
+              ? { ...fit, height: nativeHeight }
+              : fit
+          )
       : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
     const owned = [...fitted.owned];
     try {
-      const declaredProfile = JSON.parse(heightProfileKey) as
-        | GeneratedWorldAsset['heightFit']
-        | null;
-      const declaredRoles = JSON.parse(rolesKey) as NonNullable<
-        GeneratedWorldAsset['roles']
+      const sourceBindings = JSON.parse(bindingKey) as NonNullable<
+        GeneratedWorldAsset['surfaces']
       >;
-      const heightProfile =
-        declaredProfile ??
-        legacyAssetHeightProfile(object, declaredRoles, nativeHeight);
+      const sourceCharts = JSON.parse(chartKey) as WallSurfaceChart[];
+      const originalCharts =
+        heightProfile.mode === 'repeat-above'
+          ? captureOriginalHeightUvs({
+              root: object,
+              assetRef,
+              bindings: sourceBindings.filter(
+                (binding) =>
+                  (binding.node === heightProfile.node ||
+                    binding.node === heightProfile.capNode) &&
+                  !sourceCharts.some((chart) => chart.surfaceId === binding.id)
+              ),
+            })
+          : [];
       const legacyHeight =
         heightProfile.mode === 'fixed'
           ? nativeHeight
           : Math.max(
               heightProfile.mode === 'repeat-above'
-                ? heightProfile.baseHeight
+                ? heightProfile.baseHeight + (heightProfile.capHeight ?? 0)
                 : 0,
               nativeHeight * heightScale
             );
@@ -393,18 +420,19 @@ function LoadedWorldAssetModel({
           .map((role) => role.node),
       });
       owned.push(...assembly.owned);
+      applyOriginalHeightUvs({
+        root: object,
+        assetRef,
+        captured: originalCharts,
+        nodeCopies: assembly.nodeCopies,
+        owned,
+      });
       const profile =
         fitted.profile && heightProfile.mode === 'repeat-above'
           ? { ...fitted.profile, height: requested / SYNTY_SCALE }
           : fitted.profile;
-      const expanded = expandPartBindings(
-        JSON.parse(bindingKey) as NonNullable<GeneratedWorldAsset['surfaces']>,
-        assembly.nodeCopies
-      );
-      const charts = expandPartSelections(
-        JSON.parse(chartKey) as WallSurfaceChart[],
-        expanded.ids
-      );
+      const expanded = expandPartBindings(sourceBindings, assembly.nodeCopies);
+      const charts = expandPartSelections(sourceCharts, expanded.ids);
       if (charts.length) {
         if (!fit || !profile || !expanded.bindings.length)
           throw new Error(
@@ -857,11 +885,15 @@ export function WorldAssetModel({
         wallOpeningFit && asset.wallOpening
           ? {
               ...asset.wallOpening,
+              anchor: wallOpeningFit.anchor,
               frameNode: asset.roles!.find((role) => role.role === 'frame')!
                 .node,
               fixedNodes: asset
                 .roles!.filter(
-                  (role) => role.role === 'frame' || role.role === 'above'
+                  (role) =>
+                    role.role === 'frame' ||
+                    role.role === 'above' ||
+                    role.role === 'cap'
                 )
                 .map((role) => role.node),
             }

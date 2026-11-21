@@ -59,6 +59,7 @@ import {
 import type { StructuralWallSurface } from './structuralWalls';
 import { StructuralWallSections } from './StructuralWallSections';
 import type { WallEndFits } from './wallCornerFits';
+import { staticWallFit } from './wallSectionAssets';
 import { wallSectionSolidIntervals } from './wallSections';
 import { WorldPropModel } from './WorldPropModel';
 
@@ -224,9 +225,10 @@ export function StructuralWallSurfacePieces({
     );
   }
   const [widthMeters, heightMeters, depthMeters] = entry.asset.boundsMeters;
-  const capable = entry.asset.tags.some(
-    (tag) => tag === 'wall-body-fit' || tag === 'wall-miter-90'
-  );
+  const staticFit = staticWallFit(entry);
+  const capable = !!staticFit;
+  const fixedFeature =
+    staticFit?.kind === 'opening' || entry.asset.tags.includes('wall-section');
   let layouts;
   try {
     if (entry.asset.heightFit)
@@ -237,13 +239,9 @@ export function StructuralWallSurfacePieces({
       });
     for (const section of wall.appearance.sections ?? []) {
       const feature = WORLD_BUILDING_CATALOG_BY_REF.get(section.assetRef);
-      if (
-        feature?.source !== 'generated' ||
-        !feature.asset.tags.includes('wall-body-fit') ||
-        feature.asset.roles?.some((role) => role.role === 'leaf')
-      )
+      if (feature?.source !== 'generated' || !staticWallFit(feature))
         throw Error(
-          `Section ${section.id} has no configured static body fit: ${section.assetRef}.`
+          `Section ${section.id} has no configured static wall fit: ${section.assetRef}.`
         );
       if (feature.asset.heightFit)
         planAssetHeight({
@@ -282,7 +280,7 @@ export function StructuralWallSurfacePieces({
             })),
           })
         : undefined,
-      sourceWidthMeters: widthMeters,
+      sourceWidthMeters: staticFit?.width ?? widthMeters,
       sourceHeightMeters: heightMeters,
       sourceDepthMeters: depthMeters,
       maxPieces,
@@ -371,7 +369,7 @@ export function StructuralWallSurfacePieces({
               const cutWithin =
                 segment.start > start + 1e-9 || segment.end < end - 1e-9;
               const point =
-                finishSpans.length || cutWithin
+                !fixedFeature && (finishSpans.length || cutWithin)
                   ? {
                       x:
                         wall.line.start.x +
@@ -386,6 +384,30 @@ export function StructuralWallSurfacePieces({
               // The shared asset fitter owns height and the single floor lift.
               // Parents position/turn the run; they never scale its vertical axis.
               const baseY = piece.y;
+              const fitting = capable
+                ? {
+                    width: fixedFeature
+                      ? end - start
+                      : segment.end - segment.start,
+                    offset: fixedFeature ? start : segment.start,
+                    height: wall.appearance.height,
+                    depth: wall.appearance.thickness,
+                    ...(fixedFeature
+                      ? {
+                          clipStart: Math.max(0, segment.start - start),
+                          clipEnd: Math.min(end - start, segment.end - start),
+                        }
+                      : {}),
+                    start:
+                      !fixedFeature && segment.start === 0
+                        ? endFits?.start
+                        : undefined,
+                    end:
+                      !fixedFeature && segment.end === total
+                        ? endFits?.end
+                        : undefined,
+                  }
+                : undefined;
               return [
                 <group
                   key={`${spanIndex}-${pieceIndex}-${segmentIndex}`}
@@ -410,19 +432,11 @@ export function StructuralWallSurfacePieces({
                     materialOverrides={wall.appearance.materialOverrides}
                     targetHeight={wall.appearance.height}
                     plainWallFit={
-                      capable
-                        ? {
-                            width: segment.end - segment.start,
-                            offset: segment.start,
-                            height: wall.appearance.height,
-                            depth: wall.appearance.thickness,
-                            start:
-                              segment.start === 0 ? endFits?.start : undefined,
-                            end:
-                              segment.end === wallLength(wall)
-                                ? endFits?.end
-                                : undefined,
-                          }
+                      staticFit?.kind === 'body' ? fitting : undefined
+                    }
+                    wallOpeningFit={
+                      staticFit?.kind === 'opening' && fitting
+                        ? { ...fitting, anchor: 'body' }
                         : undefined
                     }
                     surfaceProvider={segment.finishes[0]?.provider}

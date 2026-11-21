@@ -64,11 +64,12 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * flame glowing at full brightness.
  */
 
+import { planAssetHeight } from '@/rendering/assetHeightLayout';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { propVisualScale } from '@/rendering/propVisualScale';
 import { useGLTF } from '@react-three/drei';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import {
   PROPS_MODEL_BASE,
@@ -105,6 +106,8 @@ export interface PropModelProps {
   remembered?: boolean;
   /** Visual Y scale, grounded at the authored mesh base. */
   heightScale?: number;
+  /** Absolute visual height of the complete static legacy assembly. */
+  targetHeight?: number;
   visualLighting?: RegionLightingMaterialBinding;
 }
 
@@ -117,13 +120,23 @@ function PropCompanionModel({
   companion,
   remembered,
   visualLighting,
+  onNativeBounds,
 }: {
   companion: PropCompanion;
+  onNativeBounds?: (file: string, bounds: THREE.Box3) => void;
   visualLighting?: RegionLightingMaterialBinding;
   remembered: boolean;
 }) {
   const { scene } = useGLTF(PROPS_MODEL_BASE + companion.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  const nativeBounds = useMemo(() => {
+    cloned.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(cloned, true);
+  }, [cloned]);
+  useEffect(
+    () => onNativeBounds?.(companion.file, nativeBounds),
+    [companion.file, nativeBounds, onNativeBounds]
+  );
   useRememberedTint(
     cloned,
     remembered,
@@ -142,39 +155,72 @@ export function PropModel({
   onBoundsMeasured,
   remembered = false,
   heightScale = 1,
+  targetHeight,
   visualLighting,
 }: PropModelProps) {
-  const safeHeightScale = propVisualScale(heightScale);
+  const [companionBounds, setCompanionBounds] = useState<
+    Record<string, THREE.Box3>
+  >({});
+  const onNativeBounds = useCallback((file: string, bounds: THREE.Box3) => {
+    setCompanionBounds((previous) =>
+      previous[file]?.equals(bounds)
+        ? previous
+        : { ...previous, [file]: bounds.clone() }
+    );
+  }, []);
+  const heightReady =
+    targetHeight === undefined ||
+    (variant.companions ?? []).every((part) => companionBounds[part.file]);
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const localBounds = useMemo(() => {
     cloned.updateMatrixWorld(true);
     return new THREE.Box3().setFromObject(cloned, true);
   }, [cloned]);
+  // Legacy percentage callers keep their primary-bound anchor/reporting. An
+  // explicit physical target measures every declared companion before drawing.
+  const fittedBounds = useMemo(() => {
+    if (targetHeight === undefined) return localBounds;
+    const bounds = localBounds.clone();
+    for (const part of variant.companions ?? [])
+      if (companionBounds[part.file]) bounds.union(companionBounds[part.file]);
+    return bounds;
+  }, [localBounds, targetHeight, variant.companions, companionBounds]);
+  const safeHeightScale =
+    targetHeight !== undefined && heightReady
+      ? planAssetHeight({
+          nativeHeight:
+            fittedBounds.getSize(new THREE.Vector3()).y * SYNTY_SCALE,
+          targetHeight,
+          profile: { mode: 'scale' },
+        }).scaleY
+      : propVisualScale(heightScale);
   const anchorOffset = useMemo<[number, number, number]>(() => {
-    if (anchor === 'source-origin' || localBounds.isEmpty()) return [0, 0, 0];
-    const center = localBounds.getCenter(new THREE.Vector3());
-    return [-center.x, -localBounds.min.y, -center.z];
-  }, [anchor, localBounds]);
+    if (anchor === 'source-origin' || fittedBounds.isEmpty()) return [0, 0, 0];
+    const center = fittedBounds.getCenter(new THREE.Vector3());
+    return [-center.x, -fittedBounds.min.y, -center.z];
+  }, [anchor, fittedBounds]);
   const measuredBounds = useMemo<PropModelBounds>(() => {
-    if (localBounds.isEmpty()) {
+    if (fittedBounds.isEmpty()) {
       return { minY: 0, maxY: 0, width: 0, height: 0, depth: 0 };
     }
-    const size = localBounds.getSize(new THREE.Vector3());
-    const anchoredMinY = localBounds.min.y + anchorOffset[1];
+    const size = fittedBounds.getSize(new THREE.Vector3());
+    const anchoredMinY = fittedBounds.min.y + anchorOffset[1];
     return {
-      minY: anchoredMinY * SYNTY_SCALE,
+      minY:
+        anchoredMinY *
+        SYNTY_SCALE *
+        (targetHeight === undefined ? 1 : safeHeightScale),
       maxY:
-        (localBounds.max.y + anchorOffset[1]) * SYNTY_SCALE * safeHeightScale,
+        (fittedBounds.max.y + anchorOffset[1]) * SYNTY_SCALE * safeHeightScale,
       width: size.x * SYNTY_SCALE,
       height: size.y * SYNTY_SCALE * safeHeightScale,
       depth: size.z * SYNTY_SCALE,
     };
-  }, [anchorOffset, localBounds, safeHeightScale]);
-  useEffect(
-    () => onBoundsMeasured?.(measuredBounds),
-    [measuredBounds, onBoundsMeasured]
-  );
+  }, [anchorOffset, fittedBounds, safeHeightScale, targetHeight]);
+  useEffect(() => {
+    if (heightReady) onBoundsMeasured?.(measuredBounds);
+  }, [measuredBounds, onBoundsMeasured, heightReady]);
   useRememberedTint(
     cloned,
     remembered,
@@ -190,6 +236,9 @@ export function PropModel({
         <PropCompanionModel
           key={companion.file}
           companion={companion}
+          onNativeBounds={
+            targetHeight === undefined ? undefined : onNativeBounds
+          }
           visualLighting={visualLighting}
           remembered={remembered}
         />
@@ -199,6 +248,7 @@ export function PropModel({
 
   return (
     <group
+      visible={heightReady}
       position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
       rotation={[0, rotationY, 0]}
       scale={[SYNTY_SCALE, SYNTY_SCALE * safeHeightScale, SYNTY_SCALE]}

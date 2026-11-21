@@ -254,6 +254,7 @@ import {
 } from './wallFinishProjection';
 import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
 import { assertWallHeightEdit } from './wallHeightEdits';
+import { assertWallSectionFinishEdit } from './wallSectionFinishEdits';
 import { MAX_WORLD_COORD } from './worldBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -906,12 +907,18 @@ export function WorldBuildingConcept({
           !complete &&
           candidate.draft.sourceRef ===
             roomHistoryRef.current.present.draft.sourceRef
-        )
+        ) {
           assertWallHeightEdit({
             walls: candidate.draft.room.walls ?? [],
             previousWalls:
               roomHistoryRef.current.present.draft.room.walls ?? [],
           });
+          assertWallSectionFinishEdit({
+            draft: { ...candidate.draft, scene },
+            previous: roomHistoryRef.current.present.draft,
+            catalog: materialCatalog.catalog,
+          });
+        }
         const captured = captureDoorFramePresentations(
           { ...candidate.draft, scene },
           materialCatalog.catalog,

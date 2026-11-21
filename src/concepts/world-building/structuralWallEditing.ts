@@ -28,6 +28,7 @@ import {
 } from './structuralWallGeometry';
 import type { StructuralWall, StructuralWallSurface } from './structuralWalls';
 import type { WorldPoint } from './types';
+import { isWallSectionAppearance } from './wallSectionAssets';
 import {
   assertWallSections,
   copyWallSections,
@@ -238,12 +239,7 @@ export function isRepeatableWallAsset(entry: {
 export function repeatableWallAssetRefs(): string[] {
   return [...WORLD_BUILDING_CATALOG_BY_REF.values()]
     .filter(
-      (entry) =>
-        isRepeatableWallAsset(entry) &&
-        !(
-          entry.source === 'generated' &&
-          entry.asset.tags.includes('wall-section')
-        )
+      (entry) => isRepeatableWallAsset(entry) && !isWallSectionAppearance(entry)
     )
     .map((entry) => entry.ref);
 }

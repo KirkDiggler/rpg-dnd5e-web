@@ -1490,6 +1490,32 @@ describe('Studio authoring homes through the real owner', () => {
     });
   });
 
+  it('refuses an incompatible section finish before changing the wall or history', () => {
+    installFinishPreview();
+    const draft = finishRoomFixture();
+    draft.room.walls = [draft.room.walls![0]];
+    draft.room.walls[0].appearance.height = 3.75;
+    draft.scene.version = 7;
+    draft.scene.wallFinishes = { north: { 'positive-z': GRAY_REF } };
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    selectWall(storage, draft.room.walls[0]);
+    const before = storage.document(),
+      writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Section appearance'), {
+      target: {
+        value: 'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_02',
+      },
+    });
+    fireEvent.change(screen.getByLabelText('New section position'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Add wall section'));
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    expect(screen.getAllByText(/compatible/).length).toBeGreaterThan(0);
+  });
+
   it('owns a once-placed visual section on one wall through edit, refusal, Undo and native reopen', () => {
     const draft = finishRoomFixture();
     draft.room.walls = [draft.room.walls![0]];

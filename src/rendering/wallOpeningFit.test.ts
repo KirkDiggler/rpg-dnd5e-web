@@ -61,6 +61,17 @@ describe('aperture-fitted fixed surround', () => {
     expect(Array.from(source.getAttribute('position').array)).toEqual(before);
     expect(leaf.position.toArray()).toEqual([0.3, 1.1, 0]);
   });
+  it('can align a leafless visual section by its full body without moving the aperture anchors', () => {
+    const { root, leaf } = fixture();
+    root.remove(leaf);
+    const result = fitWallOpeningInstance(root, {
+      ...descriptor,
+      anchor: 'body',
+    });
+    expect(result.profile.centerX).toBe(0);
+    expect(result.profile.width).toBe(5);
+    expect(root.getObjectByName('Opening_v1_entry')!.position.x).toBe(0.3);
+  });
   it('measures all declared fixed parts, including the separate upper course', () => {
     const { root, frame, leaf } = fixture();
     frame.geometry = new THREE.BoxGeometry(5, 3, 0.5);

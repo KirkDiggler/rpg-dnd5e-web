@@ -5,6 +5,7 @@ import {
 } from './catalog';
 import { doorFrameExtents } from './doorwayPlacement';
 import type { StructuralWall, StructuralWallSurface } from './structuralWalls';
+import { isWallSectionAppearance, staticWallFit } from './wallSectionAssets';
 import { assertWallSections, copyWallSections } from './wallSections';
 
 export interface WallSectionOption {
@@ -14,12 +15,7 @@ export interface WallSectionOption {
 }
 function configured(ref: string): GeneratedWorldBuildingCatalogEntry {
   const entry = WORLD_BUILDING_CATALOG_BY_REF.get(ref);
-  if (
-    entry?.source !== 'generated' ||
-    !entry.asset.tags.includes('wall-section') ||
-    !entry.asset.tags.includes('wall-body-fit') ||
-    entry.asset.roles?.some((role) => role.role === 'leaf')
-  )
+  if (entry?.source !== 'generated' || !isWallSectionAppearance(entry))
     throw Error(
       'Wall section requires a configured static feature appearance.'
     );
@@ -27,18 +23,12 @@ function configured(ref: string): GeneratedWorldBuildingCatalogEntry {
 }
 export function wallSectionOptions(): WallSectionOption[] {
   return [...WORLD_BUILDING_CATALOG_BY_REF.values()].flatMap((entry) => {
-    if (
-      entry.source !== 'generated' ||
-      !entry.asset.tags.includes('wall-section') ||
-      !entry.asset.tags.includes('wall-body-fit') ||
-      entry.asset.roles?.some((role) => role.role === 'leaf')
-    )
-      return [];
+    if (!isWallSectionAppearance(entry)) return [];
     return [
       {
         ref: entry.ref,
         label: entry.label,
-        width: entry.asset.boundsMeters[0],
+        width: staticWallFit(entry)!.width,
       },
     ];
   });
@@ -79,7 +69,7 @@ export function addWallSection(
   const next = structuredClone(wall);
   next.appearance.sections = [
     ...(next.appearance.sections ?? []),
-    { ...input, width: entry.asset.boundsMeters[0] },
+    { ...input, width: staticWallFit(entry)!.width },
   ];
   return check(next);
 }
