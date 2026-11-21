@@ -38,25 +38,31 @@ function draft(ref: string) {
 }
 it('accepts a configured masonry section but refuses an unpaintable frame before owner commit', () => {
   const previous = finishRoomFixture();
+  for (const name of [
+    'castle_wall_opening_single_01',
+    'castle_wall_opening_single_02',
+    'castle_wall_opening_double_01',
+    'castle_gateway_opening_01',
+    'castle_gateway_opening_large_01',
+  ]) {
+    expect(() =>
+      assertWallSectionFinishEdit({
+        draft: draft('dnd5e:env:fantasy-kingdom:' + name),
+        previous,
+        catalog,
+      })
+    ).not.toThrow();
+  }
   expect(() =>
     assertWallSectionFinishEdit({
-      draft: draft('dnd5e:env:fantasy-kingdom:castle_wall_opening_single_01'),
-      previous,
-      catalog,
-    })
-  ).not.toThrow();
-  expect(() =>
-    assertWallSectionFinishEdit({
-      draft: draft('dnd5e:env:fantasy-kingdom:castle_wall_opening_single_02'),
+      draft: draft('dnd5e:env:fantasy-kingdom:house_wall_opening_01'),
       previous,
       catalog,
     })
   ).toThrow(/feature.*compatible/);
 });
 it('refuses a newly selected incompatible finish but preserves unchanged imported intent', () => {
-  const value = draft(
-    'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_02'
-  );
+  const value = draft('dnd5e:env:fantasy-kingdom:house_wall_opening_01');
   expect(() =>
     assertWallSectionFinishEdit({
       draft: value,

@@ -1494,7 +1494,13 @@ describe('Studio authoring homes through the real owner', () => {
     installFinishPreview();
     const draft = finishRoomFixture();
     draft.room.walls = [draft.room.walls![0]];
-    draft.room.walls[0].appearance.height = 3.75;
+    // Castle frames are enrolled; use the distinct, unpaintable house family.
+    const unpaintable = WORLD_BUILDING_CATALOG_BY_REF.get(
+      'dnd5e:env:fantasy-kingdom:house_wall_opening_01'
+    )!;
+    if (unpaintable.source !== 'generated')
+      throw Error('Expected configured house-frame fixture.');
+    draft.room.walls[0].appearance.height = unpaintable.asset.boundsMeters[1];
     draft.scene.version = 7;
     draft.scene.wallFinishes = { north: { 'positive-z': GRAY_REF } };
     const storage = new MemoryStorage({ draft, scope: {} });
@@ -1504,7 +1510,7 @@ describe('Studio authoring homes through the real owner', () => {
       writes = storage.roomWrites();
     fireEvent.change(screen.getByLabelText('Section appearance'), {
       target: {
-        value: 'dnd5e:env:fantasy-kingdom:castle_wall_opening_single_02',
+        value: 'dnd5e:env:fantasy-kingdom:house_wall_opening_01',
       },
     });
     fireEvent.change(screen.getByLabelText('New section position'), {

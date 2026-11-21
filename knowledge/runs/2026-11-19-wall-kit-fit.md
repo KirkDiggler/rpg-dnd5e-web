@@ -16,6 +16,8 @@
 
 - Configured raw Castle Wall Door01 now joins the existing static section choices under its unchanged ref, using candidate provider8086142. Actual one-wall samples measure width3.75 and heights3.75/6, with no new leaf or gameplay opening; preceding feature assets retain their bytes — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
+- Castle coverage now includes captured Double01 and seated Single02 pairs with repeat/cap masonry, the large gateway pair with a protected minimum8.1317, and standard gateway masonry at its explicit fixed height. Consumer checks preserve door IDs and correctly refuse short/incompatible choices; source leaf signatures remain exact — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
@@ -48,6 +50,8 @@
 - Actual Original Window03/Wall04 checks keep fixed UV values unchanged at heights 3.75/6; moving chart continuation errors stay below 5.3e-7. The actual opening-only Single01 fits width3.75 and height3.75/6 at the correct section centre, without a leaf or extra mechanical opening. This is narrow renderer/adaptor evidence, not full kit/Play completion — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Mistaken
+
+- The unpaintable-frame regression originally used seated Single02, then the standard gateway. Both became correctly enrolled during this pass; the regression now uses the distinct house-frame family at its actual native height, retaining the finish-refusal oracle rather than weakening compatibility checks — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 - The plain fitter stretched Original UVs over the whole target before fixed/repeat assembly, and copied rows reset their authored phase. RED/GREEN loaded-model cases exposed both, plus unbound fixed trim being re-mapped. Fit the fixed source at native height and continue only explicitly enrolled moving charts after assembly — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 - The proportional minimum omitted cap height, refusing a valid legacy minimum on capped assets. Its actual visible-geometry regression now includes base plus cap. The clipping fixture also needed the real facade identities/maps declared by its provider rather than anonymous untextured boxes — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).

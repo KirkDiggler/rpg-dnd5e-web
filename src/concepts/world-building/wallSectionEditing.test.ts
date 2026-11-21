@@ -141,6 +141,74 @@ it('refuses a door surround intersecting a section even when its clear aperture 
     })
   ).toThrow(/overlap/);
 });
+it.each(['castle_wall_doorway_single_02', 'castle_wall_doorway_double_01'])(
+  'uses the configured height parts for existing doorway %s without changing its door identity',
+  (suffix) => {
+    for (const height of [3.75, 6]) {
+      const before = makeWall();
+      before.appearance.height = height;
+      const after = createStudioDoor(before, {
+        openingId: 'gap',
+        doorId: 'door',
+        assetRef: 'dnd5e:env:fantasy-kingdom:' + suffix,
+        position: 6,
+      });
+      expect(() =>
+        assertWallHeightEdit({ walls: [after], previousWalls: [before] })
+      ).not.toThrow();
+      expect(after.openings[0].door?.id).toBe('door');
+      expect(after.appearance.sections).toBeUndefined();
+    }
+  }
+);
+it('keeps the large gateway minimum instead of scaling its fixed architecture into a short wall', () => {
+  const ref = 'dnd5e:env:fantasy-kingdom:castle_gateway_doorway_large_01';
+  const short = makeWall();
+  const shortDoor = createStudioDoor(short, {
+    openingId: 'gap',
+    doorId: 'door',
+    assetRef: ref,
+    position: 6,
+  });
+  expect(() =>
+    assertWallHeightEdit({ walls: [shortDoor], previousWalls: [short] })
+  ).toThrow(/fixed region/);
+  for (const height of [12, 15]) {
+    const tall = makeWall();
+    tall.appearance.height = height;
+    const placed = createStudioDoor(tall, {
+      openingId: 'gap',
+      doorId: 'door',
+      assetRef: ref,
+      position: 6,
+    });
+    expect(() =>
+      assertWallHeightEdit({ walls: [placed], previousWalls: [tall] })
+    ).not.toThrow();
+    expect(placed.openings[0].door?.id).toBe('door');
+  }
+});
+it('retains the standard gateway fixed-height limit while its masonry is enrolled', () => {
+  const ref = 'dnd5e:env:fantasy-kingdom:castle_gateway_doorway_01';
+  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(ref)!;
+  if (entry.source !== 'generated') throw Error('Expected generated gateway.');
+  const before = makeWall();
+  before.appearance.height = entry.asset.boundsMeters[1];
+  const placed = createStudioDoor(before, {
+    openingId: 'gap',
+    doorId: 'door',
+    assetRef: ref,
+    position: 6,
+  });
+  expect(() =>
+    assertWallHeightEdit({ walls: [placed], previousWalls: [before] })
+  ).not.toThrow();
+  const taller = structuredClone(placed);
+  taller.appearance.height += 1;
+  expect(() =>
+    assertWallHeightEdit({ walls: [taller], previousWalls: [placed] })
+  ).toThrow(/fixed asset/);
+});
 it('checks inherited minimum height before placement and before an owning wall height edit', () => {
   const short = makeWall();
   short.appearance.height = 1;
