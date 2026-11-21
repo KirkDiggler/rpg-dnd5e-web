@@ -5178,7 +5178,12 @@ describe('S0 one selection across the homes', () => {
     fireEvent.click(encounterSection('Cast'));
   };
 
-  it("a placement selected on its cast member's form is the map selection with the inspector open", async () => {
+  /** The steps every Encounter-side panel test begins with: a placement
+   * chosen on its cast member's form. */
+  const choosePlacement = async (): Promise<{
+    original: ReturnType<typeof createPopulatedStudioDocument>;
+    storage: MemoryStorage;
+  }> => {
     const original = createPopulatedStudioDocument();
     const id = original.draft.room.monsterDeclarations[0]!.id;
     const storage = new MemoryStorage(original);
@@ -5188,12 +5193,71 @@ describe('S0 one selection across the homes', () => {
     openCast();
     fireEvent.click(member('Goblin'));
     fireEvent.click(button(`Select placement ${id}`));
-    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
-    // The view the author last used: Layout.
-    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
-    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('true');
+    return { original, storage };
+  };
+  const sidebar = (): HTMLElement => document.getElementById('studio-sidebar')!;
+
+  it("a placement chosen on its cast member's form opens its inspector beside the Cast page", async () => {
+    const { original, storage } = await choosePlacement();
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Build').getAttribute('aria-pressed')).not.toBe('true');
+    expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
     expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(sidebar().hidden).toBe(false);
     expect(storage.document()).toEqual(original);
+  });
+
+  it('the × on an Encounter-side inspector closes it and stays on the page', async () => {
+    await choosePlacement();
+    fireEvent.click(button('Hide options'));
+    expect(sidebar().hidden).toBe(true);
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('leaving the Encounter side closes its inspector', async () => {
+    await choosePlacement();
+    expect(sidebar().hidden).toBe(false);
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Build'));
+    fireEvent.click(button('Encounter'));
+    expect(sidebar().hidden).toBe(true);
+  });
+
+  it('an Encounter-side inspector docks beside the page on a wide window', async () => {
+    const before = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1280,
+    });
+    try {
+      const original = createPopulatedStudioDocument();
+      const id = original.draft.room.monsterDeclarations[0]!.id;
+      mount(new MemoryStorage(original));
+      await settled();
+      fireEvent.keyDown(window, { key: 'n' });
+      openCast();
+      fireEvent.click(member('Goblin'));
+      const root = screen.getByRole('region', {
+        name: 'Encounter Studio workspace',
+      });
+      expect(root.getAttribute('data-inspector')).toBeNull();
+      fireEvent.click(button(`Select placement ${id}`));
+      expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+      expect(root.getAttribute('data-inspector')).toBe('docked');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: before,
+      });
+    }
+  });
+
+  it('Move from an Encounter-side inspector goes to the map', async () => {
+    await choosePlacement();
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
+    expect(button('3D').getAttribute('aria-pressed')).toBe('true');
   });
 
   it("a creature selected on the map presses its cast member's row", async () => {

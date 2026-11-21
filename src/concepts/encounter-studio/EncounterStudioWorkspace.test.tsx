@@ -11,6 +11,7 @@ import type {
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { inspectorDocks, mapFloor } from './inspectorWidth';
 import type {
   EncounterStudioPresentation,
   EncounterStudioSession,
@@ -1121,6 +1122,12 @@ describe('the author sets the inspector width (rpg-project#979)', () => {
     });
     fireEvent.pointerUp(handle(), { clientX: -2000, pointerId: 2 });
     expect(now()).toBe(640);
+  });
+
+  it('the Encounter page docks an inspector from 1048 px, keeping 640 px for itself', () => {
+    expect(mapFloor('encounter')).toBe(640);
+    expect(inspectorDocks(1047, 'encounter')).toBe(false);
+    expect(inspectorDocks(1048, 'encounter')).toBe(true);
   });
 
   const resizeWindow = (width: number): void =>

@@ -56,6 +56,7 @@ import {
   inspectorMaxWidth,
   readInspectorWidth,
   writeInspectorWidth,
+  type InspectorView,
 } from './inspectorWidth';
 import { JoinInspector } from './JoinInspector';
 import { layoutCellCenter } from './layoutGeometry';
@@ -324,6 +325,9 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** The Inspector shown beside an Encounter page: opened by choosing a
+   * placed thing there, closed by its × or by leaving the Encounter side. */
+  const [encounterInspector, setEncounterInspector] = useState(false);
   /** WHILE WATCHING the inspector is closed so the map and the watch panel
    * get its width (rpg-project#1011, the operator's look), and has its own
    * open state: the author's own (`sidebarOpen`) is untouched, so it is
@@ -340,7 +344,8 @@ function StudioSurface({
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, []);
-  const inspectorMax = inspectorMaxWidth(workspaceWidth, view);
+  const panelView: InspectorView = home === 'encounter' ? 'encounter' : view;
+  const inspectorMax = inspectorMaxWidth(workspaceWidth, panelView);
   const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
   /** The work area's height, for a docked inspector to fill it: set on the
    * root as `--es-work-height`, outside React, as the area resizes. */
@@ -518,6 +523,7 @@ function StudioSurface({
     session.cancelTransients();
     onLayoutToolChange('select');
     onHomeChange(next);
+    setEncounterInspector(false);
     setSidebarOpen(true);
   };
   /** Add members on the map: Build, in the view last used, with the
@@ -855,6 +861,8 @@ function StudioSurface({
     /** Where the pick was asked from: an Encounter section returns there; a
      * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
     from: 'encounter' | 'build';
+    /** The Encounter-side inspector was open when the pick was asked. */
+    fromPanel: boolean;
     /** The Build view it was asked from, returned to when it ends. */
     fromView: EncounterStudioView;
     document: unknown;
@@ -863,6 +871,7 @@ function StudioSurface({
     arm: (request) => {
       const section = encounterSection;
       const from = home === 'build' ? 'build' : 'encounter';
+      const fromPanel = encounterInspector;
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
@@ -871,6 +880,7 @@ function StudioSurface({
         waypoints: [...request.route],
         section,
         from,
+        fromPanel,
         fromView: view,
         document: session.document,
       });
@@ -897,6 +907,7 @@ function StudioSurface({
     }
     changeHome('encounter');
     setEncounterSection(pick.section);
+    if (pick.fromPanel) setEncounterInspector(true);
   };
   const pickCell = (cell: { q: number; r: number }): void => {
     if (!routePick) return;
@@ -1060,6 +1071,7 @@ function StudioSurface({
     onViewChange(next);
   };
   const spatial = home !== 'encounter';
+  const panelOpen = spatial ? inspectorOpen : encounterInspector;
   // Once per studio session: the first visit to 3D mounts the viewport.
   const [visited3d, setVisited3d] = useState(view === '3d');
   useEffect(() => {
@@ -1213,6 +1225,14 @@ function StudioSurface({
     if (key) queueReveal(key);
     const inspect = (selected: boolean): void => {
       if (!selected) return;
+      if (
+        home === 'encounter' &&
+        (target.kind === 'creature' || target.kind === 'prop')
+      ) {
+        setEncounterInspector(true);
+        showSection('inspector');
+        return;
+      }
       changeHome('build');
       showSection('inspector');
     };
@@ -1342,9 +1362,9 @@ function StudioSurface({
       aria-label="Encounter Studio workspace"
       data-home={home}
       data-inspector={
-        !(spatial && inspectorOpen)
+        !panelOpen
           ? undefined
-          : inspectorDocks(workspaceWidth, view)
+          : inspectorDocks(workspaceWidth, panelView)
             ? 'docked'
             : 'overlay'
       }
@@ -2002,12 +2022,14 @@ function StudioSurface({
         </div>
         <div className="es-context-layer">
           <StudioSidebar
-            open={spatial && inspectorOpen}
+            open={panelOpen}
             section={section}
             onSectionChange={changeSection}
-            onToggle={toggleInspector}
+            onToggle={
+              spatial ? toggleInspector : () => setEncounterInspector(false)
+            }
             keyboardEnabled={spatial}
-            compact={home === 'build'}
+            compact={home === 'build' || encounterInspector}
             resize={
               <StudioInspectorResize
                 width={inspectorShown}
@@ -2026,7 +2048,8 @@ function StudioSurface({
                 wayOpener={wayOpener}
               />
             )}
-            {home === 'build' && !placesView.selectedJoin && (
+            {((home === 'build' && !placesView.selectedJoin) ||
+              (home === 'encounter' && encounterInspector)) && (
               // A post's cells are picked on the map from here
               // (rpg-project#975 D).
               <RoutePickContext.Provider value={routePicking}>
@@ -2387,11 +2410,11 @@ function StudioSurface({
                 <StudioCast
                   session={session}
                   onShowPlacement={(id) => {
-                    // The one arbiter holds the placement; Build opens the
-                    // inspector on it, in the view the author last used.
+                    // The one arbiter holds the placement; its inspector
+                    // opens beside the Cast page, the author stays put.
                     if (!session.creatures.select(id)) return;
-                    changeHome('build');
-                    setSidebarOpen(true);
+                    setEncounterInspector(true);
+                    showSection('inspector');
                   }}
                 />
               )}
