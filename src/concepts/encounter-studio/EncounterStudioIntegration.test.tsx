@@ -7294,7 +7294,7 @@ describe('S3 the overview through the real owner', () => {
     expect(ids.length).toBeGreaterThan(0);
   });
 
-  it('a thread entry set on a prop selects the prop from Layout', async () => {
+  it('a thread entry set on a prop selects the prop and opens its inspector beside the Encounter page', async () => {
     gate.state = 'live';
     services.putDungeon.mockResolvedValue(
       create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
@@ -7318,7 +7318,9 @@ describe('S3 the overview through the real owner', () => {
         name: /^Open altar · /,
       })[0]!
     );
-    expect(pressed('Build')).toBe('true');
+    expect(pressed('Encounter')).toBe('true');
+    expect(pressed('Build')).not.toBe('true');
+    expect(document.getElementById('studio-sidebar')!.hidden).toBe(false);
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
     );

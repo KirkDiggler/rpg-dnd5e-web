@@ -1000,7 +1000,7 @@ describe('shared Arrange context lifecycle', () => {
       expect(document.activeElement).toBe(count());
     });
 
-    it('the jump selects the creature and opens its inspector on Build', () => {
+    it('the jump selects the creature and opens its inspector beside the Encounter page', () => {
       refusals.current = [refused];
       placeGoblin();
       render(<EncounterStudioWorkspace compositionSource={source} />);
@@ -1017,9 +1017,15 @@ describe('shared Arrange context lifecycle', () => {
       );
       expect(
         screen
-          .getByRole('button', { name: 'Build' })
+          .getByRole('button', { name: 'Encounter' })
           .getAttribute('aria-pressed')
       ).toBe('true');
+      expect(
+        screen
+          .getByRole('button', { name: 'Build' })
+          .getAttribute('aria-pressed')
+      ).not.toBe('true');
+      expect(document.getElementById('studio-sidebar')!.hidden).toBe(false);
       expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
       // The list closes on the jump; the count stays while the refusal does.
       expect(
