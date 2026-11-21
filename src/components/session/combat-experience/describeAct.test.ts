@@ -862,4 +862,55 @@ describe('initiativeLines', () => {
     });
     expect(initiativeLines(turn, context)).toEqual([]);
   });
+
+  const joined = (
+    over: { round?: number; firstRound?: number; withRoll?: boolean } = {}
+  ) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_JOINED,
+        fightJoined: {
+          member: gate,
+          ...(over.withRoll === false
+            ? {}
+            : { roll: { member: gate, roll: gateRoll } }),
+          round: over.round ?? 3,
+          firstRound: over.firstRound ?? 4,
+        },
+      },
+    });
+
+  it('writes the joiner’s roll in the log’s one roll format', () => {
+    expect(initiativeLines(joined(), context)).toEqual([
+      `Gate Guard: ${formatRollBreakdown(gateRoll)}`,
+    ]);
+  });
+
+  it('is empty for a join placed without a roll', () => {
+    expect(initiativeLines(joined({ withRoll: false }), context)).toEqual([]);
+  });
+});
+
+describe('a fight join', () => {
+  const joinAct = (round: number, firstRound: number) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_JOINED,
+        fightJoined: { member: gate, round, firstRound },
+      },
+    });
+
+  it('says a late joiner’s first turn is next round', () => {
+    const d = describeAct(joinAct(3, 4), context);
+    expect(d?.headline).toBe('Gate Guard joins the fight');
+    expect(d?.detail).toBe('first turn in round 4');
+  });
+
+  it('says a first-round joiner acts this round', () => {
+    const d = describeAct(joinAct(1, 1), context);
+    expect(d?.headline).toBe('Gate Guard joins the fight');
+    expect(d?.detail).toBe('acts this round');
+  });
 });

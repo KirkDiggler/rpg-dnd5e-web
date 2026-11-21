@@ -207,4 +207,31 @@ describe('a fight begins with each member’s initiative roll', () => {
     render(<ActForm act={formed([])} size="log" context={context} />);
     expect(screen.queryAllByTestId('act-form-roll-line')).toHaveLength(0);
   });
+
+  it('draws the joiner’s roll on the join row', () => {
+    const join = at(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_JOINED,
+        fightJoined: {
+          member: gate,
+          roll: { member: gate, roll: gateRoll },
+          round: 3,
+          firstRound: 4,
+        },
+      },
+    });
+    const { unmount } = render(
+      <ActForm act={join} size="log" context={context} />
+    );
+    const lines = screen.getAllByTestId('act-form-roll-line');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.textContent).toBe(
+      'Gate Guard: 1d20 [11] (Initiative) + 1 (Dexterity) = 12'
+    );
+    expect(screen.getByText('Gate Guard joins the fight')).toBeTruthy();
+    unmount();
+    render(<ActForm act={join} size="toast" context={context} />);
+    expect(screen.queryAllByTestId('act-form-roll-line')).toHaveLength(0);
+  });
 });
