@@ -27,6 +27,7 @@ import { useSessionStatus } from '@/api/useSessionStatus';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
+import { useSessionWait } from '@/api/useSessionWait';
 import { useSetDiscoverySharing } from '@/api/useSetDiscoverySharing';
 import { useSetSneaking } from '@/api/useSetSneaking';
 import { useUnequipItem } from '@/api/useUnequipItem';
@@ -276,6 +277,7 @@ function SessionEncounterScope({
   // the mode: the mode is only ever `view.sneaking` (R6).
   const [sneakDeclaring, setSneakDeclaring] = useState(false);
   const { loot, loading: looting } = useSessionLoot();
+  const { wait, loading: waiting } = useSessionWait();
   const { hold, loading: holding } = useSessionHold();
   const { leave, loading: leaving } = useSessionLeave();
   const {
@@ -1784,6 +1786,21 @@ function SessionEncounterScope({
     [loot, member, sessionId]
   );
 
+  // Wait: one round passes for this member. The answer is not read; the wait
+  // and whatever the round brought arrive as acts. A refusal (in a fight,
+  // downed, the run ended) is the server's words in the same notice.
+  const handleWait = useCallback(() => {
+    if (!member) return;
+    setHoldingNotice(null);
+    void (async () => {
+      try {
+        await wait({ session: sessionId, member });
+      } catch (error) {
+        setHoldingNotice(errorMessage(error));
+      }
+    })();
+  }, [wait, member, sessionId]);
+
   // No client-side check that the prop IS holdable — the wire does not say
   // and the rule half refuses by name (`holdingAffordances.ts`). The prop
   // leaving the map arrives as the beat, which patches the atlas above.
@@ -2440,6 +2457,8 @@ function SessionEncounterScope({
             lootTargets={bodiesToLoot}
             onLoot={runEnded === null ? handleLoot : undefined}
             lootPending={looting}
+            onWait={runEnded === null ? handleWait : undefined}
+            waitLoading={waiting}
             holdTargets={propsToHold}
             onHold={runEnded === null ? handleHold : undefined}
             holdPending={holding}

@@ -310,6 +310,34 @@ describe('describeAct', () => {
     );
   });
 
+  it('a wait reads as the member waiting', () => {
+    const waited = act(Family.ACT, {
+      case: 'stay',
+      value: { member: alice, cause: 'encounter:intent:wait', why: '' },
+    });
+    expect(describeAct(waited, context)).toMatchObject({
+      eyebrow: 'Wait',
+      headline: 'Alice waits',
+      detail: '',
+    });
+  });
+
+  it("a creature's stay still reads as staying put", () => {
+    const held = act(Family.ACT, {
+      case: 'stay',
+      value: {
+        member: gate,
+        cause: 'encounter:table:toward',
+        why: 'cannot move: Held',
+      },
+    });
+    expect(describeAct(held, context)).toMatchObject({
+      eyebrow: 'Stay',
+      headline: 'Gate Guard stays put',
+      detail: 'cannot move: Held',
+    });
+  });
+
   it('a raise cutting beats reads as a quiet clock line', () => {
     const cut = act(Family.CLOCK, {
       case: 'clock',

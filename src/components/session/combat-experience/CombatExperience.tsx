@@ -259,6 +259,8 @@ function CombatExperienceContent({
   lootTargets = [],
   onLoot,
   lootPending = false,
+  onWait,
+  waitLoading = false,
   holdTargets = [],
   onHold,
   holdPending = false,
@@ -938,6 +940,8 @@ function CombatExperienceContent({
             onCancelCastOption={onCancelCastOption}
             onCancelSelection={onCancelSelection}
             onEndTurn={onEndTurn}
+            onWait={onWait}
+            waitLoading={waitLoading}
             standingActions={standingActions}
             explorationControls={explorationControls}
             actionUtilityControls={actionUtilityControls}

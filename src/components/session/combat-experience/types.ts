@@ -385,6 +385,9 @@ interface CombatExperienceBaseProps {
   onLoot?: (subject: string) => void;
   /** A loot RPC is in flight; disables the buttons without hiding them. */
   lootPending?: boolean;
+  /** Let one round pass on the world clock. Absent: the screen draws no Wait. */
+  onWait?: () => void;
+  waitLoading?: boolean;
   /**
    * Every NAMED prop within reach — the only props the pick-up verb can
    * target, since it names its target by the author's placement id. Whether
