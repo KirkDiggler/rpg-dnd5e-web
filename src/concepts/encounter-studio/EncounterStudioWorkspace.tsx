@@ -533,21 +533,22 @@ function StudioSurface({
     changeHome('build');
     session.concealments.armMembers(id);
   };
+  /** The move is armed in the map view last used; the next floor click there
+   * moves the creature. */
   const moveSelectedCreature = (): void => {
     if (session.arrange?.kind !== 'actor') return;
     changeHome('build');
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     onLayoutToolChange('select');
-    onViewChange('3d');
     session.setPropTool('move');
     setSidebarOpen(true);
   };
-  /** Party start is placed on the 3D floor: the gesture is armed there. */
+  /** The party start is armed in the map view the author is in; the next
+   * floor click there places it. */
   const placePartyStart = (): void => {
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     labels.editing.onCancel();
     onLayoutToolChange('select');
-    onViewChange('3d');
     session.armPartyStart();
     setSidebarOpen(true);
   };
@@ -1296,6 +1297,26 @@ function StudioSurface({
   /** While a concealment is armed, a Layout click on a hex, prop, door or
    * wall toggles membership instead of selecting it (rpg-project#578). */
   const pickMember = armedConcealment !== null;
+  /** The Layout answers an armed party start or creature move with the same
+   * writers the 3D floor calls, so one gesture works on both maps. */
+  const placeOnLayout = (cell: RoomHexCell): boolean => {
+    const authoring = session.viewportProps.roomAuthoring;
+    if (!authoring) return false;
+    if (authoring.tool === 'start') {
+      authoring.onStartGesture?.(cell);
+      return true;
+    }
+    if (authoring.tool !== 'move') return false;
+    if (session.arrange?.kind === 'actor') {
+      authoring.onMoveMonster?.(session.arrange.target.id, cell);
+      return true;
+    }
+    if (session.arrange?.kind === 'start') {
+      authoring.onStartGesture?.(cell);
+      return true;
+    }
+    return false;
+  };
   const layoutWallEditing: StudioWallEditing = pickMember
     ? {
         ...session.wallEditing,
@@ -2160,11 +2181,11 @@ function StudioSurface({
                     onExitDoorTool={exitDoor}
                     intentEpoch={session.intentEpoch}
                     onExitWallTool={exitWall}
-                    onSelectHex={(cell) =>
-                      void (pickMember
-                        ? session.concealments.pick({ kind: 'cell', cell })
-                        : session.selectHex(cell))
-                    }
+                    onSelectHex={(cell) => {
+                      if (pickMember)
+                        session.concealments.pick({ kind: 'cell', cell });
+                      else if (!placeOnLayout(cell)) session.selectHex(cell);
+                    }}
                     onClearSelection={() => {
                       placesView.clearJoin();
                       void session.clearSelection();

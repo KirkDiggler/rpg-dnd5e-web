@@ -369,8 +369,8 @@ export interface EncounterStudioSession {
   /** Select one authored region (rpg-project#725), or nothing. Refused for
    * an unknown id, while publishing, or from a retired snapshot. */
   selectRegion(id: string | null): boolean;
-  /** Arm the party-start gesture: the next 3D floor click places or moves
-   * it. Refused while publishing or from a retired snapshot. */
+  /** Arm the party-start gesture: the next floor click, on either map,
+   * places or moves it. Refused while publishing or from a retired snapshot. */
   armPartyStart(): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
