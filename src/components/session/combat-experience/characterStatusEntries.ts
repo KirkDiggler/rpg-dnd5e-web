@@ -69,6 +69,10 @@ const unknown: ActionIconPresentation = {
   fallback: '?',
   tone: 'gold',
 };
+/** The first two letters of a name, for a badge with no picture; "?" for a blank name. */
+function letters(name: string): string {
+  return name.trim().slice(0, 2) || '?';
+}
 function fullRef(ref: Ref | undefined): string {
   return ref?.module && ref.type && ref.id
     ? `${ref.module}:${ref.type}:${ref.id}`
@@ -113,7 +117,10 @@ export function characterStatusEntries(
         kind: 'condition',
         name: condition.name,
         detail: condition.detail,
-        art: byRef[fullRef(condition.ref)] ?? unknown,
+        art: byRef[fullRef(condition.ref)] ?? {
+          ...unknown,
+          fallback: letters(condition.name),
+        },
         tone: condition.tone,
         sourceMember: condition.sourceMember,
         resourceMissing: false,
