@@ -62,6 +62,21 @@ it('uses an already configured leafless opening as visual art, without creating 
     'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01'
   );
 });
+it('keeps the original raw Castle Wall Door01 ref as a configured static section, not a new door alias', () => {
+  const original = 'dnd5e:env:fantasy-kingdom:castle_wall_door_01';
+  expect(wallSectionOptions().map((row) => row.ref)).toContain(original);
+  expect(repeatableWallAssetRefs()).not.toContain(original);
+  const placed = addWallSection(makeWall(), {
+    id: 'raw-frame',
+    assetRef: original,
+    position: 6,
+  });
+  expect(placed.appearance.sections![0]).toMatchObject({
+    assetRef: original,
+    width: expect.closeTo(3.75, 4),
+  });
+  expect(placed.openings).toEqual([]);
+});
 it('adds, moves and removes a section as an immutable edit of one wall', () => {
   const original = makeWall(),
     placed = addWallSection(original, {

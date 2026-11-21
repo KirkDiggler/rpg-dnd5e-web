@@ -14,6 +14,8 @@
 
 - Original-height/adaptor checkpoint: fixed regions keep their authored UVs; declared moving masonry extends its actual source chart across repeat rows and one cap. Leafless surrounds can use full-body anchoring as static sections, and legacy absolute height measures companions through the shared scale planner. The accepted editor origins now serve detached d4fcddc5; their drafts and :3193 Play stack remain unchanged — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
+- Configured raw Castle Wall Door01 now joins the existing static section choices under its unchanged ref, using candidate provider8086142. Actual one-wall samples measure width3.75 and heights3.75/6, with no new leaf or gameplay opening; preceding feature assets retain their bytes — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
