@@ -60,6 +60,30 @@ describe('complete grouped Studio door candidates', () => {
       })
     ).toThrow(/aperture-anchor/);
   });
+  it('places a verified Original atlas doorway without inventing masonry support', () => {
+    const entry = WORLD_BUILDING_CATALOG_BY_REF.get(
+      'dnd5e:env:fantasy-kingdom:house_wall_doorway_01'
+    )!;
+    if (entry.source !== 'generated') throw Error('Expected generated fixture');
+    expect(entry.asset.surfaces).toBeUndefined();
+    expect(studioDoorAssetWidth(entry)).toBe(
+      entry.asset.wallOpening!.widthMeters
+    );
+    expect(studioDoorOptions().some((option) => option.ref === entry.ref)).toBe(
+      true
+    );
+    const owner = wall();
+    owner.appearance.height = entry.asset.boundsMeters[1];
+    const placed = createStudioDoor(owner, {
+      ...target,
+      assetRef: entry.ref,
+      position: 4,
+    });
+    expect(placed.openings[0]!.door!.assetRef).toBe(entry.ref);
+    expect(placed.openings[0]!.width).toBe(
+      entry.asset.wallOpening!.widthMeters
+    );
+  });
   it('uses the actual one-group/frame metadata and native runtime-scaled width without filename rules', () => {
     expect(studioDoorAssetWidth(asset)).toBe(asset.asset.boundsMeters[0]);
     expect(studioDoorOptions().some((option) => option.ref === ref)).toBe(true);

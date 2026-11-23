@@ -72,13 +72,8 @@ export interface StudioDoorEditing {
 export function studioDoorAssetWidth(entry: WorldBuildingCatalogEntry): number {
   if (entry.source !== 'generated')
     throw new Error('Door placement requires a generated complete assembly.');
-  if (
-    entry.asset.tags.includes('wall-opening') &&
-    (!entry.asset.wallOpening || !entry.asset.surfaces?.length)
-  )
-    throw new Error(
-      'This doorway requires verified aperture-anchor fitting and fixed masonry targets.'
-    );
+  if (entry.asset.tags.includes('wall-opening') && !entry.asset.wallOpening)
+    throw new Error('This doorway requires verified aperture-anchor fitting.');
   const roles = entry.asset.roles ?? [];
   const leaves = roles.filter((role) => role.role === 'leaf');
   if (
