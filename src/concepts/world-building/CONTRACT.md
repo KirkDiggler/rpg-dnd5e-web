@@ -172,6 +172,19 @@ Only their declared paired color/normal channel changes; unbound trim/atlas
 channels remain authored. Selected finish charts still own their mapping.
 Original does not force different assets' defaults to become one material.
 
+An `anchored` height profile names fixed lower and cap-owned upper layout points.
+Its measured span, not overlapping trim bounds, positions declared infill. The
+native height is its minimum; the whole cap translates by the requested height
+delta while doors and fixed trim remain unchanged. Infill explicitly repeats or
+stretches through the same detached assembler. Loaded anchors, ownership, native
+metrics and protected moving regions must agree with the provider. A matching
+contour alone does not declare a horizontal rail to be valid infill.
+
+Plain-wall fitting changes physical UV density/phase only for provider-declared
+surface targets. Packed atlas and unbound trim coordinates remain authored,
+including under width and offset changes. Stretching atlas infill does not imply
+unbounded masonry UV continuation or invented normal maps.
+
 Legacy static props retain their existing proportional behavior. An explicit
 physical-height input uses the same scale-profile planner against the actual
 complete loaded assembly, including companions, and waits for those bounds

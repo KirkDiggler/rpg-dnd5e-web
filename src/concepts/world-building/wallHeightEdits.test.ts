@@ -1,6 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { StructuralWallSurface } from './structuralWalls';
 import { assertWallHeightEdit } from './wallHeightEdits';
+
+vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/generated/worldAssetCatalog')>();
+  return {
+    ...actual,
+    GENERATED_WORLD_ASSETS: {
+      ...actual.GENERATED_WORLD_ASSETS,
+      'anchored-height-fixture': {
+        boundsMeters: [2, 3.5, 0.3],
+        heightFit: {
+          mode: 'anchored',
+          node: 'Infill',
+          capNode: 'Cap',
+          lowerAnchor: 'Lower',
+          upperAnchor: 'Upper',
+          lowerHeight: 2,
+          upperHeight: 3,
+          extension: 'stretch',
+        },
+      },
+    },
+  };
+});
 
 function wall(height: number): StructuralWallSurface {
   return {
@@ -38,6 +62,38 @@ describe('height edits before owner commit', () => {
       assertWallHeightEdit({ walls: [wall(1)], previousWalls: [] })
     ).toThrow('fixed region');
   });
+  it('uses the anchored native minimum before committing new wall or door heights', () => {
+    const anchored = (height: number) => {
+      const result = wall(height);
+      result.appearance.assetRef = 'anchored-height-fixture';
+      result.openings = [];
+      return result;
+    };
+    expect(() =>
+      assertWallHeightEdit({
+        walls: [anchored(6)],
+        previousWalls: [anchored(3.5)],
+      })
+    ).not.toThrow();
+    expect(() =>
+      assertWallHeightEdit({
+        walls: [anchored(3.4)],
+        previousWalls: [anchored(3.5)],
+      })
+    ).toThrow('native minimum');
+    expect(() =>
+      assertWallHeightEdit({
+        walls: [anchored(1)],
+        previousWalls: [anchored(1)],
+      })
+    ).not.toThrow();
+    const attached = wall(3.4);
+    attached.openings[0]!.door!.assetRef = 'anchored-height-fixture';
+    expect(() =>
+      assertWallHeightEdit({ walls: [attached], previousWalls: [] })
+    ).toThrow('native minimum');
+  });
+
   it('preserves unchanged imported intent so unrelated edits do not block repair', () => {
     expect(() =>
       assertWallHeightEdit({ walls: [wall(1)], previousWalls: [wall(1)] })

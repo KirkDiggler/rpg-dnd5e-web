@@ -5,6 +5,16 @@ export type AssetHeightProfile =
   | { readonly mode: 'scale' }
   | { readonly mode: 'fixed' }
   | {
+      readonly mode: 'anchored';
+      readonly node: string;
+      readonly capNode: string;
+      readonly lowerAnchor: string;
+      readonly upperAnchor: string;
+      readonly lowerHeight: number;
+      readonly upperHeight: number;
+      readonly extension: 'repeat' | 'stretch';
+    }
+  | {
       readonly mode: 'repeat-above';
       readonly node: string;
       readonly baseHeight: number;
@@ -31,6 +41,27 @@ export interface AssetHeightLayout {
 }
 
 export const MAX_ASSET_HEIGHT_ROWS = 64;
+
+function bandRows(
+  remaining: number,
+  rowHeight: number,
+  maxRows: number,
+  extension: 'repeat' | 'stretch' = 'repeat'
+): AssetHeightLayout['rows'] {
+  const count =
+    remaining > 0
+      ? extension === 'stretch'
+        ? 1
+        : Math.min(maxRows, Math.max(1, Math.round(remaining / rowHeight)))
+      : 0;
+  const scaleY = count > 0 ? remaining / count / rowHeight : 1;
+  if (!Number.isFinite(scaleY) || scaleY <= 0)
+    throw new Error('Asset height row scale is not representable.');
+  return Array.from({ length: count }, (_, index) => ({
+    offsetY: (remaining / count) * index,
+    scaleY,
+  }));
+}
 
 /** Pure layout. Attaching/removing clones belongs to the renderer's commit
  * lifecycle; cached geometry, material and texture objects are never modified.
@@ -63,6 +94,38 @@ export function planAssetHeight({
           `Requested height differs from the fixed asset (${nativeHeight}); received ${targetHeight}.`
         );
       return { height: nativeHeight, scaleY: 1, rows: [] };
+    case 'anchored': {
+      const names = [
+        profile.node,
+        profile.capNode,
+        profile.lowerAnchor,
+        profile.upperAnchor,
+      ];
+      if (
+        names.some((name) => typeof name !== 'string' || !name.trim()) ||
+        new Set(names).size !== names.length ||
+        ![profile.lowerHeight, profile.upperHeight].every(Number.isFinite) ||
+        profile.lowerHeight < 0 ||
+        profile.upperHeight <= profile.lowerHeight ||
+        profile.upperHeight > nativeHeight ||
+        !['repeat', 'stretch'].includes(profile.extension)
+      )
+        throw new Error(
+          'Anchored height profile has invalid anchors or extension policy.'
+        );
+      if (targetHeight < nativeHeight)
+        throw new Error(
+          `Requested height is below the anchored native minimum (${nativeHeight}); received ${targetHeight}.`
+        );
+      const delta = targetHeight - nativeHeight;
+      const span = profile.upperHeight - profile.lowerHeight;
+      return {
+        height: targetHeight,
+        scaleY: 1,
+        capOffsetY: delta,
+        rows: bandRows(span + delta, span, maxRows, profile.extension),
+      };
+    }
     case 'repeat-above': {
       const { baseHeight, rowHeight, node } = profile;
       const hasCap =
@@ -97,23 +160,14 @@ export function planAssetHeight({
       const remaining = targetHeight - minimumHeight;
       // Preserve the existing above-row policy: nearest whole courses, with
       // the residual shared by those courses, never by the opening below.
-      const count =
-        remaining > 0
-          ? Math.min(maxRows, Math.max(1, Math.round(remaining / rowHeight)))
-          : 0;
       // The pool limit bounds allocation, not the authored height. Spread
       // the residual over the rows actually created, never an uncapped count.
-      const scaleY = count > 0 ? remaining / count / rowHeight : 1;
-      if (!Number.isFinite(scaleY) || scaleY <= 0)
-        throw new Error('Asset height row scale is not representable.');
+      const rows = bandRows(remaining, rowHeight, maxRows);
       return {
         height: targetHeight,
         scaleY: 1,
         ...(hasCap ? { capOffsetY: targetHeight - nativeHeight } : {}),
-        rows: Array.from({ length: count }, (_, index) => ({
-          offsetY: (remaining / count) * index,
-          scaleY,
-        })),
+        rows,
       };
     }
     default:

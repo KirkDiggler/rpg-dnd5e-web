@@ -365,6 +365,12 @@ function LoadedWorldAssetModel({
     const heightProfile =
       declaredProfile ??
       legacyAssetHeightProfile(object, declaredRoles, nativeHeight);
+    const hasParts =
+      heightProfile.mode === 'repeat-above' ||
+      heightProfile.mode === 'anchored';
+    const sourceBindings = JSON.parse(bindingKey) as NonNullable<
+      GeneratedWorldAsset['surfaces']
+    >;
     const fitted = fit
       ? openingKey
         ? fitWallOpeningInstance(
@@ -373,19 +379,19 @@ function LoadedWorldAssetModel({
           )
         : fitPlainWallInstance(
             object,
-            heightProfile.mode === 'repeat-above'
-              ? { ...fit, height: nativeHeight }
-              : fit
+            hasParts ? { ...fit, height: nativeHeight } : fit,
+            sourceBindings.flatMap((binding) =>
+              resolveWorldSurfaceTargets(object, binding, assetRef)
+            )
           )
       : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
     const owned = [...fitted.owned];
     try {
-      const sourceBindings = JSON.parse(bindingKey) as NonNullable<
-        GeneratedWorldAsset['surfaces']
-      >;
       const sourceCharts = JSON.parse(chartKey) as WallSurfaceChart[];
       const originalCharts =
-        heightProfile.mode === 'repeat-above'
+        heightProfile.mode === 'repeat-above' ||
+        (heightProfile.mode === 'anchored' &&
+          heightProfile.extension === 'repeat')
           ? captureOriginalHeightUvs({
               root: object,
               assetRef,
@@ -403,7 +409,9 @@ function LoadedWorldAssetModel({
           : Math.max(
               heightProfile.mode === 'repeat-above'
                 ? heightProfile.baseHeight + (heightProfile.capHeight ?? 0)
-                : 0,
+                : heightProfile.mode === 'anchored'
+                  ? nativeHeight
+                  : 0,
               nativeHeight * heightScale
             );
       const requested = fit?.height ?? targetHeight ?? legacyHeight;
@@ -428,7 +436,7 @@ function LoadedWorldAssetModel({
         owned,
       });
       const profile =
-        fitted.profile && heightProfile.mode === 'repeat-above'
+        fitted.profile && hasParts
           ? { ...fitted.profile, height: requested / SYNTY_SCALE }
           : fitted.profile;
       const expanded = expandPartBindings(sourceBindings, assembly.nodeCopies);

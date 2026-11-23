@@ -18,6 +18,8 @@
 
 - Castle coverage now includes captured Double01 and seated Single02 pairs with repeat/cap masonry, the large gateway pair with a protected minimum8.1317, and standard gateway masonry at its explicit fixed height. Consumer checks preserve door IDs and correctly refuse short/incompatible choices; source leaf signatures remain exact — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
+- Anchored implementation checkpoint adds measured lower/upper layout points, rigid overlapping caps, and declared stretch/repeat infill through the existing assembler and strict generator. Four actual inner-door source candidates now preserve leaves/full wood rails at native and2.7 heights; candidate data is not installed or a joined Studio/Play delivery — [approved continuation](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7092137564).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
@@ -32,6 +34,8 @@
 
 - Original remains the artist's own mapping, not a guessed common material/repeat size. Reuse declared surface scopes and paired channels; leave unbound trim and atlas coordinates alone. Legacy static props retain proportional semantics, while an explicit target measures the complete loaded assembly rather than guessing from the primary mesh — [plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/plan.md).
 - Leafless opening metadata is a fitting capability, not gameplay authority. Static placement uses its measured full frame width/body centre; existing doors retain aperture anchoring. New incompatible section/finish choices refuse atomically instead of committing an unrenderable wall — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
+- Keep anchored fitting distinct from legacy stacked repetition; use native height as its conservative minimum, keep fixed/rigid geometry intact, and validate real source anchors instead of deriving layout from decorative bounds — [operator ruling](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7092137564).
 
 ## Found
 
@@ -49,7 +53,11 @@
 
 - Actual Original Window03/Wall04 checks keep fixed UV values unchanged at heights 3.75/6; moving chart continuation errors stay below 5.3e-7. The actual opening-only Single01 fits width3.75 and height3.75/6 at the correct section centre, without a leaf or extra mechanical opening. This is narrow renderer/adaptor evidence, not full kit/Play completion — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
+- Anchored focused checks pass120 tests across10files and provider checks pass43. The complete Web gate passed lint/types/build but recorded11356 passes, two synthetic material-fixture failures and two Studio timeouts. Both fixtures were corrected to carry declared surface names; all four failed cases pass in the focused recheck, and whole-repo formatting passes after formatting the scratch gallery. The full suite was not rerun or relabeled green — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
+
 ## Mistaken
+
+- The first anchored model integration retained a parent Y fit scale after assembling the target height, rendering10.2857 for requested6. Its real-model regression now protects the actual height and cap/leaf dimensions. Plain fitting also continued UVs for unbound atlas trim under width/offset changes; only explicitly declared surface targets now receive that mapping — [anchored continuation](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7092137564).
 
 - The unpaintable-frame regression originally used seated Single02, then the standard gateway. Both became correctly enrolled during this pass; the regression now uses the distinct house-frame family at its actual native height, retaining the finish-refusal oracle rather than weakening compatibility checks — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 

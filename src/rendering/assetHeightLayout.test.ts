@@ -186,6 +186,68 @@ describe('declared asset height layout', () => {
     }
   });
 
+  it('extends anchored infill once while translating rigid top parts', () => {
+    const profile = {
+      mode: 'anchored',
+      node: 'Infill',
+      capNode: 'Cap',
+      lowerAnchor: 'Lower',
+      upperAnchor: 'Upper',
+      lowerHeight: 2,
+      upperHeight: 3,
+      extension: 'stretch',
+    } as const;
+    expect(
+      planAssetHeight({ nativeHeight: 3.5, targetHeight: 6, profile })
+    ).toEqual({
+      height: 6,
+      scaleY: 1,
+      capOffsetY: 2.5,
+      rows: [{ offsetY: 0, scaleY: 3.5 }],
+    });
+    expect(
+      planAssetHeight({ nativeHeight: 3.5, targetHeight: 3.5, profile }).rows
+    ).toEqual([{ offsetY: 0, scaleY: 1 }]);
+    expect(() =>
+      planAssetHeight({ nativeHeight: 3.5, targetHeight: 3.4, profile })
+    ).toThrow('native minimum');
+    for (const bad of [
+      { ...profile, lowerHeight: NaN },
+      { ...profile, lowerHeight: -1 },
+      { ...profile, upperHeight: 2 },
+      { ...profile, upperHeight: 4 },
+      { ...profile, lowerAnchor: 'Cap' },
+      { ...profile, upperAnchor: '' },
+      { ...profile, extension: 'guess' as 'stretch' },
+    ])
+      expect(() =>
+        planAssetHeight({ nativeHeight: 3.5, targetHeight: 6, profile: bad })
+      ).toThrow();
+  });
+
+  it('bounds anchored repeat allocation without shortening the requested height', () => {
+    const profile = {
+      mode: 'anchored',
+      node: 'Infill',
+      capNode: 'Cap',
+      lowerAnchor: 'Lower',
+      upperAnchor: 'Upper',
+      lowerHeight: 2,
+      upperHeight: 3,
+      extension: 'repeat',
+    } as const;
+    const result = planAssetHeight({
+      nativeHeight: 3.5,
+      targetHeight: 120,
+      profile,
+    });
+    expect(result.rows).toHaveLength(64);
+    expect(result.rows.reduce((sum, r) => sum + r.scaleY, 2.5)).toBeCloseTo(
+      120
+    );
+    expect(result.capOffsetY).toBe(116.5);
+  });
+
   it('is repeatable and cannot mutate its input or another layout', () => {
     const input = Object.freeze({
       nativeHeight: 3,

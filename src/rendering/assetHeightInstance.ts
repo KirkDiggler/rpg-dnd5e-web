@@ -13,6 +13,11 @@ export function legacyAssetHeightProfile(
   roles: readonly { role: string; node: string }[] | undefined,
   nativeHeight: number
 ): AssetHeightProfile {
+  if (
+    root.getObjectByName('HeightFit_v1_Lower') ||
+    root.getObjectByName('HeightFit_v1_Upper')
+  )
+    throw Error('Anchored source requires its explicit height profile.');
   if (!roles?.length) return { mode: 'scale' };
   const rows = roles.filter((role) => role.role === 'above');
   if (!rows.length) return { mode: 'fixed' };
@@ -63,6 +68,90 @@ export interface AssetHeightInstance {
   nodeCopies: Map<string, string[]>;
 }
 
+function verifyAnchoredInstance(
+  root: THREE.Object3D,
+  bandPart: THREE.Object3D,
+  cap: THREE.Object3D,
+  whole: THREE.Box3,
+  band: THREE.Box3,
+  profile: Extract<AssetHeightProfile, { mode: 'anchored' }>,
+  protectedNodes: readonly string[],
+  epsilon: number
+): void {
+  const named = (name: string) => {
+    const matches: THREE.Object3D[] = [];
+    root.traverse((node) => {
+      if (node.name === name) matches.push(node);
+    });
+    if (matches.length !== 1)
+      throw Error(
+        'Anchored height requires one uniquely named anchor or protected part.'
+      );
+    return matches[0]!;
+  };
+  const lower = named(profile.lowerAnchor),
+    upper = named(profile.upperAnchor);
+  if (
+    [lower, upper].some(
+      (node) => (node as THREE.Mesh).isMesh || node.children.length > 0
+    ) ||
+    bandPart.getObjectById(lower.id) ||
+    cap.getObjectById(lower.id) ||
+    !cap.getObjectById(upper.id)
+  )
+    throw Error(
+      'Height anchors must be geometry-free points owned by fixed and cap parts.'
+    );
+  const a = lower.getWorldPosition(new THREE.Vector3()),
+    b = upper.getWorldPosition(new THREE.Vector3());
+  const capBounds = new THREE.Box3().setFromObject(cap, true);
+  if (
+    Math.hypot(a.x - b.x, a.z - b.z) * SYNTY_SCALE > epsilon ||
+    Math.abs((a.y - whole.min.y) * SYNTY_SCALE - profile.lowerHeight) >
+      epsilon ||
+    Math.abs((b.y - whole.min.y) * SYNTY_SCALE - profile.upperHeight) >
+      epsilon ||
+    Math.abs((band.min.y - a.y) * SYNTY_SCALE) > epsilon ||
+    Math.abs((band.max.y - b.y) * SYNTY_SCALE) > epsilon ||
+    Math.abs((capBounds.max.y - whole.max.y) * SYNTY_SCALE) > epsilon
+  )
+    throw Error(
+      'Loaded height anchors disagree with the declared band or cap top.'
+    );
+  const controlled = new Set<THREE.Object3D>();
+  bandPart.traverse((node) => controlled.add(node));
+  cap.traverse((node) => controlled.add(node));
+  let fixedBase = Infinity;
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || controlled.has(node)) return;
+    const position = mesh.geometry.getAttribute('position');
+    if (!position) return;
+    for (let i = 0; i < position.count; i++)
+      fixedBase = Math.min(
+        fixedBase,
+        new THREE.Vector3()
+          .fromBufferAttribute(position, i)
+          .applyMatrix4(mesh.matrixWorld).y
+      );
+  });
+  if (
+    !Number.isFinite(fixedBase) ||
+    Math.abs((fixedBase - whole.min.y) * SYNTY_SCALE) > epsilon
+  )
+    throw Error('Anchored fixed geometry must retain the asset base.');
+  for (const name of protectedNodes) {
+    const bounds = new THREE.Box3().setFromObject(named(name), true);
+    if (
+      bounds.isEmpty() ||
+      (bounds.max.y - Math.min(a.y, capBounds.min.y)) * SYNTY_SCALE > epsilon
+    )
+      throw Error(
+        'Anchored infill or cap overlaps the protected moving region.'
+      );
+  }
+}
+
 export function assembleAssetHeightInstance(
   input: AssetHeightInstanceInput
 ): AssetHeightInstance {
@@ -75,7 +164,8 @@ export function assembleAssetHeightInstance(
     owned: [],
     nodeCopies: new Map(),
   };
-  if (profile.mode !== 'repeat-above') return result;
+  if (profile.mode !== 'repeat-above' && profile.mode !== 'anchored')
+    return result;
   root.updateMatrixWorld(true);
   const named: THREE.Object3D[] = [];
   const names = new Set<string>();
@@ -109,11 +199,12 @@ export function assembleAssetHeightInstance(
       throw Error('Height cap includes a protected moving part.');
     const bounds = new THREE.Box3().setFromObject(cap, true);
     if (
-      Math.abs(
+      profile.mode === 'repeat-above' &&
+      (Math.abs(
         (bounds.max.y - bounds.min.y) * SYNTY_SCALE - profile.capHeight!
       ) > epsilon ||
-      Math.abs((bounds.min.y - band.max.y) * SYNTY_SCALE) > epsilon ||
-      Math.abs((bounds.max.y - whole.max.y) * SYNTY_SCALE) > epsilon
+        Math.abs((bounds.min.y - band.max.y) * SYNTY_SCALE) > epsilon ||
+        Math.abs((bounds.max.y - whole.max.y) * SYNTY_SCALE) > epsilon)
     )
       throw Error(
         'Loaded cap geometry disagrees with the declared height profile.'
@@ -122,14 +213,28 @@ export function assembleAssetHeightInstance(
   if (
     Math.abs((whole.max.y - whole.min.y) * SYNTY_SCALE - nativeHeight) >
       epsilon ||
-    Math.abs((band.min.y - whole.min.y) * SYNTY_SCALE - profile.baseHeight) >
-      epsilon ||
-    Math.abs((band.max.y - band.min.y) * SYNTY_SCALE - profile.rowHeight) >
-      epsilon
+    (profile.mode === 'repeat-above' &&
+      (Math.abs((band.min.y - whole.min.y) * SYNTY_SCALE - profile.baseHeight) >
+        epsilon ||
+        Math.abs((band.max.y - band.min.y) * SYNTY_SCALE - profile.rowHeight) >
+          epsilon))
   )
     throw Error(
       'Loaded repeat geometry disagrees with the declared height profile.'
     );
+  if (profile.mode === 'anchored') {
+    if (!cap) throw Error('Anchored height requires its rigid cap.');
+    verifyAnchoredInstance(
+      root,
+      above,
+      cap,
+      whole,
+      band,
+      profile,
+      input.protectedNodes ?? [],
+      epsilon
+    );
+  }
   const up = new THREE.Vector3(0, 1, 0).transformDirection(parent.matrixWorld);
   const ownUp = new THREE.Vector3(0, 1, 0).transformDirection(
     above.matrixWorld

@@ -75,13 +75,20 @@ for (const [name, coordinates] of Object.entries({
 vi.mock('@react-three/drei', () => ({ useGLTF: () => ({ scene: source }) }));
 const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_window_03';
 
-async function inspect(height: number, fitted = true) {
+async function inspect(
+  height: number,
+  fitted = true,
+  width = 3.75,
+  offset = 0
+) {
   const view = await ReactThreeTestRenderer.create(
     <WorldAssetModel
       assetRef={ref}
       position={[0, 0, 0]}
       targetHeight={height}
-      plainWallFit={fitted ? { width: 3.75, height, depth: 0.375 } : undefined}
+      plainWallFit={
+        fitted ? { width, height, depth: 0.375, offset } : undefined
+      }
     />
   );
   const root = view.scene.findByProps({ name: 'world-asset-model' }).instance;
@@ -135,6 +142,10 @@ describe('Original maps on a configured height assembly', () => {
     expect(after.samples.filter((point) => point.y < 2.4375 - 1e-5)).toEqual(
       before.samples.filter((point) => point.y < 2.4375 - 1e-5)
     );
+  });
+  it('does not apply masonry width or phase changes to unbound atlas trim', async () => {
+    const original = Array.from(trimMesh.geometry.getAttribute('uv').array);
+    expect((await inspect(3.75, true, 5.25, 7)).trimUV).toEqual(original);
   });
   it('keeps the legacy proportional minimum including its single fixed cap', async () => {
     const view = await ReactThreeTestRenderer.create(

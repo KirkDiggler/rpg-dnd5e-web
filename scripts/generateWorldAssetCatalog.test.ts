@@ -194,6 +194,53 @@ describe('world asset height profile boundary', () => {
       );
   });
 
+  it('copies only a complete declared anchored profile', () => {
+    const anchored = {
+      mode: 'anchored',
+      node: 'Upper',
+      capNode: 'Cap',
+      lowerAnchor: 'LowerPoint',
+      upperAnchor: 'UpperPoint',
+      lowerHeight: 1,
+      upperHeight: 1.5,
+      extension: 'stretch',
+    };
+    const parts = [...roles, { role: 'cap', node: 'Cap' }];
+    const parsed = parseHeightFit(anchored, 'asset', parts, 2);
+    expect(parsed).toEqual(anchored);
+    expect(parsed).not.toBe(anchored);
+    for (const invalid of [
+      { ...anchored, capNode: 'Unknown' },
+      { ...anchored, lowerAnchor: 'Cap' },
+      { ...anchored, upperAnchor: '' },
+      { ...anchored, extension: 'guess' },
+      { ...anchored, lowerHeight: NaN },
+      { ...anchored, lowerHeight: -1 },
+      { ...anchored, upperHeight: 1 },
+      { ...anchored, upperHeight: 3 },
+      { ...anchored, parentWall: 'hidden' },
+    ])
+      expect(() => parseHeightFit(invalid, 'asset', parts, 2)).toThrow(
+        'heightFit'
+      );
+    expect(() => parseHeightFit(anchored, 'asset', roles, 2)).toThrow(
+      'heightFit'
+    );
+    const f = makeFixture();
+    f.catalog.assets[0]!.roles = parts;
+    f.catalog.assets[0]!.heightFit = anchored;
+    rewriteCatalog(f);
+    generateWorldAssetCatalog({
+      providerRoot: f.provider,
+      runtimeRoot: f.runtime,
+      outputPath: f.output,
+    });
+    const source = readFileSync(f.output, 'utf8');
+    expect(source).toContain("mode: 'anchored'");
+    expect(source).toContain("lowerAnchor: 'LowerPoint'");
+    expect(source).toContain("extension: 'stretch'");
+  });
+
   it('carries verified height fitting into the generated consumer catalog', () => {
     const f = makeFixture();
     f.catalog.assets[0]!.roles = roles;
