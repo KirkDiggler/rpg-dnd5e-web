@@ -20,6 +20,8 @@
 
 - Anchored implementation checkpoint adds measured lower/upper layout points, rigid overlapping caps, and declared stretch/repeat infill through the existing assembler and strict generator. Four actual inner-door source candidates now preserve leaves/full wood rails at native and2.7 heights; candidate data is not installed or a joined Studio/Play delivery — [approved continuation](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7092137564).
 
+- Appearance-group checkpoint consumes optional provider equivalence per asset/surface, shows one Original appearance for the wood panel and distinct plaster choices, and leaves exact saved refs untouched through unrelated edits/reload. Reset remains explicit; no material compatibility or renderer alias is removed — [approved direction](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7140689435).
+
 ## Decided
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
@@ -56,6 +58,8 @@
 - Anchored focused checks pass120 tests across10files and provider checks pass43. The complete Web gate passed lint/types/build but recorded11356 passes, two synthetic material-fixture failures and two Studio timeouts. Both fixtures were corrected to carry declared surface names; all four failed cases pass in the focused recheck, and whole-repo formatting passes after formatting the scratch gallery. The full suite was not rerun or relabeled green — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
 
 ## Mistaken
+
+- Palette assignment and persistence were mistaken for visible variation: the wood panel uses identical authored texels across all twelve atlases. Provider-owned mapped-colour grouping now drives display-only representatives; actual Studio verifies saved-alias preservation and visible plaster changes. The first readonly UI also inherited a two-column help layout and overlapped its text; visual inspection caught it and the choice wrapper now stacks its help/reset content — [texture diagnosis](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7120462769).
 
 - The first anchored model integration retained a parent Y fit scale after assembling the target height, rendering10.2857 for requested6. Its real-model regression now protects the actual height and cap/leaf dimensions. Plain fitting also continued UVs for unbound atlas trim under width/offset changes; only explicitly declared surface targets now receive that mapping — [anchored continuation](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7092137564).
 

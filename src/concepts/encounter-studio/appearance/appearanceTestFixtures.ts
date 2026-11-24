@@ -15,6 +15,42 @@ import {
 import { createPopulatedStudioDocument } from '../fixtures/studioDocument';
 import type { AppearanceSheetInput } from './appearanceTypes';
 
+export function groupFixtureAppearances(input: AppearanceSheetInput) {
+  if (input.selection.kind !== 'wall' || !input.catalog?.atlas)
+    throw Error('Expected wall atlas fixture');
+  const assetRef = input.selection.appearance.assetRef;
+  const atlas = input.catalog.atlas;
+  return {
+    ...input,
+    catalog: {
+      ...input.catalog,
+      atlas: {
+        ...atlas,
+        bindings: atlas.bindings.map((binding) =>
+          binding.assetRef !== assetRef
+            ? binding
+            : {
+                ...binding,
+                surfaces: binding.surfaces.map((surface) => ({
+                  ...surface,
+                  appearanceGroups: [
+                    {
+                      original: true,
+                      materialRefs: atlas.materials
+                        .filter((material) =>
+                          surface.compatibleFamilies.includes(material.family)
+                        )
+                        .map((material) => material.ref),
+                    },
+                  ],
+                })),
+              }
+        ),
+      },
+    },
+  };
+}
+
 /** Real owner projections and pinned metadata; no mock picker/runtime facts. */
 export function appearanceFixture(
   target: StudioArrangeTarget = { kind: 'wall', id: 'studio-wall' }

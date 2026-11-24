@@ -163,6 +163,17 @@ apply immediately, outside the staged wall-placement form. Failed edits leave
 the document unchanged. Native files use the existing source-aware writer;
 captured Play requires the same facts through the wall's existing disclosure.
 
+## Distinct atlas appearances
+
+Optional provider appearance groups collapse equivalent looks per exact asset
+and surface, independently of technical compatibility. The editor shows one
+representative per group, preferring Original for its group. A single known
+appearance is read-only rather than a no-op dropdown. Raw saved/staged references
+remain intact: the representative is display-only, and reset is an explicit
+owner edit. Unknown/stale selections remain errors, never guessed Original.
+Absent metadata preserves the legacy choice list; rendering and native/captured
+records continue to resolve their exact compatible references.
+
 ## Original maps and height adapters
 
 A repeat-above assembly does not stretch the fixed region's Original UVs.

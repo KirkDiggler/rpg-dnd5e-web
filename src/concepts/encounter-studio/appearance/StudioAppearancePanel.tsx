@@ -22,36 +22,59 @@ function AppearanceChoiceField({
   field: ChoiceField;
   onChange(edit: AppearanceEdit): void;
 }): React.JSX.Element {
+  const displayValue = field.displayValue ?? field.value;
+  const singleAppearance =
+    field.kind === 'atlas-pack' &&
+    field.displayValue !== undefined &&
+    field.choices.length === 1 &&
+    !field.unavailable;
   const missing =
     !field.mixed &&
-    !field.choices.some((choice) => choice.value === field.value);
+    !field.choices.some((choice) => choice.value === displayValue);
   return (
-    <div className="es-arrange-field">
+    <div className="es-appearance-choice">
       <label className="es-arrange-row">
         <span>{field.label}</span>
-        <select
-          aria-label={field.label}
-          value={field.value}
-          disabled={!field.choices.length}
-          onChange={(event) => onChange(editFor(field, event.target.value))}
-        >
-          {field.mixed && (
-            <option value={field.value} disabled>
-              Different sides — choose to set both
-            </option>
-          )}
-          {missing && (
-            <option value={field.value} disabled>
-              Unavailable: {field.value}
-            </option>
-          )}
-          {field.choices.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {choice.label}
-            </option>
-          ))}
-        </select>
+        {singleAppearance ? (
+          <output aria-label={field.label}>{field.choices[0]!.label}</output>
+        ) : (
+          <select
+            aria-label={field.label}
+            value={displayValue}
+            disabled={!field.choices.length}
+            onChange={(event) => onChange(editFor(field, event.target.value))}
+          >
+            {field.mixed && (
+              <option value={field.value} disabled>
+                Different sides — choose to set both
+              </option>
+            )}
+            {missing && (
+              <option value={field.value} disabled>
+                Unavailable: {field.value}
+              </option>
+            )}
+            {field.choices.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
+      {singleAppearance && (
+        <p className="es-help">
+          Only one distinct appearance is available for this surface.
+        </p>
+      )}
+      {field.displayValue !== undefined &&
+        field.value &&
+        field.value !== field.displayValue && (
+          <p className="es-help">
+            The saved palette reference is retained; equivalent appearances are
+            grouped.
+          </p>
+        )}
       {field.value && field.choices.some((choice) => choice.value === '') && (
         <button
           type="button"

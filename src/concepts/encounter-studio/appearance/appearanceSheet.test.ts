@@ -1,11 +1,71 @@
 import { GENERATED_WORLD_MATERIALS } from '@/generated/worldMaterialCatalog';
 import { describe, expect, it } from 'vitest';
 import { buildAppearanceSheet } from './appearanceSheet';
-import { appearanceFixture as fixture } from './appearanceTestFixtures';
+import {
+  appearanceFixture as fixture,
+  groupFixtureAppearances,
+} from './appearanceTestFixtures';
 const FIT = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const BRICK = 'dnd5e:material:fantasy-kingdom:wall_brick_01';
 const PACK = 'dnd5e:material:fantasy-kingdom:atlas_04_c';
 describe('shared appearance sheet from provider facts', () => {
+  it('collapses equivalent looks while retaining the exact saved or staged ref', () => {
+    const { input } = fixture();
+    const grouped = groupFixtureAppearances(input);
+    const draft = {
+      materialOverrides: [{ surfaceId: 'atlas', materialRef: PACK }],
+    };
+    const before = structuredClone(draft);
+    const field = buildAppearanceSheet({ ...grouped, draft }).fields.find(
+      (f) => f.kind === 'atlas-pack'
+    );
+    expect(field).toMatchObject({
+      value: PACK,
+      displayValue: '',
+      choices: [{ value: '', label: 'Original' }],
+    });
+    expect(draft).toEqual(before);
+    const missing = buildAppearanceSheet({
+      ...grouped,
+      draft: {
+        materialOverrides: [{ surfaceId: 'atlas', materialRef: 'missing' }],
+      },
+    }).fields.find((f) => f.kind === 'atlas-pack');
+    expect(missing).toMatchObject({
+      value: 'missing',
+      unavailable: expect.any(String),
+    });
+    expect(missing).not.toHaveProperty('displayValue');
+  });
+
+  it('keeps different groups selectable and maps aliases only for display', () => {
+    const { input } = fixture();
+    const grouped = groupFixtureAppearances(input);
+    const refs = grouped.catalog.atlas!.materials.map((m) => m.ref);
+    grouped.catalog.atlas!.bindings = grouped.catalog.atlas!.bindings.map(
+      (binding) => ({
+        ...binding,
+        surfaces: binding.surfaces.map((surface) => ({
+          ...surface,
+          appearanceGroups: [
+            { original: true, materialRefs: [refs[0]!] },
+            { original: false, materialRefs: refs.slice(1) },
+          ],
+        })),
+      })
+    );
+    const field = buildAppearanceSheet({
+      ...grouped,
+      draft: {
+        materialOverrides: [{ surfaceId: 'atlas', materialRef: refs[2]! }],
+      },
+    }).fields.find((f) => f.kind === 'atlas-pack');
+    expect(field).toMatchObject({ value: refs[2], displayValue: refs[1] });
+    expect(
+      field && 'choices' in field && field.choices.map((c) => c.value)
+    ).toEqual(['', refs[1]]);
+  });
+
   it('filters atlas materials by binding family rather than recommendation membership', () => {
     const { input } = fixture();
     const atlas = input.catalog.atlas!;

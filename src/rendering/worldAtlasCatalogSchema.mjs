@@ -38,8 +38,36 @@ function references(value, known, path) {
   return [...result];
 }
 
+function appearanceGroups(value, compatible, path) {
+  const seen = new Set();
+  let originals = 0;
+  const groups = rows(value, path).map((row, index) => {
+    const at = `${path}[${index}]`;
+    keys(row, ['original', 'materialRefs'], at);
+    if (
+      typeof row.original !== 'boolean' ||
+      !Array.isArray(row.materialRefs) ||
+      (!row.original && !row.materialRefs.length)
+    )
+      fail(`${at} is invalid`);
+    if (row.original) originals++;
+    const materialRefs = row.materialRefs.map((ref) => {
+      if (typeof ref !== 'string' || !compatible.has(ref) || seen.has(ref))
+        fail(`${path} has an unknown, incompatible or duplicate reference`);
+      seen.add(ref);
+      return ref;
+    });
+    return { original: row.original, materialRefs };
+  });
+  if (originals !== 1 || seen.size !== compatible.size)
+    fail(
+      `${path} must partition compatible references with one Original group`
+    );
+  return groups;
+}
+
 /** Typed metadata views of the same material catalog, never a second source.
- * @param {{collections: unknown, bindings: unknown, atlasRefs: Set<string>, atlasFamilies: Set<string>}} input
+ * @param {{collections: unknown, bindings: unknown, atlasRefs: Set<string>, atlasFamilies: Set<string>, atlasMaterialFamilies?: Map<string,string>}} input
  * @returns {{collections: import('./worldMaterialTypes').WorldMaterialCollection[], bindings: import('./worldMaterialTypes').WorldAtlasBinding[]}}
  */
 export function parseWorldAtlasMetadata({
@@ -47,6 +75,7 @@ export function parseWorldAtlasMetadata({
   bindings,
   atlasRefs,
   atlasFamilies,
+  atlasMaterialFamilies,
 }) {
   if (!atlasRefs.size) fail('schema3 must include atlas choices');
   const collectionRefs = new Set();
@@ -94,6 +123,9 @@ export function parseWorldAtlasMetadata({
           'sampler',
           'compatibleFamilies',
           'suggestedCollections',
+          ...(surface && Object.hasOwn(surface, 'appearanceGroups')
+            ? ['appearanceGroups']
+            : []),
         ],
         path
       );
@@ -133,6 +165,34 @@ export function parseWorldAtlasMetadata({
           fail(`${path}.sampler.${key} is invalid`);
         sampler[key] = value;
       }
+      const compatibleFamilies = references(
+        surface.compatibleFamilies,
+        atlasFamilies,
+        `${path}.compatibleFamilies`
+      );
+      let grouped = {};
+      if (Object.hasOwn(surface, 'appearanceGroups')) {
+        if (
+          !(atlasMaterialFamilies instanceof Map) ||
+          atlasMaterialFamilies.size !== atlasRefs.size ||
+          [...atlasRefs].some((ref) => !atlasMaterialFamilies.has(ref))
+        )
+          fail(
+            `${path}.appearanceGroups needs complete material family identities`
+          );
+        const compatible = new Set(
+          [...atlasMaterialFamilies]
+            .filter(([, family]) => compatibleFamilies.includes(family))
+            .map(([ref]) => ref)
+        );
+        grouped = {
+          appearanceGroups: appearanceGroups(
+            surface.appearanceGroups,
+            compatible,
+            `${path}.appearanceGroups`
+          ),
+        };
+      }
       return {
         id,
         node,
@@ -140,11 +200,8 @@ export function parseWorldAtlasMetadata({
         texCoord: surface.texCoord,
         defaultBaseColorSha256,
         sampler,
-        compatibleFamilies: references(
-          surface.compatibleFamilies,
-          atlasFamilies,
-          `${path}.compatibleFamilies`
-        ),
+        compatibleFamilies,
+        ...grouped,
         suggestedCollections: references(
           surface.suggestedCollections,
           collectionRefs,

@@ -1,5 +1,6 @@
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
 import type {
+  WorldAtlasAppearanceGroup,
   WorldAtlasMaterial,
   WorldSurfaceMaterial,
 } from '@/rendering/worldMaterialTypes';
@@ -117,6 +118,35 @@ function npcFields(input: AppearanceSheetInput): AppearanceField[] {
   return fields;
 }
 
+function atlasChoices(
+  materials: readonly WorldAtlasMaterial[],
+  current: string,
+  groups?: readonly WorldAtlasAppearanceGroup[]
+): { choices: AppearanceChoice[]; displayValue?: string } {
+  const choices: AppearanceChoice[] = [{ value: '', label: 'Original' }];
+  if (!groups)
+    return {
+      choices: [
+        ...choices,
+        ...materials.map((row) => ({ value: row.ref, label: row.displayName })),
+      ],
+    };
+  const representatives = new Map<string, string>();
+  for (const group of groups) {
+    const material = materials.find((row) =>
+      group.materialRefs.includes(row.ref)
+    );
+    const representative = group.original ? '' : material?.ref;
+    if (representative === undefined) continue;
+    if (!group.original && material)
+      choices.push({ value: material.ref, label: material.displayName });
+    for (const ref of group.materialRefs)
+      representatives.set(ref, representative);
+  }
+  const displayValue = current === '' ? '' : representatives.get(current);
+  return { choices, ...(displayValue !== undefined ? { displayValue } : {}) };
+}
+
 function worldFields(input: AppearanceSheetInput): AppearanceField[] {
   const { selection, draft, scene, catalog } = input;
   const owner =
@@ -186,10 +216,11 @@ function worldFields(input: AppearanceSheetInput): AppearanceField[] {
       surfaceId,
       label: ids.length === 1 ? 'Texture pack' : `Texture pack · ${surfaceId}`,
       value: current,
-      choices: [
-        { value: '', label: 'Original' },
-        ...materials.map((row) => ({ value: row.ref, label: row.displayName })),
-      ],
+      ...atlasChoices(
+        materials,
+        current,
+        unavailable ? undefined : surface?.appearanceGroups
+      ),
       ...(unavailable ? { unavailable } : {}),
     });
     fields.push(
