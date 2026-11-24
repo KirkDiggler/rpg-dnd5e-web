@@ -7,9 +7,9 @@ import type {
 } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: '32d11dc19c2783f5c2cda711c61c933b265d8759',
+  commit: '4f007dc95aeedf3ab8b96a7615d216cf0065edcc',
   catalogSha256:
-    '47317921e30bef460446599745f60c445646dd6f337bac434d1abe293e74b5ea' as
+    '0f95ba16da341bcdead005e677eeaeb59438f8c00f8907b4f867aef974bfecc4' as
       | string
       | null,
 });
@@ -363,11 +363,11 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
     {
       assetRef: 'dnd5e:env:fantasy-kingdom:house_wall_01',
       glbSha256:
-        'ee17ddc3813231511f8eed53c4bb23dc315b889af9879b698c8c3feeeca63df0',
+        'd8c93119434bbfafd966dfa79f7ab2c867736c427d0cf147bd2478c8327615dc',
       surfaces: [
         {
           id: 'atlas',
-          node: 'SM_Bld_House_Wall_01',
+          node: 'WallBody_v1',
           material: 'SyntyAtlas',
           texCoord: 0,
           defaultBaseColorSha256:
@@ -379,6 +379,56 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             minFilter: 9984,
           },
           compatibleFamilies: ['kingdom-main-atlas'],
+          appearanceGroups: [
+            {
+              original: true,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_c'],
+            },
+          ],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -413,11 +463,11 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
     {
       assetRef: 'dnd5e:env:fantasy-kingdom:house_wall_03',
       glbSha256:
-        'fc83d4d03ce3d8fa2e126384f706f39181e2b4ff7803c7237fbb773a91d7f8fb',
+        '59f6bbb08a4f0aa23470c3a187e81845e0bbc4531f3be04f3b4cbea31f9669fb',
       surfaces: [
         {
           id: 'atlas',
-          node: 'SM_Bld_House_Wall_03',
+          node: 'WallBody_v1',
           material: 'SyntyAtlas',
           texCoord: 0,
           defaultBaseColorSha256:
@@ -429,6 +479,25 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             minFilter: 9984,
           },
           compatibleFamilies: ['kingdom-main-atlas'],
+          appearanceGroups: [
+            {
+              original: true,
+              materialRefs: [
+                'dnd5e:material:fantasy-kingdom:atlas_01_a',
+                'dnd5e:material:fantasy-kingdom:atlas_01_b',
+                'dnd5e:material:fantasy-kingdom:atlas_01_c',
+                'dnd5e:material:fantasy-kingdom:atlas_02_a',
+                'dnd5e:material:fantasy-kingdom:atlas_02_b',
+                'dnd5e:material:fantasy-kingdom:atlas_02_c',
+                'dnd5e:material:fantasy-kingdom:atlas_03_a',
+                'dnd5e:material:fantasy-kingdom:atlas_03_b',
+                'dnd5e:material:fantasy-kingdom:atlas_03_c',
+                'dnd5e:material:fantasy-kingdom:atlas_04_a',
+                'dnd5e:material:fantasy-kingdom:atlas_04_b',
+                'dnd5e:material:fantasy-kingdom:atlas_04_c',
+              ],
+            },
+          ],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -463,11 +532,11 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
     {
       assetRef: 'dnd5e:env:fantasy-kingdom:house_wall_05',
       glbSha256:
-        'f8bf4c2c9e2706c02ae5ab6402c79970b0869bae6e1a7c3609dc24816474752e',
+        'd6a748ffeb47ec24bcaaf2baf0d834e68ce1ad3dc07e20249c19ef0bbb4df3f6',
       surfaces: [
         {
           id: 'atlas',
-          node: 'SM_Bld_House_Wall_05',
+          node: 'WallBody_v1',
           material: 'SyntyAtlas',
           texCoord: 0,
           defaultBaseColorSha256:
@@ -479,6 +548,56 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             minFilter: 9984,
           },
           compatibleFamilies: ['kingdom-main-atlas'],
+          appearanceGroups: [
+            {
+              original: true,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_c'],
+            },
+          ],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],
@@ -488,11 +607,11 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
     {
       assetRef: 'dnd5e:env:fantasy-kingdom:house_wall_06',
       glbSha256:
-        '5af541e2b7526ba96943591b1234ca76cdd1a7b884cfc318840d7d940b56b278',
+        '3ae97eec920b7616ab7a3d2bea3ff7ed700648f9fc425bb868511704425a6b86',
       surfaces: [
         {
           id: 'atlas',
-          node: 'SM_Bld_House_Wall_06',
+          node: 'WallBody_v1',
           material: 'SyntyAtlas',
           texCoord: 0,
           defaultBaseColorSha256:
@@ -504,6 +623,56 @@ export const GENERATED_WORLD_ATLAS_BINDINGS: readonly WorldAtlasBinding[] =
             minFilter: 9984,
           },
           compatibleFamilies: ['kingdom-main-atlas'],
+          appearanceGroups: [
+            {
+              original: true,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_01_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_02_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_03_c'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_a'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_b'],
+            },
+            {
+              original: false,
+              materialRefs: ['dnd5e:material:fantasy-kingdom:atlas_04_c'],
+            },
+          ],
           suggestedCollections: [
             'dnd5e:material-collection:fantasy-kingdom:main_atlas',
           ],

@@ -66,39 +66,63 @@ describe('shared appearance sheet from provider facts', () => {
     ).toEqual(['', refs[1]]);
   });
 
-  it('filters atlas materials by binding family rather than recommendation membership', () => {
-    const { input } = fixture();
-    const atlas = input.catalog.atlas!;
-    input.catalog = {
-      ...input.catalog,
-      atlas: {
-        ...atlas,
-        materials: [
-          ...atlas.materials,
-          {
-            ...atlas.materials[0],
-            ref: 'dnd5e:material:test:uncurated',
-            displayName: 'Uncurated',
-          },
-          {
-            ...atlas.materials[0],
-            ref: 'dnd5e:material:test:foreign',
-            family: 'foreign-layout',
-          },
-        ],
-      },
-    };
-    const sheet = buildAppearanceSheet(input);
-    const field = sheet.fields.find((row) => row.kind === 'atlas-pack');
-    if (field?.kind !== 'atlas-pack') throw Error('Missing pack field');
-    expect(field.choices.map((choice) => choice.value)).toContain(PACK);
-    expect(field.choices.map((choice) => choice.value)).toContain(
-      'dnd5e:material:test:uncurated'
-    );
-    expect(field.choices.map((choice) => choice.value)).not.toContain(
-      'dnd5e:material:test:foreign'
-    );
-  });
+  it.each([false, true])(
+    'filters by compatible family, not recommendations (grouped=%s)',
+    (grouped) => {
+      const { input } = fixture();
+      const atlas = input.catalog.atlas!;
+      input.catalog = {
+        ...input.catalog,
+        atlas: {
+          ...atlas,
+          // Adding a compatible ref must also update its declared partition.
+          // Exercise both legacy absence and complete grouping metadata.
+          bindings: atlas.bindings.map((binding) => ({
+            ...binding,
+            surfaces: binding.surfaces.map(
+              ({ appearanceGroups, ...surface }) => ({
+                ...surface,
+                ...(grouped && appearanceGroups
+                  ? {
+                      appearanceGroups: [
+                        ...appearanceGroups,
+                        {
+                          original: false,
+                          materialRefs: ['dnd5e:material:test:uncurated'],
+                        },
+                      ],
+                    }
+                  : {}),
+              })
+            ),
+          })),
+          materials: [
+            ...atlas.materials,
+            {
+              ...atlas.materials[0],
+              ref: 'dnd5e:material:test:uncurated',
+              displayName: 'Uncurated',
+            },
+            {
+              ...atlas.materials[0],
+              ref: 'dnd5e:material:test:foreign',
+              family: 'foreign-layout',
+            },
+          ],
+        },
+      };
+      const sheet = buildAppearanceSheet(input);
+      const field = sheet.fields.find((row) => row.kind === 'atlas-pack');
+      if (field?.kind !== 'atlas-pack') throw Error('Missing pack field');
+      expect(field.choices.map((choice) => choice.value)).toContain(PACK);
+      expect(field.choices.map((choice) => choice.value)).toContain(
+        'dnd5e:material:test:uncurated'
+      );
+      expect(field.choices.map((choice) => choice.value)).not.toContain(
+        'dnd5e:material:test:foreign'
+      );
+    }
+  );
 
   it('shows paired masonry maps while color-only atlas channels remain absent', () => {
     const { input } = fixture();
