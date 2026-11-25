@@ -54,6 +54,8 @@ import { hopsPhrase, speechWords } from './speechLine';
  * (encounter v0.148.0): the walk act carries it as `cause`.
  */
 export const DASH_CAUSE = 'encounter:table:dash';
+/** A `stay` act with this cause is a player's Wait, not a creature held in place. */
+export const WAIT_CAUSE = 'encounter:intent:wait';
 
 export interface DescribeContext {
   readonly viewerMember: string;
@@ -214,6 +216,42 @@ export function formatRollBreakdown(roll: Roll | undefined): string {
         : ' · not beaten';
   const head = parts.length > 0 ? `${parts.join(' ')} = ` : '';
   return `${head}${roll.total}${against}${beaten}`;
+}
+
+/**
+ * A fight forming, or a creature joining one, as one line per member who
+ * rolled: the member's name and the roll's breakdown, in the fight's order.
+ * Empty for any other act and for a fight or join that carried no rolls.
+ */
+export function initiativeLines(act: Act, context: DescribeContext): string[] {
+  if (act.body.case !== 'clock') return [];
+  const clock = act.body.value;
+  if (clock.mark === ClockMark.FIGHT_JOINED) {
+    const joined = clock.fightJoined;
+    if (!joined?.roll?.roll) return [];
+    return [
+      `${partyName(joined.roll.member ?? joined.member, context)}: ${formatRollBreakdown(joined.roll.roll)}`,
+    ];
+  }
+  if (clock.mark !== ClockMark.FIGHT_FORMED) return [];
+  const lines: string[] = [];
+  for (const entry of clock.fight?.rolls ?? []) {
+    if (!entry.roll) continue;
+    lines.push(
+      `${partyName(entry.member, context)}: ${formatRollBreakdown(entry.roll)}`
+    );
+  }
+  return lines;
+}
+
+/** When a joiner first acts, in the server's rounds; empty when unsent. */
+function firstTurnPhrase(
+  joined: { round: number; firstRound: number } | undefined
+): string {
+  if (!joined || joined.round === 0 || joined.firstRound === 0) return '';
+  return joined.firstRound === joined.round
+    ? 'acts this round'
+    : `first turn in round ${joined.firstRound}`;
 }
 
 function withRoll(text: string, roll: Roll | undefined): string {
@@ -486,6 +524,14 @@ function describeWith(
       };
     }
     case 'stay':
+      if (body.value.cause === WAIT_CAUSE) {
+        return {
+          eyebrow: 'Wait',
+          headline: `${name(body.value.member)} waits`,
+          detail: '',
+          tone: 'neutral',
+        };
+      }
       return {
         eyebrow: 'Stay',
         headline: `${name(body.value.member)} stays put`,
@@ -719,6 +765,13 @@ function describeWith(
             eyebrow: 'Fight',
             headline: 'A fight begins',
             detail: (c.fight?.order ?? []).map(name).join(', '),
+            tone: 'danger',
+          };
+        case ClockMark.FIGHT_JOINED:
+          return {
+            eyebrow: 'Fight',
+            headline: `${name(c.fightJoined?.member)} joins the fight`,
+            detail: firstTurnPhrase(c.fightJoined),
             tone: 'danger',
           };
         case ClockMark.FIGHT_DISSOLVED:

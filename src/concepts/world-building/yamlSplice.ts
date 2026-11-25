@@ -535,8 +535,11 @@ function spliceText(
       !(isObject(value) || Array.isArray(value)) ||
       (Array.isArray(value) && value.length === 0) ||
       (isObject(value) && Object.keys(value).length === 0);
+    // Multi-line text replacing a scalar, or a block map or sequence (one
+    // that starts on its dash line, rpg-project#1024), is a block scalar
+    // there; inside a flow row it stays the known flow-row limit.
     if (
-      isScalar(node) &&
+      (isScalar(node) || ((isMap(node) || isSeq(node)) && !node.flow)) &&
       typeof value === 'string' &&
       value.includes('\n') &&
       !inFlow

@@ -8,11 +8,12 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { DND5E_WEAPON_REF_RE, parseRef } from '@/utils/refs';
 import {
+  isOptionUse,
   optionCarriesRefusal,
   validateAnswerTable,
   validateOptions,
   type AnswerTableShape,
-  type OptionShape,
+  type OptionEntry,
 } from './answerTableShape';
 import { setActorName } from './creaturePalette';
 import {
@@ -150,7 +151,9 @@ export interface RoomPropBinding {
  * the engine's `OptionSpec`, declared once in `answerTableShape.ts` beside the
  * answer rows it carries, because its verdict rows ARE answer rows judged by
  * the table's own grammar. */
-export type RoomOption = OptionShape;
+/** One entry of a binding's `options`: a line, or a `use:` of a
+ * conversation (rpg-project#1025). */
+export type RoomOption = OptionEntry;
 
 /** The orders block for one creature, under its stable id — the THIRD
  * declaration kind on a placed thing, after `propDeclarations` and the
@@ -1384,7 +1387,9 @@ function requireOptionCarries(
   );
   const check = (owner: string, options: RoomOption[] | undefined) => {
     for (const [index, option] of (options ?? []).entries()) {
-      if (option.requires === undefined) continue;
+      // A `use:` (rpg-project#1025) requires nothing itself: its lines'
+      // requirements are the conversation's, judged by the engine there.
+      if (isOptionUse(option) || option.requires === undefined) continue;
       const requires = option.requires;
       for (const [i, one] of requirementsOf(requires).entries()) {
         // A `not` of carrying names its prop one level down (rpg-project#719).

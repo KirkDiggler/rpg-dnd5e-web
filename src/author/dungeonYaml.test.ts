@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   addDisposition,
   addEnding,
@@ -2436,5 +2437,17 @@ describe('endings (rpg-project#375 R10) — the predicate grammar’s third cons
     expect(doc.endings[0].when).toEqual({
       stance: { between: ['raiders', 'party'], is: 'neutral' },
     });
+  });
+});
+
+describe('a `use:` of a conversation is a version 5 site’s (rpg-project#1025)', () => {
+  it('is refused in a placement’s options, in the engine’s words', () => {
+    const doc = parseYaml(emitDungeon(twoPlacements())) as {
+      place: Record<string, unknown>[];
+    };
+    doc.place[1]!.options = [{ use: 'gate-claims' }];
+    expect(() => parseDungeon(stringifyYaml(doc))).toThrow(
+      'options[0].use: `use` names a conversation, and only a version 5 site declares `conversations:`'
+    );
   });
 });

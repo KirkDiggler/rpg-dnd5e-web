@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { OptionShape } from '../world-building/answerTableShape';
 import type { RegionResolution } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type { Outcomes } from '../world-building/interactionOutcomes';
@@ -10,6 +11,7 @@ import type {
   RoomHexCell,
   RoomRegion,
 } from '../world-building/roomDraft';
+import type { LinesCarrier } from '../world-building/sharedLinesEdits';
 import type { SiteScope } from '../world-building/siteScope';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
@@ -367,9 +369,13 @@ export interface EncounterStudioSession {
   /** Select one authored region (rpg-project#725), or nothing. Refused for
    * an unknown id, while publishing, or from a retired snapshot. */
   selectRegion(id: string | null): boolean;
-  /** Arm the party-start gesture: the next 3D floor click places or moves
-   * it. Refused while publishing or from a retired snapshot. */
+  /** Arm the party-start gesture: the next floor click, on either map,
+   * places or moves it. Refused while publishing or from a retired snapshot. */
   armPartyStart(): boolean;
+  /** Answer an armed party start from a view that is not the 3D floor: places
+   * or moves it at this cell. Refused unless the party start is armed, while
+   * publishing, or from a retired snapshot. */
+  placePartyStartAt(cell: RoomHexCell): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
@@ -386,6 +392,43 @@ export interface EncounterStudioSession {
    * undoable transaction; an empty map removes the key. Refused, with the
    * notice naming why, for an interaction not authored. */
   commitInteractionOutcomes(id: string, outcomes: Outcomes): boolean;
+  /** One conversation's recipe (rpg-project#1040): `edit` runs on
+   * `{ recipe }` as the document has it now, and only the recipe it returns
+   * is set, as one undoable transaction. `approach` and `outcomes` are never
+   * touched. Refused, with the notice naming why, for a conversation with no
+   * recipe or an edit that throws. */
+  commitInteractionRecipe(
+    id: string,
+    edit: (holder: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
+  /** A conversation's lines written once (rpg-project#1027), root
+   * `conversations.<id>`, and the `use:` entries that apply it to its
+   * carriers. Each intent is one undoable transaction over
+   * `world-building/sharedLinesEdits.ts`; a refusal returns false with its
+   * sentence as the notice. */
+  sharedLines: {
+    /** The conversation's lines, set whole: every line edit writes once, at
+     * the conversation. */
+    setLines(id: string, lines: readonly OptionShape[]): boolean;
+    addLine(id: string): boolean;
+    /** Written with its first line, applied to its first carrier. */
+    create(id: string, carrier: LinesCarrier, say: string): boolean;
+    /** `- use: <id>` at the end of the carrier's options. */
+    apply(id: string, carrier: LinesCarrier): boolean;
+    /** Remove the carrier's `use:` at `options[index]`. */
+    unapply(id: string, carrier: LinesCarrier, index: number): boolean;
+    /** The conversation and every `use:` of it, in one write: what the
+     * last carrier or the last line going means. */
+    remove(id: string): boolean;
+    /** One of a carrier's own lines, shown beside a conversation it
+     * carries (rpg-project#1030): set (or removed, with `null`) at the
+     * carrier's `options[index]`, one write at the carrier. */
+    setOwnLine(
+      carrier: LinesCarrier,
+      index: number,
+      option: OptionShape | null
+    ): boolean;
+  };
   /** One behaviour definition (rpg-project#996): `edit` runs on the
    * document's definition as it is now, and the result is set whole as one
    * undoable transaction (`machineEdit.setBehaviorDefinition`). Refused,

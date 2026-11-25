@@ -31,7 +31,7 @@ export function CheckApproachRows({
           }
         >
           <label>
-            <span>ability</span>
+            <span>Ability</span>
             <select
               aria-label={`Ability for approach ${index} of ${id}`}
               value={row.ability}
@@ -50,7 +50,7 @@ export function CheckApproachRows({
             </select>
           </label>
           <label>
-            <span>tool</span>
+            <span>Tool</span>
             <input
               aria-label={`Tool for approach ${index} of ${id}`}
               value={row.tool ?? ''}
@@ -61,7 +61,7 @@ export function CheckApproachRows({
             />
           </label>
           <label className="wb-approach-dc">
-            <span>dc</span>
+            <span>DC</span>
             <input
               aria-label={`DC for approach ${index} of ${id}`}
               type="number"

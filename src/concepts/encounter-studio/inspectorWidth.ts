@@ -19,9 +19,10 @@ export const INSPECTOR_WIDTH_STEP = 16;
 
 /** THE MAP'S FLOOR. The map beside a docked inspector keeps at least a
  * 320 px canvas plus the asides of the view showing, at their widest: Layout's
- * room list (220), 3D's palette (250) and scene tree (270). */
+ * room list (220), 3D's palette (250) and scene tree (270). The Encounter
+ * page, which has no map, keeps 320 beside the 320 canvas floor: 640 px. */
 export const MAP_CANVAS_FLOOR = 320;
-const VIEW_ASIDES = { layout: 220, '3d': 250 + 270 } as const;
+const VIEW_ASIDES = { layout: 220, '3d': 250 + 270, encounter: 320 } as const;
 /** The map's right inset beyond the inspector: its margin and the gap. */
 export const INSPECTOR_GUTTER = 24;
 
@@ -33,7 +34,7 @@ export function mapFloor(view: InspectorView): number {
 
 /** The inspector DOCKS (the map stops at its edge) only where the default
  * inspector and the map's floor fit side by side: Layout from 948 px, 3D
- * from 1248 px. Narrower, it overlays the map as it always did. */
+ * from 1248 px, the Encounter page from 1048 px. Narrower, it overlays the map as it always did. */
 export function inspectorDocks(
   windowWidth: number,
   view: InspectorView

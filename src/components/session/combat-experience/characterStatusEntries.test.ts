@@ -86,8 +86,68 @@ describe('compact character status projection', () => {
       kind: 'condition',
       sourceMember: 'mira',
       detail: 'Supplied explanation',
-      art: { src: '', fallback: '?' },
+      art: { src: '', fallback: 'Un' },
     });
     expect(entries[1].resource?.current).toBe(0);
+  });
+
+  it('shows the first two letters of a status effect it has no picture for', () => {
+    const entries = characterStatusEntries(
+      presentCharacterData(
+        create(CharacterDataSchema, {
+          conditions: [
+            {
+              ref: { module: 'site', type: 'statuses', id: 'feasted' },
+              name: 'Feasted',
+            },
+            {
+              ref: { module: 'site', type: 'statuses', id: 'held' },
+              name: 'Held',
+            },
+          ],
+        })
+      )
+    );
+    expect(entries.map((entry) => entry.art.fallback)).toEqual(['Fe', 'He']);
+    expect(entries.map((entry) => entry.art.src)).toEqual(['', '']);
+  });
+  it('keeps "?" for a blank name, and a picture where it has one', () => {
+    const entries = characterStatusEntries(
+      presentCharacterData(
+        create(CharacterDataSchema, {
+          conditions: [
+            {
+              ref: { module: 'site', type: 'statuses', id: 'blank' },
+              name: '  ',
+            },
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'vicious_mockery',
+              },
+              name: 'Vicious Mockery',
+            },
+          ],
+        })
+      )
+    );
+    expect(entries[0].art.fallback).toBe('?');
+    expect(entries[1].art.src).not.toBe('');
+  });
+  it('leaves a feature with no picture as it was', () => {
+    const entries = characterStatusEntries(
+      presentCharacterData(
+        create(CharacterDataSchema, {
+          features: [
+            {
+              ref: { module: 'site', type: 'features', id: 'mystery' },
+              name: 'Mystery',
+            },
+          ],
+        })
+      )
+    );
+    expect(entries[0].art.fallback).toBe('?');
   });
 });

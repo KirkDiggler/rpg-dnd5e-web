@@ -18,6 +18,7 @@ import {
 import { DoorOpenedField } from '../world-building/DoorOpenedField';
 import { exitAt, setExitAt } from '../world-building/exitEdits';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
+import { CarriedConversations } from './CarriedConversations';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
 import { joinName, placesOf } from './placesView';
@@ -544,6 +545,13 @@ function CreatureView({
   return (
     <>
       {arrange?.kind === 'actor' && (
+        <CarriedConversations
+          kind="creature"
+          id={arrange.monster.id}
+          name={selectionName(arrange, session)}
+        />
+      )}
+      {arrange?.kind === 'actor' && (
         <ReadBack
           document={session.document}
           selection={{ kind: 'creature', id: arrange.monster.id }}
@@ -992,7 +1000,7 @@ function PartyStartView({
             Move party start
           </button>
           <FieldHelp field="Move party start">
-            The next floor click in 3D places it.
+            The next floor click, on either map, places it.
           </FieldHelp>
         </div>
       }

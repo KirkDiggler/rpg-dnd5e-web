@@ -27,7 +27,9 @@ import {
   type RoutePickRequest,
 } from '../world-building/routePicking';
 import { RowRefusalsContext } from '../world-building/rowRefusals';
+import { SharedLinesContext } from '../world-building/sharedLinesContext';
 import type { SiteScope } from '../world-building/siteScope';
+import { StepWordsContext } from '../world-building/stepWordsContext';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import {
   useRoomPublishing,
@@ -36,6 +38,7 @@ import {
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
+import { stepWordsOf } from './conversationSteps';
 import { defaultDraftKey } from './draftFile';
 import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
 import {
@@ -53,6 +56,7 @@ import {
   inspectorMaxWidth,
   readInspectorWidth,
   writeInspectorWidth,
+  type InspectorView,
 } from './inspectorWidth';
 import { JoinInspector } from './JoinInspector';
 import { layoutCellCenter } from './layoutGeometry';
@@ -83,6 +87,7 @@ import {
   watchUnavailableReason,
   type WatchedRun,
 } from './runWatch';
+import { sharedLinesInForm } from './sharedLinesView';
 import { StudioBehaviours } from './StudioBehaviours';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -320,6 +325,9 @@ function StudioSurface({
   };
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** The Inspector shown beside an Encounter page: opened by choosing a
+   * placed thing there, closed by its × or by leaving the Encounter side. */
+  const [encounterInspector, setEncounterInspector] = useState(false);
   /** WHILE WATCHING the inspector is closed so the map and the watch panel
    * get its width (rpg-project#1011, the operator's look), and has its own
    * open state: the author's own (`sidebarOpen`) is untouched, so it is
@@ -336,7 +344,8 @@ function StudioSurface({
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, []);
-  const inspectorMax = inspectorMaxWidth(workspaceWidth, view);
+  const panelView: InspectorView = home === 'encounter' ? 'encounter' : view;
+  const inspectorMax = inspectorMaxWidth(workspaceWidth, panelView);
   const inspectorShown = clampInspectorWidth(inspectorWidth, inspectorMax);
   /** The work area's height, for a docked inspector to fill it: set on the
    * root as `--es-work-height`, outside React, as the area resizes. */
@@ -514,6 +523,7 @@ function StudioSurface({
     session.cancelTransients();
     onLayoutToolChange('select');
     onHomeChange(next);
+    setEncounterInspector(false);
     setSidebarOpen(true);
   };
   /** Add members on the map: Build, in the view last used, with the
@@ -523,21 +533,22 @@ function StudioSurface({
     changeHome('build');
     session.concealments.armMembers(id);
   };
+  /** The move is armed in the map view last used; the next floor click there
+   * moves the creature. */
   const moveSelectedCreature = (): void => {
     if (session.arrange?.kind !== 'actor') return;
     changeHome('build');
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     onLayoutToolChange('select');
-    onViewChange('3d');
     session.setPropTool('move');
     setSidebarOpen(true);
   };
-  /** Party start is placed on the 3D floor: the gesture is armed there. */
+  /** The party start is armed in the map view the author is in; the next
+   * floor click there places it. */
   const placePartyStart = (): void => {
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     labels.editing.onCancel();
     onLayoutToolChange('select');
-    onViewChange('3d');
     session.armPartyStart();
     setSidebarOpen(true);
   };
@@ -851,6 +862,8 @@ function StudioSurface({
     /** Where the pick was asked from: an Encounter section returns there; a
      * Build inspector (a post's cells, rpg-project#975 D) reopens it. */
     from: 'encounter' | 'build';
+    /** The Encounter-side inspector was open when the pick was asked. */
+    fromPanel: boolean;
     /** The Build view it was asked from, returned to when it ends. */
     fromView: EncounterStudioView;
     document: unknown;
@@ -859,6 +872,7 @@ function StudioSurface({
     arm: (request) => {
       const section = encounterSection;
       const from = home === 'build' ? 'build' : 'encounter';
+      const fromPanel = encounterInspector;
       changeHome('build');
       if (view !== 'layout') switchView('layout');
       setSidebarOpen(false);
@@ -867,6 +881,7 @@ function StudioSurface({
         waypoints: [...request.route],
         section,
         from,
+        fromPanel,
         fromView: view,
         document: session.document,
       });
@@ -893,6 +908,7 @@ function StudioSurface({
     }
     changeHome('encounter');
     setEncounterSection(pick.section);
+    if (pick.fromPanel) setEncounterInspector(true);
   };
   const pickCell = (cell: { q: number; r: number }): void => {
     if (!routePick) return;
@@ -1056,6 +1072,12 @@ function StudioSurface({
     onViewChange(next);
   };
   const spatial = home !== 'encounter';
+  /** The Encounter-side panel shows a placed creature or prop only: with
+   * nothing placed selected it closes rather than show the room view. */
+  const encounterPanel =
+    encounterInspector &&
+    (session.arrange?.kind === 'actor' || session.arrange?.kind === 'scene');
+  const panelOpen = spatial ? inspectorOpen : encounterPanel;
   // Once per studio session: the first visit to 3D mounts the viewport.
   const [visited3d, setVisited3d] = useState(view === '3d');
   useEffect(() => {
@@ -1209,6 +1231,14 @@ function StudioSurface({
     if (key) queueReveal(key);
     const inspect = (selected: boolean): void => {
       if (!selected) return;
+      if (
+        home === 'encounter' &&
+        (target.kind === 'creature' || target.kind === 'prop')
+      ) {
+        setEncounterInspector(true);
+        showSection('inspector');
+        return;
+      }
       changeHome('build');
       showSection('inspector');
     };
@@ -1267,6 +1297,37 @@ function StudioSurface({
   /** While a concealment is armed, a Layout click on a hex, prop, door or
    * wall toggles membership instead of selecting it (rpg-project#578). */
   const pickMember = armedConcealment !== null;
+  /** The Layout answers an armed party start or creature move through the
+   * session's any-view intents, so one gesture works on both maps. The 3D
+   * viewport callbacks stay fenced to the 3D presentation. */
+  const placeOnLayout = (cell: RoomHexCell): boolean => {
+    const authoring = session.viewportProps.roomAuthoring;
+    if (!authoring) return false;
+    if (authoring.tool === 'start') {
+      session.placePartyStartAt(cell);
+      return true;
+    }
+    if (authoring.tool !== 'move') return false;
+    if (session.arrange?.kind === 'actor') {
+      session.commitArrange({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: session.arrange.target.id },
+        location: cell,
+      });
+      session.setPropTool('select');
+      return true;
+    }
+    if (session.arrange?.kind === 'start') {
+      session.commitArrange({
+        kind: 'start-position',
+        target: { kind: 'start' },
+        location: cell,
+      });
+      session.setPropTool('select');
+      return true;
+    }
+    return false;
+  };
   const layoutWallEditing: StudioWallEditing = pickMember
     ? {
         ...session.wallEditing,
@@ -1338,9 +1399,9 @@ function StudioSurface({
       aria-label="Encounter Studio workspace"
       data-home={home}
       data-inspector={
-        !(spatial && inspectorOpen)
+        !panelOpen
           ? undefined
-          : inspectorDocks(workspaceWidth, view)
+          : inspectorDocks(workspaceWidth, panelView)
             ? 'docked'
             : 'overlay'
       }
@@ -1998,12 +2059,14 @@ function StudioSurface({
         </div>
         <div className="es-context-layer">
           <StudioSidebar
-            open={spatial && inspectorOpen}
+            open={panelOpen}
             section={section}
             onSectionChange={changeSection}
-            onToggle={toggleInspector}
+            onToggle={
+              spatial ? toggleInspector : () => setEncounterInspector(false)
+            }
             keyboardEnabled={spatial}
-            compact={home === 'build'}
+            compact={home === 'build' || encounterPanel}
             resize={
               <StudioInspectorResize
                 width={inspectorShown}
@@ -2022,7 +2085,8 @@ function StudioSurface({
                 wayOpener={wayOpener}
               />
             )}
-            {home === 'build' && !placesView.selectedJoin && (
+            {((home === 'build' && !placesView.selectedJoin) ||
+              (home === 'encounter' && encounterPanel)) && (
               // A post's cells are picked on the map from here
               // (rpg-project#975 D).
               <RoutePickContext.Provider value={routePicking}>
@@ -2128,11 +2192,11 @@ function StudioSurface({
                     onExitDoorTool={exitDoor}
                     intentEpoch={session.intentEpoch}
                     onExitWallTool={exitWall}
-                    onSelectHex={(cell) =>
-                      void (pickMember
-                        ? session.concealments.pick({ kind: 'cell', cell })
-                        : session.selectHex(cell))
-                    }
+                    onSelectHex={(cell) => {
+                      if (pickMember)
+                        session.concealments.pick({ kind: 'cell', cell });
+                      else if (!placeOnLayout(cell)) session.selectHex(cell);
+                    }}
                     onClearSelection={() => {
                       placesView.clearJoin();
                       void session.clearSelection();
@@ -2383,11 +2447,11 @@ function StudioSurface({
                 <StudioCast
                   session={session}
                   onShowPlacement={(id) => {
-                    // The one arbiter holds the placement; Build opens the
-                    // inspector on it, in the view the author last used.
+                    // The one arbiter holds the placement; its inspector
+                    // opens beside the Cast page, the author stays put.
                     if (!session.creatures.select(id)) return;
-                    changeHome('build');
-                    setSidebarOpen(true);
+                    setEncounterInspector(true);
+                    showSection('inspector');
                   }}
                 />
               )}
@@ -2458,7 +2522,19 @@ function StudioSurface({
                   through the section's newest commit (rpg-project#975 C). */}
               <RoutePickContext.Provider value={routePicking}>
                 <div hidden={encounterSection !== 'interactions'}>
-                  <StudioInteractions session={session} />
+                  <StudioInteractions
+                    session={session}
+                    readBack={readBack}
+                    check={{
+                      state: readBack.readBackIsCurrent
+                        ? 'current'
+                        : jumps.length > 0
+                          ? 'refused'
+                          : 'checking',
+                      refusals: jumps,
+                    }}
+                    onJump={jumpTo}
+                  />
                 </div>
               </RoutePickContext.Provider>
               {home === 'encounter' && encounterSection === 'behaviours' && (
@@ -2513,10 +2589,25 @@ function StudioSurface({
       </div>
     </section>
   );
+  // A CARRIER'S `use:` IN ITS LINES (rpg-project#1027): how many lines the
+  // engine says the conversation holds, and the way to it on Conversations.
+  const sharedLinesShown = sharedLinesInForm(readBack.readBack, (id) =>
+    jumpTo({ kind: 'home', section: 'interactions' }, `conversations.${id}`)
+  );
+  // WHAT EACH STEP DOES (rpg-project#1033), for a line's Advances: from
+  // the read-back while it describes the draft.
+  const stepWords = stepWordsOf(
+    readBack.readBackIsCurrent ? readBack.readBack : null,
+    session.document
+  );
   return (
     <RevealContextProvider controller={revealController}>
       <RowRefusalsContext.Provider value={rowRefusals}>
-        {surface}
+        <SharedLinesContext.Provider value={sharedLinesShown}>
+          <StepWordsContext.Provider value={stepWords}>
+            {surface}
+          </StepWordsContext.Provider>
+        </SharedLinesContext.Provider>
       </RowRefusalsContext.Provider>
     </RevealContextProvider>
   );

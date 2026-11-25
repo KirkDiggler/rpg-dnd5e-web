@@ -19,6 +19,10 @@ import {
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import { addProp, groupSelection } from '../world-building/sceneState';
+import {
+  SharedLinesContext,
+  type SharedLinesInForm,
+} from '../world-building/sharedLinesContext';
 import { CreatureOrders } from '../world-building/SitePolicies';
 import {
   applyStudioActorArrange,
@@ -44,7 +48,8 @@ import {
 
 function inspector(
   session: EncounterStudioSession,
-  overrides: Partial<StudioInspectorProps> = {}
+  overrides: Partial<StudioInspectorProps> = {},
+  wrapper?: React.JSXElementConstructor<{ children: React.ReactNode }>
 ) {
   const props: StudioInspectorProps = {
     session,
@@ -63,7 +68,7 @@ function inspector(
     onPlacePartyStart: vi.fn(),
     ...overrides,
   };
-  render(<StudioInspector {...props} />);
+  render(<StudioInspector {...props} />, wrapper ? { wrapper } : undefined);
   return props;
 }
 const region = () => screen.getByRole('region', { name: 'Inspector' });
@@ -677,6 +682,66 @@ describe('StudioInspector', () => {
     // Factions and dispositions are Sides (rpg-project#970).
     fireEvent.click(view.getByRole('button', { name: 'Edit sides' }));
     expect(props.onConfigure).toHaveBeenCalledWith('factions');
+  });
+
+  it('a selected creature lists the conversations the engine says it carries', () => {
+    const session = createFakeStudioSession();
+    const draft = placeRoomMonster(session.document.draft, {
+      id: 'guard',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 0, r: 0 } },
+    });
+    const live = selected(
+      { ...session, document: { ...session.document, draft } },
+      { kind: 'actor', id: 'guard' }
+    );
+    const open = vi.fn();
+    const shown: SharedLinesInForm = {
+      lineCount: () => undefined,
+      open,
+      carriedBy: (kind, id) =>
+        kind === 'creature' && id === 'guard'
+          ? [{ id: 'the-gate', lines: 3 }]
+          : [],
+    };
+    const withLines = ({ children }: { children: React.ReactNode }) => (
+      <SharedLinesContext.Provider value={shown}>
+        {children}
+      </SharedLinesContext.Provider>
+    );
+    inspector(live, {}, withLines);
+    const view = within(region());
+    const heading = view.getByText('Conversations');
+    expect(heading).toBeTruthy();
+    // At the top of the Inspector: before the read-back, when it renders.
+    const readBackRoot = view.queryByText('Read back');
+    if (readBackRoot) {
+      expect(
+        heading.compareDocumentPosition(readBackRoot) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+    fireEvent.click(
+      view.getByRole('button', { name: 'Open the-gate in Conversations' })
+    );
+    expect(open).toHaveBeenCalledWith('the-gate');
+    cleanup();
+
+    // Another creature carries none: no heading.
+    const other = placeRoomMonster(session.document.draft, {
+      id: 'cook',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 0, r: 0 } },
+    });
+    inspector(
+      selected(
+        { ...session, document: { ...session.document, draft: other } },
+        { kind: 'actor', id: 'cook' }
+      ),
+      {},
+      withLines
+    );
+    expect(within(region()).queryByText('Conversations')).toBeNull();
   });
 
   it('a creature view never renders the Factions form', () => {

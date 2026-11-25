@@ -22,9 +22,11 @@
 import {
   APPROACH_KEYS,
   heaviestFirst,
+  isOptionUse,
   OPTION_KEYS,
   type AnswerApproachShape,
   type AnswerEntryShape,
+  type OptionEntry,
   type OptionRequiresShape,
   type OptionShape,
   type OptionVerdict,
@@ -34,7 +36,7 @@ import { carryUnknownKeys } from './strictShape';
 
 /** A binding's options. `undefined` is the authored state "none" and the ONLY
  * empty representation — never `[]`. */
-export type Options = OptionShape[] | undefined;
+export type Options = OptionEntry[] | undefined;
 
 /** The approach a new line starts with: talking somebody round, the commonest
  * line there is. The author picks the skill; this is only a starting row so
@@ -47,7 +49,9 @@ export const DEFAULT_OPTION_APPROACH: AnswerApproachShape = Object.freeze({
 /** An id no option on this binding has taken: `line-1`, `line-2`, … The id
  * names the line on its binding, so uniqueness is per binding. */
 export function nextOptionId(options: Options): string {
-  const taken = new Set((options ?? []).map((option) => option.id));
+  const taken = new Set(
+    (options ?? []).flatMap((entry) => (isOptionUse(entry) ? [] : [entry.id]))
+  );
   for (let n = 1; ; n += 1) {
     const id = `line-${n}`;
     if (!taken.has(id)) return id;
@@ -95,19 +99,21 @@ export function normalizeOption(option: OptionShape): OptionShape {
 /** The list with every option normalized, or `undefined` when it is empty. */
 export function normalizeOptions(options: Options): Options {
   if (options === undefined || options.length === 0) return undefined;
-  return options.map(normalizeOption);
+  // A `use:` of a conversation (rpg-project#1025) is carried as written.
+  return options.map((entry) =>
+    isOptionUse(entry) ? entry : normalizeOption(entry)
+  );
 }
 
 /** Append a new line at the END. Order is authored: it is the order the
  * lines are offered in. */
-export function addOption(options: Options): OptionShape[] {
+export function addOption(options: Options): OptionEntry[] {
   return [
     ...(options ?? []),
-    {
-      id: nextOptionId(options),
-      say: '',
-      check: [{ ...DEFAULT_OPTION_APPROACH }],
-    },
+    // A NEW LINE HAS NO CHECK (rpg-project#1033): a check is optional, as
+    // the engine reads a line (`come-quietly` has none); one is added with
+    // its own control.
+    { id: nextOptionId(options), say: '' },
   ];
 }
 
@@ -121,7 +127,7 @@ export function removeOption(options: Options, index: number): Options {
 export function replaceOption(
   options: Options,
   index: number,
-  option: OptionShape
+  option: OptionEntry
 ): Options {
   const list = [...(options ?? [])];
   if (index < 0 || index >= list.length) return options;
@@ -169,12 +175,12 @@ export function removeOptionApproach(
   option: OptionShape,
   index: number
 ): OptionShape {
-  return normalizeOption({
-    ...option,
-    ...(option.check !== undefined
-      ? { check: option.check.filter((_, i) => i !== index) }
-      : {}),
-  });
+  const check = option.check?.filter((_, i) => i !== index);
+  // The last way gone is no check at all (rpg-project#1033), never an empty
+  // list.
+  const next: OptionShape = { ...option, check };
+  if (check === undefined || check.length === 0) delete next.check;
+  return normalizeOption(next);
 }
 
 /** A new verdict row: a line and nothing else. It says nothing yet, which the

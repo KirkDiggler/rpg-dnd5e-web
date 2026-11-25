@@ -216,6 +216,17 @@ export function withAdvanceConversation(
   return next;
 }
 
+/** The line advancing a conversation on a beat at a win, chosen together
+ * (rpg-project#1033): choosing a conversation alone writes nothing, so no
+ * step is picked for the author. The rest of the line is kept as written. */
+export function withAdvance(
+  option: OptionShape,
+  interaction: string,
+  success: string
+): OptionShape {
+  return { ...option, advance: { interaction, success } } as OptionShape;
+}
+
 /** The line's advance with the beat one verdict steps on; '' for none. The
  * other verdict's beat is kept. */
 export function withAdvanceBeat(

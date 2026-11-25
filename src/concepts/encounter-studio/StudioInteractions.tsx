@@ -17,6 +17,7 @@ import {
   OUTCOME_KINDS,
   outcomeKindOf,
   outcomesOf,
+  recipeHolderOf,
   recipeStates,
   withAbout,
   withArrestCell,
@@ -42,29 +43,57 @@ import {
 } from '../world-building/RowGrantFields';
 import { SiteNamesContext } from '../world-building/siteNames';
 import { AboutPanel } from './FieldHelp';
+import type { RefusalTarget } from './refusalJump';
 import { RevealLi } from './RevealDiv';
+import { StudioConversationSteps } from './StudioConversationSteps';
+import type { StudioReadBack } from './studioPublishing';
 import type { EncounterStudioSession } from './studioSession';
+import { StudioSharedLines, type SharedLinesCheck } from './StudioSharedLines';
 
 /**
- * The Encounter home's Interactions (rpg-project#923): each root interaction
- * the site authors, and the one field the studio edits on it, the hail
- * distance. Its recipe and any other key ride along as written.
+ * The Encounter home's Conversations: the conversations written once
+ * (rpg-project#1027, `StudioSharedLines`), with their carriers and lines;
+ * then each root interaction the site authors (rpg-project#923), its hail
+ * distance and its outcomes, its states and what follows them. Its recipe
+ * and any other key ride along as written.
  */
 export function StudioInteractions({
   session,
+  readBack,
+  check,
+  onJump,
 }: {
   session: Pick<
     EncounterStudioSession,
-    'document' | 'commitInteractionApproach' | 'commitInteractionOutcomes'
-  >;
+    | 'document'
+    | 'commitInteractionApproach'
+    | 'commitInteractionOutcomes'
+    | 'commitInteractionRecipe'
+  > &
+    Partial<Pick<EncounterStudioSession, 'sharedLines'>>;
+  /** The engine's read-back: who carries which conversation written once. */
+  readBack?: StudioReadBack;
+  /** Where the engine's check of the draft stands. */
+  check?: SharedLinesCheck;
+  onJump?(target: RefusalTarget, path?: string): void;
 }): React.JSX.Element {
   const ids = interactionIds(session.document.scope);
+  const sharedLines = session.sharedLines;
   return (
     <section
       aria-label="Conversations"
       className="es-social-panel es-interactions"
     >
       <h2>Conversations</h2>
+      {sharedLines && (
+        <StudioSharedLines
+          session={{ document: session.document, sharedLines }}
+          readBack={readBack}
+          check={check}
+          onJump={onJump}
+        />
+      )}
+      <h3>States and outcomes</h3>
       <AboutPanel>
         <p>
           A conversation a site remembers, shared by every creature whose lines
@@ -99,6 +128,17 @@ export function StudioInteractions({
                   session.commitInteractionApproach(id, within)
                 }
               />
+              {(() => {
+                const holder = recipeHolderOf(session.document.scope, id);
+                return holder ? (
+                  <StudioConversationSteps
+                    id={id}
+                    holder={holder}
+                    commit={(edit) => session.commitInteractionRecipe(id, edit)}
+                    refusals={check?.state === 'refused' ? check.refusals : []}
+                  />
+                ) : null;
+              })()}
               <OutcomesField
                 id={id}
                 outcomes={outcomesOf(session.document.scope, id)}

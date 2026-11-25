@@ -1078,3 +1078,55 @@ describe('removing a row’s first key keeps the row (rpg-project#1014 second re
     ).toBe('list:\n  - x:\n      - 1\n');
   });
 });
+
+describe('a block collection replaced by multi-line text is written as a block scalar (rpg-project#1024)', () => {
+  const rows = `table:
+  - when:
+      - enemy: seen
+      - not:
+          fact: alarm-raised
+    fact: alarm-raised
+  - hold: {}
+`;
+
+  it('a map on a dash line', () => {
+    const out = splice(rows, [], (v: never) => {
+      (v as { table: { when: unknown[] }[] }).table[0].when[1] = 'multi\nline';
+    });
+    expect(out.split('\n').slice(0, 3)).toEqual(rows.split('\n').slice(0, 3));
+    expect(out.endsWith('    fact: alarm-raised\n  - hold: {}\n')).toBe(true);
+  });
+
+  it('a sequence on a dash line', () => {
+    const source = 'rows:\n  - - a\n    - b\n  - c\n';
+    const out = splice(source, [], (v: never) => {
+      (v as { rows: unknown[] }).rows[0] = 'multi\nline';
+    });
+    expect(out.startsWith('rows:\n  - ')).toBe(true);
+    expect(out.endsWith('  - c\n')).toBe(true);
+  });
+
+  it('a block sequence that is a map value', () => {
+    const out = splice(rows, [], (v: never) => {
+      (v as { table: { when: unknown }[] }).table[0].when = 'multi\nline';
+    });
+    expect(out.startsWith('table:\n  - when:')).toBe(true);
+    expect(out.endsWith('    fact: alarm-raised\n  - hold: {}\n')).toBe(true);
+  });
+
+  it('a block map that is a map value', () => {
+    const source = 'a:\n  b: 1\n  c: 2\nd: 3\n';
+    const out = splice(source, [], (v: never) => {
+      (v as { a: unknown }).a = 'multi\nline';
+    });
+    expect(out.endsWith('d: 3\n')).toBe(true);
+  });
+
+  it('a block map that is the last entry of the file', () => {
+    const source = 'd: 3\na:\n  b: 1\n  c: 2\n';
+    const out = splice(source, [], (v: never) => {
+      (v as { a: unknown }).a = 'multi\nline';
+    });
+    expect(out.startsWith('d: 3\na:')).toBe(true);
+  });
+});

@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RevealContextProvider } from '../encounter-studio/reveal';
 import type { RevealController } from '../encounter-studio/useReveal';
 import type { AnswerTableShape } from './answerTableShape';
+import { linesOf } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { placementDisplayNames } from './placementNames';
 import { PropOrders } from './PropOrders';
@@ -737,6 +738,11 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
     expect(screen.getByTestId('options-none-goblin-1')).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('Add a line to goblin-1'));
+    // A new line has no check (rpg-project#1033); one is added on purpose.
+    expect(latest?.options).toEqual([{ id: 'line-1', say: '' }]);
+    fireEvent.click(
+      screen.getByLabelText('Add approach to line 1 of goblin-1')
+    );
     expect(latest?.options).toEqual([
       { id: 'line-1', say: '', check: [{ ability: 'persuasion', dc: 10 }] },
     ]);
@@ -884,7 +890,7 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
     ].map((option) => option.value);
     expect(words).toEqual(['', 'fact']);
     fireEvent.click(screen.getByLabelText('Add a line to table'));
-    expect(latest?.options?.map((option) => option.id)).toEqual([
+    expect(linesOf(latest?.options).map((option) => option.id)).toEqual([
       'examine',
       'line-1',
     ]);
@@ -941,7 +947,7 @@ describe('an option line wraps by word (rpg-project#579)', () => {
     expect(line.tagName.toLowerCase()).toBe('textarea');
     fireEvent.change(line, { target: { value: LONG } });
     const next = onOrdersChange.mock.calls.at(-1)![0] as RoomMonsterBinding;
-    expect(next.options?.[0]?.say).toBe(LONG);
+    expect(linesOf(next.options)[0]?.say).toBe(LONG);
   });
 });
 

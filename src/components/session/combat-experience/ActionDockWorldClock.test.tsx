@@ -17,6 +17,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
   DeclarationSchema,
+  ParticipantSchema,
   Slot,
   TargetKind,
   Verb,
@@ -240,5 +241,98 @@ describe('the dock outside a fight', () => {
       name: /Speak/,
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+  });
+
+  describe('Wait', () => {
+    function renderWorld(extra: Record<string, unknown> = {}) {
+      return render(
+        <ActionDock
+          clock={ClockKind.WORLD}
+          viewerMember={fixture.viewerMember}
+          participants={fixture.participants}
+          declarations={[]}
+          authorityFresh
+          onSelectDeclaration={vi.fn()}
+          onEndTurn={vi.fn()}
+          {...extra}
+        />
+      );
+    }
+
+    it('draws Wait on the world clock and calls onWait', () => {
+      const onWait = vi.fn();
+      renderWorld({ onWait });
+      const button = screen.getByRole('button', { name: 'Wait' });
+      expect(button.getAttribute('title')).toBe('Let one round pass');
+      fireEvent.click(button);
+      expect(onWait).toHaveBeenCalledOnce();
+    });
+
+    it('draws Wait on the compact layout and the desktop layout', () => {
+      const onWait = vi.fn();
+      renderWorld({
+        onWait,
+        actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+      });
+      expect(screen.getByRole('button', { name: 'Wait' })).toBeTruthy();
+    });
+
+    it('says Waiting… and disables the button while the wait is in flight', () => {
+      renderWorld({ onWait: vi.fn(), waitLoading: true });
+      const button = screen.getByRole('button', {
+        name: 'Waiting…',
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+    });
+
+    it('draws no Wait without onWait', () => {
+      renderWorld();
+      expect(screen.queryByRole('button', { name: /Wait/ })).toBeNull();
+    });
+
+    it('draws no Wait on the turn clock', () => {
+      const endTurn = create(DeclarationSchema, {
+        id: 'end',
+        verb: Verb.END_TURN,
+        slot: Slot.NONE,
+        available: true,
+        targetKind: TargetKind.NONE,
+      });
+      renderWorld({
+        clock: ClockKind.TURN,
+        viewerMember: 'actor',
+        participants: [
+          create(ParticipantSchema, {
+            member: 'actor',
+            name: 'Actor',
+            active: true,
+          }),
+        ],
+        declarations: [endTurn],
+        onWait: vi.fn(),
+      });
+      expect(screen.getByRole('button', { name: 'End turn' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Wait/ })).toBeNull();
+    });
+
+    it('disables Wait while authority is stale', () => {
+      const onWait = vi.fn();
+      renderWorld({ onWait, authorityFresh: false });
+      const button = screen.getByRole('button', {
+        name: 'Wait',
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('title')).toBe('Actions may be out of date');
+      fireEvent.click(button);
+      expect(onWait).not.toHaveBeenCalled();
+    });
+
+    it('portals Wait into the end-turn slot', () => {
+      const slot = document.createElement('div');
+      document.body.appendChild(slot);
+      renderWorld({ onWait: vi.fn(), endTurnTarget: slot });
+      expect(within(slot).getByRole('button', { name: 'Wait' })).toBeTruthy();
+      slot.remove();
+    });
   });
 });

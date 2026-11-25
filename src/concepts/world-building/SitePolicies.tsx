@@ -66,6 +66,7 @@ import { useRevealable } from '../encounter-studio/useReveal';
 import { setMonsterActionAugment } from './actionAugments';
 import {
   isNotCondition,
+  isOptionUse,
   isUseEntry,
   OPTION_VERDICTS,
   paramRefOf,
@@ -79,7 +80,9 @@ import {
   type AnswerWaypointShape,
   type AnswerWhenCondition,
   type AnswerWhenShape,
+  type OptionEntry,
   type OptionShape,
+  type OptionUseShape,
   type OptionVerdict,
 } from './answerTableShape';
 import {
@@ -169,6 +172,7 @@ import {
 } from './rowRefusals';
 import { SayActivityFields } from './SayActivityFields';
 import { SelectorTarget } from './SelectorTarget';
+import { SharedLinesContext } from './sharedLinesContext';
 import {
   addSiteDisposition,
   addSiteFaction,
@@ -1041,9 +1045,14 @@ function WordEntryRow({
   excludeWords = [],
   allowNoWord = false,
   collapsed = false,
+  alone = false,
   controls,
   at,
 }: {
+  /** The row is the only one on its side: its weight has nothing to weigh
+   * against, so the weight's help and the row's summary line are not shown
+   * (the Conversations page, rpg-project#1039). */
+  alone?: boolean;
   /** The row's engine paths (`tables.<id>.on.time[3]`): the validate-only
    * refusals under them are said at the row, and a jump to one opens it
    * (rpg-project#720, R17). */
@@ -1439,11 +1448,15 @@ function WordEntryRow({
           onCommit={onCommit}
         />
       )}
-      <p className="wb-help wb-entry-weight-help">
-        Weight changes relative chance among eligible entries, not execution
-        order.
-      </p>
-      <p className="wb-help">{entryText(entry, trigger)}</p>
+      {!alone && (
+        <>
+          <p className="wb-help wb-entry-weight-help">
+            Weight changes relative chance among eligible entries, not execution
+            order.
+          </p>
+          <p className="wb-help">{entryText(entry, trigger)}</p>
+        </>
+      )}
       <RowRefusalLines refusals={refusals} />
       {collapsed && (
         <button
@@ -1740,8 +1753,8 @@ function FactionRow({
               <p className="wb-help">This faction has no lines.</p>
             ) : (
               <ul className="wb-policy-table">
-                {(faction.options ?? []).map((option) => (
-                  <li key={option.id} className="wb-help">
+                {(faction.options ?? []).map((option, index) => (
+                  <li key={index} className="wb-help">
                     {optionText(option)}
                   </li>
                 ))}
@@ -2679,7 +2692,11 @@ export function CreatureOrders({
                 data-testid="creature-options-from-faction"
               >
                 It has no lines of its own, so it speaks the {side.id}{' '}
-                faction’s: {side.options.map((o) => o.id).join(', ')}.
+                faction’s:{' '}
+                {side.options
+                  .map((o) => (isOptionUse(o) ? `the lines of ${o.use}` : o.id))
+                  .join(', ')}
+                .
               </p>
             );
           })()}
@@ -2705,8 +2722,8 @@ export function CreatureOrders({
           </p>
         ) : (
           <ul className="wb-policy-table">
-            {(binding?.options ?? []).map((option) => (
-              <li key={option.id} className="wb-help">
+            {(binding?.options ?? []).map((option, index) => (
+              <li key={index} className="wb-help">
                 {optionText(option)}
               </li>
             ))}
@@ -2756,9 +2773,13 @@ export function CreatureOrders({
 // ---------------------------------------------------------------------------
 
 const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
-  success: 'When the check is beaten',
-  failure: 'When the check is missed',
+  success: 'On a pass',
+  failure: 'On a miss',
 };
+
+/** A line with no check (rpg-project#1033) is not beaten or missed: its
+ * replies are what is said back when it is said. */
+const UNCHECKED_SUCCESS_HEADING = 'When it is said';
 
 /**
  * A binding's OPTIONS editor — a creature's or a prop's (rpg-project#569).
@@ -2776,6 +2797,8 @@ export function OptionsEditor({
   owner,
   at,
   titled = true,
+  listKey = 'options',
+  only,
   options,
   room,
   isProp,
@@ -2791,7 +2814,16 @@ export function OptionsEditor({
   at?: string;
   /** The "Options" heading; CreatureOrders titles its own sub-section. */
   titled?: boolean;
-  options: readonly OptionShape[];
+  /** The key the lines sit under in the owner: a carrier's `options`, a
+   * conversation's `lines` (rpg-project#1027). */
+  listKey?: 'options' | 'lines';
+  /** Only the line at this index, in place (rpg-project#1030): the
+   * Conversations page opens one line's form from its card. The line keeps
+   * its own number and labels; the list's Add is the page's. */
+  only?: number;
+  /** A carrier's entries: its own lines, and any `use:` of a conversation
+   * (rpg-project#1025), shown as that conversation's lines. */
+  options: readonly OptionEntry[];
   room: RoomGameplayData;
   /** A prop's lines: its rows may not `flee`. */
   isProp: boolean;
@@ -2804,18 +2836,30 @@ export function OptionsEditor({
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
       {titled && <h6>Options — what a character can say</h6>}
-      {options.length === 0 && (
+      {only === undefined && options.length === 0 && (
         <p className="wb-help" data-testid={`options-none-${owner}`}>
           {isProp
             ? 'Nobody can speak to this prop yet.'
             : 'Nobody can speak to this creature yet — a creature with no lines cannot be talked to.'}
         </p>
       )}
-      {options.map((option, index) => {
+      {options.map((entry, index) => {
+        if (only !== undefined && index !== only) return null;
         const n = index + 1;
+        const line = at ? `${at}.${listKey}[${index}]` : undefined;
+        if (isOptionUse(entry))
+          return (
+            <UsedConversation
+              key={index}
+              owner={owner}
+              entry={entry}
+              at={line}
+              onRemove={() => onRemove(index)}
+            />
+          );
+        const option = entry;
         const of = `line ${n} of ${owner}`;
         const commit = (next: OptionShape) => onChange(index, next);
-        const line = at ? `${at}.options[${index}]` : undefined;
         return (
           <RevealDiv
             key={index}
@@ -2896,7 +2940,7 @@ export function OptionsEditor({
               </>
             ) : (
               <label>
-                <span>Says</span>
+                <span className="wb-option-label">Says</span>
                 <textarea
                   aria-label={`Line ${n} for ${owner}`}
                   placeholder="What the character says"
@@ -2923,10 +2967,16 @@ export function OptionsEditor({
               </RevealDiv>
             )}
             <div className="wb-option-check">
-              <span>Check — any one of these</span>
+              <span className="wb-option-label">Check</span>
+              <span className="wb-help">
+                {(option.check ?? []).length > 0
+                  ? 'Any one of these'
+                  : 'No check — the line is simply said'}
+              </span>
               <CheckApproachRows
                 id={of}
                 rows={option.check ?? []}
+                minimum={0}
                 onPatch={(approach, patch) =>
                   commit(patchOptionApproach(option, approach, patch))
                 }
@@ -2950,7 +3000,7 @@ export function OptionsEditor({
               line={n}
               at={line}
               option={option}
-              checked={option.check !== undefined}
+              checked={(option.check ?? []).length > 0}
               onCommit={commit}
             />
             {holdable.length === 0 && (
@@ -2959,14 +3009,21 @@ export function OptionsEditor({
                 one — mark a prop holdable in its orders.
               </p>
             )}
-            {OPTION_VERDICTS.map((verdict) => (
+            {OPTION_VERDICTS.filter(
+              (verdict) =>
+                verdict === 'success' ||
+                (option.check ?? []).length > 0 ||
+                (option.failure ?? []).length > 0
+            ).map((verdict) => (
               <div
                 key={verdict}
                 className="wb-policy-trigger-block"
                 data-testid={`option-${owner}-${index}-${verdict}`}
               >
-                <p className="wb-policy-trigger">
-                  <code>{verdict}</code> {VERDICT_HEADINGS[verdict]}
+                <p className="wb-policy-trigger wb-option-label">
+                  {verdict === 'success' && (option.check ?? []).length === 0
+                    ? UNCHECKED_SUCCESS_HEADING
+                    : VERDICT_HEADINGS[verdict]}
                 </p>
                 <EntryList rows={option[verdict] ?? []}>
                   {(row, rowIndex, key) => (
@@ -2984,6 +3041,9 @@ export function OptionsEditor({
                         namesConversation: lineNamesConversation(option),
                       }}
                       excludeWords={isProp ? ['flee'] : []}
+                      // Weight is a chance among replies: with one reply
+                      // there is nothing to weigh it against.
+                      alone={(option[verdict] ?? []).length <= 1}
                       onCommit={(next) =>
                         commit(patchOptionRow(option, verdict, rowIndex, next))
                       }
@@ -3004,7 +3064,7 @@ export function OptionsEditor({
             ))}
             <button
               type="button"
-              className="wb-danger"
+              className="wb-danger wb-danger-strong"
               aria-label={`Remove line ${n} from ${owner}`}
               onClick={() => onRemove(index)}
             >
@@ -3013,22 +3073,85 @@ export function OptionsEditor({
           </RevealDiv>
         );
       })}
-      <div className="wb-actions">
-        <button
-          type="button"
-          aria-label={`Add a line to ${owner}`}
-          onClick={onAdd}
-        >
-          Add a line
-        </button>
-      </div>
+      {only === undefined && (
+        <div className="wb-actions">
+          <button
+            type="button"
+            aria-label={`Add a line to ${owner}`}
+            onClick={onAdd}
+          >
+            Add a line
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
+/** A CARRIER'S `use:` OF A CONVERSATION (rpg-project#1025, #1027): the
+ * lines written once under `conversations:`, shown by the conversation's
+ * name and how many lines the engine says it holds, with the way to the
+ * Conversations page where they are edited. Removing it takes the entry
+ * out of this carrier's lines; the conversation stays. */
+function UsedConversation({
+  owner,
+  entry,
+  at,
+  onRemove,
+}: {
+  owner: string;
+  entry: OptionUseShape;
+  at: string | undefined;
+  onRemove(): void;
+}): React.JSX.Element {
+  const shared = useContext(SharedLinesContext);
+  const { refusals } = useRowRefusals();
+  const count = shared.lineCount(entry.use);
+  const open = shared.open;
+  return (
+    <RevealDiv
+      path={at}
+      className="wb-option wb-option-use wb-policy-block"
+      data-testid={`option-use-${owner}-${entry.use}`}
+    >
+      {at && <RowRefusalLines refusals={lineRefusals(refusals, at)} />}
+      <p>
+        Lines of <code>{entry.use}</code>
+        {count !== undefined && ` (${count})`}
+      </p>
+      <p className="wb-help">
+        Written once and said by everyone who carries it; edit them on the
+        Conversations page.
+      </p>
+      <div className="wb-actions">
+        {open && (
+          <button
+            type="button"
+            aria-label={`Open the lines of ${entry.use} in Conversations`}
+            onClick={() => open(entry.use)}
+          >
+            Open in Conversations
+          </button>
+        )}
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Stop ${owner} saying the lines of ${entry.use}`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
+    </RevealDiv>
+  );
+}
+
 /** A line as one sentence, for the read-only readout. A line done reads as
- * done (rpg-project#959), never as a line with empty words. */
-function optionText(option: OptionShape): string {
+ * done (rpg-project#959), never as a line with empty words; a `use:` reads
+ * as the conversation's lines (rpg-project#1025). */
+function optionText(entry: OptionEntry): string {
+  if (isOptionUse(entry)) return `the lines of ${entry.use}`;
+  const option = entry;
   const check = (option.check ?? [])
     .map((approach) => `${approach.ability} dc ${approach.dc}`)
     .join(' or ');

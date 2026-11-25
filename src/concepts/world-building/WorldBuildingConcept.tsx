@@ -29,6 +29,7 @@ import type {
   EncounterStudioPresentation,
   StudioWallAppearanceOption,
 } from '../encounter-studio/studioSession';
+import type { OptionShape } from './answerTableShape';
 import { SiteBundlesContext } from './bundlesContext';
 import {
   adoptCastMember,
@@ -77,7 +78,12 @@ import { placeDoorFrame } from './doorwayPlacement';
 import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import { setInteractionApproach } from './interactionApproach';
-import { setInteractionOutcomes, type Outcomes } from './interactionOutcomes';
+import {
+  recipeHolderOf,
+  setInteractionOutcomes,
+  setInteractionRecipe,
+  type Outcomes,
+} from './interactionOutcomes';
 import {
   createMapLabel,
   deleteMapLabel,
@@ -177,6 +183,16 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import {
+  addConversationLine,
+  applyConversation,
+  createConversation,
+  editCarrierLine,
+  removeConversation,
+  setConversationLines,
+  unapplyConversation,
+  type LinesCarrier,
+} from './sharedLinesEdits';
 import { assertSourceWritable } from './singleRoomDungeon';
 import { SiteNamesContext, siteNamesOf } from './siteNames';
 import {
@@ -4880,6 +4896,14 @@ export function WorldBuildingConcept({
                 setTool('select');
                 return true;
               }),
+              placePartyStartAt: guardSnapshotIntent(
+                (cell: RoomHexCell): boolean => {
+                  if (refuseWhilePublishing() || roomTool !== 'start')
+                    return false;
+                  startGestureAt(cell);
+                  return true;
+                }
+              ),
               clearSelection: guardSnapshotIntent((): boolean => {
                 if (refuseWhilePublishing()) return false;
                 clearStudioSelection();
@@ -5270,6 +5294,33 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              commitInteractionRecipe: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    holder: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const holder = recipeHolderOf(current.scope, id);
+                    if (!holder)
+                      throw new Error(
+                        `interactions.${id}.recipe: this site authors no such conversation`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setInteractionRecipe(
+                        current.scope,
+                        id,
+                        edit(holder).recipe
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
               commitBehaviorDefinition: guardSnapshotIntent(
                 (
                   id: string,
@@ -5310,6 +5361,54 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              sharedLines: (() => {
+                // A CONVERSATION WRITTEN ONCE (rpg-project#1027): each edit is
+                // one undoable transaction over `sharedLinesEdits.ts`; a
+                // refusal is the edit's notice.
+                const write = guardSnapshotIntent(
+                  (
+                    edit: (document: RoomDraftDocument) => RoomDraftDocument
+                  ): boolean => {
+                    try {
+                      return commitRoomDocument(
+                        edit(roomHistoryRef.current.present)
+                      );
+                    } catch (error) {
+                      return rejectEdit(error);
+                    }
+                  }
+                );
+                return {
+                  setLines: (id: string, lines: readonly OptionShape[]) =>
+                    write((document) =>
+                      setConversationLines(document, id, lines)
+                    ),
+                  addLine: (id: string) =>
+                    write((document) => addConversationLine(document, id)),
+                  create: (id: string, carrier: LinesCarrier, say: string) =>
+                    write((document) =>
+                      createConversation(document, id, carrier, say)
+                    ),
+                  apply: (id: string, carrier: LinesCarrier) =>
+                    write((document) =>
+                      applyConversation(document, id, carrier)
+                    ),
+                  unapply: (id: string, carrier: LinesCarrier, index: number) =>
+                    write((document) =>
+                      unapplyConversation(document, id, carrier, index)
+                    ),
+                  remove: (id: string) =>
+                    write((document) => removeConversation(document, id)),
+                  setOwnLine: (
+                    carrier: LinesCarrier,
+                    index: number,
+                    option: OptionShape | null
+                  ) =>
+                    write((document) =>
+                      editCarrierLine(document, carrier, index, option)
+                    ),
+                };
+              })(),
               mapLabelSelection: {
                 selectedId:
                   activeStudioTarget?.kind === 'label' ? selectedLabelId : null,

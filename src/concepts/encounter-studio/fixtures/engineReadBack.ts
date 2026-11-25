@@ -49,7 +49,9 @@ import {
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
+import castleConversationsJson from './engineReadBack.castleConversations.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
+import conversationsJson from './engineReadBack.conversations.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
 import machines225Json from './engineReadBack.machines225.json?raw';
 import machines228Json from './engineReadBack.machines228.json?raw';
@@ -194,4 +196,34 @@ export function machineWordsV225(): GetMachineWordsResponse {
  */
 export function castleMachinesV228ReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(machines228Json) as JsonValue);
+}
+
+/**
+ * THE CONVERSATIONS SITE'S READ-BACK (rpg-project#1025, #1027), taken from
+ * rpg-toolkit's golden `rulebooks/dnd5e/encounter/dungeonspec/readback/
+ * testdata/conversations-site.readback.json` at `rulebooks/dnd5e/encounter`
+ * v0.232.1 (rpg-toolkit d223f26a), the engine's read-back of
+ * `conversations-site.yaml` (copied beside it). Trimmed to the three
+ * creatures' groups and the group "The lines of `gate-claims`"; every kept
+ * statement is the engine's, unedited.
+ */
+export function conversationsSiteReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(conversationsJson) as JsonValue);
+}
+
+/** THE CASTLE'S CONVERSATIONS (rpg-project#1030): `readback.Of` at
+ * `rulebooks/dnd5e/encounter` v0.234.0 on rpg-api `dev` cf3b4125's
+ * `content/the-mad-king.yaml` (`the-mad-king-conversations.yaml`), trimmed
+ * to the statements at `conversations.*` paths and at every `…options[i]`
+ * path (the conversations' lines, every carrier's own lines and `use:`
+ * entries, and the ways, hubs and per-carrier statements the engine also
+ * sets at those paths), and each conversation's `conversation.transition`
+ * statements (its steps). Every kept statement is the
+ * engine's, unedited, but for a connection's `not`, renamed `negated` as the
+ * api maps it. */
+export function castleConversationsReadBack(): ReadBack {
+  return fromJson(
+    ReadBackSchema,
+    JSON.parse(castleConversationsJson) as JsonValue
+  );
 }

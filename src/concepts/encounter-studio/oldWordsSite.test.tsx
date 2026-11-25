@@ -12,7 +12,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
-import type { OptionShape } from '../world-building/answerTableShape';
+import { linesOf, type OptionShape } from '../world-building/answerTableShape';
 import {
   giveOf,
   outcomeKindOf,
@@ -52,7 +52,7 @@ const ENGINE_REFUSALS = [
 
 function editor(result: Read): () => { index: number; option: OptionShape } {
   const room = result.draft.room;
-  const initial = room.monsterBindings!['front-goblin']!.options!;
+  const initial = linesOf(room.monsterBindings!['front-goblin']!.options);
   let last: { index: number; option: OptionShape } | undefined;
   function Harness() {
     const [options, setOptions] = useState<readonly OptionShape[]>(initial);

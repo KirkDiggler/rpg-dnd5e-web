@@ -484,6 +484,9 @@
 .encounter-studio[data-inspector='docked'] .es-map-workspace {
   right: calc(var(--es-inspector-width) + 1.5rem);
 }
+.encounter-studio[data-inspector='docked'] .es-encounter-home {
+  right: calc(var(--es-inspector-width) + 1.5rem);
+}
 .encounter-studio[data-inspector='docked'] .es-context-layer {
   height: calc(var(--es-work-height, calc(100dvh - 9rem)) - 1rem);
   max-height: none;
@@ -592,7 +595,7 @@
 .es-encounter-home > * {
   box-sizing: border-box;
   width: 100%;
-  max-width: 72rem;
+  max-width: 110rem;
   margin-left: auto;
   margin-right: auto;
 }
@@ -2736,4 +2739,604 @@ li.es-machine-step[data-refused],
   flex: none;
   padding: 0.4rem 0.9rem;
   border-bottom: 1px solid var(--wb-border, #33504d);
+}
+
+/* THE CONVERSATIONS WRITTEN ONCE (rpg-project#1027): the list beside the
+ * chosen conversation, its carriers as chips with a remove each and an
+ * apply-to control, its lines in the one line form, and the new
+ * conversation card, which is an outcome card's shape. */
+.encounter-studio .es-shared-lines {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+.encounter-studio .es-shared-lines-detail {
+  display: grid;
+  gap: 0.75rem;
+}
+.encounter-studio .es-shared-lines-detail h3,
+.encounter-studio .es-shared-lines-detail h4 {
+  margin: 0;
+}
+.encounter-studio .es-applied-to-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-applied-to-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-raised);
+}
+.encounter-studio .es-applied-to-add,
+.encounter-studio .es-shared-lines-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 0.75rem;
+}
+.encounter-studio .es-shared-lines-new {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-shared-lines-new > h4 {
+  flex-basis: 100%;
+  margin: 0;
+}
+.encounter-studio .es-shared-lines-remove {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-shared-lines-remove p {
+  margin: 0;
+}
+
+/* THE LINE CARDS (rpg-project#1030): a closed card per line, the check's
+ * difficulties editable on its surface, pass and miss side by side; one
+ * line's full form opens in place of its card's body. The quiet chip
+ * remove and the grouped "+ apply to…" picker. */
+.encounter-studio .es-applied-to-chip {
+  gap: 0.15rem;
+  padding: 0.1rem 0.15rem 0.1rem 0.6rem;
+}
+.encounter-studio .es-chip-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--wb-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.encounter-studio .es-chip-remove:hover:not(:disabled),
+.encounter-studio .es-chip-remove:focus-visible {
+  background: var(--wb-border);
+  color: var(--wb-text);
+}
+.encounter-studio .es-chip-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.encounter-studio .es-applied-to-add {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.encounter-studio .es-chip-add {
+  padding: 0.15rem 0.7rem;
+  border: 1px dashed var(--wb-border);
+  border-radius: 999px;
+  background: none;
+  color: var(--wb-muted);
+  font-size: var(--es-text-value);
+  cursor: pointer;
+}
+.encounter-studio .es-chip-add:hover,
+.encounter-studio .es-chip-add[aria-expanded='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-text);
+}
+.encounter-studio .es-apply-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.6rem 1rem;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+}
+.encounter-studio .es-apply-picker-group ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-apply-picker-group button {
+  width: 100%;
+  text-align: left;
+}
+.encounter-studio .es-apply-picker > .es-link {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.encounter-studio .es-shared-lines-name {
+  font-weight: 600;
+}
+.encounter-studio .es-line-cards {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-line-card {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  background: var(--wb-panel);
+  font-size: var(--es-text-value);
+}
+.encounter-studio .es-line-card-open {
+  border-color: var(--wb-accent);
+}
+.encounter-studio .es-line-card > * {
+  padding: 0.55rem 0.75rem;
+  min-width: 0;
+}
+.encounter-studio .es-line-card > * + * {
+  border-top: 1px solid var(--wb-border);
+}
+.encounter-studio .es-line-card p {
+  margin: 0;
+}
+.encounter-studio .es-line-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+}
+.encounter-studio .es-line-card-say {
+  flex: 1 1 16rem;
+  font-size: var(--es-text-title);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.encounter-studio .es-line-card-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--wb-muted);
+}
+.encounter-studio .es-line-card-cap {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.encounter-studio .es-line-card-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+.encounter-studio .es-line-card-way-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-line-card-way {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.55rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  background: var(--wb-raised);
+}
+.encounter-studio .es-line-card-way input {
+  flex: none;
+  width: 3.6rem;
+  min-width: 3.6rem;
+  border-color: var(--wb-accent);
+  font-variant-numeric: tabular-nums;
+}
+.encounter-studio .es-line-card-or {
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 0;
+  padding: 0;
+}
+.encounter-studio .es-line-card-branch {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+}
+.encounter-studio .es-line-card-branch + .es-line-card-branch {
+  border-left: 1px solid var(--wb-border);
+}
+.encounter-studio .es-line-card-pass .es-line-card-cap {
+  color: var(--wb-accent);
+}
+.encounter-studio .es-line-card-miss .es-line-card-cap {
+  color: #f0a08f;
+}
+.encounter-studio .es-line-card-branch q {
+  font-style: italic;
+}
+.encounter-studio .es-line-card-pending {
+  color: var(--wb-muted);
+  font-style: italic;
+}
+.encounter-studio .es-line-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+}
+.encounter-studio .es-line-card-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.encounter-studio :is(.es-line-card-clauses, .es-line-card-chips) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-line-card-clauses > li + li::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--wb-muted);
+}
+.encounter-studio .es-line-card-chips > li {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-raised);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-item code {
+  font-size: 0.92em;
+}
+.encounter-studio .es-line-card-more-count {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+.encounter-studio .es-line-card-words {
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-words summary {
+  cursor: pointer;
+}
+.encounter-studio .es-line-card-words p {
+  margin-top: 0.35rem;
+}
+.encounter-studio .es-line-card-replies {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-line-card-reply {
+  display: grid;
+  gap: 0.25rem;
+}
+.encounter-studio .es-line-card-share {
+  margin-right: 0.45rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.encounter-studio .es-line-card-stale {
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-refusals {
+  margin: 0;
+  padding: 0.4rem 0.75rem 0.4rem 1.6rem;
+  border-left: 3px solid #b45309;
+  background: var(--es-warning-bg, #332b20);
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-invalid {
+  flex-basis: 100%;
+  color: var(--es-warning-text, #ffe2a6);
+  font-size: var(--es-text-help);
+}
+.encounter-studio .es-line-card-way input[aria-invalid='true'] {
+  border-color: #b45309;
+}
+.encounter-studio .es-line-card-way {
+  flex-wrap: wrap;
+}
+/* The one line form, opened in a card: every label stands above its field
+ * with room between them. */
+.encounter-studio .es-line-card-form .wb-option {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.encounter-studio .es-line-card-form label:has(> span:first-child) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+.encounter-studio .es-line-card-form label > span:first-child:not(:only-child),
+.encounter-studio .es-line-card-form .wb-option-check > span:first-child {
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  color: var(--wb-muted);
+}
+.encounter-studio .es-line-card-form .wb-approach-row {
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.encounter-studio .es-shared-lines-own,
+.encounter-studio .es-shared-lines-own > section {
+  display: grid;
+  gap: 0.6rem;
+}
+.encounter-studio .es-shared-lines-own h4 {
+  margin: 0.4rem 0 0;
+}
+@media (max-width: 640px) {
+  .encounter-studio .es-line-card-branch + .es-line-card-branch {
+    border-left: 0;
+    border-top: 1px solid var(--wb-border);
+  }
+}
+
+/* THE CONVERSATIONS PAGE, POLISHED (rpg-project#1039): a narrow list, the
+ * conversation's name as a heading, one section-label style, one pill per
+ * carrier, and the line form's labels above their fields. Visual only. */
+.encounter-studio #shared-lines-list-detail {
+  grid-template-columns: 13.75rem minmax(0, 1fr);
+}
+@media (max-width: 900px) {
+  .encounter-studio #shared-lines-list-detail {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .encounter-studio #shared-lines-list-detail > .es-ld-list-pane {
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-border);
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-row {
+    border-left: 0;
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-choose {
+    width: auto;
+    border: 1px solid var(--wb-border);
+    border-radius: 5px;
+  }
+  .encounter-studio
+    #shared-lines-list-detail
+    .es-ld-row[data-selected]
+    .es-ld-choose {
+    border-color: var(--wb-accent);
+  }
+  .encounter-studio #shared-lines-list-detail .es-ld-summary {
+    display: none;
+  }
+}
+.encounter-studio #shared-lines-list-detail .es-ld-choose {
+  font-family: inherit;
+}
+.encounter-studio .es-shared-lines-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--es-text-title);
+  font-weight: 600;
+}
+.encounter-studio .es-section-label,
+.encounter-studio .es-conversation-steps h4,
+.encounter-studio .wb-option-label {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.encounter-studio .es-shared-lines-detail .es-section-label {
+  margin-top: 0.5rem;
+}
+.encounter-studio .es-shared-lines-detail .es-applied-to-list {
+  margin: 0;
+}
+/* One border: the name and the × share the pill. */
+.encounter-studio .es-applied-to-chip .es-link,
+.encounter-studio .es-applied-to-chip > span {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.encounter-studio .es-applied-to-chip .es-link:hover:not(:disabled) {
+  border: 0;
+}
+.encounter-studio .wb-option > label > .wb-option-label,
+.encounter-studio .wb-option-check > .wb-option-label,
+.encounter-studio .wb-requirements > .wb-option-label,
+.encounter-studio .wb-advance > label > .wb-option-label,
+.encounter-studio .wb-policy-trigger.wb-option-label {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.encounter-studio .wb-step-does {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+/* Quiet removes: text in the muted colour, no red border. "Remove line"
+ * keeps its emphasis. */
+.encounter-studio .wb-options .wb-danger:not(.wb-danger-strong),
+.encounter-studio .es-conversation-steps .wb-danger,
+.encounter-studio .wb-options .wb-approach-row button {
+  border-color: transparent !important;
+  background: none;
+  color: var(--wb-muted) !important;
+  text-decoration: underline;
+}
+.encounter-studio .es-conversation-steps .wb-danger:hover:not(:disabled),
+.encounter-studio
+  .wb-options
+  .wb-danger:not(.wb-danger-strong):hover:not(:disabled) {
+  color: var(--wb-text) !important;
+}
+.encounter-studio .es-conversation-states,
+.encounter-studio .es-conversation-step-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-conversation-state {
+  margin-top: 0.5rem;
+}
+.encounter-studio .es-conversation-state-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.encounter-studio .es-conversation-step {
+  margin-top: 0.4rem;
+}
+/* One step is one row, fields in columns down a state's rows; below 900px
+ * Because may wrap to a second line. */
+.encounter-studio .es-conversation-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-conversation-step-row > .es-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+.encounter-studio .es-conversation-step-buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+.encounter-studio .es-conversation-step-refusal {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (min-width: 900px) {
+  .encounter-studio .es-conversation-step-row > .es-field:first-child input {
+    width: 12rem;
+  }
+  .encounter-studio .es-conversation-step-row > .es-field:nth-child(3) select {
+    width: 10rem;
+  }
+  .encounter-studio .es-conversation-step-row > .es-conversation-because {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+  .encounter-studio .es-conversation-because input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* Room to work (rpg-project#1057): an opened line's form is two columns when
+   its card is wide. The card is a size container; at 60rem or more the line's
+   form flows in two CSS columns, and the second column starts at "Moves the
+   conversation". Below 60rem the form is one column, as before. */
+.encounter-studio .es-line-card-form {
+  container-type: inline-size;
+}
+@container (min-width: 60rem) {
+  .encounter-studio .es-line-card-form .wb-option {
+    display: block;
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+  .encounter-studio .es-line-card-form .wb-option > * + * {
+    margin-top: 0.75rem;
+  }
+  .encounter-studio .es-line-card-form .wb-option > * {
+    break-inside: avoid;
+  }
+  .encounter-studio .es-line-card-form .wb-option > .wb-advance {
+    break-before: column;
+    margin-top: 0;
+  }
+}
+
+.encounter-studio .es-carried-conversations {
+  margin-bottom: 0.75rem;
+  /* The read-back's inset: `.es-context-panel` padding. */
+  padding: 0 0.85rem;
+}
+
+.encounter-studio .es-carried-conversations ul {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }

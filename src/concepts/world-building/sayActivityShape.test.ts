@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { validateAnswerRows, validateOptions } from './answerTableShape';
+import {
+  linesOf,
+  validateAnswerRows,
+  validateOptions,
+} from './answerTableShape';
 
 const read = (row: unknown) =>
   validateAnswerRows([row], 'response', 'success')[0];
@@ -23,7 +27,7 @@ describe('say activity authoring', () => {
       'options',
       false
     );
-    expect(result[0].success).toEqual([
+    expect(linesOf(result)[0]!.success).toEqual([
       {
         say: 'Let me think.',
         activity: { ref: 'dnd5e:activities:thoughtful', cycles: 2 },

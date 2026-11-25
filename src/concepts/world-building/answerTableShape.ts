@@ -1184,6 +1184,38 @@ export interface OptionShape {
   failure?: AnswerEntryShape[];
 }
 
+/** A carrier's entry that says a conversation's lines (rpg-project#1025):
+ * `- use: <conversation>` in a creature's, a prop's or a faction's
+ * `options`, beside the lines it says on its own. The conversation's lines
+ * are written once under the root `conversations:`; whether `use` names one,
+ * and whether the entry says anything else, is the engine's to judge, so the
+ * entry is carried as written. */
+export interface OptionUseShape {
+  use: string;
+}
+
+/** One entry of a carrier's `options`: a line of its own, or a `use:`. */
+export type OptionEntry = OptionShape | OptionUseShape;
+
+/** Whether an entry is a `use:` of a conversation rather than a line. */
+export function isOptionUse(entry: OptionEntry): entry is OptionUseShape {
+  return typeof (entry as Partial<OptionUseShape>).use === 'string';
+}
+
+/** A list that holds lines only, as lines: a `use:` in it is refused by
+ * name, never passed off as a line. The entries are the list's own. */
+export function linesOf(
+  entries: readonly OptionEntry[] | undefined
+): OptionShape[] {
+  return (entries ?? []).map((entry, index) => {
+    if (isOptionUse(entry))
+      throw new Error(
+        `options[${index}] says the lines of ${entry.use}; it is not a line`
+      );
+    return entry;
+  });
+}
+
 /** The two verdict keys, in the order the engine judges and writes them. */
 export const OPTION_VERDICTS = ['success', 'failure'] as const;
 export type OptionVerdict = (typeof OPTION_VERDICTS)[number];
@@ -1288,7 +1320,7 @@ export function validateOptions(
   value: unknown,
   path: string,
   isProp: boolean
-): OptionShape[] {
+): OptionEntry[] {
   if (!Array.isArray(value)) fail(path, 'expected a list of options');
   if (value.length === 0) fail(path, 'is empty; omit the key instead');
   const seen = new Map<string, number>();
@@ -1299,6 +1331,14 @@ export function validateOptions(
         at,
         'an option is { id, say, check } plus what it requires and answers'
       );
+    // A `use:` says a conversation's lines (rpg-project#1025). It is carried
+    // as written: what it names, and that it says nothing else, the engine
+    // judges at this path.
+    if (Object.hasOwn(raw, 'use')) {
+      if (typeof raw.use !== 'string' || raw.use === '')
+        fail(`${at}.use`, 'expected the id of a conversation');
+      return { ...raw } as unknown as OptionUseShape;
+    }
     for (const key of Object.keys(raw)) {
       // A key this build does not read is carried (rpg-project#857).
       if (OPTION_KEYS.includes(key)) continue;

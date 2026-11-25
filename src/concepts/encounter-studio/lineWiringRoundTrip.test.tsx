@@ -17,6 +17,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OptionShape } from '../world-building/answerTableShape';
+import { linesOf } from '../world-building/answerTableShape';
 import { SiteNamesContext, siteNamesOf } from '../world-building/siteNames';
 import { OptionsEditor } from '../world-building/SitePolicies';
 import { exportDraftYaml, readDraftYaml } from './draftFile';
@@ -47,8 +48,8 @@ function editor(
   const room = result.draft.room;
   const initial =
     kind === 'creature'
-      ? room.monsterBindings![owner]!.options!
-      : room.propBindings![owner]!.options!;
+      ? linesOf(room.monsterBindings![owner]!.options)
+      : linesOf(room.propBindings![owner]!.options);
   let last: { index: number; option: OptionShape } | undefined;
   // The lines held in state, as their owner holds them: every edit is
   // shown, so several can be made in one go.
@@ -243,9 +244,9 @@ describe('a line’s requirements, as a list (rpg-project#975 B)', () => {
 describe('a line advances a conversation (rpg-project#975 B)', () => {
   it('gate-1’s `troupe` reads as written; a new miss beat changes that one line', () => {
     const result = read(served);
-    const at = result.draft.room.monsterBindings!['gate-1']!.options!.findIndex(
-      (o) => o.id === 'troupe'
-    );
+    const at = linesOf(
+      result.draft.room.monsterBindings!['gate-1']!.options
+    ).findIndex((o) => o.id === 'troupe');
     const n = at + 1;
     editor(result, 'gate-1');
     expect(
@@ -298,9 +299,9 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
 
   it('with a win beat only, the win cannot be cleared: an advance steps on at least one beat', () => {
     const result = read(served);
-    const at = result.draft.room.monsterBindings!['gate-1']!.options!.findIndex(
-      (o) => o.id === 'come-quietly'
-    );
+    const at = linesOf(
+      result.draft.room.monsterBindings!['gate-1']!.options
+    ).findIndex((o) => o.id === 'come-quietly');
     editor(result, 'gate-1');
     const win = field<HTMLSelectElement>(
       `Line ${at + 1} on a win steps for gate-1`
@@ -310,9 +311,9 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
 
   it('None takes the advance away', () => {
     const result = read(served);
-    const at = result.draft.room.monsterBindings!['gate-1']!.options!.findIndex(
-      (o) => o.id === 'come-quietly'
-    );
+    const at = linesOf(
+      result.draft.room.monsterBindings!['gate-1']!.options
+    ).findIndex((o) => o.id === 'come-quietly');
     const last = editor(result, 'gate-1');
     fireEvent.change(field(`Line ${at + 1} advances conversation for gate-1`), {
       target: { value: '' },
@@ -327,10 +328,17 @@ describe('a line advances a conversation (rpg-project#975 B)', () => {
   });
 
   it('a give’s witnesses can be set once the line advances a conversation (part A’s field)', () => {
-    const { result } = steps('scullion', () =>
-      fireEvent.change(field('Line 1 advances conversation for scullion'), {
-        target: { value: 'front-gate' },
-      })
+    const { result } = steps(
+      'scullion',
+      () =>
+        fireEvent.change(field('Line 1 advances conversation for scullion'), {
+          target: { value: 'front-gate' },
+        }),
+      // Choosing a conversation picks no step (rpg-project#1033).
+      () =>
+        fireEvent.change(field('Line 1 on a win steps for scullion'), {
+          target: { value: 'admitted' },
+        })
     );
     editor(result, 'scullion');
     fireEvent.change(field('Grants for line 1 of scullion success entry'), {
@@ -436,12 +444,14 @@ describe('a new requirement starts complete (rpg-project#975 B review)', () => {
     fireEvent.change(field('Line 1 advances conversation for scullion'), {
       target: { value: 'side-door' },
     });
-    expect(
-      [
-        ...field<HTMLSelectElement>('Line 1 on a win steps for scullion')
-          .options,
-      ].map((o) => o.value)
-    ).toEqual(['knocked', 'hushed']);
+    const step = field<HTMLSelectElement>('Line 1 on a win steps for scullion');
+    // No step is picked for the author (rpg-project#1033).
+    expect(step.value).toBe('');
+    expect([...step.options].map((o) => o.value)).toEqual([
+      '',
+      'knocked',
+      'hushed',
+    ]);
   });
 });
 

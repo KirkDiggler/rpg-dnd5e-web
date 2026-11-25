@@ -31,7 +31,7 @@ function editedFirst(text: string, from: string, to: string): string {
 }
 
 describe('the behaviour picker', () => {
-  it('offers the castle’s ten definitions; each is concrete, so each can be assigned', () => {
+  it('offers the castle’s eleven definitions; each is concrete, so each can be assigned', () => {
     const choices = behaviourChoicesOf(read(served).scope);
     expect(choices.map((choice) => choice.id)).toEqual([
       'gate-1-policy',
@@ -44,6 +44,7 @@ describe('the behaviour picker', () => {
       'keep-2-policy',
       'sergeant-policy',
       'turnkey-policy',
+      'prince-policy',
     ]);
     expect(choices.every((choice) => choice.assignable)).toBe(true);
   });

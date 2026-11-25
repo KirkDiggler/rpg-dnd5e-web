@@ -729,6 +729,8 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
 
   // Line 1 — lean on it: Intimidation DC 12.
   fireEvent.click(label('Add a line to goblin-1'));
+  // A new line has no check (rpg-project#1033); its check is added.
+  fireEvent.click(label(`Add approach to ${line1}`));
   set('Line 1 id for goblin-1', 'lean-on-it');
   set('Line 1 for goblin-1', "Where's the cellar? Tell me or you're next.");
   set(`Ability for approach 0 of ${line1}`, 'intimidation');
@@ -751,8 +753,10 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
     'Big talk, for someone standing in my doorway.'
   );
 
-  // Line 2 — talk it round: Persuasion DC 10, which is where a line starts.
+  // Line 2 — talk it round: Persuasion DC 10, which is where a new check
+  // starts.
   fireEvent.click(label('Add a line to goblin-1'));
+  fireEvent.click(label(`Add approach to ${line2}`));
   set('Line 2 id for goblin-1', 'talk-it-round');
   set(
     'Line 2 for goblin-1',
@@ -5259,7 +5263,12 @@ describe('S0 one selection across the homes', () => {
     fireEvent.click(encounterSection('Cast'));
   };
 
-  it("a placement selected on its cast member's form is the map selection with the inspector open", async () => {
+  /** The steps every Encounter-side panel test begins with: a placement
+   * chosen on its cast member's form. */
+  const choosePlacement = async (): Promise<{
+    original: ReturnType<typeof createPopulatedStudioDocument>;
+    storage: MemoryStorage;
+  }> => {
     const original = createPopulatedStudioDocument();
     const id = original.draft.room.monsterDeclarations[0]!.id;
     const storage = new MemoryStorage(original);
@@ -5269,12 +5278,74 @@ describe('S0 one selection across the homes', () => {
     openCast();
     fireEvent.click(member('Goblin'));
     fireEvent.click(button(`Select placement ${id}`));
-    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
-    // The view the author last used: Layout.
-    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
-    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('true');
+    return { original, storage };
+  };
+  const sidebar = (): HTMLElement => document.getElementById('studio-sidebar')!;
+
+  it("a placement chosen on its cast member's form opens its inspector beside the Cast page", async () => {
+    const { original, storage } = await choosePlacement();
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Build').getAttribute('aria-pressed')).not.toBe('true');
+    expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
     expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(sidebar().hidden).toBe(false);
     expect(storage.document()).toEqual(original);
+  });
+
+  it('the × on an Encounter-side inspector closes it and stays on the page', async () => {
+    await choosePlacement();
+    fireEvent.click(button('Hide options'));
+    expect(sidebar().hidden).toBe(true);
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('leaving the Encounter side closes its inspector', async () => {
+    await choosePlacement();
+    expect(sidebar().hidden).toBe(false);
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Build'));
+    fireEvent.click(button('Encounter'));
+    expect(sidebar().hidden).toBe(true);
+  });
+
+  it('an Encounter-side inspector docks beside the page on a wide window', async () => {
+    const before = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1280,
+    });
+    try {
+      const original = createPopulatedStudioDocument();
+      const id = original.draft.room.monsterDeclarations[0]!.id;
+      mount(new MemoryStorage(original));
+      await settled();
+      fireEvent.keyDown(window, { key: 'n' });
+      openCast();
+      fireEvent.click(member('Goblin'));
+      const root = screen.getByRole('region', {
+        name: 'Encounter Studio workspace',
+      });
+      expect(root.getAttribute('data-inspector')).toBeNull();
+      fireEvent.click(button(`Select placement ${id}`));
+      expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+      expect(root.getAttribute('data-inspector')).toBe('docked');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: before,
+      });
+    }
+  });
+
+  it('Move creature from an Encounter-side inspector goes to the map view last used', async () => {
+    await choosePlacement();
+    expect(button('Encounter').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByText(/^Moving .* · click the destination hex$/)
+    ).toBeTruthy();
   });
 
   it("a creature selected on the map presses its cast member's row", async () => {
@@ -7237,6 +7308,100 @@ describe('S3 the overview through the real owner', () => {
     expect(row('Courtyard').getAttribute('aria-pressed')).toBe('true');
   });
 
+  /** A pointer-down on the Layout floor at a hex. */
+  const clickCell = (cell: { q: number; r: number }): void => {
+    const point = onSurface(layoutCellCenter(cell));
+    fireEvent.pointerDown(surface(), {
+      clientX: bounds.left + point.x,
+      clientY: bounds.top + point.y,
+      button: 0,
+      pointerId: 3,
+    });
+  };
+  const courtyardCell = (index: number) =>
+    keepRoomCells(KEEP_ROOMS.find((room) => room.id === 'courtyard')!)[index];
+  const creatureCell = (storage: MemoryStorage, id: string) =>
+    storage
+      .document()
+      .draft.room.monsterDeclarations.find((entry) => entry.id === id)!
+      .startingCell;
+  const isPressed = (name: string): string | null =>
+    button(name).getAttribute('aria-pressed');
+
+  it('a party start armed on the Layout is placed by a floor click there', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-start] polygon'), { button: 0 });
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Move party start' })
+    );
+    expect(isPressed('Layout')).toBe('true');
+    expect(isPressed('3D')).not.toBe('true');
+    expect(
+      screen.getByText('Placing party start · click the floor')
+    ).toBeTruthy();
+    const target = courtyardCell(40);
+    expect(storage.document().draft.room.partyStart).not.toEqual(target);
+    clickCell(target);
+    await settled();
+    expect(storage.document().draft.room.partyStart).toEqual(target);
+  });
+
+  it('a creature move armed on the Layout moves it to the clicked cell, once', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    const facing = creatureCell(storage, 'cook').facing;
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(isPressed('Layout')).toBe('true');
+    expect(isPressed('3D')).not.toBe('true');
+    expect(
+      screen.getByText(/^Moving .* · click the destination hex$/)
+    ).toBeTruthy();
+    const first = courtyardCell(40);
+    clickCell(first);
+    await settled();
+    expect(creatureCell(storage, 'cook').location).toEqual(first);
+    expect(creatureCell(storage, 'cook').facing).toEqual(facing);
+    expect(screen.queryByText(/click the destination hex/)).toBeNull();
+    clickCell(courtyardCell(60));
+    expect(creatureCell(storage, 'cook').location).toEqual(first);
+  });
+
+  it('a cancelled creature move leaves the next floor click a selection', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    const before = creatureCell(storage, 'cook').location;
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(screen.getByText(/click the destination hex/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel creature move' })
+    );
+    const cell = courtyardCell(40);
+    clickCell(cell);
+    expect(creatureCell(storage, 'cook').location).toEqual(before);
+    expect(inspector().getByText(`Cell q ${cell.q}, r ${cell.r}`)).toBeTruthy();
+  });
+
+  it('from the 3D view, Move creature stays on 3D', async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    switchTo('3D');
+    fireEvent.click(inspector().getByRole('button', { name: 'Move creature' }));
+    expect(isPressed('3D')).toBe('true');
+  });
+
   // Rewritten (rpg-project#725): a region's label is its name, so removing
   // the region removes its label; its cells stay floor in the implicit region.
   it('Remove region removes the region and its label', async () => {
@@ -7311,7 +7476,7 @@ describe('S3 the overview through the real owner', () => {
     expect(ids.length).toBeGreaterThan(0);
   });
 
-  it('a thread entry set on a prop selects the prop from Layout', async () => {
+  it('a thread entry set on a prop selects the prop and opens its inspector beside the Encounter page', async () => {
     gate.state = 'live';
     services.putDungeon.mockResolvedValue(
       create(PutDungeonResponseSchema, { readBack: castleThreadsReadBack() })
@@ -7335,7 +7500,9 @@ describe('S3 the overview through the real owner', () => {
         name: /^Open altar · /,
       })[0]!
     );
-    expect(pressed('Build')).toBe('true');
+    expect(pressed('Encounter')).toBe('true');
+    expect(pressed('Build')).not.toBe('true');
+    expect(document.getElementById('studio-sidebar')!.hidden).toBe(false);
     expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
       'Altar'
     );
@@ -8091,5 +8258,53 @@ describe('a cells pick from the Build inspector returns to it (rpg-project#975 D
       screen.queryByRole('button', { name: 'Done picking cells' })
     ).toBeNull();
     expect(screen.getByRole('region', { name: 'Inspector' })).toBeTruthy();
+  });
+});
+
+describe('a conversation’s steps through the real session (rpg-project#1040)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('one commit changes only the recipe in the file, and one undo restores it exactly', async () => {
+    const read = readDraftYaml(servedCastleYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    mount(storage);
+    await settled();
+    const fileOf = (): string => exportDraftYaml(storage.document(), read.key);
+    const before = fileOf();
+    const document = storage.document();
+    fireEvent.click(button('Encounter'));
+    encounterSection('Conversations');
+    fireEvent.click(screen.getByLabelText('Add a step to front-gate fresh'));
+    fireEvent.change(
+      screen.getByLabelText('Step name for front-gate fresh new step'),
+      { target: { value: 'refused' } }
+    );
+    fireEvent.change(
+      screen.getByLabelText('Goes to for front-gate fresh new step'),
+      { target: { value: 'arrested' } }
+    );
+    const writes = storage.roomWrites();
+    fireEvent.click(
+      screen.getByLabelText('Add step front-gate fresh new step')
+    );
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const after = fileOf();
+    // Only the new step's two lines differ; `approach` and `outcomes` are
+    // text-identical.
+    const step = '\n            - on: refused\n              to: arrested';
+    expect(after.split(step)).toHaveLength(2);
+    expect(after.replace(step, '')).toBe(before);
+    const kept = (text: string): string[] => {
+      const from = text.indexOf('  front-gate:');
+      const lines = text.slice(from).split('\n');
+      return lines.filter((line) => /^ {4}(approach|outcomes):/.test(line));
+    };
+    expect(kept(after)).toEqual(kept(before));
+    expect(storage.document().scope.unread!.interactions).not.toEqual(
+      document.scope.unread!.interactions
+    );
+    fireEvent.click(button('Undo'));
+    expect(fileOf()).toBe(before);
   });
 });

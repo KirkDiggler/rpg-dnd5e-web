@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { linesOf } from '../world-building/answerTableShape';
 import {
   giveOf,
   grantedTopics,
@@ -391,7 +392,7 @@ describe('every noted word survives an edit of a neighbour (rpg-project#1005)', 
     const draft = structuredClone(result.draft);
     let changed = 0;
     for (const binding of Object.values(draft.room.monsterBindings ?? {}))
-      for (const option of binding.options ?? [])
+      for (const option of linesOf(binding.options))
         for (const row of [
           ...(option.success ?? []),
           ...(option.failure ?? []),

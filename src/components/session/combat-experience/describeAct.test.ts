@@ -21,6 +21,7 @@ import {
   formatRollBreakdown,
   formatRollFormula,
   formatRollShort,
+  initiativeLines,
 } from './describeAct';
 
 const context = {
@@ -307,6 +308,34 @@ describe('describeAct', () => {
     expect(describeAct(moved(''), context)?.headline).toBe(
       'Gate Guard: posted → alert'
     );
+  });
+
+  it('a wait reads as the member waiting', () => {
+    const waited = act(Family.ACT, {
+      case: 'stay',
+      value: { member: alice, cause: 'encounter:intent:wait', why: '' },
+    });
+    expect(describeAct(waited, context)).toMatchObject({
+      eyebrow: 'Wait',
+      headline: 'Alice waits',
+      detail: '',
+    });
+  });
+
+  it("a creature's stay still reads as staying put", () => {
+    const held = act(Family.ACT, {
+      case: 'stay',
+      value: {
+        member: gate,
+        cause: 'encounter:table:toward',
+        why: 'cannot move: Held',
+      },
+    });
+    expect(describeAct(held, context)).toMatchObject({
+      eyebrow: 'Stay',
+      headline: 'Gate Guard stays put',
+      detail: 'cannot move: Held',
+    });
   });
 
   it('a raise cutting beats reads as a quiet clock line', () => {
@@ -804,5 +833,112 @@ describe('a bystander reads the gate conversation (rpg-project#923)', () => {
     expect(reply?.headline).toBe(
       `Alice says to Gate Guard: “We're the troupe for the feast.”`
     );
+  });
+});
+
+describe('initiativeLines', () => {
+  const aliceRoll = create(RollSchema, {
+    dice: [14],
+    total: 17,
+    terms: [{ count: 1, dieSize: 20, faces: [14], sourceName: 'Initiative' }],
+    modifiers: [
+      { source: 'Dexterity', value: 2 },
+      { source: 'Warmed up', value: 1 },
+    ],
+  });
+  const gateRoll = create(RollSchema, {
+    dice: [11],
+    total: 12,
+    terms: [{ count: 1, dieSize: 20, faces: [11], sourceName: 'Initiative' }],
+    modifiers: [{ source: 'Dexterity', value: 1 }],
+  });
+  const formed = (rolls: { member: typeof alice; roll: typeof aliceRoll }[]) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_FORMED,
+        fight: { order: [alice, gate], rolls },
+      },
+    });
+
+  it('writes one line per member in the log’s one roll format', () => {
+    const lines = initiativeLines(
+      formed([
+        { member: alice, roll: aliceRoll },
+        { member: gate, roll: gateRoll },
+      ]),
+      context
+    );
+    expect(lines).toEqual([
+      `Alice: ${formatRollBreakdown(aliceRoll)}`,
+      `Gate Guard: ${formatRollBreakdown(gateRoll)}`,
+    ]);
+    expect(lines[0]).toContain('Dexterity');
+    expect(lines[0]).toContain('Warmed up');
+    expect(lines[0].endsWith('= 17')).toBe(true);
+    expect(lines[1].endsWith('= 12')).toBe(true);
+  });
+
+  it('is empty for a fight that carried no rolls', () => {
+    expect(initiativeLines(formed([]), context)).toEqual([]);
+  });
+
+  it('is empty for any other clock act', () => {
+    const turn = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.TURN_ENDED },
+    });
+    expect(initiativeLines(turn, context)).toEqual([]);
+  });
+
+  const joined = (
+    over: { round?: number; firstRound?: number; withRoll?: boolean } = {}
+  ) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_JOINED,
+        fightJoined: {
+          member: gate,
+          ...(over.withRoll === false
+            ? {}
+            : { roll: { member: gate, roll: gateRoll } }),
+          round: over.round ?? 3,
+          firstRound: over.firstRound ?? 4,
+        },
+      },
+    });
+
+  it('writes the joiner’s roll in the log’s one roll format', () => {
+    expect(initiativeLines(joined(), context)).toEqual([
+      `Gate Guard: ${formatRollBreakdown(gateRoll)}`,
+    ]);
+  });
+
+  it('is empty for a join placed without a roll', () => {
+    expect(initiativeLines(joined({ withRoll: false }), context)).toEqual([]);
+  });
+});
+
+describe('a fight join', () => {
+  const joinAct = (round: number, firstRound: number) =>
+    act(Family.CLOCK, {
+      case: 'clock',
+      value: {
+        mark: ClockMark.FIGHT_JOINED,
+        fightJoined: { member: gate, round, firstRound },
+      },
+    });
+
+  it('says a late joiner’s first turn is next round', () => {
+    const d = describeAct(joinAct(3, 4), context);
+    expect(d?.headline).toBe('Gate Guard joins the fight');
+    expect(d?.detail).toBe('first turn in round 4');
+  });
+
+  it('says a first-round joiner acts this round', () => {
+    const d = describeAct(joinAct(1, 1), context);
+    expect(d?.headline).toBe('Gate Guard joins the fight');
+    expect(d?.detail).toBe('acts this round');
   });
 });
