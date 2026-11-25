@@ -138,7 +138,12 @@ const PAIRS: [string, ReturnType<typeof act>, string[]][] = [
     act(Family.ACT, { case: 'deathSave', value: { by: me } }),
     ['afford', 'characterData', 'view'],
   ],
-  ['loot', act(Family.ACT, { case: 'loot', value: { by: me } }), []],
+  [
+    'own loot',
+    act(Family.ACT, { case: 'loot', value: { by: me } }),
+    ['characterData'],
+  ],
+  ['their loot', act(Family.ACT, { case: 'loot', value: { by: them } }), []],
   ['hold', act(Family.ACT, { case: 'hold', value: { by: me } }), ['view']],
   ['drop', act(Family.ACT, { case: 'drop', value: { by: me } }), ['view']],
   [
