@@ -24,7 +24,11 @@
 
 - Normal world/material pins now use Assets4f007dc. Actual wood/plaster height edits, native Save-copy, Play, reload and fresh-browser resume after API restart retain exact palette refs and3.4-height geometry; whole cap/leaf dimensions remain fixed. All32 wood/20 plaster panel maps use the captured selection while doors retain Original — [native evidence](https://github.com/KirkDiggler/rpg-game-assets/tree/feat/wall-kit-fit/evidence/1022-wall-kit/inner-native-play).
 
+- Review F1 now accepts touching canonical section spans through snapshot/reveal installation and scene conversion without changing their recorded dimensions. Real overlaps still refuse atomically; the full gate passes11371/30 — [finding](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1465#discussion_r4689158096).
+
 ## Decided
+
+- Reuse the line's existing scale-aware machine-roundoff allowance for interval contact because independently converted centres/widths can differ by a few ULPs; this is not an editor snap distance or a new geometry authority — [finding](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1465#discussion_r4689158096).
 
 - Defer inner-door atlas inheritance because the operator accepts a single Original door look for this slice; leave the existing captured-frame shape and independent disclosure unchanged rather than infer a hidden wall's palette — [ruling](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7145840081).
 

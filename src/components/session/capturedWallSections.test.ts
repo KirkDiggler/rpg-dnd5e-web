@@ -42,6 +42,51 @@ describe('captured wall-owned sections', () => {
     surface.appearance.sections![0].assetRef = 'caller:mutation';
     expect(wire.sections[0].ref).toBe('opaque:window');
   });
+  it.each([false, true])(
+    'installs canonical touching sections without rewriting spans (opening=%s)',
+    (withOpening) => {
+      const left = { id: 'left', position: 3 * K, width: 6 * K };
+      const right = {
+        id: 'right',
+        ref: 'opaque:right',
+        position: 9 * K,
+        width: 6 * K,
+      };
+      expect(right.position - right.width / 2).toBeLessThan(
+        left.position + left.width / 2
+      );
+      const wall = create(AtlasStructuralWallSchema, {
+        ...facts,
+        openings: withOpening ? [left] : [],
+        sections: withOpening
+          ? [right]
+          : [{ ...left, ref: 'opaque:left' }, right],
+      });
+      const before = create(GetAtlasResponseSchema);
+      const installed = applyStructuralRecords(before, [wall], []);
+      expect(installed.structuralWalls[0].sections).toEqual(wall.sections);
+      expect(before.structuralWalls).toEqual([]);
+      expect(() =>
+        structuralWallSurfaceFromAtlas(
+          installed.structuralWalls[0],
+          sceneUnitsPerFoot(1)
+        )
+      ).not.toThrow();
+      const bad = create(AtlasStructuralWallSchema, {
+        ...wall,
+        sections: wall.sections.map((section) =>
+          section.id === 'right'
+            ? { ...section, position: section.position - 1e-8 * K }
+            : section
+        ),
+      });
+      expect(() => applyStructuralRecords(installed, [bad], [])).toThrow(
+        /overlap/
+      );
+      expect(installed.structuralWalls[0].sections).toEqual(wall.sections);
+    }
+  );
+
   it('keeps recorded sections through the v2 event bridge and an opening-only replacement', () => {
     const event = create(CellsLearnedSchema, { structuralWalls: [facts] }),
       patch = cellsPatchOf(event);

@@ -85,7 +85,8 @@ function frame(wall: WallGeometry): {
     .sort((a, b) => a.start - b.start);
   for (let i = 1; i < cuts.length; i++) {
     requireGeometry(
-      cuts[i].start >= cuts[i - 1].end,
+      // Contact gets the same arithmetic allowance as the line endpoints.
+      cuts[i].start >= cuts[i - 1].end - roundoff,
       'openings must not overlap'
     );
   }
