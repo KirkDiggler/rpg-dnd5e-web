@@ -22,7 +22,11 @@
 
 - Appearance-group checkpoint consumes optional provider equivalence per asset/surface, shows one Original appearance for the wood panel and distinct plaster choices, and leaves exact saved refs untouched through unrelated edits/reload. Reset remains explicit; no material compatibility or renderer alias is removed — [approved direction](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7140689435).
 
+- Normal world/material pins now use Assets4f007dc. Actual wood/plaster height edits, native Save-copy, Play, reload and fresh-browser resume after API restart retain exact palette refs and3.4-height geometry; whole cap/leaf dimensions remain fixed. All32 wood/20 plaster panel maps use the captured selection while doors retain Original — [native evidence](https://github.com/KirkDiggler/rpg-game-assets/tree/feat/wall-kit-fit/evidence/1022-wall-kit/inner-native-play).
+
 ## Decided
+
+- Defer inner-door atlas inheritance because the operator accepts a single Original door look for this slice; leave the existing captured-frame shape and independent disclosure unchanged rather than infer a hidden wall's palette — [ruling](https://github.com/KirkDiggler/rpg-project/issues/1022#issuecomment-7145840081).
 
 - Bound repeat-row allocation, not a valid requested height: residual scale belongs to the upper rows actually created, never to the fixed opening or leaf — [agreed fitting direction](https://github.com/KirkDiggler/rpg-project/issues/1022).
 - Keep the old proportional-input minimum behavior at its legacy adapter while the new explicit-height contract refuses targets below the fixed region — [implementation plan](https://github.com/KirkDiggler/rpg-project/blob/feat/wall-kit-fit/ideas/wall-kit-fit/plan.md).
