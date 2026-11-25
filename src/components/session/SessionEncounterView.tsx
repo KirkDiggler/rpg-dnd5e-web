@@ -1771,6 +1771,8 @@ function SessionEncounterScope({
   // only a genuine RPC failure says anything, and it says the server's own
   // refusal. What the looter gained arrives later as their own
   // DOOR_REVEALED beat, never through this call.
+  // An item the body had equipped lands on the looter's sheet, which the
+  // looter re-reads on their own `loot` act.
   const handleLoot = useCallback(
     (target: string) => {
       if (!member) return;
