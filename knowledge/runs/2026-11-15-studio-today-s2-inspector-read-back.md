@@ -1,5 +1,7 @@
 # Run — 2026-11-15 — studio today S2 inspector read-back
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#968](https://github.com/KirkDiggler/rpg-project/issues/968) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`285152a2`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/285152a289f1311f8f97addbfc72803617a9fb10).
 
 ## Shipped

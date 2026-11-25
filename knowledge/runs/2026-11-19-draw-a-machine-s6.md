@@ -1,5 +1,7 @@
 # Run — 2026-11-19 — Draw a machine S6 the editor speaks the engine's words
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1018](https://github.com/KirkDiggler/rpg-project/issues/1018) of story [rpg-project#993](https://github.com/KirkDiggler/rpg-project/issues/993). Base: `rpg-dnd5e-web` `dev` at [`b991d719`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/b991d719).
 
 ## Shipped

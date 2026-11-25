@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Room to work: wide Encounter screens, two-column line form
 
+processed: 2026-11-25T190427Z
+
 Issue [rpg-project#1057](https://github.com/KirkDiggler/rpg-project/issues/1057), part of [rpg-project#1037](https://github.com/KirkDiggler/rpg-project/issues/1037). Base: `rpg-dnd5e-web` `dev`. CSS only, one file.
 
 ## Shipped

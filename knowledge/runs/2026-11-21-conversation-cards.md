@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — The Conversations page shows a card per line
 
+processed: 2026-11-25T190427Z
+
 Issue [rpg-project#1030](https://github.com/KirkDiggler/rpg-project/issues/1030), follow-up to [rpg-project#1027](https://github.com/KirkDiggler/rpg-project/issues/1027) ([rpg-dnd5e-web#1468](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1468)). Base: `rpg-dnd5e-web` `dev` at [`9fbaf87d`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/9fbaf87d). Engine read: the conversations site's read-back (`rulebooks/dnd5e/encounter` v0.232.1), plus the castle's conversations: `readback.Of` at v0.234.0 on rpg-api `dev` cf3b4125's `the-mad-king.yaml`, trimmed to `conversations.*` paths. Protos unchanged.
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Status effect powers S8 initiative rolls in the story log
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1051](https://github.com/KirkDiggler/rpg-project/issues/1051) of story [rpg-project#1036](https://github.com/KirkDiggler/rpg-project/issues/1036). Base: `rpg-dnd5e-web` `dev` at [`a05fd850`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/a05fd850).
 
 One line per entry. Every line ends with a link.

@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — Studio today S11 inspector width
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#979](https://github.com/KirkDiggler/rpg-project/issues/979) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`d888eeb4`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/d888eeb4).
 
 ## Shipped

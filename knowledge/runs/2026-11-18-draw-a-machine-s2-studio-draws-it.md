@@ -1,5 +1,7 @@
 # Run — 2026-11-18 — Draw a machine S2 the studio draws it
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#995](https://github.com/KirkDiggler/rpg-project/issues/995) of story [rpg-project#993](https://github.com/KirkDiggler/rpg-project/issues/993). Base: `rpg-dnd5e-web` `dev` at [`5d276f93`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/5d276f93).
 
 ## Shipped
