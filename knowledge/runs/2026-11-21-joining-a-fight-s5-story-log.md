@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Joining a fight S5 the story log
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1074](https://github.com/KirkDiggler/rpg-project/issues/1074) of story [rpg-project#1068](https://github.com/KirkDiggler/rpg-project/issues/1068). Base: `rpg-dnd5e-web` `dev` at [`ad67da80`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ad67da80).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S10 folded inspector
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#978](https://github.com/KirkDiggler/rpg-project/issues/978) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`70c53abb`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/70c53abb).
 
 ## Shipped

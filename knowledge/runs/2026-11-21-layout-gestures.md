@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — no view switching S2 party start and creature move on both maps
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1069](https://github.com/KirkDiggler/rpg-project/issues/1069) of story [rpg-project#1065](https://github.com/KirkDiggler/rpg-project/issues/1065). Base: `rpg-dnd5e-web` `dev` at [`7b5c8506`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/7b5c8506).
 
 ## Shipped

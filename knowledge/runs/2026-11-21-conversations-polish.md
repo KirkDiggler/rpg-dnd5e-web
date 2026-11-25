@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — The Conversations page reads well, closed and open
 
+processed: 2026-11-25T190427Z
+
 Issue [rpg-project#1039](https://github.com/KirkDiggler/rpg-project/issues/1039), polishing [rpg-dnd5e-web#1471](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1471). Base: `rpg-dnd5e-web` `dev` at `bd1850ce`. Visual and wording changes only; no control writes anything different.
 
 ## Shipped

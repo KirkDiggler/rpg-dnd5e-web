@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — no view switching S1 panel on the Encounter side
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1067](https://github.com/KirkDiggler/rpg-project/issues/1067) of story [rpg-project#1065](https://github.com/KirkDiggler/rpg-project/issues/1065). Base: `rpg-dnd5e-web` `dev` at [`0daf4813`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/0daf4813).
 
 ## Shipped

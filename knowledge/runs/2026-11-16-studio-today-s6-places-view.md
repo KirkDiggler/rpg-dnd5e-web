@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S6 places view
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#972](https://github.com/KirkDiggler/rpg-project/issues/972) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`f7ec1869`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/f7ec1869).
 
 ## Shipped

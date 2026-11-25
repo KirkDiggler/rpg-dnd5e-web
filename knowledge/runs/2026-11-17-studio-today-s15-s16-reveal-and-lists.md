@@ -1,5 +1,7 @@
 # Run — 2026-11-17 — studio today S15 reveal, jumps and places (S16 list piece follows)
 
+processed: 2026-11-25T190427Z
+
 Slices [rpg-project#983](https://github.com/KirkDiggler/rpg-project/issues/983) and [rpg-project#984](https://github.com/KirkDiggler/rpg-project/issues/984) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`9cd199b5`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/9cd199b5). This PR carries the reveal contract, the jumps and the place names (A + C); the list-and-detail piece (B, #984) follows in its own PR on top.
 
 ## Shipped

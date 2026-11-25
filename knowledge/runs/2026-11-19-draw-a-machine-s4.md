@@ -1,5 +1,7 @@
 # Run — 2026-11-19 — draw a machine S4: the drawing reads a step's heard-claim condition
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1012](https://github.com/KirkDiggler/rpg-project/issues/1012) of story [rpg-project#993](https://github.com/KirkDiggler/rpg-project/issues/993). Base: `rpg-dnd5e-web` `dev` at [`1359fc70`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/1359fc70). Branch `drawing-claim-s4`.
 
 ## Shipped

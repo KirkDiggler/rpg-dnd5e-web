@@ -1,5 +1,7 @@
 # Run — 2026-11-17 — studio today S9 forms (A): a row's grant and a loudness
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966), PR A of four. Base: `rpg-dnd5e-web` `dev` at [`1b64a356`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/1b64a356). Shapes read from rpg-toolkit `origin/main` [`bb5806f7`](https://github.com/KirkDiggler/rpg-toolkit/commit/bb5806f7) `dungeonspec` (`spec.go` `AnswerSpec`, `OptionSpec`, `RecognizeSpec`, `RelocateSpec`; `grammar.go` `rowRecognize`, `rowPassage`, `loudness`, `answerEntry`; `interactions.go` `recognitionOf`).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-17 — studio today S9 forms (C): a conversation's arrest and jail
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966), PR C of four, stacked on PR B (branch `studio-forms-line-wiring`).
 
 Shapes read from rpg-toolkit `origin/main` [`bb5806f7`](https://github.com/KirkDiggler/rpg-toolkit/commit/bb5806f7):
