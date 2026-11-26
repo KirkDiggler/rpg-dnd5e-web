@@ -110,11 +110,13 @@ import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
 } from './fixtures/castleWorkspace';
+import itemsSiteYaml from './fixtures/cloak-and-ring-walk.yaml?raw';
 import {
   castleEngineReadBack,
   castlePlacesReadBack,
   castleRoutinesReadBack,
   castleThreadsReadBack,
+  itemsSiteReadBack,
 } from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
@@ -5409,7 +5411,7 @@ describe('S0 one selection across the homes', () => {
     fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
     expect(sections()).toEqual(['Records', 'Threads']);
     fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
-    expect(sections()).toEqual(['Behaviours', 'Bundles']);
+    expect(sections()).toEqual(['Behaviours', 'Bundles', 'Items']);
     expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
@@ -8133,7 +8135,7 @@ describe('the list-and-detail piece takes its height from its container (rpg-pro
     fireEvent.click(button('Encounter'));
     const panel = (): HTMLElement =>
       document.querySelector<HTMLElement>('.es-encounter-panel')!;
-    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours']) {
+    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours', 'Items']) {
       fireEvent.click(encounterSection(name));
       expect(panel().getAttribute('data-layout')).toBe('list-detail');
       expect(
@@ -8306,5 +8308,95 @@ describe('a conversation’s steps through the real session (rpg-project#1040)',
     );
     fireEvent.click(button('Undo'));
     expect(fileOf()).toBe(before);
+  });
+});
+
+describe('Items page through the real owner (rpg-project#1196)', () => {
+  afterEach(() => localStorage.clear());
+
+  const openItemsSite = async (): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+    );
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+  };
+  const pressed = (bar: string, name: string): string | null =>
+    within(screen.getByRole('tablist', { name: bar }))
+      .getByRole('tab', { name })
+      .getAttribute('aria-selected');
+  const openRing = async (): Promise<HTMLElement> => {
+    await openItemsSite();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    fireEvent.click(
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ })
+    );
+    return items;
+  };
+
+  it('Pieces → Items lists both items and shows the selected item’s sentence', async () => {
+    const items = await openRing();
+    expect(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    ).toBeTruthy();
+    expect(items.textContent).toContain('A character can own any number of it');
+    expect(within(items).getByText('As written')).toBeTruthy();
+    expect(items.querySelector('pre')!.textContent).toMatch(/^garrison-ring:/);
+    expect(
+      within(items).getByRole('button', { name: 'Lieutenant (guard)' })
+    ).toBeTruthy();
+  });
+
+  it('Equipped by goes to the person', async () => {
+    const items = await openRing();
+    fireEvent.click(
+      within(items).getByRole('button', { name: 'Lieutenant (guard)' })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByText(
+        /guard/
+      ).length
+    ).toBeGreaterThan(0);
+    expect(
+      document.querySelector('[data-placed-creature="guard"]')
+    ).not.toBeNull();
+  });
+
+  it('an item link in a person’s read-back opens Items on that item', async () => {
+    await openItemsSite();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="guard"] circle')!,
+      { button: 0 }
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    // The equipment sentence is folded into the person's line; its full
+    // sentence is where the item's link is.
+    fireEvent.click(
+      await inspector.findByRole('button', {
+        name: /^Full sentences: The lieutenant has/,
+      })
+    );
+    fireEvent.click(
+      (
+        await inspector.findAllByRole('button', {
+          name: 'Open item lieutenants-cloak',
+        })
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'Pieces')).toBe('true');
+    expect(pressed('Encounter tools', 'Items')).toBe('true');
+    expect(
+      within(screen.getByRole('region', { name: 'Items' }))
+        .getByRole('button', { name: /^Lieutenant's cloak\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
   });
 });

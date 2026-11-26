@@ -99,6 +99,7 @@ import { StudioExits } from './StudioExits';
 import { StudioInspector } from './StudioInspector';
 import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
+import { StudioItems } from './StudioItems';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
 import {
@@ -573,6 +574,7 @@ function StudioSurface({
   /** The behaviour a read-back routine named: Behaviours opens on it
    * (rpg-project#970). */
   const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
+  const [focusItem, setFocusItem] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
     // The hub's row in Threads, or the routine's in Behaviours, is revealed.
     queueReveal({ kind: hub, id });
@@ -1279,6 +1281,7 @@ function StudioSurface({
         setEncounterSection(target.section);
         if (target.section === 'behaviours' && target.id)
           setFocusRoutine(target.id);
+        if (target.section === 'items' && target.id) setFocusItem(target.id);
         // A row (`target.row`) is landed on by the reveal above, which opens
         // it on the way (rpg-project#983).
         return;
@@ -2555,6 +2558,15 @@ function StudioSurface({
                   }
                 />
               )}
+              {home === 'encounter' && encounterSection === 'items' && (
+                <StudioItems
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusItem}
+                  onSelect={setFocusItem}
+                  onJump={jumpTo}
+                />
+              )}
               {home === 'encounter' && encounterSection === 'facts' && (
                 <StudioThreads
                   document={session.document}
@@ -2621,6 +2633,7 @@ const LIST_DETAIL_SECTIONS: ReadonlySet<string> = new Set([
   'concealments',
   'facts',
   'behaviours',
+  'items',
 ]);
 
 export function EncounterStudioWorkspace({
