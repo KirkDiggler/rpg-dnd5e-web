@@ -2590,6 +2590,7 @@ function StudioSurface({
                   focus={focusStatus}
                   onSelect={setFocusStatus}
                   onJump={jumpTo}
+                  enabled={gate.state === 'live'}
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (

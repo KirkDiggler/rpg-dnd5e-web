@@ -9,7 +9,7 @@ import { stringify } from 'yaml';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { itemIdFrom } from './itemEdit';
-import { itemsOf, type ItemHolder } from './itemsView';
+import { itemsNotMapping, itemsOf, type ItemHolder } from './itemsView';
 import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
@@ -58,6 +58,7 @@ export function StudioItems({
 }): React.JSX.Element {
   const said = readBack.readBack;
   const items = itemsOf(document, said);
+  const notMapping = itemsNotMapping(document);
   const selected = items.find((item) => item.id === focus) ?? null;
   const notice = !said
     ? `${NO_ITEMS_SENTENCE}${readBack.unavailable ? ` ${readBack.unavailable}` : ''}`
@@ -93,6 +94,15 @@ export function StudioItems({
           {notice}
         </p>
       )}
+      {notMapping && (
+        <div className="es-help" role="status">
+          <p>
+            The file's <code>customItems</code> is not a list of items, so none
+            can be listed. It is kept as written:
+          </p>
+          <pre>{stringify({ customItems: notMapping.written })}</pre>
+        </div>
+      )}
       {onAddItem && itemWords && (
         <NewItem
           words={itemWords}
@@ -124,7 +134,11 @@ export function StudioItems({
         selected={selected ? { kind: ITEM, id: selected.id } : null}
         onSelect={(key) => onSelect(key.id)}
         detailLabel="Item"
-        empty="This site has no custom items."
+        empty={
+          notMapping
+            ? "No item can be listed from the file's customItems."
+            : 'This site has no custom items.'
+        }
         detail={
           selected ? (
             <div className="es-threads-thread" data-item={selected.id}>

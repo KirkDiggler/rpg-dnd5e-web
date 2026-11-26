@@ -1,10 +1,22 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { create } from '@bufbuild/protobuf';
+import {
+  FieldErrorSchema,
+  SayStatusResponseSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { readDraftYaml } from './draftFile';
 import { hailSiteReadBack } from './fixtures/engineReadBack';
 import site from './fixtures/hail-site.yaml?raw';
 import { StudioStatuses } from './StudioStatuses';
+import type { StatusSaidClient } from './useStatusSaid';
 
 afterEach(cleanup);
 
@@ -247,5 +259,139 @@ describe('StudioStatuses, further cases', () => {
     expect(document.scope.unread).toBeDefined();
     expect(screen.getByText(/statuses: welcomed, stunned/)).toBeTruthy();
     expect(screen.queryByText('This site has no status effects.')).toBeNull();
+  });
+
+  describe('what the engine says of it', () => {
+    const asked = (
+      answer: () => ReturnType<StatusSaidClient['sayStatus']>,
+      focus = 'welcomed'
+    ) => {
+      const client = {
+        sayStatus: vi.fn(answer),
+      } as unknown as StatusSaidClient;
+      const ui = (f: string) => (
+        <StudioStatuses
+          document={hailDocument()}
+          readBack={answered}
+          focus={f}
+          onSelect={vi.fn()}
+          client={client}
+          enabled
+        />
+      );
+      const view = render(ui(focus));
+      return { client, view, ui };
+    };
+
+    // catches: the sentence below "As written", or not shown
+    it('the sentence shows above "As written", with a line per part when there are several', async () => {
+      asked(() =>
+        Promise.resolve(
+          create(SayStatusResponseSchema, {
+            name: 'Welcomed',
+            sentence: 'Welcomed changes nothing it cannot.',
+            parts: [
+              { path: 'a', text: 'first part' },
+              { path: 'b', text: 'second part' },
+            ],
+          })
+        )
+      );
+      const sentence = await screen.findByText(
+        'Welcomed changes nothing it cannot.'
+      );
+      const heading = screen.getByText('What it does');
+      const written = screen.getByText('As written');
+      expect(
+        heading.compareDocumentPosition(written) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(
+        sentence.compareDocumentPosition(written) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(screen.getByText('first part')).toBeTruthy();
+      expect(screen.getByText('second part')).toBeTruthy();
+    });
+
+    // catches: a refusal shown as a sentence, or its place dropped
+    it('a refusal shows each path and message and no sentence', async () => {
+      asked(() =>
+        Promise.resolve(
+          create(SayStatusResponseSchema, {
+            sentence: 'must not show',
+            errors: [
+              create(FieldErrorSchema, {
+                path: 'changes[0].cannot[1]',
+                message: 'is not a thing',
+              }),
+              create(FieldErrorSchema, { path: 'name', message: 'is empty' }),
+            ],
+          })
+        )
+      );
+      const alerts = await screen.findAllByRole('alert');
+      expect(alerts.map((a) => a.textContent)).toEqual([
+        'changes[0].cannot[1]: is not a thing',
+        'name: is empty',
+      ]);
+      expect(screen.queryByText('must not show')).toBeNull();
+    });
+
+    // catches: an unreachable engine shown as nothing, or a made-up sentence
+    it('an engine that cannot be asked says so in one line', async () => {
+      asked(() => Promise.reject(new Error('boom')));
+      expect(
+        await screen.findByText('The engine could not be asked: Error: boom.')
+      ).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    // catches: the previous status's sentence shown while the next loads
+    it('while the next status loads, nothing of the previous one shows', async () => {
+      const { view, ui } = asked(() =>
+        Promise.resolve(create(SayStatusResponseSchema, { sentence: 'one' }))
+      );
+      await screen.findByText('one');
+      // The same document, another status: its answer never arrives.
+      const document = hailDocument();
+      const statuses = document.scope.unread!.statuses as Record<
+        string,
+        unknown
+      >;
+      statuses.second = { name: 'Second' };
+      const client = {
+        sayStatus: vi.fn(() => new Promise(() => undefined)),
+      } as unknown as StatusSaidClient;
+      view.rerender(
+        <StudioStatuses
+          document={document}
+          readBack={answered}
+          focus="second"
+          onSelect={vi.fn()}
+          client={client}
+          enabled
+        />
+      );
+      await waitFor(() => expect(client.sayStatus).toHaveBeenCalled());
+      expect(screen.queryByText('one')).toBeNull();
+      expect(screen.queryByText('What it does')).toBeNull();
+      void ui;
+    });
+
+    it('not enabled asks nothing and shows nothing', () => {
+      const client = { sayStatus: vi.fn() } as unknown as StatusSaidClient;
+      render(
+        <StudioStatuses
+          document={hailDocument()}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          client={client}
+        />
+      );
+      expect(client.sayStatus).not.toHaveBeenCalled();
+      expect(screen.queryByText('What it does')).toBeNull();
+    });
   });
 });
