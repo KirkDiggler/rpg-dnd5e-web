@@ -4832,7 +4832,7 @@ describe('SessionEncounterView production combat integration', () => {
     it('clicking a world NPC calls Interact and opens the vendor popover with its stock', async () => {
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -4908,7 +4908,7 @@ describe('SessionEncounterView production combat integration', () => {
     it('clicking a second world NPC while one popover is open never leaves the FIRST vendor stale on a failed second click (Copilot review, PR #920)', async () => {
       readyScene();
       hoisted.interactFn.mockResolvedValueOnce({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: '',
           displayName: 'Demo Merchant',
@@ -4951,7 +4951,7 @@ describe('SessionEncounterView production combat integration', () => {
     async function openVendorWithStock() {
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -4981,7 +4981,7 @@ describe('SessionEncounterView production combat integration', () => {
     it('always buys exactly 1 unit per click, regardless of the row\'s remaining stock count (Kirk, live testing: "one item by one item")', async () => {
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5033,7 +5033,7 @@ describe('SessionEncounterView production combat integration', () => {
     it('clicking Buy then Confirm calls Trade with an empty give and the row read off as receive, and refreshes the popover from the response', async () => {
       await openVendorWithStock();
       hoisted.tradeFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5115,7 +5115,7 @@ describe('SessionEncounterView production combat integration', () => {
     it("a successful Buy refetches the local player's own CharacterData — TradeResponse carries only the vendor's descriptor, nothing to replaceCharacterData from, and free-roam purchases have no turnEnded event to piggyback a refresh on", async () => {
       await openVendorWithStock();
       hoisted.tradeFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: '',
           displayName: 'Demo Merchant',
@@ -5165,7 +5165,7 @@ describe('SessionEncounterView production combat integration', () => {
       });
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5205,7 +5205,7 @@ describe('SessionEncounterView production combat integration', () => {
       });
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5250,7 +5250,7 @@ describe('SessionEncounterView production combat integration', () => {
     it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency, then confirms only after the response', async () => {
       await openVendorSellTab();
       const tradeResponse = {
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5332,7 +5332,7 @@ describe('SessionEncounterView production combat integration', () => {
     it("a successful Sell refetches the local player's own CharacterData", async () => {
       await openVendorSellTab();
       hoisted.tradeFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: '',
           displayName: 'Demo Merchant',
@@ -5376,7 +5376,7 @@ describe('SessionEncounterView production combat integration', () => {
       });
       readyScene();
       hoisted.interactFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
@@ -5396,7 +5396,7 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() => screen.getByTestId('vendor-sell-torch'));
 
       hoisted.tradeFn.mockResolvedValue({
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
           displayName: 'Demo Merchant',
