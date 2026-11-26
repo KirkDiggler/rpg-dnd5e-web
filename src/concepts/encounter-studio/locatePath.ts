@@ -51,6 +51,7 @@ export type LocatedKind =
   | 'template'
   | 'routine'
   | 'item'
+  | 'status'
   | 'bundle'
   | 'concealment'
   | 'faction'
@@ -236,6 +237,8 @@ export function locate(
       return named('routine', scope.unread?.behaviorDefinitions);
     case 'customItems':
       return named('item', scope.unread?.customItems);
+    case 'statuses':
+      return named('status', scope.unread?.statuses);
     case 'bundles':
       return named('bundle', scope.bundles);
     case 'concealments':
