@@ -120,6 +120,11 @@ describe('valueText', () => {
       )
     ).toBe('attacks against the holder have advantage');
   });
+  it('a label that fails the ending is not cut', () => {
+    expect(
+      valueText('resistance to {value} damage', 'resistance to acid armour')
+    ).toBe('resistance to acid armour');
+  });
   it('a word label with no {value} leaves the value label alone', () => {
     expect(valueText('where it is worn', 'worn as a cloak')).toBe(
       'worn as a cloak'
