@@ -1,3 +1,4 @@
+import { authoringClient } from '@/api/client';
 import { decodeCompositionScene } from '@/compositions/compositionScene';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
@@ -7,6 +8,7 @@ import {
 import type { GroundCatalog } from '@/rendering/groundCatalog';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { PutDungeonResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
@@ -117,6 +119,7 @@ import {
   castleRoutinesReadBack,
   castleThreadsReadBack,
   itemsSiteReadBack,
+  itemWordsV237,
 } from './fixtures/engineReadBack';
 import {
   createRegionLightingDocument,
@@ -8373,6 +8376,104 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
     ).toBeTruthy();
     expect(within(items).queryByText('Equipped by')).toBeNull();
     expect(within(items).queryByText('Nobody has it equipped.')).toBeNull();
+  });
+
+  it('without the engine’s item words there is no form', async () => {
+    const asked = vi
+      .spyOn(authoringClient, 'getItemWords')
+      .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+    try {
+      const items = await openRing();
+      expect(
+        await within(items).findByText(/cannot be changed here/)
+      ).toBeTruthy();
+      expect(
+        within(items).getByText(/the engine has no item words/)
+      ).toBeTruthy();
+      expect(within(items).queryByRole('button', { name: 'Save' })).toBeNull();
+    } finally {
+      asked.mockRestore();
+    }
+  });
+
+  it('a refusal at the item is shown on the item', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, {
+        readBack: itemsSiteReadBack(),
+        errors: [{ path: 'customItems.garrison-ring', message: 'x' }],
+      })
+    );
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    fireEvent.click(
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ })
+    );
+    expect((await within(items).findByRole('alert')).textContent).toBe('x');
+    fireEvent.click(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    );
+    expect(within(items).queryByRole('alert')).toBeNull();
+  });
+
+  it('an author changes an item’s slot and Save writes it', async () => {
+    const words = itemWordsV237();
+    const asked = vi
+      .spyOn(authoringClient, 'getItemWords')
+      .mockResolvedValue(words);
+    const slotWord = words.words.find((w) => w.word === 'slot')!;
+    const amulet = slotWord.values.find((v) => v.word === 'amulet')!;
+    try {
+      const items = await openRing();
+      const save = await within(items).findByRole('button', { name: 'Save' });
+      expect((save as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(
+        within(items).getByRole('combobox', { name: slotWord.label }),
+        { target: { value: 'amulet' } }
+      );
+      expect(
+        within(items).getByRole('option', { name: amulet.label })
+      ).toBeTruthy();
+      expect((save as HTMLButtonElement).disabled).toBe(false);
+      expect(items.querySelector('pre')!.textContent).toContain('slot: ring');
+      fireEvent.click(save);
+      await waitFor(() =>
+        expect(items.querySelector('pre')!.textContent).toContain(
+          'slot: amulet'
+        )
+      );
+      // Everything else is as written.
+      const block = (
+        parseYaml(items.querySelector('pre')!.textContent!) as Record<
+          string,
+          { name: unknown; charges: unknown }
+        >
+      )['garrison-ring'];
+      expect(block.name).toBe('Garrison ring');
+      expect(block.charges).toEqual({
+        max: 1,
+        refills: { on: ['short rest', 'long rest'] },
+      });
+      expect(
+        (
+          within(items).getByRole('button', {
+            name: 'Save',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      // One Undo restores the file.
+      fireEvent.click(button('Undo'));
+      await waitFor(() =>
+        expect(items.querySelector('pre')!.textContent).toContain('slot: ring')
+      );
+    } finally {
+      asked.mockRestore();
+    }
   });
 
   it('Equipped by goes to the person', async () => {

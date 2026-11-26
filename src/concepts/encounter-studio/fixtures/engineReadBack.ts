@@ -42,9 +42,11 @@
  */
 import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {
+  GetItemWordsResponseSchema,
   GetMachineWordsResponseSchema,
   ReadBackSchema,
   ReadBackStatementSchema,
+  type GetItemWordsResponse,
   type GetMachineWordsResponse,
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
@@ -59,6 +61,7 @@ import machines228Json from './engineReadBack.machines228.json?raw';
 import placesJson from './engineReadBack.places.json?raw';
 import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
+import itemWordsJson from './itemWords.v0.237.0.json?raw';
 import machineWordsJson from './machineWords.v0.225.0.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
@@ -170,6 +173,18 @@ export function castleMachinesWithClaimReadBack(): ReadBack {
  */
 export function castleMachinesV225ReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(machines225Json) as JsonValue);
+}
+
+/**
+ * THE ENGINE'S ITEM WORDS (rpg-project#1201): rpg-api `dev` 9ef6fea3's
+ * `GetItemWords` answer at rulebook v0.237.0, marshalled with `protojson`.
+ * Unedited.
+ */
+export function itemWordsV237(): GetItemWordsResponse {
+  return fromJson(
+    GetItemWordsResponseSchema,
+    JSON.parse(itemWordsJson) as JsonValue
+  );
 }
 
 /**

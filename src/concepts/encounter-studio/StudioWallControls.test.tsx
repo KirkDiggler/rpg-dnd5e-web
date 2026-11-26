@@ -97,6 +97,7 @@ function fixture(): EncounterStudioSession {
       setOwnLine: vi.fn(() => true),
     },
     commitBehaviorDefinition: vi.fn(() => true),
+    commitCustomItem: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),
       rename: vi.fn(() => true),

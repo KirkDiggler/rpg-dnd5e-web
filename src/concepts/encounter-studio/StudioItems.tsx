@@ -4,7 +4,7 @@
  * here declares, edits or equips an item. The studio types no word of what an
  * item does; every sentence is the engine's, the block is the file's.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { stringify } from 'yaml';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
@@ -13,6 +13,8 @@ import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
+import type { ItemWords } from './useItemWords';
+import { WordsForm } from './WordsForm';
 
 const ITEM = 'item';
 const NO_ITEMS_SENTENCE = 'The engine has not said the items yet.';
@@ -23,6 +25,10 @@ export function StudioItems({
   focus,
   onSelect,
   onJump,
+  itemWords = null,
+  itemWordsUnavailable = null,
+  onCommitItem,
+  refusals = [],
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -30,6 +36,17 @@ export function StudioItems({
   focus: string | null;
   onSelect(id: string): void;
   onJump?(target: RefusalTarget, path?: string): void;
+  /** The engine's item words: the form is drawn from them (rpg-project#1201). */
+  itemWords?: ItemWords | null;
+  /** Why there are none, when the studio knows. */
+  itemWordsUnavailable?: string | null;
+  /** Save: one undoable change of one item. */
+  onCommitItem?(
+    id: string,
+    edit: (item: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
+  /** The engine's current refusals; those at the selected item show on it. */
+  refusals?: readonly { path: string; message: string }[];
 }): React.JSX.Element {
   const said = readBack.readBack;
   const items = itemsOf(document, said);
@@ -102,6 +119,24 @@ export function StudioItems({
               ) : (
                 <p className="es-help">{NO_ITEMS_SENTENCE}</p>
               )}
+              {refusals
+                .filter(
+                  (r) =>
+                    r.path === `customItems.${selected.id}` ||
+                    r.path.startsWith(`customItems.${selected.id}.`)
+                )
+                .map((r, i) => (
+                  <p key={i} className="es-help" role="alert">
+                    {r.message}
+                  </p>
+                ))}
+              <ItemChange
+                id={selected.id}
+                written={selected.written}
+                itemWords={itemWords}
+                itemWordsUnavailable={itemWordsUnavailable}
+                onCommitItem={onCommitItem}
+              />
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
               {said && (
@@ -129,5 +164,100 @@ export function StudioItems({
         }
       />
     </section>
+  );
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Same value, whatever the order of an object's keys. */
+function same(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a))
+    return (
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((x, i) => same(x, b[i]))
+    );
+  if (isObject(a)) {
+    if (!isObject(b)) return false;
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((k) => Object.hasOwn(b, k) && same(a[k], b[k]))
+    );
+  }
+  return a === b;
+}
+
+const NO_WORDS_SENTENCE =
+  'The engine has not given its item words, so an item cannot be changed here.';
+
+/** The form of one item, drawn from the engine's words, on a local draft
+ * that starts as the file's block and is reset when the item or the block
+ * changes. */
+function ItemChange({
+  id,
+  written,
+  itemWords,
+  itemWordsUnavailable,
+  onCommitItem,
+}: {
+  id: string;
+  written: unknown;
+  itemWords: ItemWords | null;
+  itemWordsUnavailable: string | null;
+  onCommitItem?: (
+    id: string,
+    edit: (item: Record<string, unknown>) => Record<string, unknown>
+  ) => boolean;
+}): React.JSX.Element {
+  const block = isObject(written) ? written : null;
+  const [seen, setSeen] = useState<{ id: string; written: unknown }>({
+    id,
+    written,
+  });
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(block);
+  if (seen.id !== id || seen.written !== written) {
+    setSeen({ id, written });
+    setDraft(block);
+  }
+  const body =
+    itemWords && onCommitItem ? (
+      block && draft ? (
+        <>
+          <WordsForm
+            words={itemWords.words}
+            place="item"
+            idPrefix={`item-${id}`}
+            value={draft}
+            onChange={setDraft}
+          />
+          <button
+            type="button"
+            disabled={same(draft, block)}
+            onClick={() => onCommitItem(id, () => draft)}
+          >
+            Save
+          </button>{' '}
+          <button
+            type="button"
+            disabled={same(draft, block)}
+            onClick={() => setDraft(block)}
+          >
+            Discard
+          </button>
+        </>
+      ) : null
+    ) : !itemWords ? (
+      <p className="es-help">
+        {NO_WORDS_SENTENCE}
+        {itemWordsUnavailable ? ` ${itemWordsUnavailable}` : ''}
+      </p>
+    ) : null;
+  return (
+    <>
+      <h3>Change</h3>
+      {body}
+    </>
   );
 }
