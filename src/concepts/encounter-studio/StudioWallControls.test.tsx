@@ -98,6 +98,7 @@ function fixture(): EncounterStudioSession {
     },
     commitBehaviorDefinition: vi.fn(() => true),
     commitCustomItem: vi.fn(() => true),
+    commitStatus: vi.fn(() => true),
     setCreatureEquipment: vi.fn(() => true),
     addCustomItem: vi.fn(() => true),
     removeCustomItem: vi.fn(() => true),

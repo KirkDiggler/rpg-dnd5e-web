@@ -14,12 +14,23 @@ import {
   statusesOf,
   type StatusGiver,
 } from './statusesView';
+import { statusFormWords } from './statusWords';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 import { useStatusSaid, type StatusSaidClient } from './useStatusSaid';
+import type { StatusWords } from './useStatusWords';
+import { setWord } from './wordsForm';
+import { WordsForm } from './WordsForm';
 
 const STATUS = 'status';
 const NO_STATUSES_SENTENCE = 'The engine has not said the status effects yet.';
+const NOT_A_BLOCK_SENTENCE =
+  'This status is not written as a set of words, so it cannot be changed here.';
+const NO_WORDS_SENTENCE =
+  'The engine has not given its status words, so a status cannot be changed here.';
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export function StudioStatuses({
   document,
@@ -29,6 +40,10 @@ export function StudioStatuses({
   onJump,
   enabled = false,
   client,
+  statusWords = null,
+  statusWordsUnavailable = null,
+  onCommitStatus,
+  refusals = [],
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -39,6 +54,17 @@ export function StudioStatuses({
   /** Ask the engine to say the selected status: only while it is reachable. */
   enabled?: boolean;
   client?: StatusSaidClient;
+  /** The engine's status words: the form is drawn from them (rpg-project#1220). */
+  statusWords?: StatusWords | null;
+  /** Why there are none, when the studio knows. */
+  statusWordsUnavailable?: string | null;
+  /** Each change of one status, written as it is made: one undoable change. */
+  onCommitStatus?(
+    id: string,
+    edit: (status: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
+  /** The engine's current refusals; those at the selected status show on it. */
+  refusals?: readonly { path: string; message: string }[];
 }): React.JSX.Element {
   const said = readBack.readBack;
   const statuses = statusesOf(document, said);
@@ -130,8 +156,24 @@ export function StudioStatuses({
               ) : (
                 <p className="es-help">{NO_STATUSES_SENTENCE}</p>
               )}
+              {refusals
+                .filter(
+                  (r) =>
+                    r.path === `statuses.${selected.id}` ||
+                    r.path.startsWith(`statuses.${selected.id}.`)
+                )
+                .map((r, i) => (
+                  <p key={i} className="es-help" role="alert">
+                    {r.message}
+                  </p>
+                ))}
               {statusSaid.status !== 'idle' &&
-                statusSaid.status !== 'loading' && (
+                statusSaid.status !== 'loading' &&
+                !(
+                  statusSaid.status === 'said' &&
+                  statusSaid.sentence === '' &&
+                  statusSaid.parts.length === 0
+                ) && (
                   <div className="es-status-said">
                     <h3>What it does</h3>
                     {statusSaid.status === 'said' && (
@@ -149,7 +191,9 @@ export function StudioStatuses({
                     {statusSaid.status === 'refused' &&
                       statusSaid.errors.map((error, index) => (
                         <p key={`${error.path}:${index}`} role="alert">
-                          {error.path}: {error.message}
+                          {error.path
+                            ? `${error.path}: ${error.message}`
+                            : error.message}
                         </p>
                       ))}
                     {statusSaid.status === 'unavailable' && (
@@ -159,6 +203,14 @@ export function StudioStatuses({
                     )}
                   </div>
                 )}
+              <StatusChange
+                key={selected.id}
+                id={selected.id}
+                written={selected.written}
+                statusWords={statusWords}
+                statusWordsUnavailable={statusWordsUnavailable}
+                onCommitStatus={onCommitStatus}
+              />
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
               {said && (
@@ -178,5 +230,59 @@ export function StudioStatuses({
         }
       />
     </section>
+  );
+}
+
+/** The form of one status, drawn from the engine's words. Each change is
+ * written to the site as it is made. */
+function StatusChange({
+  id,
+  written,
+  statusWords,
+  statusWordsUnavailable,
+  onCommitStatus,
+}: {
+  id: string;
+  written: unknown;
+  statusWords: StatusWords | null;
+  statusWordsUnavailable: string | null;
+  onCommitStatus?: (
+    id: string,
+    edit: (status: Record<string, unknown>) => Record<string, unknown>
+  ) => boolean;
+}): React.JSX.Element {
+  const block = isObject(written) ? written : null;
+  const editable = Boolean(statusWords && onCommitStatus && block);
+  const body =
+    statusWords && onCommitStatus ? (
+      block ? (
+        <WordsForm
+          words={statusFormWords(statusWords.words)}
+          place="status"
+          idPrefix={`status-${id}`}
+          value={block}
+          onChange={(next, word) =>
+            onCommitStatus(id, (status) => setWord(status, word, next[word]))
+          }
+        />
+      ) : (
+        <p className="es-help">{NOT_A_BLOCK_SENTENCE}</p>
+      )
+    ) : !statusWords ? (
+      <p className="es-help">
+        {NO_WORDS_SENTENCE}
+        {statusWordsUnavailable ? ` ${statusWordsUnavailable}` : ''}
+      </p>
+    ) : null;
+  return (
+    <div className="es-item-change">
+      <h3>Change</h3>
+      {editable && (
+        <p className="es-help">
+          Each change is written as you make it. Undo takes it back.
+        </p>
+      )}
+      {body}
+    </div>
   );
 }

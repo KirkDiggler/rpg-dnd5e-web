@@ -13,7 +13,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { readDraftYaml } from './draftFile';
-import { hailSiteReadBack } from './fixtures/engineReadBack';
+import { hailSiteReadBack, statusWordsV240 } from './fixtures/engineReadBack';
 import site from './fixtures/hail-site.yaml?raw';
 import { StudioStatuses } from './StudioStatuses';
 import type { StatusSaidClient } from './useStatusSaid';
@@ -392,6 +392,192 @@ describe('StudioStatuses, further cases', () => {
       );
       expect(client.sayStatus).not.toHaveBeenCalled();
       expect(screen.queryByText('What it does')).toBeNull();
+    });
+  });
+});
+
+describe('StudioStatuses: the Change form (rpg-project#1220)', () => {
+  const words = statusWordsV240();
+  type Edit = (status: Record<string, unknown>) => Record<string, unknown>;
+  const plain = answered;
+  const abilityName = /only when the ability is/;
+
+  const mountForm = (
+    props: Partial<React.ComponentProps<typeof StudioStatuses>> = {}
+  ) => {
+    const onCommitStatus = vi.fn<(id: string, edit: Edit) => boolean>(
+      () => true
+    );
+    render(
+      <StudioStatuses
+        document={hailDocument()}
+        readBack={plain}
+        focus="welcomed"
+        onSelect={vi.fn()}
+        statusWords={words}
+        onCommitStatus={onCommitStatus}
+        {...props}
+      />
+    );
+    return { onCommitStatus };
+  };
+
+  // catches: Save/Discard back on a form that writes as it goes; a help line
+  // shown where there is no form
+  it('has no Save and no Discard, and the help line shows only with the form', () => {
+    mountForm();
+    expect(screen.queryByRole('button', { name: /^Save$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Discard$/ })).toBeNull();
+    expect(
+      screen.getByText(
+        'Each change is written as you make it. Undo takes it back.'
+      )
+    ).toBeTruthy();
+    cleanup();
+    mountForm({ statusWords: null });
+    expect(screen.queryByText(/Each change is written/)).toBeNull();
+  });
+
+  // catches: the form not drawn for the selected status, or a commit that
+  // names the wrong status or fires more than once
+  it('changing the ability to wisdom calls the intent once for that status', () => {
+    const { onCommitStatus } = mountForm();
+    fireEvent.change(screen.getByRole('combobox', { name: abilityName }), {
+      target: { value: 'wisdom' },
+    });
+    expect(onCommitStatus).toHaveBeenCalledTimes(1);
+    expect(onCommitStatus.mock.calls[0]![0]).toBe('welcomed');
+  });
+
+  // catches: the edit built from the block drawn, not the live block
+  it('the edit keeps a change made since the form was drawn', () => {
+    const { onCommitStatus } = mountForm();
+    fireEvent.change(screen.getByRole('combobox', { name: abilityName }), {
+      target: { value: 'wisdom' },
+    });
+    const edit = onCommitStatus.mock.calls[0]![1];
+    const live = {
+      name: 'Welcomed',
+      changes: [{ advantage: 'checks', when: { ability: 'charisma' } }],
+      maintenance: [{ ends_on: 'rest' }],
+      again: 'ignored',
+      extra: 'made elsewhere',
+    };
+    const next = edit(live);
+    expect(next.extra).toBe('made elsewhere');
+    expect(next.changes).toEqual([
+      { advantage: 'checks', when: { ability: 'wisdom' } },
+    ]);
+  });
+
+  // catches: a silent empty panel when the engine gave no words
+  it('with no words it says so with the reason and draws no form', () => {
+    mountForm({
+      statusWords: null,
+      statusWordsUnavailable: 'the engine has no status words',
+    });
+    expect(
+      screen.getByText(
+        /cannot be changed here\. the engine has no status words/
+      )
+    ).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: abilityName })).toBeNull();
+  });
+
+  // catches: a form drawn over text, or "As written" hiding the text
+  it('a status written as text says it is not a block and still shows it', () => {
+    const document = hailDocument();
+    document.scope = {
+      ...document.scope,
+      unread: {
+        ...document.scope.unread,
+        statuses: { welcomed: 'stunned' },
+      },
+    };
+    mountForm({ document });
+    expect(screen.getByText(/is not written as a set of words/)).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: abilityName })).toBeNull();
+    expect(screen.queryByText(/Each change is written/)).toBeNull();
+    expect(screen.getByText('As written')).toBeTruthy();
+    expect(screen.getByText(/welcomed: stunned/)).toBeTruthy();
+  });
+
+  // catches: a refusal at another status shown here, or one at this status lost
+  it('a refusal under this status shows on it and one at another does not', () => {
+    mountForm({
+      refusals: [
+        { path: 'statuses.welcomed.changes[0]', message: 'this one shows' },
+        { path: 'statuses.welcomed', message: 'and this' },
+        { path: 'statuses.other', message: 'not this' },
+        { path: 'statuses.welcomedtoo', message: 'nor this' },
+      ],
+    });
+    expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([
+      'this one shows',
+      'and this',
+    ]);
+  });
+
+  describe('what it does, three cases', () => {
+    const said = (
+      response: Parameters<typeof create<typeof SayStatusResponseSchema>>[1]
+    ) =>
+      render(
+        <StudioStatuses
+          document={hailDocument()}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          enabled
+          client={
+            {
+              sayStatus: vi.fn(() =>
+                Promise.resolve(create(SayStatusResponseSchema, response))
+              ),
+            } as unknown as StatusSaidClient
+          }
+        />
+      );
+
+    // catches: ": message" with a bare colon when the engine names no place
+    it('a refusal with no path shows the message alone', async () => {
+      said({
+        errors: [create(FieldErrorSchema, { path: '', message: 'bad' })],
+      });
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBe('bad');
+    });
+
+    // catches: a bare "What it does" heading over nothing
+    it('an answer with no sentence and no parts shows nothing', async () => {
+      const client = {
+        sayStatus: vi.fn(() =>
+          Promise.resolve(create(SayStatusResponseSchema, { sentence: '' }))
+        ),
+      } as unknown as StatusSaidClient;
+      render(
+        <StudioStatuses
+          document={hailDocument()}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          enabled
+          client={client}
+        />
+      );
+      await waitFor(() => expect(client.sayStatus).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 0));
+      expect(screen.queryByText('What it does')).toBeNull();
+    });
+
+    // catches: one part repeated as a one-item list under its own sentence
+    it('an answer with exactly one part does not repeat it as a list', async () => {
+      said({
+        sentence: 'Welcomed does one thing.',
+        parts: [{ path: 'a', text: 'the one part' }],
+      });
+      await screen.findByText('Welcomed does one thing.');
+      expect(screen.queryByText('the one part')).toBeNull();
     });
   });
 });

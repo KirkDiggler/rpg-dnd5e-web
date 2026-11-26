@@ -30,6 +30,7 @@ import {
   definitionOf,
   setBehaviorDefinition,
 } from '../encounter-studio/machineEdit';
+import { setStatus } from '../encounter-studio/statusEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5354,6 +5355,40 @@ export function WorldBuildingConcept({
                         current.scope,
                         id,
                         edit(item as Record<string, unknown>)
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              commitStatus: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    status: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const statuses = current.scope.unread?.statuses;
+                    const status = (
+                      statuses as Record<string, unknown> | undefined
+                    )?.[id];
+                    if (
+                      !status ||
+                      typeof status !== 'object' ||
+                      Array.isArray(status)
+                    )
+                      throw new Error(
+                        `statuses.${id}: this site authors no such status`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setStatus(
+                        current.scope,
+                        id,
+                        edit(status as Record<string, unknown>)
                       ),
                     });
                   } catch (error) {
