@@ -568,12 +568,17 @@ function CreatureView({
         onConfigure={onConfigure}
         onMoveCreature={onMoveCreature}
         lead={
-          <CreatureCast
-            session={session}
-            readBack={readBack}
-            onJump={onJump}
-            onOpenCastMember={onOpenCastMember}
-          />
+          <>
+            <CreatureCast
+              session={session}
+              onOpenCastMember={onOpenCastMember}
+            />
+            <CreatureEquipped
+              session={session}
+              readBack={readBack}
+              onJump={onJump}
+            />
+          </>
         }
       />
     </>
@@ -586,7 +591,37 @@ function CreatureView({
  * and kept, and a value that is not a list is shown and has no controls. The
  * engine's read-back and refusals say what an item does; this says nothing
  * of slots or duplicates. */
-function CreatureEquipment({
+function CreatureEquipped({
+  session,
+  readBack,
+  onJump,
+}: Pick<
+  StudioInspectorProps,
+  'session' | 'readBack' | 'onJump'
+>): React.JSX.Element | null {
+  const arrange = session.arrange;
+  if (arrange?.kind !== 'actor') return null;
+  return (
+    <section aria-label="Equipped" className="es-cast-summary">
+      <dl className="es-facts">
+        <div>
+          <dt>Equipped</dt>
+          <dd>
+            <EquippedList
+              key={arrange.monster.id}
+              session={session}
+              creatureId={arrange.monster.id}
+              readBack={readBack}
+              onJump={onJump}
+            />
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function EquippedList({
   session,
   creatureId,
   readBack,
@@ -711,12 +746,10 @@ function statBlockSummary(member: CastMember): string {
  * faction are this placement's own. */
 function CreatureCast({
   session,
-  readBack,
-  onJump,
   onOpenCastMember,
 }: Pick<
   StudioInspectorProps,
-  'session' | 'readBack' | 'onJump' | 'onOpenCastMember'
+  'session' | 'onOpenCastMember'
 >): React.JSX.Element | null {
   const arrange = session.arrange;
   const [reassign, setReassign] = useState('');
@@ -816,17 +849,6 @@ function CreatureCast({
             </FieldHelp>
           </dt>
           <dd>{faction ?? 'none'}</dd>
-        </div>
-        <div>
-          <dt>Equipped</dt>
-          <dd>
-            <CreatureEquipment
-              session={session}
-              creatureId={monster.id}
-              readBack={readBack}
-              onJump={onJump}
-            />
-          </dd>
         </div>
       </dl>
     </section>

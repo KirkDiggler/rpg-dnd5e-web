@@ -8876,6 +8876,45 @@ describe('Equipping a person through the real owner (rpg-project#1203)', () => {
     expect(equipped(storage)).toEqual({ kind: 'other', written: 'cloak' });
   });
 
+  it('a person whose stat block is not in the cast still shows what they have equipped', async () => {
+    const { storage, row } = await open(
+      itemsSiteYaml.replace(
+        'ref: dnd5e:monsters:sparring-guard',
+        'ref: dnd5e:monsters:ghost-guard'
+      ),
+      'guard'
+    );
+    expect(screen.getByText(/is not in the cast/)).toBeTruthy();
+    expect(
+      within(row).getByRole('button', { name: "Lieutenant's cloak" })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+  });
+
+  it('one of two duplicate ids is removed', async () => {
+    const { storage, row } = await open(
+      ring('[garrison-ring, garrison-ring]'),
+      'guard'
+    );
+    fireEvent.click(
+      within(row).getAllByRole('button', { name: 'Unequip Garrison ring' })[0]!
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['garrison-ring'],
+      })
+    );
+  });
+
   it('the session refuses a creature the site does not place, and changes nothing', () => {
     const read = readDraftYaml(itemsSiteYaml);
     if (!read.ok) throw new Error(read.refusal);
