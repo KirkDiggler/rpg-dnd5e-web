@@ -133,6 +133,76 @@ exit hex, cast member, table, faction, disposition, intel, concealment or
 ending is a jump; any other path is a sentence. Wall finishes, region wall
 finishes and region lighting say they do not reach play (R19).
 
+## Wall-owned visual sections
+
+`wall.appearance.sections` is an optional list of `{id, assetRef, position, width}`.
+Position is a centre distance from the wall start and width is its visual span,
+both scene units. The wall owns height, thickness, elevation, finishes and lifetime.
+Sections are not scene items, independent walls, gameplay openings or blockers.
+They fit the line and do not overlap each other or permitted door surrounds.
+
+New sections require explicit provider section/body-fit capabilities or a
+measured leafless opening fit; asset names never grant eligibility. Leafless
+surrounds use their full frame span and body centre, not their aperture width
+or aperture centre. Door placements retain aperture anchoring and their existing
+owners. Imported opaque refs and unknown nested author fields remain preserved.
+A changed height must fit every known fixed feature/cap. A newly added section
+or changed explicit wall finish must have a compatible declared surface before
+owner commit; unchanged imported intent remains editable.
+Moving/rotating the wall carries its sections; endpoint resize protects section
+edges and preserves their world positions. Removal restores plain visual art.
+
+Plain repeats exclude section spans only in the rendering path. A section uses
+its full span fit and the wall's chart phase. Partial fog/finish stretches clip
+its detached instance buffers after height/chart preparation, never squeeze the
+feature into a smaller interval. No cached geometry is mutated or hidden
+stretch drawn. Rendering consumes supplied facts, not gameplay authority.
+
+The inspector's section edits use the existing wall edit/history transaction and
+apply immediately, outside the staged wall-placement form. Failed edits leave
+the document unchanged. Native files use the existing source-aware writer;
+captured Play requires the same facts through the wall's existing disclosure.
+
+## Distinct atlas appearances
+
+Optional provider appearance groups collapse equivalent looks per exact asset
+and surface, independently of technical compatibility. The editor shows one
+representative per group, preferring Original for its group. A single known
+appearance is read-only rather than a no-op dropdown. Raw saved/staged references
+remain intact: the representative is display-only, and reset is an explicit
+owner edit. Unknown/stale selections remain errors, never guessed Original.
+Absent metadata preserves the legacy choice list; rendering and native/captured
+records continue to resolve their exact compatible references.
+
+## Original maps and height adapters
+
+A repeat-above assembly does not stretch the fixed region's Original UVs.
+Explicitly enrolled moving masonry parts retain their authored chart density
+and phase across residual scaling, repeated rows and the translated cap.
+Only their declared paired color/normal channel changes; unbound trim/atlas
+channels remain authored. Selected finish charts still own their mapping.
+Original does not force different assets' defaults to become one material.
+
+An `anchored` height profile names fixed lower and cap-owned upper layout points.
+Its measured span, not overlapping trim bounds, positions declared infill. The
+native height is its minimum; the whole cap translates by the requested height
+delta while doors and fixed trim remain unchanged. Infill explicitly repeats or
+stretches through the same detached assembler. Loaded anchors, ownership, native
+metrics and protected moving regions must agree with the provider. A matching
+contour alone does not declare a horizontal rail to be valid infill.
+
+Plain-wall fitting changes physical UV density/phase only for provider-declared
+surface targets. Packed atlas and unbound trim coordinates remain authored,
+including under width and offset changes. Stretching atlas infill does not imply
+unbounded masonry UV continuation or invented normal maps.
+
+Legacy static props retain their existing proportional behavior. An explicit
+physical-height input uses the same scale-profile planner against the actual
+complete loaded assembly, including companions, and waits for those bounds
+before drawing/reporting. It does not invent protected parts or material
+capabilities. Existing percentage-only callers retain their old anchor and
+primary-bound reporting contract. All source/cache geometry stays immutable.
+
 ## Studio Layout walls and compact contexts (#1233)
 
 Wall opens searchable repeatable appearance choices, ranking case-insensitive
@@ -141,7 +211,9 @@ repeatable choices remain accessible. Generated asset previews use published
 provider PNG URLs, not a client model-capture queue. Loading is image-local;
 missing/error images retain named selectable fallbacks without loading a GLB,
 substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
-assets without a door leaf role. No appearance is armed by default.
+assets without a door leaf role. Explicit `wall-section` assets belong in the
+once-placed section chooser, not new repeating-wall choices; existing imported
+repeat intent remains readable/renderable. No appearance is armed by default.
 
 Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
 centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
@@ -207,9 +279,10 @@ walls and door bindings.
 
 ### Supported automatic visual corners
 
-Only catalog appearances declaring `wall-miter-90` opt into the plain-wall fit.
-The enrolled appearance is an explicit choice, not a silent replacement of older
-Castle walls. Two shared authored endpoints, perpendicular directions, matching
+Catalog appearances declaring `wall-body-fit` use the shared body/plane fitter
+for explicit size and finish charts. Only `wall-miter-90` additionally opts into
+automatic corner joining; adding height/finish support does not silently opt an
+existing appearance into a different corner policy. Two shared authored endpoints, perpendicular directions, matching
 authored height/thickness/elevation and solid terminal pieces longer than their
 depth allow a common miter. Junctions, opening conflicts, unequal dimensions and
 unsupported appearances retain unfitted art with a selected-wall explanation.

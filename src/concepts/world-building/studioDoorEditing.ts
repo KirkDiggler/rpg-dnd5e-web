@@ -15,6 +15,7 @@ import {
 import { wallSolidIntervals } from './structuralWallGeometry';
 import type { StructuralWall, StructuralWallOpening } from './structuralWalls';
 import type { WorldPoint } from './types';
+import { assertEditableWallSections } from './wallSectionEditing';
 
 export interface StudioDoorTarget {
   readonly kind: 'door';
@@ -71,13 +72,8 @@ export interface StudioDoorEditing {
 export function studioDoorAssetWidth(entry: WorldBuildingCatalogEntry): number {
   if (entry.source !== 'generated')
     throw new Error('Door placement requires a generated complete assembly.');
-  if (
-    entry.asset.tags.includes('wall-opening') &&
-    (!entry.asset.wallOpening || !entry.asset.surfaces?.length)
-  )
-    throw new Error(
-      'This doorway requires verified aperture-anchor fitting and fixed masonry targets.'
-    );
+  if (entry.asset.tags.includes('wall-opening') && !entry.asset.wallOpening)
+    throw new Error('This doorway requires verified aperture-anchor fitting.');
   const roles = entry.asset.roles ?? [];
   const leaves = roles.filter((role) => role.role === 'leaf');
   if (
@@ -161,6 +157,7 @@ export function clampDoorPosition(
 function assertDoorGeometry(wall: StructuralWall): void {
   wallSolidIntervals({ wall, extent: { start: 0, end: wallLength(wall) } });
   doorwayVisualWall(wall);
+  if (wall.appearance.sections?.length) assertEditableWallSections(wall);
 }
 export function createStudioDoor(
   wall: StructuralWall,

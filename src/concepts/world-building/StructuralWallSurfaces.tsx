@@ -10,12 +10,10 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * These leaves render NO guides and NO hit targets: wall hit boxes and the
  * selected-blocker wireframe are editor-only and stay in `StructuralWallVisual`.
  *
- * Ordinary surfaces: THE PARENT TRANSFORM OWNS THE FULL EXACT FIT. A piece's parent group carries
- * the span pose AND the exact fit scale, including heights the shared model's
- * own `[0.25, 4]` heightScale clamp would otherwise silently shorten: the model
- * is passed its normal `heightScale` and the parent compensates its single
- * `DUNGEON_SURFACE_Y` lift so the floor lift is applied exactly once and is
- * never multiplied by the fit.
+ * All surfaces pass an absolute target height to the shared asset fitter.
+ * Parent groups position/turn pieces and may fit their horizontal dimensions,
+ * but never scale the vertical axis or stretch a protected opening. The shared
+ * model applies its single `DUNGEON_SURFACE_Y` floor lift.
  *
  * Enrolled plain-wall surfaces instead pass effective world dimensions/end
  * slopes to the shared leaf, which fits the declared body planes. Their parent
@@ -28,6 +26,7 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * describe rather than at the world origin.
  */
 import { REMEMBERED_SURFACE_TINT } from '@/components/hex-grid/sceneKnowledge';
+import { planAssetHeight } from '@/rendering/assetHeightLayout';
 import {
   copyDoorFramePresentation,
   type DoorFramePresentation,
@@ -58,7 +57,10 @@ import {
   wallMidpoint,
 } from './structuralWallEditing';
 import type { StructuralWallSurface } from './structuralWalls';
+import { StructuralWallSections } from './StructuralWallSections';
 import type { WallEndFits } from './wallCornerFits';
+import { staticWallFit } from './wallSectionAssets';
+import { wallSectionSolidIntervals } from './wallSections';
 import { WorldPropModel } from './WorldPropModel';
 
 /** Where a wall's named marker belongs: at the wall itself, not the origin. A
@@ -223,14 +225,62 @@ export function StructuralWallSurfacePieces({
     );
   }
   const [widthMeters, heightMeters, depthMeters] = entry.asset.boundsMeters;
-  const capable = entry.asset.tags.includes('wall-miter-90');
+  const staticFit = staticWallFit(entry);
+  const capable = !!staticFit;
+  const fixedFeature =
+    staticFit?.kind === 'opening' || entry.asset.tags.includes('wall-section');
   let layouts;
   try {
+    if (entry.asset.heightFit)
+      planAssetHeight({
+        nativeHeight: heightMeters,
+        targetHeight: wall.appearance.height,
+        profile: entry.asset.heightFit,
+      });
+    for (const section of wall.appearance.sections ?? []) {
+      const feature = WORLD_BUILDING_CATALOG_BY_REF.get(section.assetRef);
+      if (feature?.source !== 'generated' || !staticWallFit(feature))
+        throw Error(
+          `Section ${section.id} has no configured static wall fit: ${section.assetRef}.`
+        );
+      if (feature.asset.heightFit)
+        planAssetHeight({
+          nativeHeight: feature.asset.boundsMeters[1],
+          targetHeight: wall.appearance.height,
+          profile: feature.asset.heightFit,
+        });
+      for (const finish of finishSpans.filter(
+        (span) =>
+          span.end > section.position - section.width / 2 &&
+          span.start < section.position + section.width / 2
+      ))
+        if (
+          !feature.asset.surfaces?.some(
+            (binding) =>
+              binding.side === finish.side &&
+              binding.family === finish.material.family
+          )
+        )
+          throw Error(
+            `Section ${section.id} has no compatible surface for the wall finish.`
+          );
+    }
+    const visualWall = replaceDoorFrames
+      ? doorwayVisualWall(wall)
+      : wallWithCapturedFrameSpans(wall);
     layouts = layoutWallPieces({
-      wall: replaceDoorFrames
-        ? doorwayVisualWall(wall)
-        : wallWithCapturedFrameSpans(wall),
-      sourceWidthMeters: widthMeters,
+      wall: visualWall,
+      visualSpans: wall.appearance.sections?.length
+        ? wallSectionSolidIntervals({
+            ...visualWall,
+            openings: visualWall.openings.map(({ id, position, width }) => ({
+              id,
+              position,
+              width,
+            })),
+          })
+        : undefined,
+      sourceWidthMeters: staticFit?.width ?? widthMeters,
       sourceHeightMeters: heightMeters,
       sourceDepthMeters: depthMeters,
       maxPieces,
@@ -252,6 +302,14 @@ export function StructuralWallSurfacePieces({
       name={`structural-wall-pieces-${wall.id}`}
       userData={{ knowledge: remembered ? 'remembered' : 'seen' }}
     >
+      <StructuralWallSections
+        wall={wall}
+        finishSpans={finishSpans}
+        fogStretches={fogStretches}
+        remembered={remembered}
+        visualLighting={visualLighting}
+        onMeasured={onMeasured}
+      />
       {layouts.flatMap((layout, spanIndex) =>
         layout.pieces.flatMap((piece, pieceIndex) => {
           const length =
@@ -311,7 +369,7 @@ export function StructuralWallSurfacePieces({
               const cutWithin =
                 segment.start > start + 1e-9 || segment.end < end - 1e-9;
               const point =
-                finishSpans.length || cutWithin
+                !fixedFeature && (finishSpans.length || cutWithin)
                   ? {
                       x:
                         wall.line.start.x +
@@ -323,14 +381,33 @@ export function StructuralWallSurfacePieces({
                           total,
                     }
                   : piece.point;
-              // The shared leaf adds `DUNGEON_SURFACE_Y` once, inside its own
-              // group. The parent would scale that offset by the exact fit, so the
-              // parent's own Y is lowered by the scaled amount: the net floor lift
-              // is exactly `DUNGEON_SURFACE_Y`, unscaled, at the authored
-              // elevation.
-              const baseY = capable
-                ? piece.y
-                : piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
+              // The shared asset fitter owns height and the single floor lift.
+              // Parents position/turn the run; they never scale its vertical axis.
+              const baseY = piece.y;
+              const fitting = capable
+                ? {
+                    width: fixedFeature
+                      ? end - start
+                      : segment.end - segment.start,
+                    offset: fixedFeature ? start : segment.start,
+                    height: wall.appearance.height,
+                    depth: wall.appearance.thickness,
+                    ...(fixedFeature
+                      ? {
+                          clipStart: Math.max(0, segment.start - start),
+                          clipEnd: Math.min(end - start, segment.end - start),
+                        }
+                      : {}),
+                    start:
+                      !fixedFeature && segment.start === 0
+                        ? endFits?.start
+                        : undefined,
+                    end:
+                      !fixedFeature && segment.end === total
+                        ? endFits?.end
+                        : undefined,
+                  }
+                : undefined;
               return [
                 <group
                   key={`${spanIndex}-${pieceIndex}-${segmentIndex}`}
@@ -347,31 +424,34 @@ export function StructuralWallSurfacePieces({
                   scale={
                     capable
                       ? [1, 1, 1]
-                      : [piece.widthScale, piece.heightScale, piece.depthScale]
+                      : [piece.widthScale, 1, piece.depthScale]
                   }
                 >
                   <WorldPropModel
                     entry={entry}
                     materialOverrides={wall.appearance.materialOverrides}
+                    targetHeight={wall.appearance.height}
                     plainWallFit={
-                      capable
-                        ? {
-                            width: segment.end - segment.start,
-                            offset: segment.start,
-                            height: wall.appearance.height,
-                            depth: wall.appearance.thickness,
-                            start:
-                              segment.start === 0 ? endFits?.start : undefined,
-                            end:
-                              segment.end === wallLength(wall)
-                                ? endFits?.end
-                                : undefined,
-                          }
+                      staticFit?.kind === 'body' ? fitting : undefined
+                    }
+                    wallOpeningFit={
+                      staticFit?.kind === 'opening' && fitting
+                        ? { ...fitting, anchor: 'body' }
                         : undefined
                     }
                     surfaceProvider={segment.finishes[0]?.provider}
-                    surfacePlans={segment.finishes.map(
-                      ({ material, chart }) => ({ material, chart })
+                    surfacePlans={segment.finishes.flatMap(
+                      ({ material, chart, provider, side }) =>
+                        provider.bindings
+                          .filter(
+                            (binding) =>
+                              binding.side === side &&
+                              binding.family === material.family
+                          )
+                          .map((binding) => ({
+                            material,
+                            chart: { ...chart, surfaceId: binding.id },
+                          }))
                     )}
                     visualLighting={visualLighting}
                     position={[0, 0, 0]}
@@ -552,6 +632,24 @@ export function FittedDoorSurface({
       />
     );
   }
+  try {
+    if (entry.asset.heightFit)
+      planAssetHeight({
+        nativeHeight: heightMeters,
+        targetHeight: pose.height,
+        profile: entry.asset.heightFit,
+      });
+  } catch (error) {
+    return (
+      <WallMarker
+        wallId={doorId}
+        tone="error"
+        reason={error instanceof Error ? error.message : String(error)}
+        position={anchor.position}
+        rotationY={anchor.rotationY}
+      />
+    );
+  }
   const openingFit = entry.asset.wallOpening;
   const frame = copyDoorFramePresentation(
     framePresentation,
@@ -614,20 +712,20 @@ export function FittedDoorSurface({
           catalog: materials.catalog,
           elevation: pose.y,
         })
-      : inherited.map((span) => {
-          const target = bindings.find(
+      : inherited.flatMap((span) => {
+          const targets = bindings.filter(
             (binding) =>
               binding.side === span.side &&
               binding.family === span.material.family
           );
-          if (!target)
+          if (!targets.length)
             throw new Error(
               'Doorway has no compatible fixed masonry target for the inherited face.'
             );
-          return {
+          return targets.map((target) => ({
             material: span.material,
             chart: { ...span.chart, surfaceId: target.id },
-          };
+          }));
         });
     if (
       !frame &&
@@ -693,13 +791,11 @@ export function FittedDoorSurface({
   // Catalog bounds already include the shared model scale; fit against the
   // rendered dimensions. Geometry does not depend on `state`.
   const widthScale = pose.width / widthMeters;
-  const heightScale = pose.height / heightMeters;
+  const heightScale = 1;
   const depthScale = pose.thickness / depthMeters;
   const open = state === 'open';
-  // Same structural-parent technique as the wall pieces: the parent owns the
-  // exact fit and compensates the shared leaf's single, unscaled floor lift so
-  // it is never multiplied by the fit scale.
-  const baseY = pose.y + DUNGEON_SURFACE_Y * (1 - heightScale);
+  // The shared asset fitter owns the exact height and protects fixed parts.
+  const baseY = pose.y;
   return (
     <group
       name={`structural-wall-door-${doorId}`}
@@ -722,6 +818,7 @@ export function FittedDoorSurface({
         position={[0, 0, 0]}
         rotationY={0}
         heightScale={1}
+        targetHeight={pose.height}
         open={open}
         remembered={remembered}
         rememberedTint={REMEMBERED_SURFACE_TINT}

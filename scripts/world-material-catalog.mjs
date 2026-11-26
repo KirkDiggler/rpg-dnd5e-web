@@ -184,6 +184,9 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
           bindings: catalog.bindings,
           atlasRefs: new Set(atlasMaterials.map((row) => row.ref)),
           atlasFamilies: new Set(atlasMaterials.map((row) => row.family)),
+          atlasMaterialFamilies: new Map(
+            atlasMaterials.map((row) => [row.ref, row.family])
+          ),
         })
       : undefined;
   for (const image of images.values()) verifyRuntimeImage({ modelRoot, image });

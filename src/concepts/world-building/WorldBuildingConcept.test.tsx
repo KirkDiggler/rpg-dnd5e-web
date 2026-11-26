@@ -4272,7 +4272,7 @@ describe('structural wall authoring (Task 3)', () => {
     // A panel Apply is refused by the same commit guard, and the refusal
     // notice STAYS VISIBLE: a guard that returns rather than throws must not
     // be reported as a successful apply.
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '5' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Apply appearance' }));

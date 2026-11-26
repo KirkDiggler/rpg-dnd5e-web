@@ -619,10 +619,17 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(rotated.blocker.blocksMovement).toBe(
       original.blocker.blocksMovement
     );
+    // Configured features now belong to the once-placed section chooser.
     change('Search wall appearances', 'castle_wall_02');
-    fireEvent.click(
+    expect(
       document.querySelector(
         '[data-wall-appearance-ref="dnd5e:env:fantasy-kingdom:castle_wall_02"]'
+      )
+    ).toBeNull();
+    change('Search wall appearances', 'castle_wall_fit_01');
+    fireEvent.click(
+      document.querySelector(
+        '[data-wall-appearance-ref="dnd5e:env:fantasy-kingdom:castle_wall_fit_01"]'
       )!
     );
     submit('Arrange selected noun');
@@ -631,7 +638,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       ...rotated,
       appearance: {
         ...rotated.appearance,
-        assetRef: 'dnd5e:env:fantasy-kingdom:castle_wall_02',
+        assetRef: 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01',
       },
     });
     const committed = storage.document();

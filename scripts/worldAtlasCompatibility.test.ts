@@ -57,6 +57,35 @@ describe('provider-declared atlas compatibility', () => {
     expect(() => readWorldMaterialCatalog(f)).toThrow(/compatibleFamilies/i);
   });
 
+  it('carries scoped appearance groups without deleting compatible references', () => {
+    const f = fixture();
+    const alias = { ...f.atlas, ref: 'dnd5e:material:test:alias' };
+    f.document.materials.push(alias);
+    const groups = [{ original: true, materialRefs: [f.atlas.ref, alias.ref] }];
+    Object.assign(f.binding.surfaces[0], { appearanceGroups: groups });
+    f.save();
+    const parsed = readWorldMaterialCatalog(f);
+    if (parsed.schemaVersion !== 3) throw Error('Expected schema3');
+    expect(parsed.bindings[0].surfaces[0].appearanceGroups).toEqual(groups);
+    expect(parsed.atlasMaterials.map((m) => m.ref)).toContain(alias.ref);
+    expect(parsed.bindings[0].surfaces[0].appearanceGroups).not.toBe(groups);
+    for (const invalid of [
+      [],
+      [{ original: true, materialRefs: [] }],
+      [{ original: false, materialRefs: [f.atlas.ref, alias.ref] }],
+      [
+        { original: true, materialRefs: [f.atlas.ref] },
+        { original: true, materialRefs: [alias.ref] },
+      ],
+      [{ original: true, materialRefs: [f.atlas.ref, f.atlas.ref, alias.ref] }],
+      [{ original: 1, materialRefs: [f.atlas.ref, alias.ref] }],
+    ]) {
+      Object.assign(f.binding.surfaces[0], { appearanceGroups: invalid });
+      f.save();
+      expect(() => readWorldMaterialCatalog(f)).toThrow(/appearanceGroups/);
+    }
+  });
+
   it('does not infer compatibility when the target omits it', () => {
     const f = fixture();
     Reflect.deleteProperty(f.binding.surfaces[0], 'compatibleFamilies');

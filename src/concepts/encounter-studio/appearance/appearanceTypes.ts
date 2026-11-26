@@ -15,6 +15,8 @@ interface ChoiceField {
   readonly id: string;
   readonly label: string;
   readonly value: string;
+  /** Display-only representative; never replaces the exact saved/staged value. */
+  readonly displayValue?: string;
   readonly choices: readonly AppearanceChoice[];
   readonly unavailable?: string;
   /** Display-only mixed selection; never an authored value. */

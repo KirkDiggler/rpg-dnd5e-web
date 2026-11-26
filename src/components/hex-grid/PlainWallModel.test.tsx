@@ -12,10 +12,17 @@ vi.mock('@react-three/drei', () => ({
   useGLTF: () => ({ scene: state.scene }),
 }));
 function fixture(): THREE.Group {
+  const trim = new THREE.MeshStandardMaterial();
+  const front = new THREE.MeshStandardMaterial();
+  front.name = 'Masonry_Front';
+  const back = new THREE.MeshStandardMaterial();
+  back.name = 'Masonry_Back';
   const root = new THREE.Group(),
     body = new THREE.Mesh(
       new THREE.BoxGeometry(4, 3, 0.4).translate(0, 1.5, 0),
-      new THREE.MeshStandardMaterial()
+      // BoxGeometry groups: right, left, top, bottom, front, back. The
+      // synthetic model must carry the provider's declared material scopes.
+      [trim, trim, trim, trim, front, back]
     );
   body.name = 'WallBody_v1';
   root.add(body);

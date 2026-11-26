@@ -157,6 +157,9 @@ export function parseWorldAtlasPreview(
     bindings: raw.bindings,
     atlasRefs: refs,
     atlasFamilies: new Set(materials.map((material) => material.family)),
+    atlasMaterialFamilies: new Map(
+      materials.map((material) => [material.ref, material.family])
+    ),
   });
   for (const binding of metadata.bindings)
     if (assets[binding.assetRef]?.glbSha256 !== binding.glbSha256)

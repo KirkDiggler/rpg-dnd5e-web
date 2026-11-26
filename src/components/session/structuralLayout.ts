@@ -36,6 +36,10 @@ import { wallSolidIntervals } from '@/concepts/world-building/structuralWallGeom
 import type { StructuralWallSurface } from '@/concepts/world-building/structuralWalls';
 import type { WallFinishOverrides } from '@/concepts/world-building/wallFinishTypes';
 import {
+  assertWallSections,
+  copyWallSections,
+} from '@/concepts/world-building/wallSections';
+import {
   copyDoorFramePresentation,
   copyWallFrameSpan,
   type DoorFramePresentation,
@@ -198,6 +202,20 @@ export function structuralWallSurfaceFromAtlas(
     wall: { line: { start, end }, openings },
     extent: { start: 0, end: length },
   });
+  const sections = copyWallSections(
+    (wall.sections ?? []).map((section, index) => {
+      const at = `${path}.sections[${index}]`;
+      if (!section)
+        throw Error(`structural layout: ${at} must be a section record`);
+      return {
+        id: section.id,
+        assetRef: section.ref,
+        position: sceneFeet(section.position, `${at}.position`, scale, false),
+        width: sceneFeet(section.width, `${at}.width`, scale, true),
+      };
+    }),
+    `${path}.sections`
+  );
   const surface: CapturedWallSurface = {
     id: wall.id,
     label: wall.ref || wall.id,
@@ -211,10 +229,12 @@ export function structuralWallSurfaceFromAtlas(
       thickness,
       elevation,
       ...(materialOverrides.length ? { materialOverrides } : {}),
+      ...(sections?.length ? { sections } : {}),
     },
     openings,
   };
   wallWithCapturedFrameSpans(surface);
+  if (sections?.length) assertWallSections(surface);
   return surface;
 }
 

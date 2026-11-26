@@ -63,6 +63,27 @@ function fixture() {
   };
 }
 describe('private atlas preview boundary', () => {
+  it('retains exact runtime aliases even when their appearances collapse in the editor', () => {
+    const raw = fixture(),
+      alias = { ...raw.materials[0], ref: 'dnd5e:material:test:alias' };
+    raw.materials.push(alias);
+    const groups = [
+      { original: true, materialRefs: raw.materials.map((m) => m.ref) },
+    ];
+    Object.assign(raw.bindings[0].surfaces[0], { appearanceGroups: groups });
+    const atlas = parseWorldAtlasPreview(raw, { [ref]: { glbSha256: sha } });
+    expect(atlas.bindings[0].surfaces[0].appearanceGroups).toEqual(groups);
+    const overrides = [{ surfaceId: 'atlas', materialRef: alias.ref }];
+    const resolved = resolveWorldAtlasMaterials({
+      assetRef: ref,
+      glbSha256: sha,
+      atlas,
+      overrides,
+    });
+    expect(resolved!.plans[0].material.ref).toBe(alias.ref);
+    expect(overrides[0].materialRef).toBe(alias.ref);
+  });
+
   it('resolves explicit owner choices and refuses missing/stale targets rather than falling back', () => {
     const atlas = parseWorldAtlasPreview(fixture(), {
       [ref]: { glbSha256: sha },

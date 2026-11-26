@@ -10,6 +10,30 @@ const state = vi.hoisted(() => ({
   texture: null as THREE.Texture | null,
   catalog: null as WorldMaterialCatalogState | null,
 }));
+// The loader below supplies one plane, not a published anchored house kit.
+// Keep the asset facts and synthetic scene in the same test-owned contract.
+vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/generated/worldAssetCatalog')>();
+  return {
+    ...actual,
+    resolveWorldAsset: (ref: string) =>
+      ref === 'dnd5e:env:test:atlas_leaf'
+        ? {
+            ref,
+            displayName: 'Atlas leaf fixture',
+            category: 'env',
+            url: '/atlas-leaf-fixture.glb',
+            glbSha256: 'd'.repeat(64),
+            sizeBytes: 1,
+            boundsMeters: [1.5, 2.25, 0],
+            tags: [],
+            supportsDecoration: false,
+            heightFit: { mode: 'scale' },
+          }
+        : actual.resolveWorldAsset(ref),
+  };
+});
 vi.mock('@react-three/drei', () => ({
   useGLTF: () => ({ scene: state.scene }),
 }));
@@ -21,7 +45,7 @@ vi.mock('@/rendering/useWorldMaterialCatalog', () => ({
   useWorldMaterialCatalog: () => state.catalog,
 }));
 it('renders a captured atlas choice through the shared model leaf, before memory/lighting, and restores Original', async () => {
-  const ref = 'dnd5e:env:fantasy-kingdom:house_wall_05',
+  const ref = 'dnd5e:env:test:atlas_leaf',
     asset = resolveWorldAsset(ref)!;
   const root = new THREE.Group(),
     source = new THREE.MeshStandardMaterial(),

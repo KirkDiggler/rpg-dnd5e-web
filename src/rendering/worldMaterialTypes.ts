@@ -52,6 +52,10 @@ export interface WorldAtlasSampler {
   readonly magFilter: number;
   readonly minFilter: number;
 }
+export interface WorldAtlasAppearanceGroup {
+  readonly original: boolean;
+  readonly materialRefs: readonly string[];
+}
 export interface WorldAtlasSurface {
   readonly id: string;
   readonly node: string;
@@ -62,6 +66,8 @@ export interface WorldAtlasSurface {
   /** Provider-verified technical compatibility, not artistic recommendations. */
   readonly compatibleFamilies: readonly string[];
   readonly suggestedCollections: readonly string[];
+  /** Provider-verified mapped colour equivalence; never compatibility or a saved ref. */
+  readonly appearanceGroups?: readonly WorldAtlasAppearanceGroup[];
 }
 export interface WorldAtlasBinding {
   readonly assetRef: string;

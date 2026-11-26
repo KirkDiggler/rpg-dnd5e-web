@@ -50,6 +50,7 @@ import type {
   StudioSelection,
   StudioSocialSection,
 } from './studioSession';
+import { StudioWallSections } from './StudioWallSections';
 import type { RevealKey } from './useReveal';
 
 export interface StudioInspectorProps {
@@ -339,16 +340,25 @@ function WallView({
   onArmTool,
 }: StudioInspectorProps): React.JSX.Element {
   return (
-    <Form
-      session={session}
-      extras={
-        <div className="es-buttons">
-          <button type="button" onClick={() => onArmTool('door')}>
-            Place a door
-          </button>
-        </div>
-      }
-    />
+    <>
+      <Form
+        session={session}
+        extras={
+          <div className="es-buttons">
+            <button type="button" onClick={() => onArmTool('door')}>
+              Place a door
+            </button>
+          </div>
+        }
+      />
+      {session.arrange?.kind === 'wall' && (
+        <StudioWallSections
+          key={session.arrange.wall.id}
+          wall={session.arrange.wall}
+          editing={session.wallEditing}
+        />
+      )}
+    </>
   );
 }
 

@@ -19,7 +19,8 @@ const roleFixtures = vi.hoisted(() => {
     url: '/models/synty/world-assets/env/dark-fortress/roles-fixture.glb',
     glbSha256: 'a'.repeat(64),
     sizeBytes: 1,
-    boundsMeters: [4, 4, 0.4],
+    // Actual transformed bounds of the role fixture, including its bridge.
+    boundsMeters: [4.5, 2.625, 3.15],
     tags: [] as string[],
     supportsDecoration: false,
   };
@@ -44,10 +45,28 @@ const roleFixtures = vi.hoisted(() => {
       ...base,
       ref: 'dnd5e:env:dark-fortress:roles_corner_01',
       url: '/models/synty/world-assets/env/dark-fortress/roles-corner.glb',
-      boundsMeters: [4, 3, 4],
+      boundsMeters: [4.5, 2.625, 3.15],
       roles: [
         { role: 'leaf', node: 'Leaf_East', door: 'a' },
         { role: 'leaf', node: 'Leaf_West', door: 'b' },
+      ],
+    },
+    heightRef: 'dnd5e:env:dark-fortress:height_fit_fixture',
+    heightAsset: {
+      ...base,
+      ref: 'dnd5e:env:dark-fortress:height_fit_fixture',
+      url: '/models/synty/world-assets/env/dark-fortress/height-fit.glb',
+      boundsMeters: [3, 3, 0.3],
+      heightFit: {
+        mode: 'repeat-above',
+        node: 'Height_Above',
+        baseHeight: 2,
+        rowHeight: 1,
+      },
+      roles: [
+        { role: 'frame', node: 'Height_Frame' },
+        { role: 'leaf', node: 'Height_Leaf', door: 'entry' },
+        { role: 'above', node: 'Height_Above' },
       ],
     },
     missingRef: 'dnd5e:env:dark-fortress:roles_missing_01',
@@ -72,6 +91,20 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
       if (ref === roleFixtures.ref) {
         return roleFixtures.asset as unknown as GeneratedWorldAsset;
       }
+      if (ref === roleFixtures.heightRef) {
+        return roleFixtures.heightAsset as unknown as GeneratedWorldAsset;
+      }
+      if (ref === 'height-profile-mismatch') {
+        return {
+          ...roleFixtures.heightAsset,
+          heightFit: {
+            mode: 'repeat-above',
+            node: 'Height_Above',
+            baseHeight: 2.1,
+            rowHeight: 0.9,
+          },
+        } as unknown as GeneratedWorldAsset;
+      }
       if (ref === roleFixtures.missingRef) {
         return roleFixtures.missingAsset as unknown as GeneratedWorldAsset;
       }
@@ -87,6 +120,23 @@ const loadedUrls = vi.hoisted(() => [] as string[]);
 vi.mock('@react-three/drei', () => ({
   useGLTF: (url: string) => {
     loadedUrls.push(url);
+    if (url.includes('height-fit.glb')) {
+      const scene = new THREE.Group();
+      for (const [name, height, y] of [
+        ['Height_Frame', 2 / SYNTY_SCALE, 1 / SYNTY_SCALE],
+        ['Height_Leaf', 1.8 / SYNTY_SCALE, 0.9 / SYNTY_SCALE],
+        ['Height_Above', 1 / SYNTY_SCALE, 2.5 / SYNTY_SCALE],
+      ] as const) {
+        const part = new THREE.Mesh(
+          new THREE.BoxGeometry(3 / SYNTY_SCALE, height, 0.3 / SYNTY_SCALE),
+          new THREE.MeshStandardMaterial()
+        );
+        part.name = name;
+        part.position.y = y;
+        scene.add(part);
+      }
+      return { scene };
+    }
     if (url.includes('roles-')) {
       const scene = new THREE.Group();
       const material = new THREE.MeshStandardMaterial();
@@ -178,7 +228,9 @@ describe('WorldAssetModel provider-baked placement', () => {
         onBoundsMeasured={onBoundsMeasured}
       />
     );
-    expect(loadedUrls).toEqual([GENERATED_WORLD_ASSETS[REF]!.url]);
+    expect(loadedUrls).toEqual([
+      `${GENERATED_WORLD_ASSETS[REF]!.url}?v=${GENERATED_WORLD_ASSETS[REF]!.glbSha256}`,
+    ]);
     const model = renderer.scene.findByProps({ name: 'world-asset-model' });
     expect(model.instance.position.toArray()).toEqual([
       2,
@@ -398,18 +450,19 @@ describe('WorldAssetModel named roles', () => {
     // rule a wall follows — and the courses past the opening keep their
     // authored thickness to within half a course.
     const row = 0.5 * SYNTY_SCALE;
-    const opening = 4 - row;
-    const above = 4 * 2 - opening;
+    const nativeHeight = roleFixtures.asset.boundsMeters[1]!;
+    const opening = nativeHeight - row;
+    const above = nativeHeight * 2 - opening;
     const courses = Math.round(above / row);
     expect(
       model.instance.getObjectByName('Masonry_Above')!.scale.y
     ).toBeCloseTo(above / (courses * row));
     expect(onBoundsMeasured).toHaveBeenCalledWith({
       minY: 0,
-      maxY: 8,
-      width: 4,
-      height: 8,
-      depth: 0.4,
+      maxY: 5.25,
+      width: 4.5,
+      height: 5.25,
+      depth: 3.15,
     });
     await renderer.unmount();
   });
@@ -426,7 +479,11 @@ describe('WorldAssetModel named roles', () => {
     // height is the GLB's own geometry and nothing else.
     const courses: THREE.Object3D[] = [];
     model.instance.traverse((object) => {
-      if (object.name === 'Masonry_Above') courses.push(object);
+      if (
+        object.name === 'Masonry_Above' ||
+        object.name.startsWith('__height_')
+      )
+        courses.push(object);
     });
     expect(courses.filter((course) => course.visible)).toHaveLength(1);
 
@@ -440,7 +497,11 @@ describe('WorldAssetModel named roles', () => {
     const grownModel = grown.scene.findByProps({ name: 'world-asset-model' });
     const stacked: THREE.Object3D[] = [];
     grownModel.instance.traverse((object) => {
-      if (object.name === 'Masonry_Above') stacked.push(object);
+      if (
+        object.name === 'Masonry_Above' ||
+        object.name.startsWith('__height_')
+      )
+        stacked.push(object);
     });
     const visible = stacked.filter((course) => course.visible);
     expect(visible.length).toBeGreaterThan(1);
@@ -448,10 +509,97 @@ describe('WorldAssetModel named roles', () => {
     // its own scaled thickness, so the column is continuous.
     const stride = 0.5 * visible[0]!.scale.y;
     visible.forEach((course, index) => {
-      expect(course.position.y).toBeCloseTo(3.25 + index * stride);
+      // The source course is centred at 3.25 with its lower face at 3.
+      // Resizing must keep that lower face anchored, not the centre pivot.
+      const lowerFace = course.position.y - 0.25 * course.scale.y;
+      expect(lowerFace).toBeCloseTo(3 + index * stride);
     });
     await renderer.unmount();
     await grown.unmount();
+  });
+
+  it('keeps actual tall geometry at the reported height with a bounded upper-row pool', async () => {
+    const measured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.heightRef}
+        position={[0, 0, 0]}
+        heightScale={40}
+        onBoundsMeasured={measured}
+      />
+    );
+    const root = renderer.scene.findByProps({
+      name: 'world-asset-model',
+    }).instance;
+    root.updateWorldMatrix(true, true);
+    const size = (node: THREE.Object3D) =>
+      new THREE.Box3().setFromObject(node, true).getSize(new THREE.Vector3()).y;
+    expect(size(root)).toBeCloseTo(120, 4);
+    expect(size(root.getObjectByName('Height_Leaf')!)).toBeCloseTo(1.8);
+    expect(measured).toHaveBeenLastCalledWith(
+      expect.objectContaining({ height: 120 })
+    );
+    const rows: THREE.Object3D[] = [];
+    root.traverse((node) => {
+      if (node.name === 'Height_Above' || node.name.startsWith('__height_'))
+        rows.push(node);
+    });
+    expect(rows).toHaveLength(64);
+    await renderer.update(
+      <WorldAssetModel
+        assetRef={roleFixtures.heightRef}
+        position={[0, 0, 0]}
+        heightScale={1}
+      />
+    );
+    const shrunk = renderer.scene.findByProps({
+      name: 'world-asset-model',
+    }).instance;
+    shrunk.updateWorldMatrix(true, true);
+    expect(size(shrunk)).toBeCloseTo(3);
+    expect(size(shrunk.getObjectByName('Height_Leaf')!)).toBeCloseTo(1.8);
+    await renderer.unmount();
+  });
+
+  it('uses the same explicit height for a generic body and a protected doorway', async () => {
+    for (const assetRef of [REF, roleFixtures.heightRef]) {
+      const renderer = await ReactThreeTestRenderer.create(
+        <WorldAssetModel
+          assetRef={assetRef}
+          position={[0, 0, 0]}
+          targetHeight={6}
+        />
+      );
+      const root = renderer.scene.findByProps({
+        name: 'world-asset-model',
+      }).instance;
+      root.updateWorldMatrix(true, true);
+      expect(
+        new THREE.Box3().setFromObject(root, true).getSize(new THREE.Vector3())
+          .y
+      ).toBeCloseTo(6);
+      await renderer.unmount();
+    }
+    await expect(
+      ReactThreeTestRenderer.create(
+        <WorldAssetModel
+          assetRef={roleFixtures.heightRef}
+          position={[0, 0, 0]}
+          targetHeight={1.9}
+        />
+      )
+    ).rejects.toThrow('below the fixed region');
+  });
+
+  it('refuses loaded repeat geometry that differs from its published height profile', async () => {
+    await expect(
+      ReactThreeTestRenderer.create(
+        <WorldAssetModel
+          assetRef="height-profile-mismatch"
+          position={[0, 0, 0]}
+        />
+      )
+    ).rejects.toThrow('Loaded repeat geometry disagrees');
   });
 
   it('leaves the bounds unchanged when roles have no above part', async () => {
@@ -471,10 +619,10 @@ describe('WorldAssetModel named roles', () => {
     ).toBeCloseTo(1);
     expect(onBoundsMeasured).toHaveBeenCalledWith({
       minY: 0,
-      maxY: 3,
-      width: 4,
-      height: 3,
-      depth: 4,
+      maxY: 2.625,
+      width: 4.5,
+      height: 2.625,
+      depth: 3.15,
     });
     await renderer.unmount();
   });
@@ -604,7 +752,9 @@ it('treats named swinging leaves and post-layout cap courses once, retiring remo
   model.traverse((o) => {
     if (o instanceof THREE.Mesh) meshes.push(o);
   });
-  const caps = meshes.filter((m) => m.name === 'Masonry_Above');
+  const caps = meshes.filter(
+    (m) => m.name === 'Masonry_Above' || m.name.startsWith('__height_')
+  );
   expect(caps.length).toBeGreaterThan(1);
   const material = caps[0]!.material as THREE.Material;
   for (const mesh of meshes)
@@ -613,7 +763,9 @@ it('treats named swinging leaves and post-layout cap courses once, retiring remo
     );
   expect(new Set(caps.map((m) => m.material)).size).toBe(1);
   const oldExtra = caps[1]!,
-    dispose = vi.spyOn(material, 'dispose');
+    retiredHierarchy = oldExtra.parent!,
+    dispose = vi.spyOn(material, 'dispose'),
+    disposeGeometry = vi.spyOn(oldExtra.geometry, 'dispose');
   await view.update(
     <WorldAssetModel
       assetRef={roleFixtures.ref}
@@ -624,11 +776,17 @@ it('treats named swinging leaves and post-layout cap courses once, retiring remo
       visualLighting={binding}
     />
   );
-  expect(oldExtra.parent).toBeNull();
+  // The complete placement-owned hierarchy retires, not just its extra rows.
+  expect(retiredHierarchy.parent).toBeNull();
   expect(dispose).toHaveBeenCalledOnce();
+  expect(disposeGeometry).toHaveBeenCalledOnce();
   const now: THREE.Mesh[] = [];
   model.traverse((o) => {
-    if (o instanceof THREE.Mesh && o.name === 'Masonry_Above') now.push(o);
+    if (
+      o instanceof THREE.Mesh &&
+      (o.name === 'Masonry_Above' || o.name.startsWith('__height_'))
+    )
+      now.push(o);
   });
   expect(now).toHaveLength(1);
   expect(

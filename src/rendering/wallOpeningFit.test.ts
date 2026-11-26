@@ -61,6 +61,41 @@ describe('aperture-fitted fixed surround', () => {
     expect(Array.from(source.getAttribute('position').array)).toEqual(before);
     expect(leaf.position.toArray()).toEqual([0.3, 1.1, 0]);
   });
+  it('can align a leafless visual section by its full body without moving the aperture anchors', () => {
+    const { root, leaf } = fixture();
+    root.remove(leaf);
+    const result = fitWallOpeningInstance(root, {
+      ...descriptor,
+      anchor: 'body',
+    });
+    expect(result.profile.centerX).toBe(0);
+    expect(result.profile.width).toBe(5);
+    expect(root.getObjectByName('Opening_v1_entry')!.position.x).toBe(0.3);
+  });
+  it('measures all declared fixed parts, including the separate upper course', () => {
+    const { root, frame, leaf } = fixture();
+    frame.geometry = new THREE.BoxGeometry(5, 3, 0.5);
+    frame.position.y = 1.5;
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 0.5));
+    upper.name = 'Upper';
+    upper.position.y = 4;
+    root.add(upper);
+    const moving = leaf.geometry;
+    const result = fitWallOpeningInstance(root, {
+      ...descriptor,
+      fixedNodes: ['Frame', 'Upper'],
+    });
+    expect(result.profile.height).toBe(5);
+    expect(result.owned).toEqual([frame.geometry, upper.geometry]);
+    expect(leaf.geometry).toBe(moving);
+    expect(() =>
+      fitWallOpeningInstance(fixture().root, {
+        ...descriptor,
+        fixedNodes: ['Frame', 'Frame'],
+      })
+    ).toThrow('fixed parts');
+  });
+
   it('refuses stale provider dimensions instead of fitting the whole assembly as its opening', () => {
     expect(() =>
       fitWallOpeningInstance(fixture().root, {

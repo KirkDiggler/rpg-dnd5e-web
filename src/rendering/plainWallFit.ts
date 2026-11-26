@@ -7,6 +7,10 @@ export interface PlainWallFit {
   depth: number;
   /** Derived distance from the owning wall's start; not authored room phase. */
   offset?: number;
+  /** Visible subspan from this full fitted piece's left edge, in scene units.
+   * Clipping never changes the full fit or its texture origin. */
+  clipStart?: number;
+  clipEnd?: number;
   start?: number;
   end?: number;
 }
@@ -110,7 +114,10 @@ export function inspectPlainWall(root: THREE.Object3D): PlainWallProfile {
  * cached. Each application starts from the source instance, never a prior fit. */
 export function fitPlainWallInstance(
   root: THREE.Object3D,
-  fit: PlainWallFit
+  fit: PlainWallFit,
+  /** Omission retains the standalone fitter's legacy all-material behavior.
+   * Model callers supply explicit provider scopes; [] preserves authored UVs. */
+  physicalUvTargets?: readonly { mesh: THREE.Mesh; slot: number }[]
 ): { profile: PlainWallProfile; owned: THREE.BufferGeometry[] } {
   if (
     ![fit.width, fit.height, fit.depth].every(
@@ -147,7 +154,16 @@ export function fitPlainWallInstance(
       const materials = Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material];
-      const channels = materials.map(materialUvNames);
+      // Packed atlases retain authored coordinates; geometric wall fitting
+      // alone is not permission to continue UVs into neighboring atlas cells.
+      const channels = materials.map((material, slot) =>
+        physicalUvTargets === undefined ||
+        physicalUvTargets.some(
+          (target) => target.mesh === mesh && target.slot === slot
+        )
+          ? materialUvNames(material)
+          : []
+      );
       const uvs = new Map(
         [...new Set(channels.flat())].map((name) => {
           const uv = geometry.getAttribute(name);
@@ -263,7 +279,12 @@ export function fitPlainWallInstance(
       }
       pos.needsUpdate = true;
       for (const uv of uvs.values()) uv.needsUpdate = true;
-      geometry.computeVertexNormals();
+      if (
+        channels.some((channel) => channel.length > 0) ||
+        fit.start !== undefined ||
+        fit.end !== undefined
+      )
+        geometry.computeVertexNormals();
       // Three's stock derivative path uses vNormalMapUv (the material's actual
       // channel). computeTangents() is hardwired to UV0 and would install an
       // incorrect basis for the released masonry's TEXCOORD_2, especially with

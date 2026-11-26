@@ -1465,7 +1465,7 @@ describe('Studio authoring homes through the real owner', () => {
     const before = storage.document();
     selectWall(storage, before.draft.room.walls![0]);
     const writes = storage.roomWrites();
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
@@ -1482,7 +1482,7 @@ describe('Studio authoring homes through the real owner', () => {
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
     expect(
-      (screen.getByLabelText('Appearance height') as HTMLInputElement).value
+      (screen.getByLabelText('Wall height') as HTMLInputElement).value
     ).toBe('4');
     fireEvent.click(within(form).getByTitle(FIT_WALL_REF));
     fireEvent.click(button('Apply'));
@@ -1492,6 +1492,92 @@ describe('Studio authoring homes through the real owner', () => {
       'positive-z': GRAY_REF,
       'negative-z': GRAY_REF,
     });
+  });
+
+  it('refuses an incompatible section finish before changing the wall or history', () => {
+    installFinishPreview();
+    const draft = finishRoomFixture();
+    draft.room.walls = [draft.room.walls![0]];
+    // Castle frames are enrolled; use the distinct, unpaintable house family.
+    const unpaintable = WORLD_BUILDING_CATALOG_BY_REF.get(
+      'dnd5e:env:fantasy-kingdom:house_wall_opening_01'
+    )!;
+    if (unpaintable.source !== 'generated')
+      throw Error('Expected configured house-frame fixture.');
+    draft.room.walls[0].appearance.height = unpaintable.asset.boundsMeters[1];
+    draft.scene.version = 7;
+    draft.scene.wallFinishes = { north: { 'positive-z': GRAY_REF } };
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    selectWall(storage, draft.room.walls[0]);
+    const before = storage.document(),
+      writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Section appearance'), {
+      target: {
+        value: 'dnd5e:env:fantasy-kingdom:house_wall_opening_01',
+      },
+    });
+    fireEvent.change(screen.getByLabelText('New section position'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Add wall section'));
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    expect(screen.getAllByText(/compatible/).length).toBeGreaterThan(0);
+  });
+
+  it('owns a once-placed visual section on one wall through edit, refusal, Undo and native reopen', () => {
+    const draft = finishRoomFixture();
+    draft.room.walls = [draft.room.walls![0]];
+    draft.room.walls[0].appearance.height = 6;
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    selectWall(storage, draft.room.walls[0]);
+    const before = storage.document(),
+      writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Section appearance'), {
+      target: { value: 'dnd5e:env:fantasy-kingdom:castle_wall_window_03' },
+    });
+    fireEvent.change(screen.getByLabelText('New section position'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Add wall section'));
+    const placed = storage.document(),
+      section = placed.draft.room.walls![0].appearance.sections![0];
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(placed.draft.room.walls).toHaveLength(1);
+    expect(placed.draft.room.walls![0].blocker).toEqual(
+      before.draft.room.walls![0].blocker
+    );
+    expect(placed.draft.room.walls![0].openings).toEqual([]);
+    expect(placed.draft.scene.items).toEqual(before.draft.scene.items);
+    fireEvent.change(screen.getByLabelText(`Section ${section.id} position`), {
+      target: { value: '0' },
+    });
+    fireEvent.click(button(`Move section ${section.id}`));
+    expect(storage.document()).toEqual(placed);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.change(screen.getByLabelText(`Section ${section.id} position`), {
+      target: { value: '5' },
+    });
+    fireEvent.click(button(`Move section ${section.id}`));
+    expect(
+      storage.document().draft.room.walls![0].appearance.sections![0].position
+    ).toBe(5);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(placed);
+    const native = encodeSingleRoomDungeon({
+      key: 'section-native',
+      draft: placed.draft,
+    });
+    expect(decodeSingleRoomDungeon(native).draft.room.walls).toEqual(
+      placed.draft.room.walls
+    );
+    fireEvent.click(button(`Remove section ${section.id}`));
+    expect(storage.document().draft.room.walls![0].appearance.sections).toEqual(
+      []
+    );
+    expect(storage.document().draft.room.walls![0].openings).toEqual([]);
   });
 
   it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
@@ -1512,7 +1598,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
       target: { value: GRAY_REF },
     });
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     expect(storage.document()).toEqual(before);
@@ -1522,7 +1608,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
       target: { value: GRAY_REF },
     });
-    fireEvent.change(screen.getByLabelText('Appearance height'), {
+    fireEvent.change(screen.getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.click(button('Apply'));
@@ -4474,7 +4560,7 @@ describe('Arrange joined presentation and canonical document receipts', () => {
     selectWall(storage, original.draft.room.walls![0]);
     const writes = storage.roomWrites();
     changeField('Wall midpoint X', '0.5');
-    changeField('Appearance height', '3.5');
+    changeField('Wall height', '3.5');
     changeField('Appearance elevation', '0.125');
     submitForm('Arrange selected noun');
     const numericWall = setWallAppearance(
@@ -5078,7 +5164,7 @@ describe('S0 inspector through the real owner', () => {
       inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
     ).toBeTruthy();
     const writes = storage.roomWrites();
-    fireEvent.change(inspector().getByLabelText('Appearance height'), {
+    fireEvent.change(inspector().getByLabelText('Wall height'), {
       target: { value: '4' },
     });
     fireEvent.submit(
@@ -5094,8 +5180,7 @@ describe('S0 inspector through the real owner', () => {
       inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
     ).toBeTruthy();
     expect(
-      (inspector().getByLabelText('Appearance height') as HTMLInputElement)
-        .value
+      (inspector().getByLabelText('Wall height') as HTMLInputElement).value
     ).toBe(String(wall.appearance.height));
   });
 

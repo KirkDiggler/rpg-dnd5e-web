@@ -1,44 +1,128 @@
 import { GENERATED_WORLD_MATERIALS } from '@/generated/worldMaterialCatalog';
 import { describe, expect, it } from 'vitest';
 import { buildAppearanceSheet } from './appearanceSheet';
-import { appearanceFixture as fixture } from './appearanceTestFixtures';
+import {
+  appearanceFixture as fixture,
+  groupFixtureAppearances,
+} from './appearanceTestFixtures';
 const FIT = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const BRICK = 'dnd5e:material:fantasy-kingdom:wall_brick_01';
 const PACK = 'dnd5e:material:fantasy-kingdom:atlas_04_c';
 describe('shared appearance sheet from provider facts', () => {
-  it('filters atlas materials by binding family rather than recommendation membership', () => {
+  it('collapses equivalent looks while retaining the exact saved or staged ref', () => {
     const { input } = fixture();
-    const atlas = input.catalog.atlas!;
-    input.catalog = {
-      ...input.catalog,
-      atlas: {
-        ...atlas,
-        materials: [
-          ...atlas.materials,
-          {
-            ...atlas.materials[0],
-            ref: 'dnd5e:material:test:uncurated',
-            displayName: 'Uncurated',
-          },
-          {
-            ...atlas.materials[0],
-            ref: 'dnd5e:material:test:foreign',
-            family: 'foreign-layout',
-          },
-        ],
-      },
+    const grouped = groupFixtureAppearances(input);
+    const draft = {
+      materialOverrides: [{ surfaceId: 'atlas', materialRef: PACK }],
     };
-    const sheet = buildAppearanceSheet(input);
-    const field = sheet.fields.find((row) => row.kind === 'atlas-pack');
-    if (field?.kind !== 'atlas-pack') throw Error('Missing pack field');
-    expect(field.choices.map((choice) => choice.value)).toContain(PACK);
-    expect(field.choices.map((choice) => choice.value)).toContain(
-      'dnd5e:material:test:uncurated'
+    const before = structuredClone(draft);
+    const field = buildAppearanceSheet({ ...grouped, draft }).fields.find(
+      (f) => f.kind === 'atlas-pack'
     );
-    expect(field.choices.map((choice) => choice.value)).not.toContain(
-      'dnd5e:material:test:foreign'
-    );
+    expect(field).toMatchObject({
+      value: PACK,
+      displayValue: '',
+      choices: [{ value: '', label: 'Original' }],
+    });
+    expect(draft).toEqual(before);
+    const missing = buildAppearanceSheet({
+      ...grouped,
+      draft: {
+        materialOverrides: [{ surfaceId: 'atlas', materialRef: 'missing' }],
+      },
+    }).fields.find((f) => f.kind === 'atlas-pack');
+    expect(missing).toMatchObject({
+      value: 'missing',
+      unavailable: expect.any(String),
+    });
+    expect(missing).not.toHaveProperty('displayValue');
   });
+
+  it('keeps different groups selectable and maps aliases only for display', () => {
+    const { input } = fixture();
+    const grouped = groupFixtureAppearances(input);
+    const refs = grouped.catalog.atlas!.materials.map((m) => m.ref);
+    grouped.catalog.atlas!.bindings = grouped.catalog.atlas!.bindings.map(
+      (binding) => ({
+        ...binding,
+        surfaces: binding.surfaces.map((surface) => ({
+          ...surface,
+          appearanceGroups: [
+            { original: true, materialRefs: [refs[0]!] },
+            { original: false, materialRefs: refs.slice(1) },
+          ],
+        })),
+      })
+    );
+    const field = buildAppearanceSheet({
+      ...grouped,
+      draft: {
+        materialOverrides: [{ surfaceId: 'atlas', materialRef: refs[2]! }],
+      },
+    }).fields.find((f) => f.kind === 'atlas-pack');
+    expect(field).toMatchObject({ value: refs[2], displayValue: refs[1] });
+    expect(
+      field && 'choices' in field && field.choices.map((c) => c.value)
+    ).toEqual(['', refs[1]]);
+  });
+
+  it.each([false, true])(
+    'filters by compatible family, not recommendations (grouped=%s)',
+    (grouped) => {
+      const { input } = fixture();
+      const atlas = input.catalog.atlas!;
+      input.catalog = {
+        ...input.catalog,
+        atlas: {
+          ...atlas,
+          // Adding a compatible ref must also update its declared partition.
+          // Exercise both legacy absence and complete grouping metadata.
+          bindings: atlas.bindings.map((binding) => ({
+            ...binding,
+            surfaces: binding.surfaces.map(
+              ({ appearanceGroups, ...surface }) => ({
+                ...surface,
+                ...(grouped && appearanceGroups
+                  ? {
+                      appearanceGroups: [
+                        ...appearanceGroups,
+                        {
+                          original: false,
+                          materialRefs: ['dnd5e:material:test:uncurated'],
+                        },
+                      ],
+                    }
+                  : {}),
+              })
+            ),
+          })),
+          materials: [
+            ...atlas.materials,
+            {
+              ...atlas.materials[0],
+              ref: 'dnd5e:material:test:uncurated',
+              displayName: 'Uncurated',
+            },
+            {
+              ...atlas.materials[0],
+              ref: 'dnd5e:material:test:foreign',
+              family: 'foreign-layout',
+            },
+          ],
+        },
+      };
+      const sheet = buildAppearanceSheet(input);
+      const field = sheet.fields.find((row) => row.kind === 'atlas-pack');
+      if (field?.kind !== 'atlas-pack') throw Error('Missing pack field');
+      expect(field.choices.map((choice) => choice.value)).toContain(PACK);
+      expect(field.choices.map((choice) => choice.value)).toContain(
+        'dnd5e:material:test:uncurated'
+      );
+      expect(field.choices.map((choice) => choice.value)).not.toContain(
+        'dnd5e:material:test:foreign'
+      );
+    }
+  );
 
   it('shows paired masonry maps while color-only atlas channels remain absent', () => {
     const { input } = fixture();

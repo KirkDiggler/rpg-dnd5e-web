@@ -18,13 +18,14 @@ export interface WorldPropModelProps {
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
+  targetHeight?: number;
   remembered?: boolean;
   /** The remembered multiply tint for a generated asset (default
    * `REMEMBERED_TINT`); structural surfaces pass `REMEMBERED_SURFACE_TINT`. */
   rememberedTint?: WorldAssetModelProps['rememberedTint'];
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
-  wallOpeningFit?: PlainWallFit;
+  wallOpeningFit?: WorldAssetModelProps['wallOpeningFit'];
   surfaceSelections?: readonly WorldSurfaceSelection[];
   surfacePlans?: WorldAssetModelProps['surfacePlans'];
   surfaceProvider?: WorldAssetModelProps['surfaceProvider'];
@@ -51,6 +52,7 @@ export function WorldPropModel({
   position,
   rotationY,
   heightScale = 1,
+  targetHeight,
   remembered = false,
   rememberedTint,
   visualLighting,
@@ -92,6 +94,7 @@ export function WorldPropModel({
       position={position}
       rotationY={rotationY}
       heightScale={heightScale}
+      targetHeight={targetHeight}
       open={open}
       hideDoorLeaves={hideDoorLeaves}
       onDoorClick={onDoorClick}
@@ -107,6 +110,7 @@ export function WorldPropModel({
       rotationY={rotationY}
       anchor="bounds-floor-center"
       heightScale={heightScale}
+      targetHeight={targetHeight}
       onBoundsMeasured={onBoundsMeasured}
     />
   );

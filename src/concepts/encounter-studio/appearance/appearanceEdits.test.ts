@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { arrangeIntent } from '../StudioArrangeFields';
 import { appearanceEditPatch } from './appearanceEdits';
 import { buildAppearanceSheet } from './appearanceSheet';
-import { appearanceFixture } from './appearanceTestFixtures';
+import {
+  appearanceFixture,
+  groupFixtureAppearances,
+} from './appearanceTestFixtures';
 import type { AppearanceField, AppearanceSheet } from './appearanceTypes';
 
 const PACK = 'dnd5e:material:fantasy-kingdom:atlas_04_c';
@@ -18,6 +22,41 @@ function choice(
 }
 
 describe('typed appearance edits through the existing owner draft', () => {
+  it('keeps a grouped saved reference on unrelated edits and clears it only on explicit reset', () => {
+    const { input } = appearanceFixture();
+    const grouped = groupFixtureAppearances(input);
+    if (grouped.selection.kind !== 'wall') throw Error('Expected wall');
+    const selection = {
+      ...grouped.selection,
+      appearance: {
+        ...grouped.selection.appearance,
+        materialOverrides: [{ surfaceId: 'atlas', materialRef: PACK }],
+      },
+    };
+    const next = { ...grouped, selection, draft: { height: '4' } };
+    const sheet = buildAppearanceSheet(next);
+    expect(sheet.fields.find((f) => f.kind === 'atlas-pack')).toMatchObject({
+      value: PACK,
+      displayValue: '',
+    });
+    expect(arrangeIntent(selection, next.draft)).toMatchObject({
+      appearance: { height: 4 },
+    });
+    expect(arrangeIntent(selection, next.draft)).not.toHaveProperty(
+      'appearance.materialOverrides'
+    );
+    expect(
+      appearanceEditPatch({
+        ...next,
+        sheet,
+        edit: { kind: 'atlas-pack', surfaceId: 'atlas', value: '' },
+      })
+    ).toEqual({ materialOverrides: [] });
+    expect(selection.appearance.materialOverrides).toEqual([
+      { surfaceId: 'atlas', materialRef: PACK },
+    ]);
+  });
+
   it('uses the staged complete NPC look for the next palette edit', () => {
     const { input, document } = appearanceFixture({
       kind: 'actor',

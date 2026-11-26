@@ -1097,6 +1097,19 @@
   gap: 0.25rem 0.35rem;
 }
 
+.es-appearance-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.es-appearance-choice > button {
+  align-self: flex-start;
+}
+.es-appearance-choice > .es-help {
+  margin: 0;
+}
+
 /* Table and option rows (S5-T5): a table entry is one sentence until opened,
  * and an option's line wraps by word in a field that grows with it. */
 .encounter-studio .wb-entry-collapsed {

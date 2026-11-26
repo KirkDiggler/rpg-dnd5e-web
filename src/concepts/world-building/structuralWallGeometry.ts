@@ -85,7 +85,8 @@ function frame(wall: WallGeometry): {
     .sort((a, b) => a.start - b.start);
   for (let i = 1; i < cuts.length; i++) {
     requireGeometry(
-      cuts[i].start >= cuts[i - 1].end,
+      // Contact gets the same arithmetic allowance as the line endpoints.
+      cuts[i].start >= cuts[i - 1].end - roundoff,
       'openings must not overlap'
     );
   }
@@ -139,8 +140,23 @@ export function resizeWallEndpoint(input: {
   wall: WallGeometry;
   endpoint: 'start' | 'end';
   distance: number;
+  /** Editor-owned attachment protection, never additional mechanical openings. */
+  protectedIntervals?: readonly WallInterval[];
 }): { wall: WallGeometry; clamped: boolean } {
-  const { length, direction, cuts } = frame(input.wall);
+  const { length, direction, cuts: openings } = frame(input.wall);
+  const protectedIntervals = input.protectedIntervals ?? [];
+  for (const span of protectedIntervals)
+    requireGeometry(
+      Number.isFinite(span.start) &&
+        Number.isFinite(span.end) &&
+        span.start >= 0 &&
+        span.end <= length &&
+        span.end > span.start,
+      'protected interval must fit within the line'
+    );
+  const cuts = [...openings, ...protectedIntervals].sort(
+    (a, b) => a.start - b.start
+  );
   requireGeometry(
     Number.isFinite(input.distance),
     'resize distance must be finite'

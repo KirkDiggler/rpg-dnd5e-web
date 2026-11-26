@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { SYNTY_SCALE } from './calibrationConstants';
-import type { PlainWallProfile } from './plainWallFit';
+import type { PlainWallFit, PlainWallProfile } from './plainWallFit';
+
+/** Doors keep aperture anchoring. A leafless visual section occupies its whole body span. */
+export interface WallOpeningFit extends PlainWallFit {
+  anchor?: 'opening' | 'body';
+}
 
 export interface WallOpeningDescriptor {
+  anchor?: 'opening' | 'body';
   openingId: string;
   frameNode: string;
+  /** Static frame plus any declared repeatable masonry parts; never leaves. */
+  fixedNodes?: readonly string[];
   widthMeters: number;
   frameWidthMeters: number;
   frameHeightMeters: number;
@@ -39,7 +47,18 @@ export function fitWallOpeningInstance(
     return node.getWorldPosition(new THREE.Vector3());
   };
   const body = named(descriptor.frameNode);
-  const bounds = new THREE.Box3().setFromObject(body, true);
+  const fixedNames = descriptor.fixedNodes ?? [descriptor.frameNode];
+  if (
+    !fixedNames.includes(descriptor.frameNode) ||
+    new Set(fixedNames).size !== fixedNames.length
+  )
+    throw new Error(
+      'Doorway fixed parts must be unique and include the frame.'
+    );
+  const parts = fixedNames.map(named);
+  const bounds = new THREE.Box3();
+  for (const part of parts)
+    bounds.union(new THREE.Box3().setFromObject(part, true));
   const origin = point(`Opening_v1_${descriptor.openingId}`);
   const left = point(`OpeningPoint_${descriptor.openingId}_00`);
   const right = point(`OpeningPoint_${descriptor.openingId}_01`);
@@ -75,18 +94,24 @@ export function fitWallOpeningInstance(
       'Doorway loaded geometry disagrees with provider fit metrics.'
     );
   const owned: THREE.BufferGeometry[] = [];
-  body.traverse((node) => {
-    const mesh = node as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.geometry = mesh.geometry.clone();
-    owned.push(mesh.geometry);
-  });
+  const copied = new Set<THREE.Mesh>();
+  for (const part of parts)
+    part.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (!mesh.isMesh || copied.has(mesh)) return;
+      copied.add(mesh);
+      mesh.geometry = mesh.geometry.clone();
+      owned.push(mesh.geometry);
+    });
   return {
     profile: {
       body,
       start: bounds.min.x,
       end: bounds.max.x,
-      centerX: origin.x,
+      centerX:
+        descriptor.anchor === 'body'
+          ? (bounds.min.x + bounds.max.x) / 2
+          : origin.x,
       centerZ: (front.z + back.z) / 2,
       baseY: bounds.min.y,
       width,
