@@ -8,7 +8,7 @@
  * about. It validates nothing beyond the inputs' own attributes: the engine's
  * refusals say what is wrong after Save.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   setWord,
   unknownKeys,
@@ -69,7 +69,9 @@ export function WordsForm({
   words: readonly FormWord[];
   place: string;
   value: Readonly<Obj>;
-  onChange(next: Obj): void;
+  /** `word` is the top-level word the change is of, so a caller can apply
+   * just that word to a live value. */
+  onChange(next: Obj, word: string): void;
   idPrefix: string;
   /** The words to draw instead of the words of `place` (the `with` words of
    * a chosen value). */
@@ -77,7 +79,7 @@ export function WordsForm({
 }): React.JSX.Element {
   const shown = placeWords ?? wordsAt(words, place);
   const write = (word: string, next: unknown) =>
-    onChange(setWord(value, word, next));
+    onChange(setWord(value, word, next), word);
   return (
     <div className="es-words-form">
       {shown.map((word) => (
@@ -131,6 +133,56 @@ function fits(shape: string, current: unknown): boolean {
   }
 }
 
+/** A text or number box that shows what is being typed and writes once, when
+ * the author leaves it or presses Enter. With nothing typed it shows the
+ * incoming value, so a write that is refused upstream shows the file's value
+ * again. */
+function TypedInput({
+  id,
+  type,
+  step,
+  min,
+  max,
+  ariaRequired,
+  incoming,
+  commit,
+}: {
+  id: string;
+  type: 'text' | 'number';
+  step?: number;
+  min?: number;
+  max?: number;
+  ariaRequired?: boolean;
+  incoming: string;
+  commit(typed: string): void;
+}): React.JSX.Element {
+  const [typed, setTyped] = useState<string | null>(null);
+  const finish = (input: HTMLInputElement) => {
+    if (typed === null) return;
+    setTyped(null);
+    // The browser reports a half-typed number (`5e`, `-`) as empty: that is
+    // not the author clearing the field, so nothing is written.
+    if (input.validity.badInput) return;
+    if (typed !== incoming) commit(typed);
+  };
+  return (
+    <input
+      id={id}
+      type={type}
+      step={step}
+      min={min}
+      max={max}
+      aria-required={ariaRequired}
+      value={typed ?? incoming}
+      onChange={(e) => setTyped(e.target.value)}
+      onBlur={(e) => finish(e.currentTarget)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') finish(e.currentTarget);
+      }}
+    />
+  );
+}
+
 function Field({
   words,
   place,
@@ -167,17 +219,15 @@ function Field({
     case 'text':
       return (
         <Labelled label={word.label}>
-          <input
+          <TypedInput
             id={id}
             type="text"
-            aria-required={required}
-            value={typeof current === 'string' ? current : ''}
-            onChange={(e) =>
+            ariaRequired={required}
+            incoming={typeof current === 'string' ? current : ''}
+            commit={(typed) =>
               write(
                 word.word,
-                e.target.value === '' && !word.required
-                  ? undefined
-                  : e.target.value
+                typed === '' && !word.required ? undefined : typed
               )
             }
           />
@@ -256,21 +306,18 @@ function Field({
     case 'whole number':
       return (
         <Labelled label={word.label}>
-          <input
+          <TypedInput
             id={id}
             type="number"
             step={1}
-            aria-required={required}
+            ariaRequired={required}
             min={word.bounds?.min}
             max={
               word.bounds && !word.bounds.noMax ? word.bounds.max : undefined
             }
-            value={typeof current === 'number' ? current : ''}
-            onChange={(e) =>
-              write(
-                word.word,
-                e.target.value === '' ? undefined : Number(e.target.value)
-              )
+            incoming={typeof current === 'number' ? String(current) : ''}
+            commit={(typed) =>
+              write(word.word, typed === '' ? undefined : Number(typed))
             }
           />
         </Labelled>

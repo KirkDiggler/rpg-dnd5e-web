@@ -185,6 +185,9 @@ describe('WordsForm', () => {
       screen.getByRole('textbox', { name: word('item', 'name').label }),
       { target: { value: 'Other' } }
     );
+    fireEvent.blur(
+      screen.getByRole('textbox', { name: word('item', 'name').label })
+    );
     expect(onChange.mock.calls[0][0].weight).toBe(3);
   });
 
@@ -195,6 +198,11 @@ describe('WordsForm', () => {
         name: around(word('charges', 'max').label),
       }),
       { target: { value: '3' } }
+    );
+    fireEvent.blur(
+      screen.getByRole('spinbutton', {
+        name: around(word('charges', 'max').label),
+      })
     );
     expect(onChange.mock.calls[0][0].charges.max).toBe(3);
   });
@@ -235,10 +243,12 @@ describe('WordsForm', () => {
     });
     let onChange = draw({ note: 'x' }, [text(true)]);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    fireEvent.blur(screen.getByRole('textbox'));
     expect(onChange.mock.calls[0][0]).toEqual({ note: '' });
     cleanup();
     onChange = draw({ note: 'x' }, [text(false)]);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    fireEvent.blur(screen.getByRole('textbox'));
     expect(onChange.mock.calls[0][0]).toEqual({});
   });
 
@@ -264,6 +274,9 @@ describe('WordsForm', () => {
     fireEvent.change(
       screen.getByRole('textbox', { name: word('item', 'name').label }),
       { target: { value: 'Other' } }
+    );
+    fireEvent.blur(
+      screen.getByRole('textbox', { name: word('item', 'name').label })
     );
     expect(onChange.mock.calls[0][0].slot).toBe('odd slot');
   });
@@ -291,6 +304,7 @@ describe('WordsForm', () => {
         ? { target: { value: 'amulet' } }
         : { target: { value: 'Z' } }
     );
+    fireEvent.blur(control);
     expect(onChange.mock.calls[0][0][key]).toEqual(bad);
     fireEvent.click(
       within(line as HTMLElement).getByRole('button', { name: /^Clear / })
@@ -303,12 +317,11 @@ describe('WordsForm', () => {
     const entry = block.lets[0];
     block.lets = ['oops', entry];
     const onChange = draw(block);
-    fireEvent.change(
-      screen.getByRole('spinbutton', {
-        name: around(word('lets entry', 'use').values[0].with![0].label),
-      }),
-      { target: { value: '4' } }
-    );
+    const level = screen.getByRole('spinbutton', {
+      name: around(word('lets entry', 'use').values[0].with![0].label),
+    });
+    fireEvent.change(level, { target: { value: '4' } });
+    fireEvent.blur(level);
     const next = onChange.mock.calls[0][0].lets;
     expect(next[0]).toBe('oops');
     expect(next[1].with).toEqual({ level: 4 });
@@ -380,5 +393,155 @@ describe('WordsForm', () => {
     expect(
       box.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  describe('text and number fields write when left', () => {
+    const textWord = (required: boolean): FormWord => ({
+      word: 'note',
+      place: 'item',
+      shape: 'text',
+      values: [],
+      label: 'a note',
+      holds: '',
+      required,
+    });
+    const numberWord: FormWord = {
+      word: 'weight',
+      place: 'item',
+      shape: 'whole number',
+      values: [],
+      label: 'a weight',
+      holds: '',
+      required: false,
+    };
+    const typeIn = (box: HTMLElement, text: string) =>
+      fireEvent.change(box, { target: { value: text } });
+
+    it('typing writes nothing; leaving the field writes once with the whole text', () => {
+      const onChange = draw({}, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      typeIn(box, 'a');
+      typeIn(box, 'ab');
+      typeIn(box, 'abc');
+      expect(onChange).toHaveBeenCalledTimes(0);
+      expect((box as HTMLInputElement).value).toBe('abc');
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toEqual({ note: 'abc' });
+    });
+
+    it('Enter writes once and a following blur writes nothing more', () => {
+      const onChange = draw({}, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      typeIn(box, 'abc');
+      fireEvent.keyDown(box, { key: 'Enter' });
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('focus then blur with nothing typed writes nothing', () => {
+      const onChange = draw({ note: 'x' }, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      fireEvent.focus(box);
+      fireEvent.blur(box);
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(onChange).toHaveBeenCalledTimes(0);
+    });
+
+    it('typed text equal to the incoming value writes nothing', () => {
+      const onChange = draw({ note: 'x' }, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      typeIn(box, 'xy');
+      typeIn(box, 'x');
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledTimes(0);
+    });
+
+    it('a whole number writes a number; cleared, the key is removed', () => {
+      let onChange = draw({}, [numberWord]);
+      typeIn(screen.getByRole('spinbutton'), '3');
+      fireEvent.blur(screen.getByRole('spinbutton'));
+      expect(onChange.mock.calls[0][0]).toEqual({ weight: 3 });
+      cleanup();
+      onChange = draw({ weight: 3 }, [numberWord]);
+      typeIn(screen.getByRole('spinbutton'), '');
+      fireEvent.blur(screen.getByRole('spinbutton'));
+      expect(onChange.mock.calls[0][0]).toEqual({});
+    });
+
+    it('after a write the field shows the incoming value, not the typed text', () => {
+      const onChange = vi.fn();
+      const words = [textWord(false)];
+      const { rerender } = render(
+        <WordsForm
+          words={words}
+          place="item"
+          value={{ note: 'old' }}
+          onChange={onChange}
+          idPrefix="t"
+        />
+      );
+      const box = screen.getByRole('textbox') as HTMLInputElement;
+      typeIn(box, 'refused');
+      fireEvent.blur(box);
+      // The write was refused upstream: the value did not change.
+      expect(box.value).toBe('old');
+      rerender(
+        <WordsForm
+          words={words}
+          place="item"
+          value={{ note: 'new' }}
+          onChange={onChange}
+          idPrefix="t"
+        />
+      );
+      expect(box.value).toBe('new');
+    });
+
+    it('a tick box and a select still write at once', () => {
+      const onChange = draw(cloak());
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: word('item', 'unique').label })
+      );
+      fireEvent.change(
+        screen.getByRole('combobox', { name: word('item', 'slot').label }),
+        { target: { value: 'amulet' } }
+      );
+      expect(onChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('Enter alone writes, before any blur', () => {
+      const onChange = draw({}, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      typeIn(box, 'abc');
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toEqual({ note: 'abc' });
+    });
+
+    it('a half-typed number the browser reports as empty writes nothing and shows the file’s value', () => {
+      const onChange = draw({ weight: 5 }, [numberWord]);
+      const box = screen.getByRole('spinbutton') as HTMLInputElement;
+      Object.defineProperty(box, 'validity', { value: { badInput: true } });
+      typeIn(box, '');
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledTimes(0);
+      expect(box.value).toBe('5');
+    });
+
+    it('a required true-or-false turned off writes false, not removal', () => {
+      const flag: FormWord = {
+        word: 'flag',
+        place: 'item',
+        shape: 'true or false',
+        values: [],
+        label: 'a flag',
+        holds: '',
+        required: true,
+      };
+      const onChange = draw({ flag: true }, [flag]);
+      fireEvent.click(screen.getByRole('checkbox'));
+      expect(onChange.mock.calls[0][0]).toEqual({ flag: false });
+    });
   });
 });
