@@ -275,7 +275,7 @@ describe('a row grants one thing, from the form (rpg-project#975 A)', () => {
     editor(result, 'grate', 'prop');
     const label = 'line 1 of grate success';
     const offered = [...grants(label).options].map((o) => o.value);
-    expect(offered).toEqual(['', 'tells', 'relocate']);
+    expect(offered).toEqual(['', 'tells', 'relocate', 'apply_status']);
     expect(grants(label).value).toBe('relocate');
     expect(
       (screen.getByLabelText(`Region for ${label} entry`) as HTMLSelectElement)
