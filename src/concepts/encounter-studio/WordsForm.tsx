@@ -8,7 +8,7 @@
  * about. It validates nothing beyond the inputs' own attributes: the engine's
  * refusals say what is wrong after Save.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   setWord,
   unknownKeys,
@@ -131,6 +131,53 @@ function fits(shape: string, current: unknown): boolean {
   }
 }
 
+/** A text or number box that shows what is being typed and writes once, when
+ * the author leaves it or presses Enter. With nothing typed it shows the
+ * incoming value, so a write that is refused upstream shows the file's value
+ * again. */
+function TypedInput({
+  id,
+  type,
+  step,
+  min,
+  max,
+  ariaRequired,
+  incoming,
+  commit,
+}: {
+  id: string;
+  type: 'text' | 'number';
+  step?: number;
+  min?: number;
+  max?: number;
+  ariaRequired?: boolean;
+  incoming: string;
+  commit(typed: string): void;
+}): React.JSX.Element {
+  const [typed, setTyped] = useState<string | null>(null);
+  const finish = () => {
+    if (typed === null) return;
+    setTyped(null);
+    if (typed !== incoming) commit(typed);
+  };
+  return (
+    <input
+      id={id}
+      type={type}
+      step={step}
+      min={min}
+      max={max}
+      aria-required={ariaRequired}
+      value={typed ?? incoming}
+      onChange={(e) => setTyped(e.target.value)}
+      onBlur={finish}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') finish();
+      }}
+    />
+  );
+}
+
 function Field({
   words,
   place,
@@ -167,17 +214,15 @@ function Field({
     case 'text':
       return (
         <Labelled label={word.label}>
-          <input
+          <TypedInput
             id={id}
             type="text"
-            aria-required={required}
-            value={typeof current === 'string' ? current : ''}
-            onChange={(e) =>
+            ariaRequired={required}
+            incoming={typeof current === 'string' ? current : ''}
+            commit={(typed) =>
               write(
                 word.word,
-                e.target.value === '' && !word.required
-                  ? undefined
-                  : e.target.value
+                typed === '' && !word.required ? undefined : typed
               )
             }
           />
@@ -256,21 +301,18 @@ function Field({
     case 'whole number':
       return (
         <Labelled label={word.label}>
-          <input
+          <TypedInput
             id={id}
             type="number"
             step={1}
-            aria-required={required}
+            ariaRequired={required}
             min={word.bounds?.min}
             max={
               word.bounds && !word.bounds.noMax ? word.bounds.max : undefined
             }
-            value={typeof current === 'number' ? current : ''}
-            onChange={(e) =>
-              write(
-                word.word,
-                e.target.value === '' ? undefined : Number(e.target.value)
-              )
+            incoming={typeof current === 'number' ? String(current) : ''}
+            commit={(typed) =>
+              write(word.word, typed === '' ? undefined : Number(typed))
             }
           />
         </Labelled>
