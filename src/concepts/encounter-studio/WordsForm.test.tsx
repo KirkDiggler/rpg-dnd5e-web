@@ -509,5 +509,39 @@ describe('WordsForm', () => {
       );
       expect(onChange).toHaveBeenCalledTimes(2);
     });
+
+    it('Enter alone writes, before any blur', () => {
+      const onChange = draw({}, [textWord(false)]);
+      const box = screen.getByRole('textbox');
+      typeIn(box, 'abc');
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toEqual({ note: 'abc' });
+    });
+
+    it('a half-typed number the browser reports as empty writes nothing and shows the file’s value', () => {
+      const onChange = draw({ weight: 5 }, [numberWord]);
+      const box = screen.getByRole('spinbutton') as HTMLInputElement;
+      Object.defineProperty(box, 'validity', { value: { badInput: true } });
+      typeIn(box, '');
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledTimes(0);
+      expect(box.value).toBe('5');
+    });
+
+    it('a required true-or-false turned off writes false, not removal', () => {
+      const flag: FormWord = {
+        word: 'flag',
+        place: 'item',
+        shape: 'true or false',
+        values: [],
+        label: 'a flag',
+        holds: '',
+        required: true,
+      };
+      const onChange = draw({ flag: true }, [flag]);
+      fireEvent.click(screen.getByRole('checkbox'));
+      expect(onChange.mock.calls[0][0]).toEqual({ flag: false });
+    });
   });
 });

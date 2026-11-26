@@ -69,7 +69,9 @@ export function WordsForm({
   words: readonly FormWord[];
   place: string;
   value: Readonly<Obj>;
-  onChange(next: Obj): void;
+  /** `word` is the top-level word the change is of, so a caller can apply
+   * just that word to a live value. */
+  onChange(next: Obj, word: string): void;
   idPrefix: string;
   /** The words to draw instead of the words of `place` (the `with` words of
    * a chosen value). */
@@ -77,7 +79,7 @@ export function WordsForm({
 }): React.JSX.Element {
   const shown = placeWords ?? wordsAt(words, place);
   const write = (word: string, next: unknown) =>
-    onChange(setWord(value, word, next));
+    onChange(setWord(value, word, next), word);
   return (
     <div className="es-words-form">
       {shown.map((word) => (
@@ -155,9 +157,12 @@ function TypedInput({
   commit(typed: string): void;
 }): React.JSX.Element {
   const [typed, setTyped] = useState<string | null>(null);
-  const finish = () => {
+  const finish = (input: HTMLInputElement) => {
     if (typed === null) return;
     setTyped(null);
+    // The browser reports a half-typed number (`5e`, `-`) as empty: that is
+    // not the author clearing the field, so nothing is written.
+    if (input.validity.badInput) return;
     if (typed !== incoming) commit(typed);
   };
   return (
@@ -170,9 +175,9 @@ function TypedInput({
       aria-required={ariaRequired}
       value={typed ?? incoming}
       onChange={(e) => setTyped(e.target.value)}
-      onBlur={finish}
+      onBlur={(e) => finish(e.currentTarget)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') finish();
+        if (e.key === 'Enter') finish(e.currentTarget);
       }}
     />
   );

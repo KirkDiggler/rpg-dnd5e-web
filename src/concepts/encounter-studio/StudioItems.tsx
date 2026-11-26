@@ -15,7 +15,7 @@ import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 import type { ItemWords } from './useItemWords';
-import { firstRequiredText } from './wordsForm';
+import { firstRequiredText, setWord } from './wordsForm';
 import { WordsForm } from './WordsForm';
 
 const ITEM = 'item';
@@ -147,6 +147,7 @@ export function StudioItems({
                   </p>
                 ))}
               <ItemChange
+                key={selected.id}
                 id={selected.id}
                 written={selected.written}
                 itemWords={itemWords}
@@ -274,7 +275,9 @@ function ItemChange({
           place="item"
           idPrefix={`item-${id}`}
           value={block}
-          onChange={(next) => onCommitItem?.(id, () => next)}
+          onChange={(next, word) =>
+            onCommitItem?.(id, (item) => setWord(item, word, next[word]))
+          }
         />
       ) : (
         <p className="es-help">{NOT_A_BLOCK_SENTENCE}</p>

@@ -120,3 +120,85 @@ describe('StudioItems: the item form writes as you go', () => {
     expect((name as HTMLInputElement).value).toBe(before);
   });
 });
+
+describe('StudioItems: what a change is built from', () => {
+  const plain = {
+    readBack: null,
+    readBackIsCurrent: false,
+    unavailable: null,
+  };
+
+  it('the edit is built from the live item, not the block drawn', () => {
+    const onCommitItem = vi.fn<(id: string, edit: Edit) => boolean>(() => true);
+    render(
+      <StudioItems
+        document={start()}
+        readBack={plain}
+        focus="garrison-ring"
+        onSelect={() => undefined}
+        itemWords={words}
+        onCommitItem={onCommitItem}
+      />
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: label('unique') }));
+    const edit = onCommitItem.mock.calls[0][1];
+    const live = { ...(itemsOf(start())['garrison-ring'] as object), extra: 1 };
+    const result = edit(live as Record<string, unknown>);
+    expect(result.extra).toBe(1);
+    expect(result.unique).toBe(true);
+  });
+
+  it('text typed in one item is not written into another', () => {
+    const onCommitItem = vi.fn<(id: string, edit: Edit) => boolean>(() => true);
+    const doc = start();
+    const view = (focus: string) => (
+      <StudioItems
+        document={doc}
+        readBack={plain}
+        focus={focus}
+        onSelect={() => undefined}
+        itemWords={words}
+        onCommitItem={onCommitItem}
+      />
+    );
+    const { rerender } = render(view('garrison-ring'));
+    fireEvent.change(screen.getByRole('textbox', { name: label('name') }), {
+      target: { value: 'half typed' },
+    });
+    rerender(view('lieutenants-cloak'));
+    const name = screen.getByRole('textbox', {
+      name: label('name'),
+    }) as HTMLInputElement;
+    expect(name.value).toBe('Lieutenant’s cloak'.replace('’', "'"));
+    fireEvent.blur(name);
+    expect(onCommitItem).toHaveBeenCalledTimes(0);
+  });
+
+  it('the help line is absent when the form is not editable', () => {
+    render(
+      <StudioItems
+        document={start()}
+        readBack={plain}
+        focus="garrison-ring"
+        onSelect={() => undefined}
+        itemWords={null}
+        onCommitItem={() => true}
+      />
+    );
+    expect(screen.queryByText(/Each change is written/)).toBeNull();
+    cleanup();
+    const doc = start();
+    (itemsOf(doc) as Record<string, unknown>)['garrison-ring'] = 'text';
+    render(
+      <StudioItems
+        document={doc}
+        readBack={plain}
+        focus="garrison-ring"
+        onSelect={() => undefined}
+        itemWords={words}
+        onCommitItem={() => true}
+      />
+    );
+    expect(screen.queryByText(/Each change is written/)).toBeNull();
+  });
+});
