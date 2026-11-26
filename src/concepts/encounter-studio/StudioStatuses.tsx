@@ -16,6 +16,7 @@ import {
 } from './statusesView';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
+import { useStatusSaid, type StatusSaidClient } from './useStatusSaid';
 
 const STATUS = 'status';
 const NO_STATUSES_SENTENCE = 'The engine has not said the status effects yet.';
@@ -26,6 +27,8 @@ export function StudioStatuses({
   focus,
   onSelect,
   onJump,
+  enabled = false,
+  client,
 }: {
   document: Readonly<RoomDraftDocument>;
   readBack: StudioReadBack;
@@ -33,11 +36,20 @@ export function StudioStatuses({
   focus: string | null;
   onSelect(id: string): void;
   onJump?(target: RefusalTarget, path?: string): void;
+  /** Ask the engine to say the selected status: only while it is reachable. */
+  enabled?: boolean;
+  client?: StatusSaidClient;
 }): React.JSX.Element {
   const said = readBack.readBack;
   const statuses = statusesOf(document, said);
   const notMapping = statusesNotMapping(document);
   const selected = statuses.find((status) => status.id === focus) ?? null;
+  const statusSaid = useStatusSaid({
+    id: selected?.id,
+    written: selected?.written,
+    client,
+    enabled,
+  });
   const notice = !said
     ? `${NO_STATUSES_SENTENCE}${readBack.unavailable ? ` ${readBack.unavailable}` : ''}`
     : readBack.readBackIsCurrent
@@ -118,6 +130,35 @@ export function StudioStatuses({
               ) : (
                 <p className="es-help">{NO_STATUSES_SENTENCE}</p>
               )}
+              {statusSaid.status !== 'idle' &&
+                statusSaid.status !== 'loading' && (
+                  <div className="es-status-said">
+                    <h3>What it does</h3>
+                    {statusSaid.status === 'said' && (
+                      <>
+                        <p>{statusSaid.sentence}</p>
+                        {statusSaid.parts.length > 1 && (
+                          <ul>
+                            {statusSaid.parts.map((part, index) => (
+                              <li key={`${part.path}:${index}`}>{part.text}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                    {statusSaid.status === 'refused' &&
+                      statusSaid.errors.map((error, index) => (
+                        <p key={`${error.path}:${index}`} role="alert">
+                          {error.path}: {error.message}
+                        </p>
+                      ))}
+                    {statusSaid.status === 'unavailable' && (
+                      <p className="es-help">
+                        The engine could not be asked: {statusSaid.reason}.
+                      </p>
+                    )}
+                  </div>
+                )}
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
               {said && (
