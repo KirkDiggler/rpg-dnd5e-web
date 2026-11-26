@@ -122,6 +122,7 @@ import {
   hailSiteReadBack,
   itemsSiteReadBack,
   itemWordsV237,
+  statusWordsV240,
 } from './fixtures/engineReadBack';
 import hailSiteYaml from './fixtures/hail-site.yaml?raw';
 import {
@@ -144,14 +145,29 @@ import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
 import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
+import type { StudioStatuses } from './StudioStatuses';
 import { encounterSection, studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 import { forgetItemWords } from './useItemWords';
 import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
+import { forgetStatusWords } from './useStatusWords';
+type StatusPageProps = React.ComponentProps<typeof StudioStatuses>;
 
 const groundPreview = vi.hoisted(() => ({
   catalog: null as GroundCatalog | null,
 }));
+// The Status effects page is the real one; the mock only keeps the props it
+// was last given, so a test can call the session intent it was handed.
+vi.mock('./StudioStatuses', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./StudioStatuses')>();
+  return {
+    ...actual,
+    StudioStatuses: (props: StatusPageProps) => {
+      statusProps.current = props;
+      return actual.StudioStatuses(props);
+    },
+  };
+});
 vi.mock('@/components/session/useGroundCatalog', () => ({
   useGroundCatalog: () =>
     groundPreview.catalog
@@ -8922,6 +8938,10 @@ describe('Equipping a person through the real owner (rpg-project#1203)', () => {
   });
 });
 
+/** The Status effects page's own props, as last drawn: a test calls the
+ * session intent the page was given with an edit the form cannot make. */
+const statusProps: { current: StatusPageProps | null } = { current: null };
+
 describe('Status effects page through the real owner (rpg-project#1215)', () => {
   const openHail = async (
     errors: { path: string; message: string }[] = []
@@ -8967,5 +8987,86 @@ describe('Status effects page through the real owner (rpg-project#1215)', () => 
     expect(
       page.querySelector('[data-status="welcomed"] pre')!.textContent
     ).toMatch(/^welcomed:/);
+  });
+  describe('the Change form (rpg-project#1220)', () => {
+    beforeEach(() => forgetStatusWords());
+    const openWelcomed = async (): Promise<HTMLElement> => {
+      await openHail();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Status effects'));
+      const page = screen.getByRole('region', { name: 'Status effects' });
+      fireEvent.click(
+        await within(page).findByRole('button', { name: /^Welcomed\b/ })
+      );
+      return page;
+    };
+    const ability = /only when the ability is/;
+
+    // catches: an edit that is not one undoable step, or one that drops the rest of the block
+    it('an author changes the ability: written at once, one Undo restores it', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        const page = await openWelcomed();
+        const select = await within(page).findByRole('combobox', {
+          name: ability,
+        });
+        expect(page.querySelector('pre')!.textContent).toContain(
+          'ability: charisma'
+        );
+        fireEvent.change(select, { target: { value: 'wisdom' } });
+        await waitFor(() =>
+          expect(page.querySelector('pre')!.textContent).toContain(
+            'ability: wisdom'
+          )
+        );
+        const block = (
+          parseYaml(page.querySelector('pre')!.textContent!) as Record<
+            string,
+            Record<string, unknown>
+          >
+        ).welcomed!;
+        expect(block.name).toBe('Welcomed');
+        expect(block.maintenance).toEqual([{ ends_on: 'rest' }]);
+        fireEvent.click(button('Undo'));
+        await waitFor(() =>
+          expect(page.querySelector('pre')!.textContent).toContain(
+            'ability: charisma'
+          )
+        );
+      } finally {
+        asked.mockRestore();
+      }
+    });
+
+    // catches: a rejected edit that still writes, or one that leaves a history step
+    it('an edit that throws is rejected: the file and the history stay as they were', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        const page = await openWelcomed();
+        await within(page).findByRole('combobox', { name: ability });
+        const before = page.querySelector('pre')!.textContent;
+        const commit = statusProps.current!.onCommitStatus!;
+        let thrown = true;
+        act(() => {
+          thrown = commit('welcomed', () => {
+            throw new Error('boom');
+          });
+        });
+        expect(thrown).toBe(false);
+        let unknown = true;
+        act(() => {
+          unknown = commit('not-a-status', (status) => status);
+        });
+        expect(unknown).toBe(false);
+        expect(page.querySelector('pre')!.textContent).toBe(before);
+        expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+      } finally {
+        asked.mockRestore();
+      }
+    });
   });
 });
