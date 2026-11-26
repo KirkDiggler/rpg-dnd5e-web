@@ -4,6 +4,7 @@ import {
   firstRequiredText,
   setWord,
   unknownKeys,
+  whenAllowed,
   withWordsOf,
   wordsAt,
 } from './wordsForm';
@@ -77,5 +78,26 @@ describe('firstRequiredText', () => {
   });
   it('is null for a place with none', () => {
     expect(firstRequiredText(words, 'no-such-place')).toBeNull();
+  });
+
+  it('whenAllowed: the chosen value’s list wins over the word’s, a value not in the table gives the word’s, neither gives none', () => {
+    const word = {
+      word: 'w',
+      place: 'p',
+      shape: 'one of',
+      values: [
+        { word: 'a', label: 'a', when: ['x'] },
+        { word: 'b', label: 'b' },
+      ],
+      label: 'w',
+      holds: '',
+      required: false,
+      when: ['y', 'z'],
+    };
+    expect(whenAllowed(word, 'a')).toEqual(['x']);
+    expect(whenAllowed(word, 'b')).toEqual(['y', 'z']);
+    expect(whenAllowed(word, 'nope')).toEqual(['y', 'z']);
+    expect(whenAllowed(word, undefined)).toEqual(['y', 'z']);
+    expect(whenAllowed({ ...word, when: undefined }, 'b')).toEqual([]);
   });
 });

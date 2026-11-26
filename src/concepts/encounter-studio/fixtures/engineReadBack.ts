@@ -44,10 +44,12 @@ import { fromJson, type JsonValue } from '@bufbuild/protobuf';
 import {
   GetItemWordsResponseSchema,
   GetMachineWordsResponseSchema,
+  GetStatusWordsResponseSchema,
   ReadBackSchema,
   ReadBackStatementSchema,
   type GetItemWordsResponse,
   type GetMachineWordsResponse,
+  type GetStatusWordsResponse,
   type ReadBack,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import castleJson from './engineReadBack.castle.json?raw';
@@ -64,6 +66,7 @@ import routinesJson from './engineReadBack.routines.json?raw';
 import threadsJson from './engineReadBack.threads.json?raw';
 import itemWordsJson from './itemWords.v0.237.0.json?raw';
 import machineWordsJson from './machineWords.v0.225.0.json?raw';
+import statusWordsJson from './statusWords.v0.240.0.json?raw';
 
 export function castleEngineReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(castleJson) as JsonValue);
@@ -185,6 +188,18 @@ export function itemWordsV237(): GetItemWordsResponse {
   return fromJson(
     GetItemWordsResponseSchema,
     JSON.parse(itemWordsJson) as JsonValue
+  );
+}
+
+/**
+ * THE ENGINE'S STATUS WORDS (rpg-project#1214), recorded the same way: the
+ * `GetStatusWords` answer at rulebook v0.240.0, marshalled with `protojson`.
+ * Unedited.
+ */
+export function statusWordsV240(): GetStatusWordsResponse {
+  return fromJson(
+    GetStatusWordsResponseSchema,
+    JSON.parse(statusWordsJson) as JsonValue
   );
 }
 

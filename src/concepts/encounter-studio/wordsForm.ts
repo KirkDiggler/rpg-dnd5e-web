@@ -9,6 +9,8 @@ export interface FormWordValue {
   word: string;
   label: string;
   with?: readonly FormWord[];
+  /** The `when` words that may sit beside a change carrying this value. */
+  when?: readonly string[];
 }
 
 export interface FormWord {
@@ -19,7 +21,20 @@ export interface FormWord {
   label: string;
   holds: string;
   required: boolean;
-  bounds?: { min: number; max: number; noMax: boolean };
+  bounds?: {
+    min: number;
+    max: number;
+    noMax: boolean;
+    /** The engine's own flag; the form does not act on it. */
+    zeroAllowed?: boolean;
+  };
+  /** `one word`: a `list` entry holds exactly one word of the `holds` place
+   * (a status's change), not every word of it (an item's `lets` entry). */
+  entry?: 'one word';
+  /** Written beside another word of its entry, narrowing it. */
+  narrows?: boolean;
+  /** The `when` words that may sit beside this word. */
+  when?: readonly string[];
 }
 
 /** The words of one place, in the table's order. */
@@ -77,4 +92,15 @@ export function unknownKeys(
 ): string[] {
   const named = new Set(words.map((word) => word.word));
   return Object.keys(value).filter((key) => !named.has(key));
+}
+
+/** The `when` words that may sit beside `word` written as `current`: the
+ * chosen value's own list if that value has one, else the word's, else none. */
+export function whenAllowed(
+  word: FormWord,
+  current: unknown
+): readonly string[] {
+  const chosen = word.values.find((v) => v.word === current);
+  if (chosen?.when !== undefined) return chosen.when;
+  return word.when ?? [];
 }
