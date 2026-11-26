@@ -13,10 +13,13 @@
 import { useContext, useId } from 'react';
 import { RevealDiv } from '../encounter-studio/RevealDiv';
 import {
+  APPLY_STATUS_TO,
   GIVE_ABOUT,
   GIVE_HEARD_BY,
   grantOf,
   LOUDNESSES,
+  otherGrantsOf,
+  withApplyStatus,
   withGive,
   withGrant,
   withRelocation,
@@ -294,7 +297,125 @@ const GRANT_LABELS: Record<RowGrant, string> = {
   give: 'Gives a topic',
   tells: 'Record',
   relocate: 'Relocation',
+  apply_status: 'Gives a status effect',
 };
+
+/** Who receives a status, in the voice of a give's "About". */
+const RECEIVER_LABELS: Record<string, string> = {
+  speaker: 'The speaker',
+  party_in_sight: 'The speaker’s party in sight',
+  spoken_to: 'The one spoken to',
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** A row's `apply_status`: the status, who receives it, the rounds it
+ * lasts; a value written outside what is offered is shown as written, and
+ * the keys the web does not know are kept and listed. */
+function ApplyStatusFields({
+  label,
+  row,
+  isProp,
+  onCommit,
+}: {
+  label: string;
+  row: GrantingRow;
+  isProp: boolean;
+  onCommit(row: GrantingRow): void;
+}): React.JSX.Element {
+  const names = useContext(SiteNamesContext);
+  const written = (row as Record<string, unknown>).apply_status;
+  if (!isRecord(written))
+    return (
+      <p className="wb-help" aria-label={`Status written for ${label}`}>
+        Written as <code>{JSON.stringify(written)}</code>, kept as written: the
+        engine reads <code>status</code> and <code>to</code>.
+      </p>
+    );
+  const status = typeof written.status === 'string' ? written.status : '';
+  const to = typeof written.to === 'string' ? written.to : '';
+  const untilWritten = written.until;
+  const until = isRecord(untilWritten) ? untilWritten : undefined;
+  const untilOdd = untilWritten !== undefined && until === undefined;
+  const rounds = typeof until?.rounds === 'number' ? until.rounds : undefined;
+  const offeredTo: readonly string[] = isProp
+    ? [APPLY_STATUS_TO[0]]
+    : APPLY_STATUS_TO;
+  const unknown = [
+    ...Object.keys(written).filter(
+      (key) => !['status', 'to', 'until'].includes(key)
+    ),
+    ...Object.keys(until ?? {})
+      .filter((key) => key !== 'rounds')
+      .map((key) => `until.${key}`),
+  ];
+  return (
+    <>
+      <label>
+        <span>Status</span>
+        <select
+          aria-label={`Status for ${label}`}
+          value={status}
+          onChange={(event) =>
+            onCommit(withApplyStatus(row, { status: event.target.value }))
+          }
+        >
+          {!names.statuses.some((entry) => entry.id === status) && (
+            <option value={status}>
+              {status === '' ? '(choose a status)' : status}
+            </option>
+          )}
+          {names.statuses.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name === entry.id
+                ? entry.id
+                : `${entry.name} (${entry.id})`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {names.statuses.length === 0 && (
+        <p className="wb-help">This site has no status effects yet.</p>
+      )}
+      <label>
+        <span>To</span>
+        <select
+          aria-label={`To for ${label}`}
+          value={to}
+          onChange={(event) =>
+            onCommit(withApplyStatus(row, { to: event.target.value }))
+          }
+        >
+          {to === '' && <option value="" />}
+          {offeredTo.map((word) => (
+            <option key={word} value={word}>
+              {RECEIVER_LABELS[word]}
+            </option>
+          ))}
+          {to !== '' && !offeredTo.includes(to) && (
+            <option value={to}>{to}</option>
+          )}
+        </select>
+      </label>
+      {untilOdd ? (
+        <p className="wb-help" aria-label={`Until written for ${label}`}>
+          <code>until</code> is written as{' '}
+          <code>{JSON.stringify(untilWritten)}</code>, kept as written.
+        </p>
+      ) : (
+        <RoundsField
+          label={label}
+          rounds={rounds}
+          onChange={(next) => onCommit(withApplyStatus(row, { rounds: next }))}
+        />
+      )}
+      {unknown.length > 0 && (
+        <p className="wb-help">also written: {unknown.join(', ')}</p>
+      )}
+    </>
+  );
+}
 
 /** A line's verdict row's grant: Nothing, or ONE of a topic given, a
  * record told or a relocation. Not on a table row (the caller offers it only
@@ -321,8 +442,8 @@ export function RowGrantFields({
   const names = useContext(SiteNamesContext);
   const grant = grantOf(row);
   const offered: RowGrant[] = isProp
-    ? ['tells', 'relocate']
-    : ['give', 'tells', 'relocate'];
+    ? ['tells', 'relocate', 'apply_status']
+    : ['give', 'tells', 'relocate', 'apply_status'];
   const named = `${label} entry`;
   const give = row.give;
   const retired = (row as Record<string, unknown>).recognize;
@@ -365,6 +486,12 @@ export function RowGrantFields({
           )}
         </select>
       </label>
+      {otherGrantsOf(row).length > 0 && (
+        <p className="wb-help">
+          This row also has: {otherGrantsOf(row).join(', ')}. The engine allows
+          one.
+        </p>
+      )}
       {grant === undefined && retired !== undefined && (
         <p className="wb-help" aria-label={`Written as recognize in ${named}`}>
           Written as <code>recognize</code>, kept as written: the engine reads{' '}
@@ -421,6 +548,19 @@ export function RowGrantFields({
             words={relocate.words}
             rounds={relocate.rounds}
             onChange={(patch) => onCommit(withRelocation(row, patch))}
+          />
+        </RevealDiv>
+      )}
+      {grant === 'apply_status' && (
+        <RevealDiv
+          path={at ? `${at}.apply_status` : undefined}
+          className="wb-entry-grant-fields"
+        >
+          <ApplyStatusFields
+            label={named}
+            row={row}
+            isProp={isProp}
+            onCommit={onCommit}
           />
         </RevealDiv>
       )}

@@ -8,6 +8,9 @@
  *   `spoken_to`; about is `party_in_sight` or `speaker`; `heard_by` is
  *   `carriers_who_witnessed` or absent;
  * - `tells: <intel record id>`;
+ * - `apply_status: { status, to, until?: { rounds } }` — a status of the
+ *   site's `statuses`, given to the speaker, the speaker's party in sight or
+ *   the one spoken to, for some rounds when `until` says so;
  * - `relocate: { to: <region id>, words, rounds? }` — rounds absent is none;
  * - `loudness: whisper | speak | shout | scream`, absent for speak.
  *
@@ -18,12 +21,24 @@
 import type { AnswerEntryShape } from './answerTableShape';
 import type { SiteNames } from './siteNames';
 
-export const ROW_GRANTS = ['give', 'tells', 'relocate'] as const;
+export const ROW_GRANTS = [
+  'give',
+  'tells',
+  'relocate',
+  'apply_status',
+] as const;
 export type RowGrant = (typeof ROW_GRANTS)[number];
 
 export const GIVE_TO = 'spoken_to';
 export const GIVE_ABOUT = ['party_in_sight', 'speaker'] as const;
 export const GIVE_HEARD_BY = 'carriers_who_witnessed';
+
+/** Who a status can be given to, as the engine reads `apply_status.to`. */
+export const APPLY_STATUS_TO = [
+  'speaker',
+  'party_in_sight',
+  'spoken_to',
+] as const;
 
 /** The four loudnesses, quietest first; absent is speak. */
 export const LOUDNESSES = ['whisper', 'speak', 'shout', 'scream'] as const;
@@ -41,11 +56,18 @@ export interface RelocationShape {
   rounds?: number;
 }
 
+export interface ApplyStatusShape {
+  status: string;
+  to: string;
+  until?: { rounds?: number };
+}
+
 /** A row as the grant edits read it. */
 export type GrantingRow = AnswerEntryShape & {
   give?: GiveShape;
   tells?: string;
   relocate?: RelocationShape;
+  apply_status?: ApplyStatusShape;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -57,6 +79,17 @@ export function grantOf(row: AnswerEntryShape): RowGrant | undefined {
   return ROW_GRANTS.find((grant) => raw[grant] !== undefined);
 }
 
+/** The grant keys a row holds beyond the one `grantOf` returns: a
+ * hand-written row with two. The engine allows one; nothing is removed until
+ * the author chooses a grant. */
+export function otherGrantsOf(row: AnswerEntryShape): RowGrant[] {
+  const raw = row as Record<string, unknown>;
+  const first = grantOf(row);
+  return ROW_GRANTS.filter(
+    (grant) => grant !== first && raw[grant] !== undefined
+  );
+}
+
 /** The row with exactly this grant (or none), started from what the site
  * defines: its first topic, record or region. */
 export function withGrant(
@@ -64,8 +97,12 @@ export function withGrant(
   grant: RowGrant | undefined,
   names: SiteNames
 ): GrantingRow {
-  if (grant !== undefined && grantOf(row) === grant) return row;
   const next = { ...row } as Record<string, unknown>;
+  // A grant the row already holds is kept as written; only the others go.
+  if (grant !== undefined && next[grant] !== undefined) {
+    for (const key of ROW_GRANTS) if (key !== grant) delete next[key];
+    return next as GrantingRow;
+  }
   for (const key of ROW_GRANTS) delete next[key];
   switch (grant) {
     case 'give':
@@ -83,6 +120,12 @@ export function withGrant(
         to: names.regions[0]?.id ?? '',
         words: '',
       } satisfies RelocationShape;
+      break;
+    case 'apply_status':
+      next.apply_status = {
+        status: names.statuses[0]?.id ?? '',
+        to: APPLY_STATUS_TO[0],
+      } satisfies ApplyStatusShape;
       break;
   }
   return next as GrantingRow;
@@ -124,6 +167,33 @@ export function withRelocation(
   if (patch.rounds === null) delete next.rounds;
   else if (patch.rounds !== undefined) next.rounds = patch.rounds;
   return { ...row, relocate: next };
+}
+
+/** The row's apply_status with one field changed, every other key as
+ * written (including keys the web does not know); rounds null removes
+ * `until`, a number writes `until: { ...written until, rounds }`. */
+export function withApplyStatus(
+  row: GrantingRow,
+  patch: { status?: string; to?: string; rounds?: number | null }
+): GrantingRow {
+  const was = isRecord(row.apply_status) ? row.apply_status : undefined;
+  const next: Record<string, unknown> = { ...was };
+  if (patch.status !== undefined) next.status = patch.status;
+  if (patch.to !== undefined) next.to = patch.to;
+  const until = next.until;
+  // An `until` that is not a mapping is not the web's to rewrite.
+  if (patch.rounds !== undefined && (until === undefined || isRecord(until))) {
+    if (patch.rounds === null) {
+      if (isRecord(until)) {
+        const rest = { ...until };
+        delete rest.rounds;
+        if (Object.keys(rest).length === 0) delete next.until;
+        else next.until = rest;
+      }
+    } else
+      next.until = { ...(until as object | undefined), rounds: patch.rounds };
+  }
+  return { ...row, apply_status: next as unknown as ApplyStatusShape };
 }
 
 /** A line or row said at this loudness: '' is speak, written as nothing.
