@@ -12,6 +12,7 @@ import { useState, type ReactNode } from 'react';
 import {
   setWord,
   unknownKeys,
+  valueText,
   whenAllowed,
   withWordsOf,
   wordsAt,
@@ -108,6 +109,16 @@ export function WordsForm({
 /** The label with its `{value}` mark removed: the name of a control. */
 const plain = (label: string): string =>
   label.replace(VALUE, ' ').replace(/\s+/g, ' ').trim();
+
+/** A word's label as a choice in the kind chooser: the `{value}` mark is cut
+ * at the end and shown as `…` at the start or in the middle. */
+const kindText = (label: string): string => {
+  const at = label.indexOf(VALUE);
+  if (at < 0) return label;
+  const after = label.slice(at + VALUE.length);
+  if (after.trim() === '') return plain(label);
+  return label.replace(VALUE, '…').replace(/\s+/g, ' ').trim();
+};
 
 /** Whether a written value is the type its word's shape expects. An absent
  * value always is. */
@@ -261,7 +272,7 @@ function Field({
             )}
             {word.values.map((v) => (
               <option key={v.word} value={v.word}>
-                {v.label}
+                {valueText(word.label, v.label)}
               </option>
             ))}
           </select>
@@ -289,10 +300,11 @@ function Field({
             <label key={v.word}>
               <input
                 type="checkbox"
+                aria-label={v.label}
                 checked={held.includes(v.word)}
                 onChange={(e) => writeList(v.word, e.target.checked)}
               />{' '}
-              {v.label}
+              {valueText(word.label, v.label)}
             </label>
           ))}
           {unlisted.map((w) => (
@@ -543,7 +555,7 @@ function OneWordEntry({
           {chosen === '' && <option value="" />}
           {mains.map((w) => (
             <option key={w.word} value={w.word}>
-              {plain(w.label)}
+              {kindText(w.label)}
             </option>
           ))}
         </select>

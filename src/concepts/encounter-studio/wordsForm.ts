@@ -104,3 +104,23 @@ export function whenAllowed(
   if (chosen?.when !== undefined) return chosen.when;
   return word.when ?? [];
 }
+
+/**
+ * A value's label as the word's own label leaves room for it. A word label
+ * `resistance to {value} damage` already says the words around the value, so
+ * a value label `resistance to acid damage` shows as `acid`. A value label
+ * that does not wear those words, or has nothing between them, shows whole.
+ */
+export function valueText(wordLabel: string, valueLabel: string): string {
+  const mark = '{value}';
+  const at = wordLabel.indexOf(mark);
+  if (at < 0) return valueLabel;
+  const before = wordLabel.slice(0, at);
+  const after = wordLabel.slice(at + mark.length);
+  if (!valueLabel.startsWith(before) || !valueLabel.endsWith(after))
+    return valueLabel;
+  const between = valueLabel
+    .slice(before.length, valueLabel.length - after.length)
+    .trim();
+  return between === '' ? valueLabel : between;
+}

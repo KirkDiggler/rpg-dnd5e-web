@@ -298,3 +298,52 @@ describe('WordsForm drawing a status', () => {
     ).toBeNull();
   });
 });
+
+describe('the status form reads as sentences (rpg-project#1223)', () => {
+  const fire = () =>
+    WORDS.find((w) => w.word === 'resistance')!.values.find(
+      (v) => v.word === 'fire'
+    )!;
+
+  it('resistance ticks show the damage type alone, each named by its whole label', () => {
+    draw({ name: 'x', changes: [{ resistance: [] }] });
+    const tick = screen.getByRole('checkbox', {
+      name: 'resistance to acid damage',
+    });
+    expect(tick.closest('label')!.textContent!.trim()).toBe('acid');
+    expect(screen.queryByText(/resistance to acid damage/)).toBeNull();
+  });
+
+  it('ticking fire writes the value word, not the short text', () => {
+    const onChange = draw({ name: 'x', changes: [{ resistance: [] }] });
+    fireEvent.click(screen.getByRole('checkbox', { name: fire().label }));
+    expect(last(onChange).changes).toEqual([{ resistance: ['fire'] }]);
+  });
+
+  it('ends when lists the value without repeating the words', () => {
+    draw({ name: 'x', maintenance: [{ ends_on: 'rest' }] });
+    const options = Array.from(select(/ends when/).options).map(
+      (o) => o.textContent
+    );
+    expect(options).toContain('the run ends');
+    expect(options.some((o) => /^ends when/.test(o ?? ''))).toBe(false);
+  });
+
+  it('the advantage choice that does not fit is shown whole', () => {
+    draw({ name: 'x', changes: [{ advantage: 'checks' }] });
+    const options = Array.from(select(/^advantage on/).options).map(
+      (o) => o.textContent
+    );
+    expect(options).toContain('checks');
+  });
+
+  it('the kind chooser marks where the value goes', () => {
+    draw({ name: 'x', changes: [{}] });
+    const options = Array.from(select(CHANGES()).options).map(
+      (o) => o.textContent
+    );
+    expect(options).toContain('… to the damage the holder deals');
+    expect(options).toContain('resistance to … damage');
+    expect(options).toContain('advantage on');
+  });
+});

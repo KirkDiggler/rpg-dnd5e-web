@@ -552,4 +552,17 @@ describe('WordsForm', () => {
     expect(entry.querySelector('[id$="-with"]')).not.toBeNull();
     expect(entry.querySelector('[id$="-cost"]')).not.toBeNull();
   });
+
+  it('the item form shows each value label whole (nothing cut)', () => {
+    draw(cloak());
+    const slot = screen.getByRole('combobox', {
+      name: word('item', 'slot').label,
+    }) as HTMLSelectElement;
+    expect(Array.from(slot.options).map((o) => o.textContent)).toEqual(
+      expect.arrayContaining([
+        'worn as a cloak',
+        'worn as a ring, on either hand',
+      ])
+    );
+  });
 });
