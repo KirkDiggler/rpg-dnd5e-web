@@ -1,0 +1,289 @@
+{
+  "rulebookVersion": "v0.240.0",
+  "words": [
+    {
+      "word": "name",
+      "place": "status",
+      "shape": "text",
+      "label": "the name players see",
+      "writtenIn": "status",
+      "required": true
+    },
+    {
+      "word": "changes",
+      "place": "status",
+      "shape": "list",
+      "label": "what the status changes",
+      "writtenIn": "status",
+      "holds": "change",
+      "required": true
+    },
+    {
+      "word": "maintenance",
+      "place": "status",
+      "shape": "list",
+      "label": "what ends the status; any one rule ends it",
+      "writtenIn": "status",
+      "holds": "maintenance rule",
+      "required": true
+    },
+    {
+      "word": "when_given",
+      "place": "status",
+      "shape": "list",
+      "label": "what happens once, when the status is first given",
+      "writtenIn": "status",
+      "holds": "when given"
+    },
+    {
+      "word": "again",
+      "place": "again",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "ignored",
+          "label": "a second giving is ignored"
+        }
+      ],
+      "label": "what a second giving does",
+      "writtenIn": "status",
+      "required": true
+    },
+    {
+      "word": "advantage",
+      "place": "change",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "checks",
+          "label": "advantage on checks",
+          "when": ["ability"]
+        },
+        {
+          "word": "saves",
+          "label": "advantage on saving throws",
+          "when": ["ability"]
+        },
+        {
+          "word": "attacks",
+          "label": "advantage on attacks",
+          "when": ["ability", "attack"]
+        },
+        {
+          "word": "attacks against you",
+          "label": "attacks against the holder have advantage",
+          "when": ["ability", "attack"]
+        }
+      ],
+      "label": "advantage on {value}",
+      "writtenIn": "change"
+    },
+    {
+      "word": "resistance",
+      "place": "change",
+      "shape": "list of",
+      "values": [
+        {
+          "word": "acid",
+          "label": "resistance to acid damage"
+        },
+        {
+          "word": "bludgeoning",
+          "label": "resistance to bludgeoning damage"
+        },
+        {
+          "word": "cold",
+          "label": "resistance to cold damage"
+        },
+        {
+          "word": "fire",
+          "label": "resistance to fire damage"
+        },
+        {
+          "word": "force",
+          "label": "resistance to force damage"
+        },
+        {
+          "word": "lightning",
+          "label": "resistance to lightning damage"
+        },
+        {
+          "word": "necrotic",
+          "label": "resistance to necrotic damage"
+        },
+        {
+          "word": "piercing",
+          "label": "resistance to piercing damage"
+        },
+        {
+          "word": "poison",
+          "label": "resistance to poison damage"
+        },
+        {
+          "word": "psychic",
+          "label": "resistance to psychic damage"
+        },
+        {
+          "word": "radiant",
+          "label": "resistance to radiant damage"
+        },
+        {
+          "word": "slashing",
+          "label": "resistance to slashing damage"
+        },
+        {
+          "word": "thunder",
+          "label": "resistance to thunder damage"
+        }
+      ],
+      "label": "resistance to {value} damage",
+      "writtenIn": "change"
+    },
+    {
+      "word": "damage",
+      "place": "change",
+      "shape": "whole number",
+      "label": "{value} to the damage the holder deals",
+      "writtenIn": "change",
+      "when": ["ability", "attack"],
+      "bounds": {
+        "min": -1000,
+        "max": 1000
+      }
+    },
+    {
+      "word": "max_hit_points",
+      "place": "change",
+      "shape": "positive whole number",
+      "label": "raises the holder's hit point maximum by {value}",
+      "writtenIn": "change",
+      "bounds": {
+        "min": 1,
+        "max": 1000
+      }
+    },
+    {
+      "word": "initiative",
+      "place": "change",
+      "shape": "positive whole number",
+      "label": "adds {value} to the holder's initiative",
+      "writtenIn": "change",
+      "bounds": {
+        "min": 1,
+        "max": 1000
+      }
+    },
+    {
+      "word": "cannot",
+      "place": "change",
+      "shape": "list of",
+      "values": [
+        {
+          "word": "move",
+          "label": "cannot move by its own will"
+        }
+      ],
+      "label": "the holder cannot {value}",
+      "writtenIn": "change"
+    },
+    {
+      "word": "when",
+      "place": "change",
+      "shape": "entries",
+      "label": "narrows the change it sits beside",
+      "writtenIn": "change",
+      "holds": "when",
+      "narrows": true
+    },
+    {
+      "word": "ability",
+      "place": "when",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "strength",
+          "label": "only when the ability is strength"
+        },
+        {
+          "word": "dexterity",
+          "label": "only when the ability is dexterity"
+        },
+        {
+          "word": "constitution",
+          "label": "only when the ability is constitution"
+        },
+        {
+          "word": "intelligence",
+          "label": "only when the ability is intelligence"
+        },
+        {
+          "word": "wisdom",
+          "label": "only when the ability is wisdom"
+        },
+        {
+          "word": "charisma",
+          "label": "only when the ability is charisma"
+        }
+      ],
+      "label": "only when the ability is {value}",
+      "writtenIn": "when"
+    },
+    {
+      "word": "attack",
+      "place": "when",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "melee",
+          "label": "only for melee attacks"
+        }
+      ],
+      "label": "only for {value} attacks",
+      "writtenIn": "when"
+    },
+    {
+      "word": "ends_on",
+      "place": "maintenance rule",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "run",
+          "label": "ends when the run ends"
+        },
+        {
+          "word": "rest",
+          "label": "ends at the next rest"
+        },
+        {
+          "word": "fight starts",
+          "label": "ends when a fight the holder is in starts"
+        },
+        {
+          "word": "fight ends",
+          "label": "ends when the fight ends"
+        },
+        {
+          "word": "next turn",
+          "label": "ends when the holder's next turn starts"
+        },
+        {
+          "word": "dropped to zero",
+          "label": "ends when the holder drops to zero hit points"
+        }
+      ],
+      "label": "ends when {value}",
+      "writtenIn": "maintenance rule"
+    },
+    {
+      "word": "heal",
+      "place": "when given",
+      "shape": "positive whole number",
+      "label": "heals the holder by {value} when given",
+      "writtenIn": "when given",
+      "bounds": {
+        "min": 1,
+        "max": 1000
+      }
+    }
+  ]
+}

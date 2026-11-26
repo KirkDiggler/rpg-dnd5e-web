@@ -544,4 +544,12 @@ describe('WordsForm', () => {
       expect(onChange.mock.calls[0][0]).toEqual({ flag: false });
     });
   });
+
+  it('an item lets entry still draws use, with and cost together', () => {
+    draw(cloak());
+    const entry = document.querySelector('.es-words-entry') as HTMLElement;
+    expect(entry.querySelector('[id$="-use"]')).not.toBeNull();
+    expect(entry.querySelector('[id$="-with"]')).not.toBeNull();
+    expect(entry.querySelector('[id$="-cost"]')).not.toBeNull();
+  });
 });

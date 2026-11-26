@@ -12,6 +12,7 @@ import { useState, type ReactNode } from 'react';
 import {
   setWord,
   unknownKeys,
+  whenAllowed,
   withWordsOf,
   wordsAt,
   type FormWord,
@@ -119,6 +120,7 @@ function fits(shape: string, current: unknown): boolean {
     case 'true or false':
       return typeof current === 'boolean';
     case 'whole number':
+    case 'positive whole number':
       return typeof current === 'number';
     case 'list of':
       return (
@@ -190,6 +192,7 @@ function Field({
   value,
   write,
   idPrefix,
+  innerWords,
 }: {
   words: readonly FormWord[];
   place: string;
@@ -197,6 +200,9 @@ function Field({
   value: Readonly<Obj>;
   write(word: string, next: unknown): void;
   idPrefix: string;
+  /** The inner words to draw for an `entries` word instead of every word of
+   * its `holds` place (a status's `when`: only what the change allows). */
+  innerWords?: readonly FormWord[];
 }): React.JSX.Element | null {
   const id = `${idPrefix}-${word.word}`;
   const current = value[word.word];
@@ -304,6 +310,7 @@ function Field({
       );
     }
     case 'whole number':
+    case 'positive whole number':
       return (
         <Labelled label={word.label}>
           <TypedInput
@@ -340,9 +347,11 @@ function Field({
         </Labelled>
       );
     case 'entries': {
-      const own = wordsAt(words, word.holds);
+      const own = innerWords ?? wordsAt(words, word.holds);
       const nestedWords =
-        own.length > 0 ? undefined : withWordsOf(words, place, value);
+        own.length > 0 || innerWords
+          ? undefined
+          : withWordsOf(words, place, value);
       if (own.length === 0 && (nestedWords?.length ?? 0) === 0)
         return current === undefined ? null : (
           <p className="es-help es-words-kept" data-also-written={word.word}>
@@ -376,7 +385,7 @@ function Field({
               value={isObject(current) ? current : {}}
               onChange={(next) => write(word.word, next)}
               idPrefix={id}
-              placeWords={nestedWords}
+              placeWords={innerWords ?? nestedWords}
             />
           )}
         </fieldset>
@@ -384,12 +393,26 @@ function Field({
     }
     case 'list': {
       const entries: unknown[] = Array.isArray(current) ? current : [];
+      const oneWord = word.entry === 'one word';
       return (
         <fieldset id={id} className="es-words-group es-words-list">
           <legend>{word.label}</legend>
           {entries.map((entry, index) => (
             <div key={index} className="es-words-entry">
-              {isObject(entry) ? (
+              {oneWord ? (
+                <OneWordEntry
+                  words={words}
+                  holds={word.holds}
+                  entry={entry}
+                  onChange={(next) =>
+                    write(
+                      word.word,
+                      entries.map((e, i) => (i === index ? next : e))
+                    )
+                  }
+                  idPrefix={`${id}-${index}`}
+                />
+              ) : isObject(entry) ? (
                 <WordsForm
                   words={words}
                   place={word.holds}
@@ -442,4 +465,106 @@ function Field({
         </p>
       );
   }
+}
+
+/** A `list` entry that holds exactly one word of its place (a status's
+ * change), plus the words that narrow it. Drawn as a choice of WHAT, that
+ * word's own control, then the narrowing words the choice allows. An entry
+ * that is not exactly that is shown as written and never rewritten. */
+function OneWordEntry({
+  words,
+  holds,
+  entry,
+  onChange,
+  idPrefix,
+}: {
+  words: readonly FormWord[];
+  holds: string;
+  entry: unknown;
+  onChange(next: Obj): void;
+  idPrefix: string;
+}): React.JSX.Element {
+  // What the author picked from the choice while the entry has no word yet.
+  const [pick, setPick] = useState<string | null>(null);
+  const here = wordsAt(words, holds);
+  const mains = here.filter((w) => !w.narrows);
+  const narrowing = here.filter((w) => w.narrows);
+  if (!isObject(entry))
+    return (
+      <p className="es-help es-words-kept" data-not-an-object={idPrefix}>
+        <code>{JSON.stringify(entry)}</code>
+      </p>
+    );
+  const narrowNames = new Set(narrowing.map((w) => w.word));
+  const keys = Object.keys(entry).filter((k) => !narrowNames.has(k));
+  const writtenWord = keys.length === 1 ? keys[0] : null;
+  const plainEntry =
+    keys.length === 0 ||
+    (keys.length === 1 && mains.some((w) => w.word === keys[0]));
+  if (!plainEntry)
+    return (
+      <p className="es-help es-words-kept" data-not-plain={idPrefix}>
+        <code>{JSON.stringify(entry)}</code>
+      </p>
+    );
+  const chosen = writtenWord ?? pick ?? '';
+  const chosenWord = mains.find((w) => w.word === chosen);
+  const choose = (next: string) => {
+    if (next === chosen) return;
+    setPick(next === '' ? null : next);
+    if (writtenWord !== null) onChange(setWord(entry, writtenWord, undefined));
+  };
+  const writeInner = (name: string, next: unknown) => {
+    if (next === undefined && !(name in entry)) return;
+    onChange(setWord(entry, name, next));
+  };
+  return (
+    <>
+      <label>
+        <span>what the {plain(holds)} is</span>{' '}
+        <select
+          aria-label={`What the ${plain(holds)} is`}
+          value={chosen}
+          onChange={(e) => choose(e.target.value)}
+        >
+          {chosen === '' && <option value="" />}
+          {mains.map((w) => (
+            <option key={w.word} value={w.word}>
+              {plain(w.label)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {chosenWord && (
+        <Field
+          words={words}
+          place={holds}
+          word={chosenWord}
+          value={entry}
+          write={writeInner}
+          idPrefix={`${idPrefix}-${chosenWord.word}`}
+        />
+      )}
+      {narrowing.map((nw) => {
+        const allowed = chosenWord
+          ? whenAllowed(chosenWord, entry[chosenWord.word])
+          : [];
+        const inner = wordsAt(words, nw.holds).filter((w) =>
+          allowed.includes(w.word)
+        );
+        return (
+          <Field
+            key={nw.word}
+            words={words}
+            place={holds}
+            word={nw}
+            value={entry}
+            write={writeInner}
+            idPrefix={`${idPrefix}-${nw.word}`}
+            innerWords={inner}
+          />
+        );
+      })}
+    </>
+  );
 }
