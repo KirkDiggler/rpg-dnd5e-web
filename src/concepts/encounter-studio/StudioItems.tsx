@@ -294,32 +294,17 @@ function ItemChange({
     setSeen({ id, written });
     setDraft(block);
   }
+  const editable = Boolean(itemWords && onCommitItem && block && draft);
   const body =
     itemWords && onCommitItem ? (
       block && draft ? (
-        <>
-          <WordsForm
-            words={itemWords.words}
-            place="item"
-            idPrefix={`item-${id}`}
-            value={draft}
-            onChange={setDraft}
-          />
-          <button
-            type="button"
-            disabled={same(draft, block)}
-            onClick={() => onCommitItem(id, () => draft)}
-          >
-            Save
-          </button>{' '}
-          <button
-            type="button"
-            disabled={same(draft, block)}
-            onClick={() => setDraft(block)}
-          >
-            Discard
-          </button>
-        </>
+        <WordsForm
+          words={itemWords.words}
+          place="item"
+          idPrefix={`item-${id}`}
+          value={draft}
+          onChange={setDraft}
+        />
       ) : (
         <p className="es-help">{NOT_A_BLOCK_SENTENCE}</p>
       )
@@ -330,26 +315,46 @@ function ItemChange({
       </p>
     ) : null;
   return (
-    <>
+    <div className="es-item-change">
       <h3>Change</h3>
       {body}
-      {onRemoveItem && (
-        <>
-          {equippedBy > 0 && (
-            <p className="es-help">
-              Equipped by {equippedBy}. Deleting it leaves them with an item
-              this site does not have; the engine will say so.
-            </p>
-          )}
-          <button
-            type="button"
-            className="wb-danger"
-            onClick={() => onRemoveItem(id)}
-          >
-            Delete item
-          </button>
-        </>
+      {onRemoveItem && equippedBy > 0 && (
+        <p className="es-help">
+          Equipped by {equippedBy}. Deleting it leaves them with an item this
+          site does not have; the engine will say so.
+        </p>
       )}
-    </>
+      {(editable || onRemoveItem) && (
+        <div className="es-item-actions">
+          {editable && block && draft && (
+            <>
+              <button
+                type="button"
+                disabled={same(draft, block)}
+                onClick={() => onCommitItem?.(id, () => draft)}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                disabled={same(draft, block)}
+                onClick={() => setDraft(block)}
+              >
+                Discard
+              </button>
+            </>
+          )}
+          {onRemoveItem && (
+            <button
+              type="button"
+              className="wb-danger es-item-delete"
+              onClick={() => onRemoveItem(id)}
+            >
+              Delete item
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

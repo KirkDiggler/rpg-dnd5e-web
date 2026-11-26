@@ -3340,3 +3340,93 @@ li.es-machine-step[data-refused],
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* Custom items S6 (rpg-project#1205): the item form's groups read as groups.
+ * Structure only, from the variables above; scoped to `.es-words-form`,
+ * `.es-items` and `.es-new-item`. */
+.es-words-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.es-words-field:empty {
+  display: none;
+}
+.es-words-field > label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+.es-words-field > label > :is(input, select) {
+  box-sizing: border-box;
+  width: 14rem;
+  max-width: 100%;
+}
+.es-words-field > label > input[type='number'] {
+  width: 6rem;
+}
+.es-words-field > label > input[type='checkbox'] {
+  width: auto;
+}
+.es-words-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+}
+.es-words-group > legend {
+  padding: 0 0.4rem;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+}
+.es-words-set {
+  margin-inline-start: 0.6rem;
+  font-weight: var(--es-weight-value);
+}
+.es-words-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+}
+.es-words-entry > button {
+  align-self: flex-end;
+}
+.es-words-add {
+  margin-top: 0.4rem;
+}
+.es-words-kept {
+  margin: 0;
+  padding-inline-start: 0.6rem;
+  border-inline-start: 3px solid var(--wb-border);
+}
+.es-items .es-threads-thread h3 {
+  margin-top: 1.1rem;
+}
+.es-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.es-item-delete {
+  margin-inline-start: auto;
+}
+.es-new-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.es-new-item > .es-help {
+  flex-basis: 100%;
+  margin: 0;
+}
