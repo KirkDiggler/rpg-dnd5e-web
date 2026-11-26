@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S4 people and places
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#970](https://github.com/KirkDiggler/rpg-project/issues/970) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`ae7f2a15`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ae7f2a15).
 
 ## Shipped

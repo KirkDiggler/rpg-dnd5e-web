@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Status effect powers S9 badge letters
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1063](https://github.com/KirkDiggler/rpg-project/issues/1063) of story [rpg-project#1036](https://github.com/KirkDiggler/rpg-project/issues/1036). Base: `rpg-dnd5e-web` `dev` at [`0daf4813`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/0daf4813).
 
 ## Shipped

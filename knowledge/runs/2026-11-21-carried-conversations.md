@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — A selected creature lists the conversations it carries
 
+processed: 2026-11-25T190427Z
+
 Issue [rpg-project#1059](https://github.com/KirkDiggler/rpg-project/issues/1059), slice 6 of [rpg-project#1037](https://github.com/KirkDiggler/rpg-project/issues/1037). Base: `rpg-dnd5e-web` `dev`. Tests ran on Node v22.16.0.
 
 ## Shipped

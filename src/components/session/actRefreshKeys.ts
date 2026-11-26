@@ -81,8 +81,12 @@ export function refreshKeysForAct(
         : ['afford', 'view'];
     case 'deathSave':
       return COMBAT;
+    // A loot by the viewer re-reads their sheet: what the body had equipped
+    // now sits in their inventory. The key is returned for EVERY loot, as the
+    // body does not say what was taken, so a loot looks the same whether or
+    // not the body had anything. Anyone else's loot changes nothing here.
     case 'loot':
-      return [];
+      return body.value.by?.id === member ? ['characterData'] : [];
     case 'hold':
     case 'drop':
     case 'door':

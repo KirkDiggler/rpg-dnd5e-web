@@ -1,5 +1,7 @@
 # Run — 2026-11-15 — Studio today S3 refusals header
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#969](https://github.com/KirkDiggler/rpg-project/issues/969) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`285152a2`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/285152a2).
 
 ## Shipped

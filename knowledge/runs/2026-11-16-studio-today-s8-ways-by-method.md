@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — Studio today S8 ways by method
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#974](https://github.com/KirkDiggler/rpg-project/issues/974) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-dnd5e-web` `dev` at [`40d34d84`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/40d34d84).
 
 ## Shipped

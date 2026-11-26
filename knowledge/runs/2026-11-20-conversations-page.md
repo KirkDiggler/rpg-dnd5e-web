@@ -1,5 +1,7 @@
 # Run — 2026-11-20 — The Conversations page shows a conversation's lines once
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1027](https://github.com/KirkDiggler/rpg-project/issues/1027) of story [rpg-project#987](https://github.com/KirkDiggler/rpg-project/issues/987). PR [rpg-dnd5e-web#1468](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1468). Base: `rpg-dnd5e-web` `dev` at [`c78c8db0`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/c78c8db0). Engine read: `rpg-toolkit` `rulebooks/dnd5e/encounter` v0.232.1 (`d223f26a`, [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/2479) and [#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485)). Protos: v0.1.283, unchanged; the read-back is generic statements.
 
 ## Shipped

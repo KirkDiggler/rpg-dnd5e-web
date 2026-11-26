@@ -1,5 +1,7 @@
 # Run — 2026-11-17 — studio today S9 forms (B): a line's requirements and its advance
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#975](https://github.com/KirkDiggler/rpg-project/issues/975) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966), PR B of four. It is stacked on PR A ([rpg-dnd5e-web#1446](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1446), branch `studio-forms-row-grants`). Shapes read from rpg-toolkit `origin/main` [`bb5806f7`](https://github.com/KirkDiggler/rpg-toolkit/commit/bb5806f7) `dungeonspec`:
 
 - `spec.go`: `OptionSpec.Requires`, `AdvanceSpec`;
