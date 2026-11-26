@@ -29,11 +29,20 @@ const isObject = (value: unknown): value is Obj =>
 function Labelled({
   label,
   children,
+  boxFirst,
 }: {
   label: string;
   children: ReactNode;
+  /** The control before the text (a true-or-false box). */
+  boxFirst?: boolean;
 }): React.JSX.Element {
   const at = label.indexOf(VALUE);
+  if (at < 0 && boxFirst)
+    return (
+      <label>
+        {children} {label}
+      </label>
+    );
   if (at < 0)
     return (
       <label>
@@ -70,20 +79,21 @@ export function WordsForm({
   const write = (word: string, next: unknown) =>
     onChange(setWord(value, word, next));
   return (
-    <div>
+    <div className="es-words-form">
       {shown.map((word) => (
-        <Field
-          key={word.word}
-          words={words}
-          place={place}
-          word={word}
-          value={value}
-          write={write}
-          idPrefix={idPrefix}
-        />
+        <div key={word.word} className="es-words-field" data-shape={word.shape}>
+          <Field
+            words={words}
+            place={place}
+            word={word}
+            value={value}
+            write={write}
+            idPrefix={idPrefix}
+          />
+        </div>
       ))}
       {unknownKeys(shown, value).map((key) => (
-        <p key={key} className="es-help" data-also-written={key}>
+        <p key={key} className="es-help es-words-kept" data-also-written={key}>
           also written: <code>{key}</code>{' '}
           <code>{JSON.stringify(value[key])}</code>
         </p>
@@ -142,7 +152,7 @@ function Field({
   const name = plain(word.label);
   if (!fits(word.shape, current))
     return (
-      <p className="es-help" data-wrong-type={word.word}>
+      <p className="es-help es-words-kept" data-wrong-type={word.word}>
         {name}: <code>{JSON.stringify(current)}</code> is not {word.shape}.{' '}
         <button
           type="button"
@@ -267,7 +277,7 @@ function Field({
       );
     case 'true or false':
       return (
-        <Labelled label={word.label}>
+        <Labelled label={word.label} boxFirst>
           <input
             id={id}
             type="checkbox"
@@ -288,18 +298,18 @@ function Field({
         own.length > 0 ? undefined : withWordsOf(words, place, value);
       if (own.length === 0 && (nestedWords?.length ?? 0) === 0)
         return current === undefined ? null : (
-          <p className="es-help" data-also-written={word.word}>
+          <p className="es-help es-words-kept" data-also-written={word.word}>
             also written: <code>{word.word}</code>{' '}
             <code>{JSON.stringify(current)}</code>
           </p>
         );
       const set = isObject(current);
       return (
-        <fieldset id={id}>
+        <fieldset id={id} className="es-words-group">
           <legend>
             {word.label}
             {!word.required && (
-              <label>
+              <label className="es-words-set">
                 <input
                   type="checkbox"
                   aria-label={`set ${name}`}
@@ -328,10 +338,10 @@ function Field({
     case 'list': {
       const entries: unknown[] = Array.isArray(current) ? current : [];
       return (
-        <fieldset id={id}>
+        <fieldset id={id} className="es-words-group es-words-list">
           <legend>{word.label}</legend>
           {entries.map((entry, index) => (
-            <div key={index}>
+            <div key={index} className="es-words-entry">
               {isObject(entry) ? (
                 <WordsForm
                   words={words}
@@ -346,7 +356,7 @@ function Field({
                   idPrefix={`${id}-${index}`}
                 />
               ) : (
-                <p className="es-help" data-not-an-object={index}>
+                <p className="es-help es-words-kept" data-not-an-object={index}>
                   <code>{JSON.stringify(entry)}</code>
                 </p>
               )}
@@ -368,6 +378,7 @@ function Field({
           ))}
           <button
             type="button"
+            className="es-words-add"
             aria-label={`Add to ${name}`}
             onClick={() => write(word.word, [...entries, {}])}
           >
@@ -378,7 +389,7 @@ function Field({
     }
     default:
       return (
-        <p className="es-help" data-no-control={word.word}>
+        <p className="es-help es-words-kept" data-no-control={word.word}>
           {word.word}: <code>{JSON.stringify(current)}</code>. This studio has
           no control for the engine&apos;s {word.shape} yet.
         </p>

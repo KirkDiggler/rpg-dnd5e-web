@@ -338,4 +338,47 @@ describe('WordsForm', () => {
       ).value
     ).toBe('3');
   });
+
+  it('a group is a fieldset named by the engine’s label', () => {
+    draw(cloak());
+    const charges = word('item', 'charges').label;
+    const group = screen.getByRole('group', { name: new RegExp(charges) });
+    expect(group.tagName).toBe('FIELDSET');
+    expect(
+      within(group).getByRole('spinbutton', {
+        name: around(word('charges', 'max').label),
+      })
+    ).toBeTruthy();
+  });
+
+  it('each list entry is its own box holding its Remove', () => {
+    draw(cloak());
+    const use = screen.getByRole('combobox', {
+      name: around(word('lets entry', 'use').label),
+    });
+    const entry = use.closest('.es-words-entry') as HTMLElement;
+    expect(entry).not.toBeNull();
+    expect(
+      within(entry).getByRole('button', {
+        name: `Remove 1 from ${plain(word('item', 'lets').label)}`,
+      })
+    ).toBeTruthy();
+  });
+
+  it('a true-or-false word’s box comes before its text', () => {
+    draw(cloak());
+    const box = screen.getByRole('checkbox', {
+      name: word('item', 'unique').label,
+    });
+    const label = box.closest('label')!;
+    const text = [...label.childNodes].find(
+      (n) =>
+        n.nodeType === Node.TEXT_NODE &&
+        (n.textContent ?? '').includes(word('item', 'unique').label)
+    )!;
+    expect(text).toBeDefined();
+    expect(
+      box.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });
