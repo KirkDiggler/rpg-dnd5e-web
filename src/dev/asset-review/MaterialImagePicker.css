@@ -1,0 +1,49 @@
+.material-image-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  min-width: 0;
+}
+.material-image-picker select,
+.material-image-picker input,
+.material-image-picker button {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+.material-image-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.6rem;
+  background: #111b24;
+  border: 1px solid #425362;
+  border-radius: 0.4rem;
+}
+.material-image-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.4rem;
+  max-height: 280px;
+  overflow: auto;
+}
+.material-image-thumbnails button {
+  display: grid;
+  place-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  min-width: 0;
+}
+.material-image-thumbnails button[aria-pressed='true'] {
+  outline: 2px solid #f5cf69;
+}
+.material-image-thumbnails img {
+  object-fit: contain;
+  background: repeating-conic-gradient(#263440 0% 25%, #18232c 0% 50%) 0 / 12px
+    12px;
+}
+.material-image-thumbnails span {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}

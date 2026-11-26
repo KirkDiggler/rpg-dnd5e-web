@@ -6,6 +6,8 @@ export interface PackMaterialProfile {
   selections: Record<string, string | null>;
 }
 export interface MaterialUse {
+  // Exported for the material-editor (manifest v3) consumer in materialRecipe.ts.
+
   sourcePath: string;
   sourceSha256: string;
   group: string;
@@ -14,6 +16,8 @@ export interface MaterialUse {
   declaredMaterial: string;
 }
 export interface MaterialOption {
+  // Exported for the material-editor (manifest v3) consumer in materialRecipe.ts.
+
   id: string;
   label: string;
   baseColor: string;
@@ -24,6 +28,8 @@ export interface MaterialOption {
   reasons: string[];
 }
 export interface MaterialFamily {
+  // Exported for the material-editor (manifest v3) consumer in materialRecipe.ts.
+
   id: string;
   label: string;
   kind: 'atlas' | 'tiling' | 'unresolved' | 'unsupported';
@@ -47,6 +53,8 @@ export interface MaterialPreview {
   }[];
 }
 export interface MaterialSourceException {
+  // Exported for the material-editor (manifest v3) consumer in materialRecipe.ts.
+
   sourcePath: string;
   sourceSha256: string;
   reason: string;
@@ -60,6 +68,8 @@ export interface MaterialSourceException {
   }[];
 }
 export interface MaterialSourceAudit {
+  // Exported for the material-editor (manifest v3) consumer in materialRecipe.ts.
+
   sourceCount: number;
   verifiedCount: number;
   exceptions: MaterialSourceException[];
@@ -324,7 +334,7 @@ function nonnegative(value: unknown): number {
     throw new Error('Invalid count/slot');
   return value;
 }
-function parseSourceAudit(value: unknown): MaterialSourceAudit {
+export function parseSourceAudit(value: unknown): MaterialSourceAudit {
   const row = object(value, ['sourceCount', 'verifiedCount', 'exceptions']);
   const exceptions = list(row.exceptions, (value): MaterialSourceException => {
     const item = object(value, [
@@ -385,6 +395,34 @@ function parseSourceAudit(value: unknown): MaterialSourceAudit {
     throw new Error('Source audit count mismatch');
   return { sourceCount, verifiedCount, exceptions };
 }
+export function parseMaterialCatalog(
+  value: unknown
+): MaterialReviewManifest['catalog'] {
+  const catalog = object(value, [
+    'schemaVersion',
+    'packSlug',
+    'packVersion',
+    'inputSha256',
+    'families',
+  ]);
+  version(catalog);
+  const families = list(catalog.families, parseFamily);
+  unique(families.map((family) => family.id));
+  unique(
+    families.flatMap((family) =>
+      family.uses.map((use) =>
+        JSON.stringify([use.sourcePath, use.objectName, use.slot])
+      )
+    )
+  );
+  return {
+    schemaVersion: 1,
+    packSlug: text(catalog.packSlug, true),
+    packVersion: text(catalog.packVersion, true),
+    inputSha256: hash(catalog.inputSha256),
+    families,
+  };
+}
 export function parseMaterialReviewManifest(
   value: unknown
 ): MaterialReviewManifest {
@@ -403,23 +441,8 @@ export function parseMaterialReviewManifest(
   ]);
   if (row.mode !== 'material-preview')
     throw new Error('Not a material-preview manifest');
-  const catalog = object(row.catalog, [
-    'schemaVersion',
-    'packSlug',
-    'packVersion',
-    'inputSha256',
-    'families',
-  ]);
-  version(catalog);
-  const families = list(catalog.families, parseFamily);
-  unique(families.map((family) => family.id));
-  unique(
-    families.flatMap((family) =>
-      family.uses.map((use) =>
-        JSON.stringify([use.sourcePath, use.objectName, use.slot])
-      )
-    )
-  );
+  const catalog = parseMaterialCatalog(row.catalog);
+  const families = catalog.families;
   const sourceAudit =
     schemaVersion === 2 ? parseSourceAudit(row.sourceAudit) : undefined;
   const blocked = new Set(
@@ -474,13 +497,7 @@ export function parseMaterialReviewManifest(
     profile: parseMaterialProfile(row.profile),
     profileSha256: hash(row.profileSha256),
     catalogSha256: hash(row.catalogSha256),
-    catalog: {
-      schemaVersion: 1,
-      packSlug: text(catalog.packSlug, true),
-      packVersion: text(catalog.packVersion, true),
-      inputSha256: hash(catalog.inputSha256),
-      families,
-    },
+    catalog,
     previews: list(row.previews, parsePreview),
   };
   validateProfileChoices(result.profile, result);

@@ -48,6 +48,7 @@ import {
   type AssetReviewSourceIndex,
 } from './sourceRegistry';
 
+import { MaterialEditorLab } from './MaterialEditorLab';
 import { MaterialReviewLab } from './MaterialReviewLab';
 
 export const ASSET_REVIEW_STORAGE_KEY = LEGACY_BATCH_STORAGE_KEY;
@@ -178,8 +179,10 @@ function StatusPill({ status }: { status: ReviewStatus }) {
 }
 
 export function AssetReviewLab() {
-  return new URLSearchParams(window.location.search).get('materialReview') ===
-    '1' ? (
+  const search = new URLSearchParams(window.location.search);
+  return search.get('materialEditor') === '1' ? (
+    <MaterialEditorLab />
+  ) : search.get('materialReview') === '1' ? (
     <MaterialReviewLab />
   ) : (
     <AssetBatchReviewLab />
