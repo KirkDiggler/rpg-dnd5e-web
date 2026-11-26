@@ -63,6 +63,15 @@ export function askItemWords(client: ItemWordsClient): Promise<ItemWordsState> {
   return promise;
 }
 
+/** Forget the kept answer and any pending ask of a client, so the next
+ * caller asks again (tests, and a studio that changes server). */
+export function forgetItemWords(
+  client: ItemWordsClient = authoringClient
+): void {
+  asked.delete(client);
+  answered.delete(client);
+}
+
 /** The words a client has already answered with, or null. */
 export function itemWordsNow(
   client: ItemWordsClient = authoringClient

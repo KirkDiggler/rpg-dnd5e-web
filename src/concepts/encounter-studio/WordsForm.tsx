@@ -92,6 +92,35 @@ export function WordsForm({
   );
 }
 
+/** The label with its `{value}` mark removed: the name of a control. */
+const plain = (label: string): string =>
+  label.replace(VALUE, ' ').replace(/\s+/g, ' ').trim();
+
+/** Whether a written value is the type its word's shape expects. An absent
+ * value always is. */
+function fits(shape: string, current: unknown): boolean {
+  if (current === undefined) return true;
+  switch (shape) {
+    case 'text':
+    case 'one of':
+      return typeof current === 'string';
+    case 'true or false':
+      return typeof current === 'boolean';
+    case 'whole number':
+      return typeof current === 'number';
+    case 'list of':
+      return (
+        Array.isArray(current) && current.every((x) => typeof x === 'string')
+      );
+    case 'entries':
+      return isObject(current);
+    case 'list':
+      return Array.isArray(current);
+    default:
+      return true;
+  }
+}
+
 function Field({
   words,
   place,
@@ -110,6 +139,20 @@ function Field({
   const id = `${idPrefix}-${word.word}`;
   const current = value[word.word];
   const required = word.required || undefined;
+  const name = plain(word.label);
+  if (!fits(word.shape, current))
+    return (
+      <p className="es-help" data-wrong-type={word.word}>
+        {name}: <code>{JSON.stringify(current)}</code> is not {word.shape}.{' '}
+        <button
+          type="button"
+          aria-label={`Clear ${name}`}
+          onClick={() => write(word.word, undefined)}
+        >
+          Clear
+        </button>
+      </p>
+    );
   switch (word.shape) {
     case 'text':
       return (
@@ -160,32 +203,40 @@ function Field({
       );
     }
     case 'list of': {
-      const held = Array.isArray(current) ? current.map(String) : [];
+      const held = Array.isArray(current) ? (current as string[]) : [];
+      const offered = word.values.map((v) => v.word);
+      const unlisted = held.filter((h) => !offered.includes(h));
       const at = word.label.indexOf(VALUE);
       const before = at < 0 ? word.label : word.label.slice(0, at);
       const after = at < 0 ? '' : word.label.slice(at + VALUE.length);
+      const writeList = (tick: string, on: boolean) => {
+        const next = [
+          ...offered.filter((w) => (w === tick ? on : held.includes(w))),
+          ...unlisted.filter((w) => w !== tick || on),
+        ];
+        write(word.word, next.length === 0 ? undefined : next);
+      };
       return (
-        <div
-          role="group"
-          aria-label={`${before}${after}`.trim()}
-          aria-required={required}
-        >
+        <div role="group" aria-label={name} aria-required={required}>
           <span>{before}</span>
           {word.values.map((v) => (
             <label key={v.word}>
               <input
                 type="checkbox"
                 checked={held.includes(v.word)}
-                onChange={(e) => {
-                  const next = word.values
-                    .map((x) => x.word)
-                    .filter((w) =>
-                      w === v.word ? e.target.checked : held.includes(w)
-                    );
-                  write(word.word, next.length === 0 ? undefined : next);
-                }}
+                onChange={(e) => writeList(v.word, e.target.checked)}
               />{' '}
               {v.label}
+            </label>
+          ))}
+          {unlisted.map((w) => (
+            <label key={`unlisted:${w}`}>
+              <input
+                type="checkbox"
+                checked
+                onChange={(e) => writeList(w, e.target.checked)}
+              />{' '}
+              {w}
             </label>
           ))}
           {after && <span>{after}</span>}
@@ -235,7 +286,13 @@ function Field({
       const own = wordsAt(words, word.holds);
       const nestedWords =
         own.length > 0 ? undefined : withWordsOf(words, place, value);
-      if (own.length === 0 && (nestedWords?.length ?? 0) === 0) return null;
+      if (own.length === 0 && (nestedWords?.length ?? 0) === 0)
+        return current === undefined ? null : (
+          <p className="es-help" data-also-written={word.word}>
+            also written: <code>{word.word}</code>{' '}
+            <code>{JSON.stringify(current)}</code>
+          </p>
+        );
       const set = isObject(current);
       return (
         <fieldset id={id}>
@@ -245,6 +302,7 @@ function Field({
               <label>
                 <input
                   type="checkbox"
+                  aria-label={`set ${name}`}
                   checked={set}
                   onChange={(e) =>
                     write(word.word, e.target.checked ? {} : undefined)
@@ -268,29 +326,34 @@ function Field({
       );
     }
     case 'list': {
-      const entries: Obj[] = Array.isArray(current)
-        ? current.map((entry) => (isObject(entry) ? entry : {}))
-        : [];
+      const entries: unknown[] = Array.isArray(current) ? current : [];
       return (
         <fieldset id={id}>
           <legend>{word.label}</legend>
           {entries.map((entry, index) => (
             <div key={index}>
-              <WordsForm
-                words={words}
-                place={word.holds}
-                value={entry}
-                onChange={(next) =>
-                  write(
-                    word.word,
-                    entries.map((e, i) => (i === index ? next : e))
-                  )
-                }
-                idPrefix={`${id}-${index}`}
-              />
+              {isObject(entry) ? (
+                <WordsForm
+                  words={words}
+                  place={word.holds}
+                  value={entry}
+                  onChange={(next) =>
+                    write(
+                      word.word,
+                      entries.map((e, i) => (i === index ? next : e))
+                    )
+                  }
+                  idPrefix={`${id}-${index}`}
+                />
+              ) : (
+                <p className="es-help" data-not-an-object={index}>
+                  <code>{JSON.stringify(entry)}</code>
+                </p>
+              )}
               <button
                 type="button"
                 className="wb-danger"
+                aria-label={`Remove ${index + 1} from ${name}`}
                 onClick={() => {
                   const rest = entries.filter((_, i) => i !== index);
                   write(
@@ -305,6 +368,7 @@ function Field({
           ))}
           <button
             type="button"
+            aria-label={`Add to ${name}`}
             onClick={() => write(word.word, [...entries, {}])}
           >
             Add

@@ -143,6 +143,7 @@ import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { encounterSection, studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
+import { forgetItemWords } from './useItemWords';
 import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
 
 const groundPreview = vi.hoisted(() => ({
@@ -8315,6 +8316,7 @@ describe('a conversation’s steps through the real session (rpg-project#1040)',
 });
 
 describe('Items page through the real owner (rpg-project#1196)', () => {
+  beforeEach(() => forgetItemWords());
   afterEach(() => localStorage.clear());
 
   const openItemsSite = async (): Promise<void> => {
@@ -8471,6 +8473,45 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
       await waitFor(() =>
         expect(items.querySelector('pre')!.textContent).toContain('slot: ring')
       );
+    } finally {
+      asked.mockRestore();
+    }
+  });
+
+  it('a changed draft is reset when the author picks another item and comes back', async () => {
+    const words = itemWordsV237();
+    const asked = vi
+      .spyOn(authoringClient, 'getItemWords')
+      .mockResolvedValue(words);
+    try {
+      const items = await openRing();
+      const slotWord = words.words.find((w) => w.word === 'slot')!;
+      const save = await within(items).findByRole('button', { name: 'Save' });
+      fireEvent.change(
+        within(items).getByRole('combobox', { name: slotWord.label }),
+        { target: { value: 'amulet' } }
+      );
+      expect((save as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(
+        within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+      );
+      fireEvent.click(
+        within(items).getByRole('button', { name: /^Garrison ring\b/ })
+      );
+      expect(
+        (
+          within(items).getByRole('combobox', {
+            name: slotWord.label,
+          }) as HTMLSelectElement
+        ).value
+      ).toBe('ring');
+      expect(
+        (
+          within(items).getByRole('button', {
+            name: 'Save',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
     } finally {
       asked.mockRestore();
     }

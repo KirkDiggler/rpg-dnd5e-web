@@ -189,6 +189,8 @@ function same(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
+const NOT_A_BLOCK_SENTENCE =
+  'This item is not written as a set of words, so it cannot be changed here.';
 const NO_WORDS_SENTENCE =
   'The engine has not given its item words, so an item cannot be changed here.';
 
@@ -247,7 +249,9 @@ function ItemChange({
             Discard
           </button>
         </>
-      ) : null
+      ) : (
+        <p className="es-help">{NOT_A_BLOCK_SENTENCE}</p>
+      )
     ) : !itemWords ? (
       <p className="es-help">
         {NO_WORDS_SENTENCE}

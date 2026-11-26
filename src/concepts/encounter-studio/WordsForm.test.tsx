@@ -31,6 +31,8 @@ const ring = () => structuredClone(items['garrison-ring']);
 
 const word = (place: string, name: string): FormWord =>
   WORDS.find((w) => w.place === place && w.word === name)!;
+const plain = (label: string): string =>
+  label.replace('{value}', ' ').replace(/\\s+/g, ' ').trim();
 /** The words around a `{value}`, as one regex. */
 const around = (label: string): RegExp =>
   new RegExp(
@@ -119,10 +121,18 @@ describe('WordsForm', () => {
     );
     expect('unique' in onChange.mock.calls[2][0]).toBe(false);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add' })[0]);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Add to ${plain(word('item', 'lets').label)}`,
+      })
+    );
     expect(onChange.mock.calls[3][0].lets).toEqual([...cloak().lets, {}]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Remove 1 from ${plain(word('item', 'lets').label)}`,
+      })
+    );
     expect(onChange.mock.calls[4][0].lets).toEqual([]);
   });
 
@@ -133,14 +143,22 @@ describe('WordsForm', () => {
     const entry = screen
       .getByText(word('item', 'charges').label)
       .closest('fieldset')!;
-    fireEvent.click(within(entry).getByRole('checkbox', { name: 'set' }));
+    fireEvent.click(
+      within(entry).getByRole('checkbox', {
+        name: `set ${plain(word('item', 'charges').label)}`,
+      })
+    );
     expect(onChange.mock.calls[0][0].charges).toEqual({});
     cleanup();
     onChange = draw(ring());
     const held = screen
       .getByText(word('item', 'charges').label)
       .closest('fieldset')!;
-    fireEvent.click(within(held).getAllByRole('checkbox', { name: 'set' })[0]);
+    fireEvent.click(
+      within(held).getByRole('checkbox', {
+        name: `set ${plain(word('item', 'charges').label)}`,
+      })
+    );
     expect('charges' in onChange.mock.calls[0][0]).toBe(false);
   });
 
@@ -168,5 +186,156 @@ describe('WordsForm', () => {
       { target: { value: 'Other' } }
     );
     expect(onChange.mock.calls[0][0].weight).toBe(3);
+  });
+
+  it('a number control writes a number', () => {
+    const onChange = draw(cloak());
+    fireEvent.change(
+      screen.getByRole('spinbutton', {
+        name: around(word('charges', 'max').label),
+      }),
+      { target: { value: '3' } }
+    );
+    expect(onChange.mock.calls[0][0].charges.max).toBe(3);
+  });
+
+  it('a list of writes the table’s order and keeps a word the table does not offer', () => {
+    const rests = word('refills', 'on').values.map((v) => v.word);
+    const [shortRest, longRest] = word('refills', 'on').values;
+    const onlyLong = cloak();
+    onlyLong.charges = { max: 1, refills: { on: [rests[1]] } };
+    let onChange = draw(onlyLong);
+    fireEvent.click(screen.getByLabelText(shortRest.label));
+    expect(onChange.mock.calls[0][0].charges.refills.on).toEqual(rests);
+    cleanup();
+    const weird = cloak();
+    weird.charges = { max: 1, refills: { on: [rests[0], 'weird rest'] } };
+    onChange = draw(weird);
+    expect(
+      (screen.getByLabelText('weird rest') as HTMLInputElement).checked
+    ).toBe(true);
+    fireEvent.click(screen.getByLabelText(longRest.label));
+    expect(onChange.mock.calls[0][0].charges.refills.on).toEqual([
+      ...rests,
+      'weird rest',
+    ]);
+    fireEvent.click(screen.getByLabelText('weird rest'));
+    expect(onChange.mock.calls[1][0].charges.refills.on).toEqual([rests[0]]);
+  });
+
+  it('emptied text: a required word writes the empty string, an optional one removes the key', () => {
+    const text = (required: boolean): FormWord => ({
+      word: 'note',
+      place: 'item',
+      shape: 'text',
+      values: [],
+      label: 'a note',
+      holds: '',
+      required,
+    });
+    let onChange = draw({ note: 'x' }, [text(true)]);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    expect(onChange.mock.calls[0][0]).toEqual({ note: '' });
+    cleanup();
+    onChange = draw({ note: 'x' }, [text(false)]);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    expect(onChange.mock.calls[0][0]).toEqual({});
+  });
+
+  it('removing the last entry of a required list leaves []', () => {
+    const block = ring();
+    block.lets = [block.lets[0]];
+    const onChange = draw(block);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Remove 1 from ${plain(word('item', 'lets').label)}`,
+      })
+    );
+    expect(onChange.mock.calls[0][0].lets).toEqual([]);
+  });
+
+  it('an unlisted one of value stays chosen and offered, and an edit elsewhere keeps it', () => {
+    const onChange = draw({ ...ring(), slot: 'odd slot' });
+    const slot = screen.getByRole('combobox', {
+      name: word('item', 'slot').label,
+    }) as HTMLSelectElement;
+    expect(slot.value).toBe('odd slot');
+    expect([...slot.options].map((o) => o.value)).toContain('odd slot');
+    fireEvent.change(
+      screen.getByRole('textbox', { name: word('item', 'name').label }),
+      { target: { value: 'Other' } }
+    );
+    expect(onChange.mock.calls[0][0].slot).toBe('odd slot');
+  });
+
+  it.each([
+    ['name', 5],
+    ['unique', 'yes'],
+    ['charges', 'many'],
+    ['lets', 'text'],
+  ])('a wrong type under %s is shown, kept and clearable', (key, bad) => {
+    const onChange = draw({ ...ring(), [key]: bad });
+    const line = document.querySelector(`[data-wrong-type="${key}"]`)!;
+    expect(line.textContent).toContain(JSON.stringify(bad));
+    expect(line.textContent).toContain('is not');
+    const other = key === 'name' ? 'slot' : 'name';
+    const control = screen.getByRole(
+      other === 'slot' ? 'combobox' : 'textbox',
+      {
+        name: word('item', other).label,
+      }
+    );
+    fireEvent.change(
+      control,
+      other === 'slot'
+        ? { target: { value: 'amulet' } }
+        : { target: { value: 'Z' } }
+    );
+    expect(onChange.mock.calls[0][0][key]).toEqual(bad);
+    fireEvent.click(
+      within(line as HTMLElement).getByRole('button', { name: /^Clear / })
+    );
+    expect(key in onChange.mock.calls[1][0]).toBe(false);
+  });
+
+  it('a list entry that is not an object is kept in place', () => {
+    const block = ring();
+    const entry = block.lets[0];
+    block.lets = ['oops', entry];
+    const onChange = draw(block);
+    fireEvent.change(
+      screen.getByRole('spinbutton', {
+        name: around(word('lets entry', 'use').values[0].with![0].label),
+      }),
+      { target: { value: '4' } }
+    );
+    const next = onChange.mock.calls[0][0].lets;
+    expect(next[0]).toBe('oops');
+    expect(next[1].with).toEqual({ level: 4 });
+  });
+
+  it('a with nothing can draw is shown, and drawn once a use is chosen', () => {
+    const block = { ...ring(), lets: [{ with: { level: 3 } }] };
+    const onChange = draw(block);
+    const line = document.querySelector('[data-also-written="with"]')!;
+    expect(line.textContent).toContain('{"level":3}');
+    const useWord = word('lets entry', 'use');
+    fireEvent.change(
+      screen.getByRole('combobox', { name: around(useWord.label) }),
+      { target: { value: useWord.values[0].word } }
+    );
+    expect(onChange.mock.calls[0][0].lets[0].with).toEqual({ level: 3 });
+    cleanup();
+    draw({
+      ...ring(),
+      lets: [{ use: useWord.values[0].word, with: { level: 3 } }],
+    });
+    expect(
+      (
+        screen.getByRole('spinbutton', {
+          name: around(useWord.values[0].with![0].label),
+        }) as HTMLInputElement
+      ).value
+    ).toBe('3');
   });
 });

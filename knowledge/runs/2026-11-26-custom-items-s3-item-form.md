@@ -16,10 +16,15 @@ Slice [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201)
 - Draft equality for Save and Discard ignores key order, so removing and re-adding a key does not leave Save enabled — [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201).
 - No CSS was added: fieldsets, labels and inputs take the studio's existing element styles — [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201).
 
+- The form never writes over and never hides a value it did not show: a wrong-typed value is shown read-only with a Clear button, an unlisted `list of` word is kept as a ticked box, a non-object list entry is kept in place, an `entries` word nothing can draw is shown as "also written" — [rpg-project#1201 ruling](https://github.com/KirkDiggler/rpg-project/issues/1201#issuecomment-7187693755).
+- Repeated controls are named from the engine's label (set, Add to, Remove n from) — [rpg-project#1201 ruling](https://github.com/KirkDiggler/rpg-project/issues/1201#issuecomment-7187693755).
+
 ## Found
 
+- Undo, a jump or choosing another item drops an unsaved draft without a sentence; the brief specified the reset — [rpg-project#1201 ruling](https://github.com/KirkDiggler/rpg-project/issues/1201#issuecomment-7187693755).
+
 - `commitBehaviorDefinition` has no test through the real `WorldBuildingConcept`; `commitCustomItem` is covered by `itemEdit.test.ts` and by the Items integration test through the real owner (Save writes, one Undo restores) — [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201).
-- The real owner is given item words in a test by spying `authoringClient.getItemWords`; the answer is kept per client for the file, so the test without words runs before the test with them — [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201).
+- The real owner is given item words in a test by spying `authoringClient.getItemWords`; `forgetItemWords()` in `beforeEach` clears the kept answer, so no test depends on file order (shuffle seeds 11 and 3 pass) — [rpg-project#1201](https://github.com/KirkDiggler/rpg-project/issues/1201#issuecomment-7187693755).
 
 ## Mistaken
 
