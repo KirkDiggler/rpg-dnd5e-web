@@ -11,6 +11,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { statusWordsV240 } from './fixtures/engineReadBack';
 import { statusFormWords } from './statusWords';
@@ -19,6 +20,10 @@ import { WordsForm } from './WordsForm';
 afterEach(cleanup);
 
 const WORDS = statusFormWords(statusWordsV240().words);
+
+const label = (name: string) => WORDS.find((w) => w.word === name)!.label;
+const CHANGES = (n = 1) => `${label('changes')}, ${n}`;
+const MAINTENANCE = (n = 1) => `${label('maintenance')}, ${n}`;
 
 const welcomed = () => ({
   name: 'Welcomed',
@@ -55,10 +60,10 @@ describe('WordsForm drawing a status', () => {
         }) as HTMLInputElement
       ).value
     ).toBe('Welcomed');
-    expect(select('What the change is').value).toBe('advantage');
+    expect(select(CHANGES()).value).toBe('advantage');
     expect(select(/^advantage on/).value).toBe('checks');
     expect(select(/only when the ability is/).value).toBe('charisma');
-    expect(select('What the maintenance rule is').value).toBe('ends_on');
+    expect(select(MAINTENANCE()).value).toBe('ends_on');
     expect(select(/ends when/).value).toBe('rest');
     expect(select(/what a second giving does/).value).toBe('ignored');
   });
@@ -99,7 +104,7 @@ describe('WordsForm drawing a status', () => {
 
   it('changing WHAT to initiative drops advantage, keeps when shown, and writes initiative only with a number', () => {
     const onChange = draw(welcomed());
-    fireEvent.change(select('What the change is'), {
+    fireEvent.change(select(CHANGES()), {
       target: { value: 'initiative' },
     });
     expect(last(onChange).changes).toEqual([{ when: { ability: 'charisma' } }]);
@@ -110,12 +115,12 @@ describe('WordsForm drawing a status', () => {
       changes: [{ when: { ability: 'charisma' } }],
     });
     expect(document.querySelector('[data-also-written="when"]')).not.toBeNull();
-    expect(select('What the change is').value).toBe('');
-    fireEvent.change(select('What the change is'), {
+    expect(select(CHANGES()).value).toBe('');
+    fireEvent.change(select(CHANGES()), {
       target: { value: 'initiative' },
     });
     expect(again).not.toHaveBeenCalled();
-    expect(select('What the change is').value).toBe('initiative');
+    expect(select(CHANGES()).value).toBe('initiative');
     const box = screen.getByRole('spinbutton', { name: /adds/ });
     fireEvent.change(box, { target: { value: '2' } });
     fireEvent.blur(box);
@@ -142,7 +147,7 @@ describe('WordsForm drawing a status', () => {
         idPrefix="s"
       />
     );
-    fireEvent.change(select('What the change is'), {
+    fireEvent.change(select(CHANGES()), {
       target: { value: 'max_hit_points' },
     });
     expect(next).not.toHaveBeenCalled();
@@ -221,5 +226,75 @@ describe('WordsForm drawing a status', () => {
     fireEvent.change(box, { target: { value: '8' } });
     fireEvent.blur(box);
     expect(last(onChange).changes).toEqual([{ max_hit_points: 8 }]);
+  });
+
+  it('a pick is never reused for another entry after a Remove', () => {
+    // file [{}, {}]; the first picks damage, the second initiative
+    const value = { ...welcomed(), changes: [{}, {}] };
+    let file: Record<string, unknown> = value;
+    const onChange = vi.fn((next: Record<string, unknown>) => (file = next));
+    const ui = (v: Record<string, unknown>) => (
+      <WordsForm
+        words={WORDS}
+        place="status"
+        value={v}
+        onChange={onChange}
+        idPrefix="s"
+      />
+    );
+    const view = render(ui(value));
+    fireEvent.change(select(CHANGES(1)), { target: { value: 'damage' } });
+    fireEvent.change(select(CHANGES(2)), { target: { value: 'initiative' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /Remove 1 from/ })[0]
+    );
+    expect(file.changes).toEqual([{}]);
+    view.rerender(ui(file));
+    // the survivor shows no pick, and there is nothing to type into
+    expect(select(CHANGES(1)).value).toBe('');
+    expect(screen.queryByRole('spinbutton', { name: /adds/ })).toBeNull();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    fireEvent.change(select(CHANGES(1)), { target: { value: 'initiative' } });
+    const box = screen.getByRole('spinbutton', { name: /adds/ });
+    fireEvent.change(box, { target: { value: '4' } });
+    fireEvent.blur(box);
+    expect(file.changes).toEqual([{ initiative: 4 }]);
+  });
+
+  it('an entry cleared back to {} shows no pick from before it had a value', () => {
+    let file: Record<string, unknown> = {};
+    function Live(): React.JSX.Element {
+      const [value, setValue] = useState<Record<string, unknown>>({
+        ...welcomed(),
+        changes: [{ initiative: 2 }],
+      });
+      return (
+        <WordsForm
+          words={WORDS}
+          place="status"
+          value={value}
+          onChange={(next) => {
+            file = next;
+            setValue(next);
+          }}
+          idPrefix="s"
+        />
+      );
+    }
+    render(<Live />);
+    fireEvent.change(select(CHANGES(1)), { target: { value: 'damage' } });
+    const box = screen.getByRole('spinbutton', { name: /to the damage/ });
+    fireEvent.change(box, { target: { value: '3' } });
+    fireEvent.blur(box);
+    expect(file.changes).toEqual([{ damage: 3 }]);
+    const again = screen.getByRole('spinbutton', { name: /to the damage/ });
+    fireEvent.change(again, { target: { value: '' } });
+    fireEvent.blur(again);
+    expect(file.changes).toEqual([{}]);
+    expect(select(CHANGES(1)).value).toBe('');
+    expect(
+      screen.queryByRole('spinbutton', { name: /to the damage/ })
+    ).toBeNull();
   });
 });

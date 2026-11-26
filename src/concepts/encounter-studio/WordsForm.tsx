@@ -398,11 +398,16 @@ function Field({
         <fieldset id={id} className="es-words-group es-words-list">
           <legend>{word.label}</legend>
           {entries.map((entry, index) => (
-            <div key={index} className="es-words-entry">
+            <div
+              key={oneWord ? `${entries.length}:${index}` : index}
+              className="es-words-entry"
+            >
               {oneWord ? (
                 <OneWordEntry
                   words={words}
                   holds={word.holds}
+                  listLabel={plain(word.label)}
+                  position={index + 1}
                   entry={entry}
                   onChange={(next) =>
                     write(
@@ -474,17 +479,25 @@ function Field({
 function OneWordEntry({
   words,
   holds,
+  listLabel,
+  position,
   entry,
   onChange,
   idPrefix,
 }: {
   words: readonly FormWord[];
   holds: string;
+  /** The list word's own label: the name of the choice. */
+  listLabel: string;
+  position: number;
   entry: unknown;
   onChange(next: Obj): void;
   idPrefix: string;
 }): React.JSX.Element {
   // What the author picked from the choice while the entry has no word yet.
+  // A pick lives only until the entry has a word of its own, and the list
+  // gives entries a new key whenever its length changes, so a pick never
+  // moves to another entry.
   const [pick, setPick] = useState<string | null>(null);
   const here = wordsAt(words, holds);
   const mains = here.filter((w) => !w.narrows);
@@ -507,6 +520,7 @@ function OneWordEntry({
         <code>{JSON.stringify(entry)}</code>
       </p>
     );
+  if (writtenWord !== null && pick !== null) setPick(null);
   const chosen = writtenWord ?? pick ?? '';
   const chosenWord = mains.find((w) => w.word === chosen);
   const choose = (next: string) => {
@@ -521,9 +535,8 @@ function OneWordEntry({
   return (
     <>
       <label>
-        <span>what the {plain(holds)} is</span>{' '}
         <select
-          aria-label={`What the ${plain(holds)} is`}
+          aria-label={`${listLabel}, ${position}`}
           value={chosen}
           onChange={(e) => choose(e.target.value)}
         >

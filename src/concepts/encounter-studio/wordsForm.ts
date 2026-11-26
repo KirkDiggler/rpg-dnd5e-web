@@ -21,7 +21,13 @@ export interface FormWord {
   label: string;
   holds: string;
   required: boolean;
-  bounds?: { min: number; max: number; noMax: boolean };
+  bounds?: {
+    min: number;
+    max: number;
+    noMax: boolean;
+    /** The engine's own flag; the form does not act on it. */
+    zeroAllowed?: boolean;
+  };
   /** `one word`: a `list` entry holds exactly one word of the `holds` place
    * (a status's change), not every word of it (an item's `lets` entry). */
   entry?: 'one word';

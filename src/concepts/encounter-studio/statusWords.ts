@@ -25,7 +25,14 @@ export function statusFormWords(words: readonly StatusWord[]): FormWord[] {
     holds: w.holds,
     required: w.required,
     ...(w.bounds
-      ? { bounds: { min: w.bounds.min, max: w.bounds.max, noMax: false } }
+      ? {
+          bounds: {
+            min: w.bounds.min,
+            max: w.bounds.max,
+            noMax: false,
+            ...(w.bounds.zeroAllowed ? { zeroAllowed: true } : {}),
+          },
+        }
       : {}),
     // In the status table a `list` entry holds one word.
     ...(w.shape === 'list' ? { entry: 'one word' as const } : {}),

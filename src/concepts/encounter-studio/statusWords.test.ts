@@ -47,4 +47,19 @@ describe('statusFormWords', () => {
     });
     expect(find('name').bounds).toBeUndefined();
   });
+
+  it('zeroAllowed is carried when the table sets it, and not otherwise', () => {
+    const table = statusWordsV240().words.map((w) =>
+      w.word === 'damage' && w.bounds
+        ? { ...w, bounds: { ...w.bounds, zeroAllowed: true } }
+        : w
+    );
+    const out = statusFormWords(table as never);
+    expect(out.find((w) => w.word === 'damage')?.bounds?.zeroAllowed).toBe(
+      true
+    );
+    expect(
+      out.find((w) => w.word === 'initiative')?.bounds?.zeroAllowed
+    ).toBeUndefined();
+  });
 });
