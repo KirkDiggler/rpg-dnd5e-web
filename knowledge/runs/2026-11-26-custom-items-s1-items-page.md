@@ -11,10 +11,12 @@ Slice [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196)
 - An item with no engine answer is still listed, with the one line "The engine has not said the items yet." — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
 - The Layout list-detail pin in the integration test gains `Items` beside Behaviours, since Items joins `LIST_DETAIL_SECTIONS` — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
 - The `customItems` refusal-path test lives in `engineReadBack.test.ts`, which already reads a file through `readDraftYaml`; `refusalJump.test.ts` runs in the node environment and the file reader needs a window — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
+- `placeName.ts` names an item's place as ``item `<id>` `` then the place inside it, as `table` and `bundle` are, by the lead's ruling — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
 
 ## Found
 
 - A person's equipment sentence is folded into their line, so its item links show only after "Full sentences" is opened on that line — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
+- `placeName.ts` holds an exhaustive switch over `LocatedKind`, a file the issue's Path did not list; reported as a gap and ruled — [rpg-project#1196](https://github.com/KirkDiggler/rpg-project/issues/1196).
 
 ## Mistaken
 
