@@ -1,10 +1,11 @@
+import type { ReadBack } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { readDraftYaml } from './draftFile';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { hailSiteReadBack } from './fixtures/engineReadBack';
 import site from './fixtures/hail-site.yaml?raw';
-import { statusesOf } from './statusesView';
+import { statusesNotMapping, statusesOf } from './statusesView';
 
 function hailDocument(): RoomDraftDocument {
   const result = readDraftYaml(site);
@@ -92,5 +93,75 @@ describe('the site’s status effects, from the file and the engine’s read-bac
 
   it('a site with no statuses has none', () => {
     expect(statusesOf(createCastleS4Document(), null)).toEqual([]);
+  });
+});
+
+/** The hail read-back with its giving statement changed (or copied). */
+function grantEdited(
+  edit: (
+    statement: ReadBack['sections'][0]['groups'][0]['statements'][0]
+  ) => void,
+  copies = 1
+): ReadBack {
+  const readBack = hailSiteReadBack();
+  for (const section of readBack.sections)
+    for (const group of section.groups) {
+      const grant = group.statements.find((s) => s.kind === 'line.grant');
+      if (!grant) continue;
+      for (let i = 1; i < copies; i++)
+        group.statements.push(structuredClone(grant));
+      edit(grant);
+    }
+  return readBack;
+}
+
+describe('who counts as a giver', () => {
+  // catches: the role check dropped
+  it('a line.grant that connects the status with a role other than gives is not a giver', () => {
+    const readBack = grantEdited((s) => {
+      s.connects.find((c) => c.kind === 'status')!.role = 'mentions';
+    });
+    expect(statusesOf(hailDocument(), readBack)[0]!.givenBy).toEqual([]);
+  });
+
+  // catches: the statement-kind check dropped
+  it('a statement of another kind that connects the status with gives is not a giver', () => {
+    const readBack = grantEdited((s) => {
+      s.kind = 'line.say';
+    });
+    expect(statusesOf(hailDocument(), readBack)[0]!.givenBy).toEqual([]);
+  });
+
+  it('two lines giving the same status are both listed', () => {
+    const readBack = grantEdited(() => {}, 2);
+    const givers = statusesOf(hailDocument(), readBack)[0]!.givenBy;
+    expect(givers).toHaveLength(2);
+    expect(givers.map((g) => g.id)).toEqual(['porter', 'porter']);
+  });
+
+  it('a line.grant with no who connection is listed with an empty receiver', () => {
+    const readBack = grantEdited((s) => {
+      s.connects = s.connects.filter((c) => c.kind !== 'who');
+    });
+    expect(statusesOf(hailDocument(), readBack)[0]!.givenBy[0]!.receiver).toBe(
+      ''
+    );
+  });
+});
+
+describe('statuses written as something that is not a mapping', () => {
+  it.each([['text'], [7], [[1, 2]], [true], [null]])(
+    '%j is reported as written',
+    (value) => {
+      expect(statusesNotMapping(withStatuses(value))).toEqual({
+        written: value,
+      });
+      expect(statusesOf(withStatuses(value), null)).toEqual([]);
+    }
+  );
+
+  it('a mapping, or no statuses at all, is not reported', () => {
+    expect(statusesNotMapping(hailDocument())).toBeNull();
+    expect(statusesNotMapping(createCastleS4Document())).toBeNull();
   });
 });

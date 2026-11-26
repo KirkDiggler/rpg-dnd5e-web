@@ -39,6 +39,24 @@ export interface StatusView {
   givenBy: StatusGiver[];
 }
 
+/**
+ * `statuses` written as something that is not a mapping (text, a number, a
+ * list, `true`, an empty key): the file holds it, so the page shows it as
+ * written rather than saying the site has none (rpg-project#1215, R1).
+ * Null when the file has no `statuses` or it is a mapping.
+ */
+export function statusesNotMapping(
+  document: Readonly<RoomDraftDocument>
+): { written: unknown } | null {
+  const statuses = document.scope.unread?.statuses;
+  if (statuses === undefined) return null;
+  return statuses !== null &&
+    typeof statuses === 'object' &&
+    !Array.isArray(statuses)
+    ? null
+    : { written: statuses };
+}
+
 export function statusesOf(
   document: Readonly<RoomDraftDocument>,
   readBack: ReadBack | null | undefined

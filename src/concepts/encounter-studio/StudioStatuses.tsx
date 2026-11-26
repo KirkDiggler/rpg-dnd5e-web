@@ -9,7 +9,11 @@ import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
-import { statusesOf, type StatusGiver } from './statusesView';
+import {
+  statusesNotMapping,
+  statusesOf,
+  type StatusGiver,
+} from './statusesView';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 
@@ -32,17 +36,18 @@ export function StudioStatuses({
 }): React.JSX.Element {
   const said = readBack.readBack;
   const statuses = statusesOf(document, said);
+  const notMapping = statusesNotMapping(document);
   const selected = statuses.find((status) => status.id === focus) ?? null;
   const notice = !said
     ? `${NO_STATUSES_SENTENCE}${readBack.unavailable ? ` ${readBack.unavailable}` : ''}`
     : readBack.readBackIsCurrent
       ? null
       : STALE_READ_BACK_SENTENCE;
-  const giver = (g: StatusGiver): React.JSX.Element => {
+  const giver = (g: StatusGiver, index: number): React.JSX.Element => {
     const jump = connectionJump({ kind: g.kind, id: g.id }, document);
     const label = `${g.kind} ${g.id}`;
     return (
-      <li key={g.path}>
+      <li key={`${g.path}:${index}`}>
         {jump?.kind === 'target' && onJump ? (
           <button
             type="button"
@@ -65,6 +70,15 @@ export function StudioStatuses({
         <p role="status" className="es-help es-readback-notice">
           {notice}
         </p>
+      )}
+      {notMapping && (
+        <div className="es-help" role="status">
+          <p>
+            The file's <code>statuses</code> is not a list of statuses, so none
+            can be listed. It is kept as written:
+          </p>
+          <pre>{stringify({ statuses: notMapping.written })}</pre>
+        </div>
       )}
       <StudioListDetail
         id="statuses"
@@ -89,13 +103,17 @@ export function StudioStatuses({
         selected={selected ? { kind: STATUS, id: selected.id } : null}
         onSelect={(key) => onSelect(key.id)}
         detailLabel="Status effect"
-        empty="This site has no status effects."
+        empty={
+          notMapping
+            ? "No status can be listed from the file's statuses."
+            : 'This site has no status effects.'
+        }
         detail={
           selected ? (
             <div className="es-threads-thread" data-status={selected.id}>
               {said ? (
-                selected.said.map((statement) => (
-                  <p key={statement.path}>{statement.sentence}</p>
+                selected.said.map((statement, index) => (
+                  <p key={`${statement.path}:${index}`}>{statement.sentence}</p>
                 ))
               ) : (
                 <p className="es-help">{NO_STATUSES_SENTENCE}</p>
