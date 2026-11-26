@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import itemsSite from './fixtures/cloak-and-ring-walk.yaml?raw';
+import hailSite from './fixtures/hail-site.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
 import { placeName } from './placeName';
 
@@ -98,5 +99,16 @@ describe('placeName on an item', () => {
     const document = { draft: read.draft, scope: read.scope };
     const said = placeName('customItems.garrison-ring.slot', document);
     expect(said).toBe('item `garrison-ring` · slot');
+  });
+});
+
+describe('placeName on a status', () => {
+  it('names the status, then the place inside it', () => {
+    const read = readDraftYaml(hailSite);
+    if (!read.ok) throw new Error(read.refusal);
+    const document = { draft: read.draft, scope: read.scope };
+    expect(placeName('statuses.welcomed.changes[0]', document)).toContain(
+      'status `welcomed`'
+    );
   });
 });

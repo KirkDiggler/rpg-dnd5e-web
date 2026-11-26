@@ -131,6 +131,7 @@ import {
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
+import { StudioStatuses } from './StudioStatuses';
 import { StudioTabBar } from './StudioTabBar';
 import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
@@ -576,6 +577,7 @@ function StudioSurface({
    * (rpg-project#970). */
   const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
   const [focusItem, setFocusItem] = useState<string | null>(null);
+  const [focusStatus, setFocusStatus] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
     // The hub's row in Threads, or the routine's in Behaviours, is revealed.
     queueReveal({ kind: hub, id });
@@ -1284,6 +1286,8 @@ function StudioSurface({
         if (target.section === 'behaviours' && target.id)
           setFocusRoutine(target.id);
         if (target.section === 'items' && target.id) setFocusItem(target.id);
+        if (target.section === 'statuses' && target.id)
+          setFocusStatus(target.id);
         // A row (`target.row`) is landed on by the reveal above, which opens
         // it on the way (rpg-project#983).
         return;
@@ -2579,6 +2583,16 @@ function StudioSurface({
                   }
                 />
               )}
+              {home === 'encounter' && encounterSection === 'statuses' && (
+                <StudioStatuses
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusStatus}
+                  onSelect={setFocusStatus}
+                  onJump={jumpTo}
+                  enabled={gate.state === 'live'}
+                />
+              )}
               {home === 'encounter' && encounterSection === 'facts' && (
                 <StudioThreads
                   document={session.document}
@@ -2646,6 +2660,7 @@ const LIST_DETAIL_SECTIONS: ReadonlySet<string> = new Set([
   'facts',
   'behaviours',
   'items',
+  'statuses',
 ]);
 
 export function EncounterStudioWorkspace({

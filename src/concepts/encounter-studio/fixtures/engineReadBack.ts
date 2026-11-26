@@ -54,6 +54,7 @@ import castleJson from './engineReadBack.castle.json?raw';
 import castleConversationsJson from './engineReadBack.castleConversations.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
 import conversationsJson from './engineReadBack.conversations.json?raw';
+import hailJson from './engineReadBack.hail.json?raw';
 import itemsJson from './engineReadBack.items.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
 import machines225Json from './engineReadBack.machines225.json?raw';
@@ -253,4 +254,16 @@ export function castleConversationsReadBack(): ReadBack {
     ReadBackSchema,
     JSON.parse(castleConversationsJson) as JsonValue
   );
+}
+
+/**
+ * THE HAIL SITE'S READ-BACK (rpg-project#1215): the engine's `readback.Of` on
+ * rpg-toolkit `main` 4f2769c7's
+ * `rulebooks/dnd5e/encounter/dungeonspec/testdata/hail-site.yaml` (copied
+ * beside this file as `hail-site.yaml`, git blob e4d0a86a), exactly as the
+ * toolkit records it in `readback/testdata/hail-site.readback.json` (git blob
+ * 5c51c59f). Nothing trimmed, nothing hand-written.
+ */
+export function hailSiteReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(hailJson) as JsonValue);
 }
