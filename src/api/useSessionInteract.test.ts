@@ -28,7 +28,10 @@ describe('useSessionInteract', () => {
 
   it('defaults range to 0 (adjacent) when omitted', async () => {
     const fakeResponse = {
-      descriptor: { targetId: 'demo-merchant-1', displayName: 'Demo Merchant' },
+      npcDescriptor: {
+        targetId: 'demo-merchant-1',
+        displayName: 'Demo Merchant',
+      },
       seq: 1n,
     } as unknown as InteractResponse;
     hoisted.interactFn.mockResolvedValue(fakeResponse);

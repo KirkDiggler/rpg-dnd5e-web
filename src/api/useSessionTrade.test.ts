@@ -35,7 +35,10 @@ describe('useSessionTrade', () => {
 
   it('sends an empty give and a one-item receive, defaulting range to 0', async () => {
     const fakeResponse = {
-      descriptor: { targetId: 'demo-merchant-1', displayName: 'Demo Merchant' },
+      npcDescriptor: {
+        targetId: 'demo-merchant-1',
+        displayName: 'Demo Merchant',
+      },
       seq: 1n,
     } as unknown as TradeResponse;
     hoisted.tradeFn.mockResolvedValue(fakeResponse);
@@ -199,7 +202,7 @@ describe('useSessionTrade', () => {
   describe('direction: sell (rpg-toolkit#1537)', () => {
     it('puts the item line on give and the expected payout on receive.currency', async () => {
       const fakeResponse = {
-        descriptor: {
+        npcDescriptor: {
           targetId: 'demo-merchant-1',
           displayName: 'Demo Merchant',
         },
