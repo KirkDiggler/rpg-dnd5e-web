@@ -9069,4 +9069,174 @@ describe('Status effects page through the real owner (rpg-project#1215)', () => 
       }
     });
   });
+  describe('new and delete (rpg-project#1221)', () => {
+    beforeEach(() => forgetStatusWords());
+    const rows = (page: HTMLElement): HTMLElement[] =>
+      Array.from(page.querySelectorAll('li button[aria-pressed]'));
+    const nameLabel = (): string =>
+      statusWordsV240().words.find(
+        (w) => w.place === 'status' && w.required && w.shape === 'text'
+      )!.label;
+    const withWords = async <T,>(run: () => Promise<T>): Promise<T> => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        return await run();
+      } finally {
+        asked.mockRestore();
+      }
+    };
+    const openPage = async (): Promise<HTMLElement> => {
+      await openHail();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Status effects'));
+      const page = screen.getByRole('region', { name: 'Status effects' });
+      await within(page).findByRole('button', { name: /^Welcomed\b/ });
+      return page;
+    };
+    const type = async (
+      page: HTMLElement,
+      text: string
+    ): Promise<HTMLInputElement> => {
+      const input = (await within(page).findByRole('textbox', {
+        name: nameLabel(),
+      })) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: text } });
+      return input;
+    };
+
+    // catches: a new status that is not one undoable step, is not selected, or carries more than its name
+    it('an author makes a new status by its name', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        const before = rows(page).length;
+        await type(page, 'Warmed Up');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await waitFor(() => expect(rows(page).length).toBe(before + 1));
+        const row = within(page).getByRole('button', {
+          name: /^Warmed Up\b/,
+        });
+        expect(row.getAttribute('aria-pressed')).toBe('true');
+        expect(parseYaml(page.querySelector('pre')!.textContent!)).toEqual({
+          'warmed-up': { name: 'Warmed Up' },
+        });
+        expect(
+          within(page)
+            .getAllByRole('textbox', { name: nameLabel() })
+            .some((el) => (el as HTMLInputElement).value === 'Warmed Up')
+        ).toBe(true);
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(page).length).toBe(before));
+        expect(
+          within(page).queryByRole('button', { name: /^Warmed Up\b/ })
+        ).toBeNull();
+      });
+    });
+
+    // catches: an id that overwrites a status that is already there
+    it('the id avoids one that is taken', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        await type(page, 'Welcomed');
+        expect(page.textContent).toContain('id welcomed-2');
+      });
+    });
+
+    // catches: the first status on a site with none refused, or `statuses` not created
+    it('the first status on a site with none creates the statuses key', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+        );
+        const read = readDraftYaml(itemsSiteYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        expect(read.scope.unread?.statuses).toBeUndefined();
+        mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Status effects'));
+        const page = screen.getByRole('region', { name: 'Status effects' });
+        await type(page, 'First');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await waitFor(() =>
+          expect(
+            within(page).getByRole('button', { name: /^First\b/ })
+          ).toBeTruthy()
+        );
+        expect(page.querySelector('pre')!.textContent).toMatch(/^first:/);
+      });
+    });
+
+    // catches: a delete that leaves the row, leaves a selection, or an Undo that brings back less
+    it('an author deletes a status; one Undo brings it back as it was', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        const before = rows(page).length;
+        fireEvent.click(
+          await within(page).findByRole('button', { name: 'Delete status' })
+        );
+        await waitFor(() => expect(rows(page).length).toBe(before - 1));
+        expect(
+          within(page).queryByRole('button', { name: /^Welcomed\b/ })
+        ).toBeNull();
+        expect(page.querySelector('pre')).toBeNull();
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(page).length).toBe(before));
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        expect(
+          (
+            parseYaml(page.querySelector('pre')!.textContent!) as Record<
+              string,
+              Record<string, unknown>
+            >
+          ).welcomed!.maintenance
+        ).toEqual([{ ends_on: 'rest' }]);
+      });
+    });
+
+    // catches: deleting a status a line gives with no word of it first
+    it('deleting a status a line gives shows the Given by line first', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        const del = await within(page).findByRole('button', {
+          name: 'Delete status',
+        });
+        const line = within(page).getByText(/^Given by 1\./);
+        expect(
+          line.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect((del as HTMLButtonElement).disabled).toBe(false);
+      });
+    });
+
+    // catches: a new-status control drawn without the engine's words
+    it('without the engine’s status words there is no new-status control', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+      try {
+        const page = await openPage();
+        expect(
+          within(page).queryByRole('button', { name: 'New status' })
+        ).toBeNull();
+        expect(within(page).queryByRole('textbox')).toBeNull();
+      } finally {
+        asked.mockRestore();
+      }
+    });
+  });
 });

@@ -4,11 +4,13 @@
  * nothing here declares, edits or gives a status. The studio types no word of
  * what a status does; every sentence is the engine's, the block is the file's.
  */
+import { useState, type FormEvent } from 'react';
 import { stringify } from 'yaml';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
 import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
+import { statusIdFrom } from './statusEdit';
 import {
   statusesNotMapping,
   statusesOf,
@@ -17,9 +19,13 @@ import {
 import { statusFormWords } from './statusWords';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
-import { useStatusSaid, type StatusSaidClient } from './useStatusSaid';
+import {
+  useStatusSaid,
+  type StatusSaid,
+  type StatusSaidClient,
+} from './useStatusSaid';
 import type { StatusWords } from './useStatusWords';
-import { setWord } from './wordsForm';
+import { firstRequiredText, setWord } from './wordsForm';
 import { WordsForm } from './WordsForm';
 
 const STATUS = 'status';
@@ -43,6 +49,8 @@ export function StudioStatuses({
   statusWords = null,
   statusWordsUnavailable = null,
   onCommitStatus,
+  onAddStatus,
+  onRemoveStatus,
   refusals = [],
 }: {
   document: Readonly<RoomDraftDocument>;
@@ -63,6 +71,10 @@ export function StudioStatuses({
     id: string,
     edit: (status: Record<string, unknown>) => Record<string, unknown>
   ): boolean;
+  /** New status: one undoable change; true when it was added. */
+  onAddStatus?(id: string, status: Record<string, unknown>): boolean;
+  /** Delete status: one undoable change; true when it was removed. */
+  onRemoveStatus?(id: string): boolean;
   /** The engine's current refusals; those at the selected status show on it. */
   refusals?: readonly { path: string; message: string }[];
 }): React.JSX.Element {
@@ -118,6 +130,14 @@ export function StudioStatuses({
           <pre>{stringify({ statuses: notMapping.written })}</pre>
         </div>
       )}
+      {onAddStatus && statusWords && (
+        <NewStatus
+          words={statusWords}
+          taken={statuses.map((status) => status.id)}
+          onAddStatus={onAddStatus}
+          onSelect={onSelect}
+        />
+      )}
       <StudioListDetail
         id="statuses"
         label="Status effects"
@@ -167,42 +187,7 @@ export function StudioStatuses({
                     {r.message}
                   </p>
                 ))}
-              {statusSaid.status !== 'idle' &&
-                statusSaid.status !== 'loading' &&
-                !(
-                  statusSaid.status === 'said' &&
-                  statusSaid.sentence === '' &&
-                  statusSaid.parts.length === 0
-                ) && (
-                  <div className="es-status-said">
-                    <h3>What it does</h3>
-                    {statusSaid.status === 'said' && (
-                      <>
-                        <p>{statusSaid.sentence}</p>
-                        {statusSaid.parts.length > 1 && (
-                          <ul>
-                            {statusSaid.parts.map((part, index) => (
-                              <li key={`${part.path}:${index}`}>{part.text}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </>
-                    )}
-                    {statusSaid.status === 'refused' &&
-                      statusSaid.errors.map((error, index) => (
-                        <p key={`${error.path}:${index}`} role="alert">
-                          {error.path
-                            ? `${error.path}: ${error.message}`
-                            : error.message}
-                        </p>
-                      ))}
-                    {statusSaid.status === 'unavailable' && (
-                      <p className="es-help">
-                        The engine could not be asked: {statusSaid.reason}.
-                      </p>
-                    )}
-                  </div>
-                )}
+              <StatusSaidBlock said={statusSaid} />
               <StatusChange
                 key={selected.id}
                 id={selected.id}
@@ -210,6 +195,8 @@ export function StudioStatuses({
                 statusWords={statusWords}
                 statusWordsUnavailable={statusWordsUnavailable}
                 onCommitStatus={onCommitStatus}
+                onRemoveStatus={onRemoveStatus}
+                givenBy={said ? selected.givenBy.length : 0}
               />
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
@@ -241,6 +228,8 @@ function StatusChange({
   statusWords,
   statusWordsUnavailable,
   onCommitStatus,
+  onRemoveStatus,
+  givenBy,
 }: {
   id: string;
   written: unknown;
@@ -250,6 +239,8 @@ function StatusChange({
     id: string,
     edit: (status: Record<string, unknown>) => Record<string, unknown>
   ) => boolean;
+  onRemoveStatus?: (id: string) => boolean;
+  givenBy: number;
 }): React.JSX.Element {
   const block = isObject(written) ? written : null;
   const editable = Boolean(statusWords && onCommitStatus && block);
@@ -283,6 +274,123 @@ function StatusChange({
         </p>
       )}
       {body}
+      {onRemoveStatus && givenBy > 0 && (
+        <p className="es-help">
+          Given by {givenBy}. Deleting it leaves those lines giving a status
+          this site does not have; the engine will say so.
+        </p>
+      )}
+      {onRemoveStatus && (
+        <div className="es-item-actions">
+          <button
+            type="button"
+            className="wb-danger es-item-delete"
+            onClick={() => onRemoveStatus(id)}
+          >
+            Delete status
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The new-status control: the text typed is the engine's first required text
+ * word of a status (or only the id when the engine has none). */
+function NewStatus({
+  words,
+  taken,
+  onAddStatus,
+  onSelect,
+}: {
+  words: StatusWords;
+  taken: readonly string[];
+  onAddStatus: (id: string, status: Record<string, unknown>) => boolean;
+  onSelect: (id: string) => void;
+}): React.JSX.Element {
+  const [text, setText] = useState('');
+  const word = firstRequiredText(statusFormWords(words.words), STATUS);
+  const label = word?.label ?? 'id';
+  const blank = text.trim() === '';
+  const id = statusIdFrom(text, taken);
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    if (blank) return;
+    const block = word ? { [word.word]: text.trim() } : {};
+    if (onAddStatus(id, block)) {
+      onSelect(id);
+      setText('');
+    }
+  };
+  return (
+    <form className="es-new-item" onSubmit={submit}>
+      <label>
+        {label}{' '}
+        <input
+          type="text"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+      </label>{' '}
+      <button type="submit" disabled={blank}>
+        New status
+      </button>
+      {!blank && (
+        <p className="es-help">
+          id <code>{id}</code>
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** What the engine says the status does. While a new ask is out for the same
+ * status the last answer stays, dimmed and marked busy, so the block and the
+ * form under it do not jump; for another status nothing is drawn. */
+function StatusSaidBlock({
+  said,
+}: {
+  said: StatusSaid;
+}): React.JSX.Element | null {
+  const again = said.status === 'loading';
+  const shown = said.status === 'loading' ? said.was : said;
+  if (!shown || shown.status === 'idle') return null;
+  if (
+    shown.status === 'said' &&
+    shown.sentence === '' &&
+    shown.parts.length === 0
+  )
+    return null;
+  return (
+    <div
+      className={again ? 'es-status-said es-said-again' : 'es-status-said'}
+      aria-busy={again ? 'true' : undefined}
+    >
+      <h3>What it does</h3>
+      {shown.status === 'said' && (
+        <>
+          <p>{shown.sentence}</p>
+          {shown.parts.length > 1 && (
+            <ul>
+              {shown.parts.map((part, index) => (
+                <li key={`${part.path}:${index}`}>{part.text}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {shown.status === 'refused' &&
+        shown.errors.map((error, index) => (
+          <p key={`${error.path}:${index}`} role="alert">
+            {error.path ? `${error.path}: ${error.message}` : error.message}
+          </p>
+        ))}
+      {shown.status === 'unavailable' && (
+        <p className="es-help">
+          The engine could not be asked: {shown.reason}.
+        </p>
+      )}
+      {again && <p className="es-help">The engine is reading the change.</p>}
     </div>
   );
 }

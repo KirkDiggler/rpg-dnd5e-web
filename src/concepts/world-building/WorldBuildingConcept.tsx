@@ -30,7 +30,11 @@ import {
   definitionOf,
   setBehaviorDefinition,
 } from '../encounter-studio/machineEdit';
-import { setStatus } from '../encounter-studio/statusEdit';
+import {
+  addStatus,
+  removeStatus,
+  setStatus,
+} from '../encounter-studio/statusEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5362,6 +5366,30 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              addStatus: guardSnapshotIntent(
+                (id: string, status: Record<string, unknown>): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: addStatus(current.scope, id, status),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              removeStatus: guardSnapshotIntent((id: string): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: removeStatus(current.scope, id),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }),
               commitStatus: guardSnapshotIntent(
                 (
                   id: string,

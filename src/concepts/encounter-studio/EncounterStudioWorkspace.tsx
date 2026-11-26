@@ -2600,6 +2600,8 @@ function StudioSurface({
                       : null
                   }
                   onCommitStatus={session.commitStatus}
+                  onAddStatus={session.addStatus}
+                  onRemoveStatus={session.removeStatus}
                   refusals={
                     publishing.preview.status === 'validating' ? [] : jumps
                   }

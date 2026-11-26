@@ -378,6 +378,8 @@ function createAppStudioSession(): EncounterStudioSession {
     commitStatus: vi.fn(() => true),
     setCreatureEquipment: vi.fn(() => true),
     addCustomItem: vi.fn(() => true),
+    addStatus: vi.fn(() => true),
+    removeStatus: vi.fn(() => true),
     removeCustomItem: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),

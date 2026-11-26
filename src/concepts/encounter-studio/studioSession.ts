@@ -454,6 +454,13 @@ export interface EncounterStudioSession {
     id: string,
     edit: (status: Record<string, unknown>) => Record<string, unknown>
   ): boolean;
+  /** A new status effect (rpg-project#1221), one undoable transaction
+   * (`statusEdit.addStatus`). Refused, with the notice naming why, when the
+   * writer throws. */
+  addStatus(id: string, status: Record<string, unknown>): boolean;
+  /** Delete a status effect, one undoable transaction
+   * (`statusEdit.removeStatus`). Refused, with the notice, when it throws. */
+  removeStatus(id: string): boolean;
   /** The items a placed creature has equipped (rpg-project#1203): the list
    * is set whole as one undoable transaction (`equipEdit.withEquipment`); an
    * empty list removes the key. Refused, with the notice naming why, when the

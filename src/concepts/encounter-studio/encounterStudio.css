@@ -3454,3 +3454,6 @@ li.es-machine-step[data-refused],
   flex-basis: 100%;
   margin: 0;
 }
+.es-said-again {
+  opacity: 0.6;
+}

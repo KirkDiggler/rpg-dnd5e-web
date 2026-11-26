@@ -175,6 +175,38 @@ describe('useStatusSaid', () => {
     expect(result.current).toEqual({ status: 'loading' });
   });
 
+  // catches: the answer dropped while the same status is asked again (the block blinks)
+  it('while the same status is asked again, the last answer rides along as was', async () => {
+    const { client } = clientWith((id) =>
+      id === 'A' ? said('first') : new Promise(() => undefined)
+    );
+    const { result, rerender } = renderHook(
+      ({ n }) =>
+        useStatusSaid({ id: 'A', written: { n }, client, enabled: true }),
+      { initialProps: { n: 1 } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('said'));
+    rerender({ n: 2 });
+    expect(result.current).toMatchObject({
+      status: 'loading',
+      was: { status: 'said', sentence: 'first' },
+    });
+  });
+
+  // catches: was kept across ids, so another status's sentence is drawn
+  it('another status gets no was', async () => {
+    const { client } = clientWith((id) =>
+      id === 'A' ? said('A says') : new Promise(() => undefined)
+    );
+    const { result, rerender } = renderHook(
+      ({ id }) => useStatusSaid({ id, written: { id }, client, enabled: true }),
+      { initialProps: { id: 'A' } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('said'));
+    rerender({ id: 'B' });
+    expect('was' in result.current).toBe(false);
+  });
+
   // catches: an ask per render
   it('asks again when written changes, and not when the same written re-renders', async () => {
     const { client, sayStatus } = clientWith(() => said('x'));
