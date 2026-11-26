@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { withEquipment } from '../encounter-studio/equipEdit';
 import {
   addCustomItem,
   removeCustomItem,
@@ -5354,6 +5355,36 @@ export function WorldBuildingConcept({
                         id,
                         edit(item as Record<string, unknown>)
                       ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              setCreatureEquipment: guardSnapshotIntent(
+                (creatureId: string, ids: readonly string[]): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const room = current.draft.room;
+                    if (
+                      !room.monsterDeclarations.some(
+                        (placed) => placed.id === creatureId
+                      )
+                    )
+                      throw new Error(
+                        `room.room.monsterBindings.${creatureId}: this site places no such creature`
+                      );
+                    const bindings = withBinding(
+                      room.monsterBindings,
+                      creatureId,
+                      withEquipment(room.monsterBindings?.[creatureId], ids)
+                    );
+                    const nextRoom = { ...room };
+                    if (bindings === undefined) delete nextRoom.monsterBindings;
+                    else nextRoom.monsterBindings = bindings;
+                    return commitRoomDocument({
+                      ...current,
+                      draft: { ...current.draft, room: nextRoom },
                     });
                   } catch (error) {
                     return rejectEdit(error);

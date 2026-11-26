@@ -94,6 +94,7 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { defaultDraftKey, exportDraftYaml, readDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
+import { equipmentOf } from './equipEdit';
 import {
   createEmptyCastDocument,
   createGuardCastDocument,
@@ -8729,5 +8730,229 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
         .getByRole('button', { name: /^Lieutenant's cloak\b/ })
         .getAttribute('aria-pressed')
     ).toBe('true');
+  });
+});
+
+describe('Equipping a person through the real owner (rpg-project#1203)', () => {
+  beforeEach(() => forgetItemWords());
+  afterEach(() => localStorage.clear());
+
+  const open = async (
+    yaml: string,
+    creature: string
+  ): Promise<{ storage: MemoryStorage; row: HTMLElement }> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+    );
+    const read = readDraftYaml(yaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({
+      draft: read.draft,
+      scope: read.scope,
+    });
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector(`[data-placed-creature="${creature}"] circle`)!,
+      { button: 0 }
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    const label = await inspector.findByText('Equipped');
+    return { storage, row: label.closest('div') as HTMLElement };
+  };
+  const ring = (equipment: string): string =>
+    itemsSiteYaml.replace(
+      'equipment: [lieutenants-cloak, garrison-ring]',
+      `equipment: ${equipment}`
+    );
+  const equipped = (storage: MemoryStorage): unknown =>
+    equipmentOf(storage.document(), 'guard');
+
+  it('a person’s panel lists what they have equipped', async () => {
+    const { row } = await open(itemsSiteYaml, 'guard');
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((el) => el.getAttribute('aria-label') ?? el.textContent)
+    ).toEqual([
+      "Lieutenant's cloak",
+      "Unequip Lieutenant's cloak",
+      'Garrison ring',
+      'Unequip Garrison ring',
+    ]);
+  });
+
+  it('Unequip writes the list without that item, and Undo restores it', async () => {
+    const { storage, row } = await open(itemsSiteYaml, 'guard');
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+    fireEvent.click(button('Undo'));
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak', 'garrison-ring'],
+      })
+    );
+  });
+
+  it('Equip offers only what is not equipped, and writes it last', async () => {
+    const { storage, row } = await open(itemsSiteYaml, 'guard');
+    expect(within(row).queryByRole('combobox')).toBeNull();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    const select = (await within(row).findByRole('combobox', {
+      name: 'Equip an item',
+    })) as HTMLSelectElement;
+    expect(
+      Array.from(select.options).map((option) => option.textContent)
+    ).toEqual(['', 'Garrison ring']);
+    const equip = within(row).getByRole('button', {
+      name: 'Equip',
+    }) as HTMLButtonElement;
+    expect(equip.disabled).toBe(true);
+    fireEvent.change(select, { target: { value: 'garrison-ring' } });
+    expect(equip.disabled).toBe(false);
+    fireEvent.click(equip);
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak', 'garrison-ring'],
+      })
+    );
+    expect(within(row).queryByRole('combobox')).toBeNull();
+  });
+
+  it('an equipped item’s name opens the Items page on it', async () => {
+    const { row } = await open(itemsSiteYaml, 'guard');
+    fireEvent.click(
+      within(row).getByRole('button', { name: "Lieutenant's cloak" })
+    );
+    const items = await screen.findByRole('region', { name: 'Items' });
+    expect(
+      within(items)
+        .getByRole('button', { name: /^Lieutenant's cloak\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+  });
+
+  it('an id the site does not have is shown, not hidden', async () => {
+    const { storage, row } = await open(
+      ring('[lieutenants-cloak, signet-ring]'),
+      'guard'
+    );
+    const named = within(row).getByRole('button', { name: 'signet-ring' });
+    expect((named as HTMLButtonElement).disabled).toBe(true);
+    expect(within(row).getByText(/not an item of this site/)).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip signet-ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+  });
+
+  it('equipment that is not a list is shown and has no controls', async () => {
+    const { storage, row } = await open(ring('cloak'), 'guard');
+    expect(row.textContent).toContain('"cloak"');
+    expect(row.textContent).toContain(
+      'This is not written as a list of items, so it cannot be changed here.'
+    );
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(within(row).queryByRole('combobox')).toBeNull();
+    expect(equipped(storage)).toEqual({ kind: 'other', written: 'cloak' });
+  });
+
+  it('a person whose stat block is not in the cast still shows what they have equipped', async () => {
+    const { storage, row } = await open(
+      itemsSiteYaml.replace(
+        'ref: dnd5e:monsters:sparring-guard',
+        'ref: dnd5e:monsters:ghost-guard'
+      ),
+      'guard'
+    );
+    expect(screen.getByText(/is not in the cast/)).toBeTruthy();
+    expect(
+      within(row).getByRole('button', { name: "Lieutenant's cloak" })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+  });
+
+  it('one of two duplicate ids is removed', async () => {
+    const { storage, row } = await open(
+      ring('[garrison-ring, garrison-ring]'),
+      'guard'
+    );
+    fireEvent.click(
+      within(row).getAllByRole('button', { name: 'Unequip Garrison ring' })[0]!
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['garrison-ring'],
+      })
+    );
+  });
+
+  it('the session refuses a creature the site does not place, and changes nothing', () => {
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    let session: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const before = session!.document;
+    act(() => {
+      expect(session.setCreatureEquipment('nobody', ['garrison-ring'])).toBe(
+        false
+      );
+    });
+    expect(session!.document).toEqual(before);
+    act(() => {
+      expect(session.setCreatureEquipment('guard', [])).toBe(true);
+    });
+    expect(equipmentOf(session!.document, 'guard')).toEqual({ kind: 'none' });
+    expect(session!.document.draft.room.monsterBindings?.guard).toBeDefined();
+  });
+
+  it('a site with no items offers the way to Items', async () => {
+    const { row } = await open(servedCastleYaml, 'captain');
+    expect(
+      within(row).getByText('This site has no custom items.')
+    ).toBeTruthy();
+    fireEvent.click(within(row).getByRole('button', { name: 'Open Items' }));
+    expect(await screen.findByRole('region', { name: 'Items' })).toBeTruthy();
   });
 });
