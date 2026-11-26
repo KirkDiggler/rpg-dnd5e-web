@@ -20,7 +20,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { setCustomItem } from '../encounter-studio/itemEdit';
+import {
+  addCustomItem,
+  removeCustomItem,
+  setCustomItem,
+} from '../encounter-studio/itemEdit';
 import {
   definitionOf,
   setBehaviorDefinition,
@@ -5356,6 +5360,30 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              addCustomItem: guardSnapshotIntent(
+                (id: string, item: Record<string, unknown>): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: addCustomItem(current.scope, id, item),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              removeCustomItem: guardSnapshotIntent((id: string): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: removeCustomItem(current.scope, id),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }),
               commitBehaviorDefinition: guardSnapshotIntent(
                 (
                   id: string,

@@ -375,6 +375,8 @@ function createAppStudioSession(): EncounterStudioSession {
     },
     commitBehaviorDefinition: vi.fn(() => true),
     commitCustomItem: vi.fn(() => true),
+    addCustomItem: vi.fn(() => true),
+    removeCustomItem: vi.fn(() => true),
     cast: {
       save: vi.fn(() => true),
       rename: vi.fn(() => true),

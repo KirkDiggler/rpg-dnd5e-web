@@ -449,6 +449,13 @@ export interface EncounterStudioSession {
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */
+  /** A new custom item (rpg-project#1202), one undoable transaction
+   * (`itemEdit.addCustomItem`). Refused, with the notice naming why, when the
+   * writer throws. */
+  addCustomItem(id: string, item: Record<string, unknown>): boolean;
+  /** Delete a custom item, one undoable transaction
+   * (`itemEdit.removeCustomItem`). Refused, with the notice, when it throws. */
+  removeCustomItem(id: string): boolean;
   cast: {
     /** One staged form: an id change, the stat block and the defaults. */
     save(edit: CastEdit): boolean;

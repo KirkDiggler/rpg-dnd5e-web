@@ -2572,6 +2572,8 @@ function StudioSurface({
                     itemWords.status === 'unavailable' ? itemWords.reason : null
                   }
                   onCommitItem={session.commitCustomItem}
+                  onAddItem={session.addCustomItem}
+                  onRemoveItem={session.removeCustomItem}
                   refusals={
                     publishing.preview.status === 'validating' ? [] : jumps
                   }
