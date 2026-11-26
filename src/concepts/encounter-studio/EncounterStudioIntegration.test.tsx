@@ -119,9 +119,11 @@ import {
   castlePlacesReadBack,
   castleRoutinesReadBack,
   castleThreadsReadBack,
+  hailSiteReadBack,
   itemsSiteReadBack,
   itemWordsV237,
 } from './fixtures/engineReadBack';
+import hailSiteYaml from './fixtures/hail-site.yaml?raw';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
@@ -5416,7 +5418,12 @@ describe('S0 one selection across the homes', () => {
     fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
     expect(sections()).toEqual(['Records', 'Threads']);
     fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
-    expect(sections()).toEqual(['Behaviours', 'Bundles', 'Items']);
+    expect(sections()).toEqual([
+      'Behaviours',
+      'Bundles',
+      'Items',
+      'Status effects',
+    ]);
     expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
@@ -8140,7 +8147,14 @@ describe('the list-and-detail piece takes its height from its container (rpg-pro
     fireEvent.click(button('Encounter'));
     const panel = (): HTMLElement =>
       document.querySelector<HTMLElement>('.es-encounter-panel')!;
-    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours', 'Items']) {
+    for (const name of [
+      'Cast',
+      'Secrets',
+      'Threads',
+      'Behaviours',
+      'Items',
+      'Status effects',
+    ]) {
       fireEvent.click(encounterSection(name));
       expect(panel().getAttribute('data-layout')).toBe('list-detail');
       expect(
@@ -8954,5 +8968,53 @@ describe('Equipping a person through the real owner (rpg-project#1203)', () => {
     ).toBeTruthy();
     fireEvent.click(within(row).getByRole('button', { name: 'Open Items' }));
     expect(await screen.findByRole('region', { name: 'Items' })).toBeTruthy();
+  });
+});
+
+describe('Status effects page through the real owner (rpg-project#1215)', () => {
+  const openHail = async (
+    errors: { path: string; message: string }[] = []
+  ): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, {
+        readBack: hailSiteReadBack(),
+        errors,
+      })
+    );
+    const read = readDraftYaml(hailSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+  };
+
+  it('Pieces → Status effects lists the status and shows who gives it', async () => {
+    await openHail();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Status effects'));
+    const page = screen.getByRole('region', { name: 'Status effects' });
+    fireEvent.click(
+      await within(page).findByRole('button', { name: /^Welcomed\b/ })
+    );
+    expect(page.textContent).toContain('is a status effect a line');
+    expect(page.querySelector('pre')!.textContent).toMatch(/^welcomed:/);
+    expect(
+      within(page).getByRole('button', { name: 'creature porter' })
+    ).toBeTruthy();
+  });
+
+  // catches: a refusal under statuses.<id> that opens nothing, or the wrong status
+  it('a refusal at the status opens the Status effects page on that status', async () => {
+    await openHail([{ path: 'statuses.welcomed.changes[0]', message: 'x' }]);
+    fireEvent.click(await screen.findByRole('button', { name: '1 refusal' }));
+    const refused = await screen.findAllByRole('button', {
+      name: /Status effects · welcomed: x/,
+    });
+    fireEvent.click(refused[0]!);
+    const page = await screen.findByRole('region', { name: 'Status effects' });
+    expect(
+      page.querySelector('[data-status="welcomed"] pre')!.textContent
+    ).toMatch(/^welcomed:/);
   });
 });

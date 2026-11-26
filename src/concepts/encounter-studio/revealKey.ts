@@ -58,6 +58,7 @@ const SECTION_KINDS: Record<string, string> = {
   bundles: 'bundle',
   behaviours: 'routine',
   items: 'item',
+  statuses: 'status',
 };
 
 /** The thing a target selects or opens, when no path names a place in it. */

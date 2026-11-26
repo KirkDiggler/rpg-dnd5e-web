@@ -282,6 +282,9 @@ export function connectionJump(
     // A custom item opens the Items page on it (rpg-project#1196).
     case 'item':
       return through(`customItems.${id}`);
+    // A status effect opens the Status effects page on it (rpg-project#1215).
+    case 'status':
+      return through(`statuses.${id}`);
     // A conversation's lines written once (rpg-project#1027) open on the
     // Conversations page.
     case 'shared-lines':
