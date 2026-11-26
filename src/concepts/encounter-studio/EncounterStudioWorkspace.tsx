@@ -137,6 +137,7 @@ import { StudioWallControls } from './StudioWallControls';
 import { StudioWatch } from './StudioWatch';
 import { StudioWatchTimeline } from './StudioWatchTimeline';
 import type { ThreadHub } from './threadHubs';
+import { useItemWords } from './useItemWords';
 import { useMachineWords } from './useMachineWords';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
@@ -674,6 +675,7 @@ function StudioSurface({
   /** The engine's machine words, asked once while the server is up
    * (rpg-project#1015); none draws the machines in their ids. */
   const machineWords = useMachineWords({ enabled: gate.state === 'live' });
+  const itemWords = useItemWords({ enabled: gate.state === 'live' });
   const placesView = usePlacesView(session, readBack);
   /** A way pointer on a record's or a secret's entry opens the join its way
    * goes through, as Places selects it (rpg-project#973). The pointer names
@@ -2565,6 +2567,14 @@ function StudioSurface({
                   focus={focusItem}
                   onSelect={setFocusItem}
                   onJump={jumpTo}
+                  itemWords={itemWords.words}
+                  itemWordsUnavailable={
+                    itemWords.status === 'unavailable' ? itemWords.reason : null
+                  }
+                  onCommitItem={session.commitCustomItem}
+                  refusals={
+                    publishing.preview.status === 'validating' ? [] : jumps
+                  }
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (

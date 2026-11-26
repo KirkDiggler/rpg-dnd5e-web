@@ -438,6 +438,14 @@ export interface EncounterStudioSession {
     id: string,
     edit: (definition: Record<string, unknown>) => Record<string, unknown>
   ): boolean;
+  /** One custom item (rpg-project#1201): `edit` runs on the item as the file
+   * has it now, and the result is set whole as one undoable transaction
+   * (`itemEdit.setCustomItem`). Refused, with the notice naming why, for an
+   * item the file does not author or an edit that throws. */
+  commitCustomItem(
+    id: string,
+    edit: (item: Record<string, unknown>) => Record<string, unknown>
+  ): boolean;
   /** The cast (rpg-project#575): each intent is one document transaction
    * over the pure edits in world-building/cast.ts. A refusal returns false
    * with no history entry; the form shows the edit's own sentence. */

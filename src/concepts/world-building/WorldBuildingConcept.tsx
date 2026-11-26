@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { setCustomItem } from '../encounter-studio/itemEdit';
 import {
   definitionOf,
   setBehaviorDefinition,
@@ -5314,6 +5315,40 @@ export function WorldBuildingConcept({
                         current.scope,
                         id,
                         edit(holder).recipe
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              commitCustomItem: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    item: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const items = current.scope.unread?.customItems;
+                    const item = (
+                      items as Record<string, unknown> | undefined
+                    )?.[id];
+                    if (
+                      !item ||
+                      typeof item !== 'object' ||
+                      Array.isArray(item)
+                    )
+                      throw new Error(
+                        `customItems.${id}: this site authors no such item`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setCustomItem(
+                        current.scope,
+                        id,
+                        edit(item as Record<string, unknown>)
                       ),
                     });
                   } catch (error) {

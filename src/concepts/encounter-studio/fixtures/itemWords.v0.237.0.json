@@ -1,0 +1,152 @@
+{
+  "rulebookVersion": "v0.237.0",
+  "words": [
+    {
+      "word": "name",
+      "place": "item",
+      "shape": "text",
+      "label": "the name players see",
+      "required": true
+    },
+    {
+      "word": "slot",
+      "place": "item",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "cloak",
+          "label": "worn as a cloak"
+        },
+        {
+          "word": "amulet",
+          "label": "worn as an amulet"
+        },
+        {
+          "word": "ring",
+          "label": "worn as a ring, on either hand"
+        },
+        {
+          "word": "belt",
+          "label": "worn as a belt"
+        },
+        {
+          "word": "helm",
+          "label": "worn as a helm"
+        },
+        {
+          "word": "boots",
+          "label": "worn as boots"
+        }
+      ],
+      "label": "where it is worn",
+      "required": true
+    },
+    {
+      "word": "unique",
+      "place": "item",
+      "shape": "true or false",
+      "label": "a character owns at most one of it"
+    },
+    {
+      "word": "charges",
+      "place": "item",
+      "shape": "entries",
+      "label": "the uses the item holds",
+      "holds": "charges"
+    },
+    {
+      "word": "lets",
+      "place": "item",
+      "shape": "list",
+      "label": "what the item lets its wearer use",
+      "holds": "lets entry",
+      "required": true
+    },
+    {
+      "word": "max",
+      "place": "charges",
+      "shape": "whole number",
+      "label": "holds {value} charges",
+      "required": true,
+      "bounds": {
+        "min": 1,
+        "max": 1000
+      }
+    },
+    {
+      "word": "refills",
+      "place": "charges",
+      "shape": "entries",
+      "label": "when its charges come back",
+      "holds": "refills"
+    },
+    {
+      "word": "on",
+      "place": "refills",
+      "shape": "list of",
+      "values": [
+        {
+          "word": "short rest",
+          "label": "a short rest"
+        },
+        {
+          "word": "long rest",
+          "label": "a long rest"
+        }
+      ],
+      "label": "back to full on {value}",
+      "required": true
+    },
+    {
+      "word": "use",
+      "place": "lets entry",
+      "shape": "one of",
+      "values": [
+        {
+          "word": "second wind",
+          "label": "Second Wind",
+          "with": [
+            {
+              "word": "level",
+              "place": "with",
+              "shape": "whole number",
+              "label": "regains 1d10 hit points plus {value}",
+              "required": true,
+              "bounds": {
+                "min": 1,
+                "noMax": true
+              }
+            }
+          ]
+        }
+      ],
+      "label": "lets its wearer use {value}",
+      "required": true
+    },
+    {
+      "word": "with",
+      "place": "lets entry",
+      "shape": "entries",
+      "label": "the values the ability is used with",
+      "holds": "with"
+    },
+    {
+      "word": "cost",
+      "place": "lets entry",
+      "shape": "entries",
+      "label": "what one use costs the item",
+      "holds": "cost"
+    },
+    {
+      "word": "charges",
+      "place": "cost",
+      "shape": "whole number",
+      "label": "costs {value} of the item's charges",
+      "required": true,
+      "bounds": {
+        "min": 1,
+        "noMax": true
+      }
+    }
+  ]
+}
