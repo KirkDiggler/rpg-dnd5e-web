@@ -104,20 +104,24 @@ export function StudioItems({
               )}
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
-              <h3>Equipped by</h3>
-              {selected.equippedBy.length > 0 ? (
-                <div className="es-readback-links">
-                  {holderButtons(selected.equippedBy)}
-                </div>
-              ) : (
-                <p className="es-help">Nobody has it equipped.</p>
-              )}
-              {selected.props.length > 0 && (
+              {said && (
                 <>
-                  <h3>Props that are this item</h3>
-                  <div className="es-readback-links">
-                    {holderButtons(selected.props)}
-                  </div>
+                  <h3>Equipped by</h3>
+                  {selected.equippedBy.length > 0 ? (
+                    <div className="es-readback-links">
+                      {holderButtons(selected.equippedBy)}
+                    </div>
+                  ) : (
+                    <p className="es-help">Nobody has it equipped.</p>
+                  )}
+                  {selected.props.length > 0 && (
+                    <>
+                      <h3>Props that are this item</h3>
+                      <div className="es-readback-links">
+                        {holderButtons(selected.props)}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

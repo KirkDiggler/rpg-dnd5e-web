@@ -8353,6 +8353,28 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
     ).toBeTruthy();
   });
 
+  it('with no engine answer it lists the items and says nothing of who has them', async () => {
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    expect(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(items).getByRole('button', { name: /^Garrison ring\b/ })
+    );
+    expect(within(items).getByText('As written')).toBeTruthy();
+    expect(
+      within(items).getByText('The engine has not said the items yet.')
+    ).toBeTruthy();
+    expect(within(items).queryByText('Equipped by')).toBeNull();
+    expect(within(items).queryByText('Nobody has it equipped.')).toBeNull();
+  });
+
   it('Equipped by goes to the person', async () => {
     const items = await openRing();
     fireEvent.click(
