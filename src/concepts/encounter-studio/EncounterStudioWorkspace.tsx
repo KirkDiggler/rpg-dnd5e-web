@@ -148,6 +148,7 @@ import {
   useWatchSave,
 } from './useSavedRun';
 import { useSettledRefusals } from './useSettledRefusals';
+import { useStatusWords } from './useStatusWords';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
 import { useWatchLeave } from './watchLeave';
@@ -678,6 +679,7 @@ function StudioSurface({
    * (rpg-project#1015); none draws the machines in their ids. */
   const machineWords = useMachineWords({ enabled: gate.state === 'live' });
   const itemWords = useItemWords({ enabled: gate.state === 'live' });
+  const statusWords = useStatusWords({ enabled: gate.state === 'live' });
   const placesView = usePlacesView(session, readBack);
   /** A way pointer on a record's or a secret's entry opens the join its way
    * goes through, as Places selects it (rpg-project#973). The pointer names
@@ -2591,6 +2593,16 @@ function StudioSurface({
                   onSelect={setFocusStatus}
                   onJump={jumpTo}
                   enabled={gate.state === 'live'}
+                  statusWords={statusWords.words}
+                  statusWordsUnavailable={
+                    statusWords.status === 'unavailable'
+                      ? statusWords.reason
+                      : null
+                  }
+                  onCommitStatus={session.commitStatus}
+                  refusals={
+                    publishing.preview.status === 'validating' ? [] : jumps
+                  }
                 />
               )}
               {home === 'encounter' && encounterSection === 'facts' && (
