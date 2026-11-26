@@ -3341,7 +3341,7 @@ li.es-machine-step[data-refused],
   gap: 0.5rem;
 }
 
-/* Custom items S6 (rpg-project#1205): the item form's groups read as groups.
+/* Custom items S6 (rpg-project issue 1205): the item form's groups read as groups.
  * Structure only, from the variables above; scoped to `.es-words-form`,
  * `.es-items` and `.es-new-item`. */
 .es-words-form {
