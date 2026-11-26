@@ -4,7 +4,7 @@ import { readDraftYaml } from './draftFile';
 import { createCastleS4Document } from './fixtures/castleS4';
 import site from './fixtures/cloak-and-ring-walk.yaml?raw';
 import { itemsSiteReadBack } from './fixtures/engineReadBack';
-import { itemsOf } from './itemsView';
+import { itemsNotMapping, itemsOf } from './itemsView';
 
 function itemsDocument(): RoomDraftDocument {
   const result = readDraftYaml(site);
@@ -54,5 +54,34 @@ describe('the site’s items, from the file and the engine’s read-back', () =>
 
   it('a site with no customItems has no items', () => {
     expect(itemsOf(createCastleS4Document(), null)).toEqual([]);
+  });
+});
+
+function withCustomItems(customItems: unknown): RoomDraftDocument {
+  const document = itemsDocument();
+  return {
+    ...document,
+    scope: {
+      ...document.scope,
+      unread: { ...document.scope.unread, customItems },
+    },
+  };
+}
+
+describe('a customItems that is not a mapping is reported, not hidden', () => {
+  // catches: a list treated as a mapping
+  it.each([['text'], [7], [[1, 2]], [true], [null]])(
+    '%j is reported as written',
+    (value) => {
+      expect(itemsNotMapping(withCustomItems(value))).toEqual({
+        written: value,
+      });
+      expect(itemsOf(withCustomItems(value), null)).toEqual([]);
+    }
+  );
+
+  it('a mapping, or no customItems at all, is not reported', () => {
+    expect(itemsNotMapping(itemsDocument())).toBeNull();
+    expect(itemsNotMapping(createCastleS4Document())).toBeNull();
   });
 });
