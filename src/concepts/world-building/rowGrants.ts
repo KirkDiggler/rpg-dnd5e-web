@@ -97,8 +97,12 @@ export function withGrant(
   grant: RowGrant | undefined,
   names: SiteNames
 ): GrantingRow {
-  if (grant !== undefined && grantOf(row) === grant) return row;
   const next = { ...row } as Record<string, unknown>;
+  // A grant the row already holds is kept as written; only the others go.
+  if (grant !== undefined && next[grant] !== undefined) {
+    for (const key of ROW_GRANTS) if (key !== grant) delete next[key];
+    return next as GrantingRow;
+  }
   for (const key of ROW_GRANTS) delete next[key];
   switch (grant) {
     case 'give':
@@ -173,17 +177,22 @@ export function withApplyStatus(
   patch: { status?: string; to?: string; rounds?: number | null }
 ): GrantingRow {
   const was = isRecord(row.apply_status) ? row.apply_status : undefined;
-  const next: Record<string, unknown> = {
-    ...was,
-    status: patch.status ?? was?.status ?? '',
-    to: patch.to ?? was?.to ?? APPLY_STATUS_TO[0],
-  };
-  if (patch.rounds === null) delete next.until;
-  else if (patch.rounds !== undefined)
-    next.until = {
-      ...(isRecord(was?.until) ? was.until : undefined),
-      rounds: patch.rounds,
-    };
+  const next: Record<string, unknown> = { ...was };
+  if (patch.status !== undefined) next.status = patch.status;
+  if (patch.to !== undefined) next.to = patch.to;
+  const until = next.until;
+  // An `until` that is not a mapping is not the web's to rewrite.
+  if (patch.rounds !== undefined && (until === undefined || isRecord(until))) {
+    if (patch.rounds === null) {
+      if (isRecord(until)) {
+        const rest = { ...until };
+        delete rest.rounds;
+        if (Object.keys(rest).length === 0) delete next.until;
+        else next.until = rest;
+      }
+    } else
+      next.until = { ...(until as object | undefined), rounds: patch.rounds };
+  }
   return { ...row, apply_status: next as unknown as ApplyStatusShape };
 }
 

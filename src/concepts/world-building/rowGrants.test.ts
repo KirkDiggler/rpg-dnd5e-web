@@ -113,3 +113,66 @@ describe('apply_status as a row grant', () => {
     expect(otherGrantsOf(row({ tells: 'rec' }))).toEqual([]);
   });
 });
+
+describe('review rulings R1-R4', () => {
+  it('R1 keeps the held grant as written when it is chosen (catches: the kept grant reseeded)', () => {
+    const held = {
+      status: 'held',
+      to: 'party_in_sight',
+      until: { rounds: 3 },
+    };
+    const next = withGrant(
+      row({ tells: 'r1', apply_status: held }),
+      'apply_status',
+      names
+    ) as Record<string, unknown>;
+    expect(next.tells).toBeUndefined();
+    expect(next.apply_status).toEqual(held);
+    const give = { topic: 't', to: 'spoken_to', about: 'speaker' };
+    const two = withGrant(row({ give, tells: 'r1' }), 'tells', names);
+    expect(two).toEqual({ say: 'In you go.', tells: 'r1' });
+  });
+
+  it('R2 clearing rounds keeps the rest of until (catches: until dropped whole)', () => {
+    const base = { status: 'fed', to: 'speaker' };
+    expect(
+      withApplyStatus(
+        row({ apply_status: { ...base, until: { rounds: 3, foo: 'x' } } }),
+        { rounds: null }
+      ).apply_status
+    ).toEqual({ ...base, until: { foo: 'x' } });
+    expect(
+      withApplyStatus(
+        row({ apply_status: { ...base, until: { rounds: 3 } } }),
+        {
+          rounds: null,
+        }
+      ).apply_status
+    ).toEqual(base);
+  });
+
+  it('R3 writes only the patched field (catches: a missing field filled in)', () => {
+    expect(
+      withApplyStatus(row({ apply_status: { status: 'held' } }), {
+        status: 'fed',
+      }).apply_status
+    ).toEqual({ status: 'fed' });
+    expect(
+      withApplyStatus(row({ apply_status: { to: 'speaker' } }), {
+        to: 'spoken_to',
+      }).apply_status
+    ).toEqual({ to: 'spoken_to' });
+  });
+
+  it('R4 leaves a non-mapping until alone (catches: until replaced)', () => {
+    const next = withApplyStatus(
+      row({ apply_status: { status: 'fed', to: 'speaker', until: 3 } }),
+      { rounds: 5 }
+    );
+    expect(next.apply_status).toEqual({
+      status: 'fed',
+      to: 'speaker',
+      until: 3,
+    });
+  });
+});

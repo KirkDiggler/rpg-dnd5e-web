@@ -335,7 +335,9 @@ function ApplyStatusFields({
     );
   const status = typeof written.status === 'string' ? written.status : '';
   const to = typeof written.to === 'string' ? written.to : '';
-  const until = isRecord(written.until) ? written.until : undefined;
+  const untilWritten = written.until;
+  const until = isRecord(untilWritten) ? untilWritten : undefined;
+  const untilOdd = untilWritten !== undefined && until === undefined;
   const rounds = typeof until?.rounds === 'number' ? until.rounds : undefined;
   const offeredTo: readonly string[] = isProp
     ? [APPLY_STATUS_TO[0]]
@@ -385,19 +387,29 @@ function ApplyStatusFields({
             onCommit(withApplyStatus(row, { to: event.target.value }))
           }
         >
+          {to === '' && <option value="" />}
           {offeredTo.map((word) => (
             <option key={word} value={word}>
               {RECEIVER_LABELS[word]}
             </option>
           ))}
-          {!offeredTo.includes(to) && <option value={to}>{to}</option>}
+          {to !== '' && !offeredTo.includes(to) && (
+            <option value={to}>{to}</option>
+          )}
         </select>
       </label>
-      <RoundsField
-        label={label}
-        rounds={rounds}
-        onChange={(next) => onCommit(withApplyStatus(row, { rounds: next }))}
-      />
+      {untilOdd ? (
+        <p className="wb-help" aria-label={`Until written for ${label}`}>
+          <code>until</code> is written as{' '}
+          <code>{JSON.stringify(untilWritten)}</code>, kept as written.
+        </p>
+      ) : (
+        <RoundsField
+          label={label}
+          rounds={rounds}
+          onChange={(next) => onCommit(withApplyStatus(row, { rounds: next }))}
+        />
+      )}
       {unknown.length > 0 && (
         <p className="wb-help">also written: {unknown.join(', ')}</p>
       )}

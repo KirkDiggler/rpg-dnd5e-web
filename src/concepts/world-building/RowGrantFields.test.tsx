@@ -171,4 +171,38 @@ describe('RowGrantFields: a status effect', () => {
       apply_status: { status: 'welcomed', to: 'speaker' },
     });
   });
+
+  it('R4 shows a non-mapping until as written, with no Rounds field, and keeps it', () => {
+    const onCommit = show({
+      apply_status: { status: 'welcomed', to: 'speaker', until: 3 },
+    });
+    expect(screen.queryByLabelText(/^Rounds for/)).toBeNull();
+    expect(screen.getByText('3')).toBeTruthy();
+    fireEvent.change(field('Status'), { target: { value: 'fed' } });
+    expect(onCommit.mock.calls[0]![0].apply_status.until).toBe(3);
+  });
+
+  it('R5 draws one option per distinct value and no blank label when to is written', () => {
+    show({ apply_status: { status: 'fed', to: 'everyone' } });
+    const labels = Array.from((field('To') as HTMLSelectElement).options).map(
+      (o) => o.textContent
+    );
+    expect(labels).toEqual([
+      'The speaker',
+      'The speaker’s party in sight',
+      'The one spoken to',
+      'everyone',
+    ]);
+    cleanup();
+    show({ apply_status: { status: 'fed' } });
+    const values = optionsOf(field('To'));
+    expect(values.filter((v) => v === '')).toHaveLength(1);
+    expect(new Set(values).size).toBe(values.length);
+  });
+
+  it('R3 a status change with no to written writes no to', () => {
+    const onCommit = show({ apply_status: { status: 'welcomed' } });
+    fireEvent.change(field('Status'), { target: { value: 'fed' } });
+    expect(onCommit.mock.calls[0]![0].apply_status).toEqual({ status: 'fed' });
+  });
 });
