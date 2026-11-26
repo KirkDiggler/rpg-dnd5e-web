@@ -8424,27 +8424,24 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
     expect(within(items).queryByRole('alert')).toBeNull();
   });
 
-  it('an author changes an item’s slot and Save writes it', async () => {
+  it('an author changes an item’s slot and it is written at once', async () => {
     const words = itemWordsV237();
     const asked = vi
       .spyOn(authoringClient, 'getItemWords')
       .mockResolvedValue(words);
     const slotWord = words.words.find((w) => w.word === 'slot')!;
-    const amulet = slotWord.values.find((v) => v.word === 'amulet')!;
     try {
       const items = await openRing();
-      const save = await within(items).findByRole('button', { name: 'Save' });
-      expect((save as HTMLButtonElement).disabled).toBe(true);
+      await within(items).findByRole('combobox', { name: slotWord.label });
+      expect(within(items).queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        within(items).queryByRole('button', { name: 'Discard' })
+      ).toBeNull();
+      expect(items.querySelector('pre')!.textContent).toContain('slot: ring');
       fireEvent.change(
         within(items).getByRole('combobox', { name: slotWord.label }),
         { target: { value: 'amulet' } }
       );
-      expect(
-        within(items).getByRole('option', { name: amulet.label })
-      ).toBeTruthy();
-      expect((save as HTMLButtonElement).disabled).toBe(false);
-      expect(items.querySelector('pre')!.textContent).toContain('slot: ring');
-      fireEvent.click(save);
       await waitFor(() =>
         expect(items.querySelector('pre')!.textContent).toContain(
           'slot: amulet'
@@ -8462,57 +8459,11 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
         max: 1,
         refills: { on: ['short rest', 'long rest'] },
       });
-      expect(
-        (
-          within(items).getByRole('button', {
-            name: 'Save',
-          }) as HTMLButtonElement
-        ).disabled
-      ).toBe(true);
       // One Undo restores the file.
       fireEvent.click(button('Undo'));
       await waitFor(() =>
         expect(items.querySelector('pre')!.textContent).toContain('slot: ring')
       );
-    } finally {
-      asked.mockRestore();
-    }
-  });
-
-  it('a changed draft is reset when the author picks another item and comes back', async () => {
-    const words = itemWordsV237();
-    const asked = vi
-      .spyOn(authoringClient, 'getItemWords')
-      .mockResolvedValue(words);
-    try {
-      const items = await openRing();
-      const slotWord = words.words.find((w) => w.word === 'slot')!;
-      const save = await within(items).findByRole('button', { name: 'Save' });
-      fireEvent.change(
-        within(items).getByRole('combobox', { name: slotWord.label }),
-        { target: { value: 'amulet' } }
-      );
-      expect((save as HTMLButtonElement).disabled).toBe(false);
-      fireEvent.click(
-        within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
-      );
-      fireEvent.click(
-        within(items).getByRole('button', { name: /^Garrison ring\b/ })
-      );
-      expect(
-        (
-          within(items).getByRole('combobox', {
-            name: slotWord.label,
-          }) as HTMLSelectElement
-        ).value
-      ).toBe('ring');
-      expect(
-        (
-          within(items).getByRole('button', {
-            name: 'Save',
-          }) as HTMLButtonElement
-        ).disabled
-      ).toBe(true);
     } finally {
       asked.mockRestore();
     }

@@ -15,7 +15,7 @@ import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 import type { ItemWords } from './useItemWords';
-import { firstRequiredText } from './wordsForm';
+import { firstRequiredText, setWord } from './wordsForm';
 import { WordsForm } from './WordsForm';
 
 const ITEM = 'item';
@@ -44,7 +44,7 @@ export function StudioItems({
   itemWords?: ItemWords | null;
   /** Why there are none, when the studio knows. */
   itemWordsUnavailable?: string | null;
-  /** Save: one undoable change of one item. */
+  /** Each change of one item, written as it is made: one undoable change. */
   onCommitItem?(
     id: string,
     edit: (item: Record<string, unknown>) => Record<string, unknown>
@@ -147,6 +147,7 @@ export function StudioItems({
                   </p>
                 ))}
               <ItemChange
+                key={selected.id}
                 id={selected.id}
                 written={selected.written}
                 itemWords={itemWords}
@@ -237,33 +238,13 @@ function NewItem({
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Same value, whatever the order of an object's keys. */
-function same(a: unknown, b: unknown): boolean {
-  if (Array.isArray(a))
-    return (
-      Array.isArray(b) &&
-      a.length === b.length &&
-      a.every((x, i) => same(x, b[i]))
-    );
-  if (isObject(a)) {
-    if (!isObject(b)) return false;
-    const keys = Object.keys(a);
-    return (
-      keys.length === Object.keys(b).length &&
-      keys.every((k) => Object.hasOwn(b, k) && same(a[k], b[k]))
-    );
-  }
-  return a === b;
-}
-
 const NOT_A_BLOCK_SENTENCE =
   'This item is not written as a set of words, so it cannot be changed here.';
 const NO_WORDS_SENTENCE =
   'The engine has not given its item words, so an item cannot be changed here.';
 
-/** The form of one item, drawn from the engine's words, on a local draft
- * that starts as the file's block and is reset when the item or the block
- * changes. */
+/** The form of one item, drawn from the engine's words. Each change is
+ * written to the site as it is made. */
 function ItemChange({
   id,
   written,
@@ -285,25 +266,18 @@ function ItemChange({
   equippedBy: number;
 }): React.JSX.Element {
   const block = isObject(written) ? written : null;
-  const [seen, setSeen] = useState<{ id: string; written: unknown }>({
-    id,
-    written,
-  });
-  const [draft, setDraft] = useState<Record<string, unknown> | null>(block);
-  if (seen.id !== id || seen.written !== written) {
-    setSeen({ id, written });
-    setDraft(block);
-  }
-  const editable = Boolean(itemWords && onCommitItem && block && draft);
+  const editable = Boolean(itemWords && onCommitItem && block);
   const body =
     itemWords && onCommitItem ? (
-      block && draft ? (
+      block ? (
         <WordsForm
           words={itemWords.words}
           place="item"
           idPrefix={`item-${id}`}
-          value={draft}
-          onChange={setDraft}
+          value={block}
+          onChange={(next, word) =>
+            onCommitItem?.(id, (item) => setWord(item, word, next[word]))
+          }
         />
       ) : (
         <p className="es-help">{NOT_A_BLOCK_SENTENCE}</p>
@@ -317,6 +291,11 @@ function ItemChange({
   return (
     <div className="es-item-change">
       <h3>Change</h3>
+      {editable && (
+        <p className="es-help">
+          Each change is written as you make it. Undo takes it back.
+        </p>
+      )}
       {body}
       {onRemoveItem && equippedBy > 0 && (
         <p className="es-help">
@@ -324,26 +303,8 @@ function ItemChange({
           site does not have; the engine will say so.
         </p>
       )}
-      {(editable || onRemoveItem) && (
+      {onRemoveItem && (
         <div className="es-item-actions">
-          {editable && block && draft && (
-            <>
-              <button
-                type="button"
-                disabled={same(draft, block)}
-                onClick={() => onCommitItem?.(id, () => draft)}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                disabled={same(draft, block)}
-                onClick={() => setDraft(block)}
-              >
-                Discard
-              </button>
-            </>
-          )}
           {onRemoveItem && (
             <button
               type="button"
