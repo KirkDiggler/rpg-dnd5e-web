@@ -52,6 +52,7 @@ import castleJson from './engineReadBack.castle.json?raw';
 import castleConversationsJson from './engineReadBack.castleConversations.json?raw';
 import claimStepJson from './engineReadBack.claimStep.json?raw';
 import conversationsJson from './engineReadBack.conversations.json?raw';
+import itemsJson from './engineReadBack.items.json?raw';
 import machinesJson from './engineReadBack.machines.json?raw';
 import machines225Json from './engineReadBack.machines225.json?raw';
 import machines228Json from './engineReadBack.machines228.json?raw';
@@ -209,6 +210,17 @@ export function castleMachinesV228ReadBack(): ReadBack {
  */
 export function conversationsSiteReadBack(): ReadBack {
   return fromJson(ReadBackSchema, JSON.parse(conversationsJson) as JsonValue);
+}
+
+/**
+ * THE ITEMS SITE'S READ-BACK (rpg-project#1196): `readback.Of` at
+ * `rulebooks/dnd5e/encounter` v0.261.0 on rpg-toolkit `main` 1d783329's
+ * `rulebooks/dnd5e/session/testdata/cloak-and-ring-walk.yaml` (copied beside
+ * it as `cloak-and-ring-walk.yaml`, git blob b2efd363), marshalled whole with
+ * `folded` set to `rb.Folded()`. Nothing trimmed, nothing hand-written.
+ */
+export function itemsSiteReadBack(): ReadBack {
+  return fromJson(ReadBackSchema, JSON.parse(itemsJson) as JsonValue);
 }
 
 /** THE CASTLE'S CONVERSATIONS (rpg-project#1030): `readback.Of` at
