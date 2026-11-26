@@ -4,16 +4,18 @@
  * here declares, edits or equips an item. The studio types no word of what an
  * item does; every sentence is the engine's, the block is the file's.
  */
-import { useState, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { stringify } from 'yaml';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { connectionJump } from './engineReadBack';
+import { itemIdFrom } from './itemEdit';
 import { itemsOf, type ItemHolder } from './itemsView';
 import { STALE_READ_BACK_SENTENCE } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
 import { StudioListDetail } from './StudioListDetail';
 import type { StudioReadBack } from './studioPublishing';
 import type { ItemWords } from './useItemWords';
+import { firstRequiredText } from './wordsForm';
 import { WordsForm } from './WordsForm';
 
 const ITEM = 'item';
@@ -28,6 +30,8 @@ export function StudioItems({
   itemWords = null,
   itemWordsUnavailable = null,
   onCommitItem,
+  onAddItem,
+  onRemoveItem,
   refusals = [],
 }: {
   document: Readonly<RoomDraftDocument>;
@@ -45,6 +49,10 @@ export function StudioItems({
     id: string,
     edit: (item: Record<string, unknown>) => Record<string, unknown>
   ): boolean;
+  /** New item: one undoable change; true when it was made. */
+  onAddItem?(id: string, item: Record<string, unknown>): boolean;
+  /** Delete item: one undoable change; true when it was removed. */
+  onRemoveItem?(id: string): boolean;
   /** The engine's current refusals; those at the selected item show on it. */
   refusals?: readonly { path: string; message: string }[];
 }): React.JSX.Element {
@@ -84,6 +92,14 @@ export function StudioItems({
         <p role="status" className="es-help es-readback-notice">
           {notice}
         </p>
+      )}
+      {onAddItem && itemWords && (
+        <NewItem
+          words={itemWords}
+          taken={items.map((item) => item.id)}
+          onAddItem={onAddItem}
+          onSelect={onSelect}
+        />
       )}
       <StudioListDetail
         id="items"
@@ -136,6 +152,8 @@ export function StudioItems({
                 itemWords={itemWords}
                 itemWordsUnavailable={itemWordsUnavailable}
                 onCommitItem={onCommitItem}
+                onRemoveItem={onRemoveItem}
+                equippedBy={said ? selected.equippedBy.length : 0}
               />
               <h3>As written</h3>
               <pre>{stringify({ [selected.id]: selected.written })}</pre>
@@ -164,6 +182,55 @@ export function StudioItems({
         }
       />
     </section>
+  );
+}
+
+/** The new-item control: the text typed is the engine's first required text
+ * word of an item (or only the id when the engine has none). */
+function NewItem({
+  words,
+  taken,
+  onAddItem,
+  onSelect,
+}: {
+  words: ItemWords;
+  taken: readonly string[];
+  onAddItem: (id: string, item: Record<string, unknown>) => boolean;
+  onSelect: (id: string) => void;
+}): React.JSX.Element {
+  const [text, setText] = useState('');
+  const word = firstRequiredText(words.words, ITEM);
+  const label = word?.label ?? 'id';
+  const blank = text.trim() === '';
+  const id = itemIdFrom(text, taken);
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    if (blank) return;
+    const block = word ? { [word.word]: text.trim() } : {};
+    if (onAddItem(id, block)) {
+      onSelect(id);
+      setText('');
+    }
+  };
+  return (
+    <form className="es-new-item" onSubmit={submit}>
+      <label>
+        {label}{' '}
+        <input
+          type="text"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+      </label>{' '}
+      <button type="submit" disabled={blank}>
+        New item
+      </button>
+      {!blank && (
+        <p className="es-help">
+          id <code>{id}</code>
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -203,6 +270,8 @@ function ItemChange({
   itemWords,
   itemWordsUnavailable,
   onCommitItem,
+  onRemoveItem,
+  equippedBy,
 }: {
   id: string;
   written: unknown;
@@ -212,6 +281,8 @@ function ItemChange({
     id: string,
     edit: (item: Record<string, unknown>) => Record<string, unknown>
   ) => boolean;
+  onRemoveItem?: (id: string) => boolean;
+  equippedBy: number;
 }): React.JSX.Element {
   const block = isObject(written) ? written : null;
   const [seen, setSeen] = useState<{ id: string; written: unknown }>({
@@ -262,6 +333,23 @@ function ItemChange({
     <>
       <h3>Change</h3>
       {body}
+      {onRemoveItem && (
+        <>
+          {equippedBy > 0 && (
+            <p className="es-help">
+              Equipped by {equippedBy}. Deleting it leaves them with an item
+              this site does not have; the engine will say so.
+            </p>
+          )}
+          <button
+            type="button"
+            className="wb-danger"
+            onClick={() => onRemoveItem(id)}
+          >
+            Delete item
+          </button>
+        </>
+      )}
     </>
   );
 }

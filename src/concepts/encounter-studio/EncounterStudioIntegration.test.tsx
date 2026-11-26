@@ -8517,6 +8517,173 @@ describe('Items page through the real owner (rpg-project#1196)', () => {
     }
   });
 
+  describe('new and delete (rpg-project#1202)', () => {
+    const rows = (items: HTMLElement): HTMLElement[] =>
+      Array.from(items.querySelectorAll('li button[aria-pressed]'));
+    const openItems = async (): Promise<HTMLElement> => {
+      await openItemsSite();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Items'));
+      const items = screen.getByRole('region', { name: 'Items' });
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ });
+      return items;
+    };
+    const withWords = async <T,>(run: () => Promise<T>): Promise<T> => {
+      const asked = vi
+        .spyOn(authoringClient, 'getItemWords')
+        .mockResolvedValue(itemWordsV237());
+      try {
+        return await run();
+      } finally {
+        asked.mockRestore();
+      }
+    };
+    const nameLabel = (): string =>
+      itemWordsV237().words.find(
+        (w) => w.place === 'item' && w.required && w.shape === 'text'
+      )!.label;
+    const type = async (
+      items: HTMLElement,
+      text: string
+    ): Promise<HTMLInputElement> => {
+      const input = (await within(items).findByRole('textbox', {
+        name: nameLabel(),
+      })) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: text } });
+      return input;
+    };
+
+    it('an author makes a new item by its name', async () => {
+      await withWords(async () => {
+        const items = await openItems();
+        const before = rows(items).length;
+        const input = await type(items, '  Signet ring ');
+        fireEvent.click(
+          within(items).getByRole('button', { name: 'New item' })
+        );
+        await waitFor(() => expect(rows(items).length).toBe(before + 1));
+        const row = within(items).getByRole('button', {
+          name: /^Signet ring\b/,
+        });
+        expect(row.getAttribute('aria-pressed')).toBe('true');
+        expect(input.value).toBe('');
+        const pre = items.querySelector('pre')!.textContent!;
+        expect(pre).toMatch(/^signet-ring:/);
+        expect(parseYaml(pre)).toEqual({
+          'signet-ring': { name: 'Signet ring' },
+        });
+        const nameInput = within(items).getAllByRole('textbox', {
+          name: nameLabel(),
+        });
+        expect(
+          nameInput.some(
+            (el) => (el as HTMLInputElement).value === 'Signet ring'
+          )
+        ).toBe(true);
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(items).length).toBe(before));
+        expect(
+          within(items).queryByRole('button', { name: /^Signet ring\b/ })
+        ).toBeNull();
+      });
+    });
+
+    it('the id avoids one that is taken', async () => {
+      await withWords(async () => {
+        const items = await openItems();
+        await type(items, 'Garrison ring');
+        expect(items.textContent).toContain('id garrison-ring-2');
+      });
+    });
+
+    it('an author makes the first item on a site with none', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+        );
+        const read = readDraftYaml(servedCastleYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        expect(read.scope.unread?.customItems).toBeUndefined();
+        mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Items'));
+        const items = screen.getByRole('region', { name: 'Items' });
+        expect(
+          within(items).getByText('This site has no custom items.')
+        ).toBeTruthy();
+        await type(items, 'First ring');
+        fireEvent.click(
+          within(items).getByRole('button', { name: 'New item' })
+        );
+        await waitFor(() =>
+          expect(
+            within(items).getByRole('button', { name: /^First ring\b/ })
+          ).toBeTruthy()
+        );
+        expect(items.querySelector('pre')!.textContent).toMatch(/^first-ring:/);
+        expect(
+          within(items).queryByText('This site has no custom items.')
+        ).toBeNull();
+      });
+    });
+
+    it('an author deletes an item', async () => {
+      await withWords(async () => {
+        const items = await openRing();
+        const before = rows(items).length;
+        fireEvent.click(
+          await within(items).findByRole('button', { name: 'Delete item' })
+        );
+        await waitFor(() => expect(rows(items).length).toBe(before - 1));
+        expect(
+          within(items).queryByRole('button', { name: /^Garrison ring\b/ })
+        ).toBeNull();
+        expect(items.querySelector('pre')).toBeNull();
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(items).length).toBe(before));
+        fireEvent.click(
+          within(items).getByRole('button', { name: /^Garrison ring\b/ })
+        );
+        expect(
+          parseYaml(items.querySelector('pre')!.textContent!)['garrison-ring']
+            .charges
+        ).toEqual({ max: 1, refills: { on: ['short rest', 'long rest'] } });
+      });
+    });
+
+    it('deleting an item somebody has equipped says so first', async () => {
+      await withWords(async () => {
+        const items = await openRing();
+        const del = await within(items).findByRole('button', {
+          name: 'Delete item',
+        });
+        const line = within(items).getByText(/^Equipped by 1\./);
+        expect(
+          line.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect((del as HTMLButtonElement).disabled).toBe(false);
+      });
+    });
+
+    it('without the engine’s item words there is no new-item control', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getItemWords')
+        .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+      try {
+        const items = await openItems();
+        await within(items).findByRole('button', { name: /^Garrison ring\b/ });
+        expect(
+          within(items).queryByRole('button', { name: 'New item' })
+        ).toBeNull();
+        expect(within(items).queryByRole('textbox')).toBeNull();
+      } finally {
+        asked.mockRestore();
+      }
+    });
+  });
+
   it('Equipped by goes to the person', async () => {
     const items = await openRing();
     fireEvent.click(

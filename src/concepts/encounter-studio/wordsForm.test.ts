@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { itemWordsV237 } from './fixtures/engineReadBack';
-import { setWord, unknownKeys, withWordsOf, wordsAt } from './wordsForm';
+import {
+  firstRequiredText,
+  setWord,
+  unknownKeys,
+  withWordsOf,
+  wordsAt,
+} from './wordsForm';
 
 const words = itemWordsV237().words;
 
@@ -43,5 +49,33 @@ describe('wordsForm', () => {
         weight: 3,
       })
     ).toEqual(['weight']);
+  });
+});
+
+describe('firstRequiredText', () => {
+  it('is the first required word of the place whose shape is text', () => {
+    const word = firstRequiredText(words, 'item');
+    expect(word).not.toBeNull();
+    expect(word!.shape).toBe('text');
+    expect(word!.required).toBe(true);
+    expect(word!.label).toBe(
+      words.find((w) => w.place === 'item' && w.shape === 'text' && w.required)!
+        .label
+    );
+  });
+  it('skips an optional text word that comes first', () => {
+    const text = words.find(
+      (w) => w.place === 'item' && w.shape === 'text' && w.required
+    )!;
+    const optional = {
+      ...text,
+      word: 'aside',
+      label: 'aside',
+      required: false,
+    };
+    expect(firstRequiredText([optional, text], 'item')).toBe(text);
+  });
+  it('is null for a place with none', () => {
+    expect(firstRequiredText(words, 'no-such-place')).toBeNull();
   });
 });

@@ -27,6 +27,18 @@ export function wordsAt(words: readonly FormWord[], place: string): FormWord[] {
   return words.filter((word) => word.place === place);
 }
 
+/** The first word of `place` that is required and whose shape is `text`. */
+export function firstRequiredText(
+  words: readonly FormWord[],
+  place: string
+): FormWord | null {
+  return (
+    wordsAt(words, place).find(
+      (word) => word.required && word.shape === 'text'
+    ) ?? null
+  );
+}
+
 /** The `with` words of the chosen value of the first `one of` word of
  * `place` whose chosen value has any; none otherwise. */
 export function withWordsOf(
