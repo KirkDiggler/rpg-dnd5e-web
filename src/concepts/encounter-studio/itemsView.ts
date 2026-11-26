@@ -36,6 +36,21 @@ export interface ItemView {
   props: ItemHolder[];
 }
 
+/**
+ * A `customItems` that is present and not a mapping is shown as written
+ * rather than saying the site has none (rpg-project#1218). Null when the file
+ * has no `customItems` or it is a mapping.
+ */
+export function itemsNotMapping(
+  document: Readonly<RoomDraftDocument>
+): { written: unknown } | null {
+  const items = document.scope.unread?.customItems;
+  if (items === undefined) return null;
+  return items !== null && typeof items === 'object' && !Array.isArray(items)
+    ? null
+    : { written: items };
+}
+
 export function itemsOf(
   document: Readonly<RoomDraftDocument>,
   readBack: ReadBack | null | undefined

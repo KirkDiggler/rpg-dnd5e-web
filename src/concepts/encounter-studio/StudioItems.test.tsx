@@ -202,3 +202,38 @@ describe('StudioItems: what a change is built from', () => {
     expect(screen.queryByText(/Each change is written/)).toBeNull();
   });
 });
+
+describe('a customItems that is not a mapping (rpg-project#1218)', () => {
+  // catches: content hidden behind the empty sentence
+  it('shows the value as written and does not say the site has no items', () => {
+    const document = start();
+    render(
+      <StudioItems
+        document={{
+          ...document,
+          scope: {
+            ...document.scope,
+            unread: { ...document.scope.unread, customItems: 'oops' },
+          },
+        }}
+        readBack={{
+          readBack: null,
+          readBackIsCurrent: false,
+          unavailable: null,
+        }}
+        focus={null}
+        onSelect={() => undefined}
+      />
+    );
+    const notice = screen
+      .getAllByRole('status')
+      .find((n) => n.textContent?.includes('is not a list of items'))!;
+    expect(notice.querySelector('pre')!.textContent).toBe(
+      'customItems: oops\n'
+    );
+    expect(screen.queryByText(/This site has no/)).toBeNull();
+    expect(
+      screen.getByText("No item can be listed from the file's customItems.")
+    ).toBeTruthy();
+  });
+});
