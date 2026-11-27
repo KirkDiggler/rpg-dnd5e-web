@@ -20,7 +20,9 @@ import { exitAt, setExitAt } from '../world-building/exitEdits';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CarriedConversations } from './CarriedConversations';
 import { CopyId } from './CopyId';
+import { equipmentOf } from './equipEdit';
 import { FieldHelp } from './FieldHelp';
+import { itemsOf } from './itemsView';
 import { joinName, placesOf } from './placesView';
 import { ReadBack } from './ReadBack';
 import type { RefusalTarget } from './refusalJump';
@@ -566,9 +568,160 @@ function CreatureView({
         onConfigure={onConfigure}
         onMoveCreature={onMoveCreature}
         lead={
-          <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
+          <>
+            <CreatureCast
+              session={session}
+              onOpenCastMember={onOpenCastMember}
+            />
+            <CreatureEquipped
+              session={session}
+              readBack={readBack}
+              onJump={onJump}
+            />
+          </>
         }
       />
+    </>
+  );
+}
+
+/** What this person has equipped (rpg-project#1203): each item by its name,
+ * with the way to its page and the way to take it off, and the way to give
+ * one more. The list is the file's own: an id the site does not have is shown
+ * and kept, and a value that is not a list is shown and has no controls. The
+ * engine's read-back and refusals say what an item does; this says nothing
+ * of slots or duplicates. */
+function CreatureEquipped({
+  session,
+  readBack,
+  onJump,
+}: Pick<
+  StudioInspectorProps,
+  'session' | 'readBack' | 'onJump'
+>): React.JSX.Element | null {
+  const arrange = session.arrange;
+  if (arrange?.kind !== 'actor') return null;
+  return (
+    <section aria-label="Equipped" className="es-cast-summary">
+      <dl className="es-facts">
+        <div>
+          <dt>Equipped</dt>
+          <dd>
+            <EquippedList
+              key={arrange.monster.id}
+              session={session}
+              creatureId={arrange.monster.id}
+              readBack={readBack}
+              onJump={onJump}
+            />
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function EquippedList({
+  session,
+  creatureId,
+  readBack,
+  onJump,
+}: Pick<StudioInspectorProps, 'session' | 'readBack' | 'onJump'> & {
+  creatureId: string;
+}): React.JSX.Element {
+  const [chosen, setChosen] = useState('');
+  const document = session.document;
+  const equipment = equipmentOf(document, creatureId);
+  if (equipment.kind === 'other')
+    return (
+      <>
+        <code>{JSON.stringify(equipment.written)}</code>
+        <p className="es-help">
+          This is not written as a list of items, so it cannot be changed here.
+        </p>
+      </>
+    );
+  const ids = equipment.kind === 'list' ? equipment.ids : [];
+  const items = itemsOf(document, readBack?.readBack);
+  const nameOf = new Map(items.map((item) => [item.id, item.name]));
+  const offered = items.filter((item) => !ids.includes(item.id));
+  return (
+    <>
+      {ids.length === 0 ? (
+        'nothing'
+      ) : (
+        <ul className="es-equipped">
+          {ids.map((id, at) => {
+            const known = nameOf.has(id);
+            const name = nameOf.get(id) ?? id;
+            return (
+              <li key={`${id}-${at}`}>
+                <button
+                  type="button"
+                  className="es-link"
+                  disabled={!known}
+                  onClick={() =>
+                    onJump?.({ kind: 'home', section: 'items', id })
+                  }
+                >
+                  {name}
+                </button>
+                {!known && ' not an item of this site '}
+                <button
+                  type="button"
+                  aria-label={`Unequip ${name}`}
+                  onClick={() =>
+                    session.setCreatureEquipment(
+                      creatureId,
+                      ids.filter((_, index) => index !== at)
+                    )
+                  }
+                >
+                  Unequip
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {items.length === 0 ? (
+        <>
+          <p className="es-help">This site has no custom items.</p>
+          <button
+            type="button"
+            onClick={() => onJump?.({ kind: 'home', section: 'items' })}
+          >
+            Open Items
+          </button>
+        </>
+      ) : (
+        offered.length > 0 && (
+          <>
+            <select
+              aria-label="Equip an item"
+              value={chosen}
+              onChange={(event) => setChosen(event.target.value)}
+            >
+              <option value="" />
+              {offered.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!chosen}
+              onClick={() => {
+                if (session.setCreatureEquipment(creatureId, [...ids, chosen]))
+                  setChosen('');
+              }}
+            >
+              Equip
+            </button>
+          </>
+        )
+      )}
     </>
   );
 }

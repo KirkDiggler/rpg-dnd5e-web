@@ -20,7 +20,9 @@ export type EncounterSectionKey =
   | 'intel'
   | 'facts'
   | 'behaviours'
-  | 'bundles';
+  | 'bundles'
+  | 'items'
+  | 'statuses';
 
 export type EncounterGroupLabel =
   | 'People'
@@ -62,6 +64,8 @@ export const ENCOUNTER_GROUPS: readonly EncounterGroup[] = [
     sections: [
       { key: 'behaviours', label: 'Behaviours' },
       { key: 'bundles', label: 'Bundles' },
+      { key: 'items', label: 'Items' },
+      { key: 'statuses', label: 'Status effects' },
     ],
   },
 ];

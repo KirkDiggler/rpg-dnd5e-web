@@ -6,7 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { readDraftYaml } from './draftFile';
 import { connectionJump, statementPathJump } from './engineReadBack';
+import itemsSite from './fixtures/cloak-and-ring-walk.yaml?raw';
+import hailSite from './fixtures/hail-site.yaml?raw';
 import served from './fixtures/the-mad-king-served.yaml?raw';
+import { locate } from './locatePath';
+import { targetOfPath } from './refusalJump';
 
 const castle = (() => {
   const read = readDraftYaml(served);
@@ -131,5 +135,67 @@ describe('connectionJump on the served castle', () => {
     expect(
       connectionJump({ kind: 'routine', id: 'captain-policy' }, castle)
     ).toEqual({ kind: 'hub', hub: 'routine', id: 'captain-policy' });
+  });
+});
+
+describe('connectionJump on an item', () => {
+  it('an item connection jumps to the item', () => {
+    const result = readDraftYaml(itemsSite);
+    if (!result.ok) throw new Error(result.refusal);
+    const document = { draft: result.draft, scope: result.scope };
+    expect(
+      connectionJump({ kind: 'item', id: 'lieutenants-cloak' }, document)
+    ).toEqual({
+      kind: 'target',
+      target: { kind: 'home', section: 'items', id: 'lieutenants-cloak' },
+    });
+  });
+});
+
+describe('a path under customItems', () => {
+  it('lands on the Items page at the item', () => {
+    const result = readDraftYaml(itemsSite);
+    if (!result.ok) throw new Error(result.refusal);
+    const document = { draft: result.draft, scope: result.scope };
+    expect(targetOfPath('customItems.garrison-ring', document)).toEqual({
+      kind: 'home',
+      section: 'items',
+      id: 'garrison-ring',
+    });
+    expect(targetOfPath('customItems.no-such-item', document)).toBeNull();
+  });
+});
+
+describe('a path under statuses', () => {
+  const document = () => {
+    const result = readDraftYaml(hailSite);
+    if (!result.ok) throw new Error(result.refusal);
+    return { draft: result.draft, scope: result.scope };
+  };
+
+  it('locates to the status', () => {
+    expect(locate('statuses.welcomed.changes[0]', document())).toMatchObject({
+      kind: 'status',
+      id: 'welcomed',
+      rest: ['changes', 0],
+    });
+    expect(locate('statuses.no-such-status', document())).toBeNull();
+  });
+
+  it('a refusal there lands on the Status effects page at the status', () => {
+    expect(targetOfPath('statuses.welcomed.changes[0]', document())).toEqual({
+      kind: 'home',
+      section: 'statuses',
+      id: 'welcomed',
+    });
+  });
+
+  it('a status connection jumps to the status', () => {
+    expect(
+      connectionJump({ kind: 'status', id: 'welcomed' }, document())
+    ).toEqual({
+      kind: 'target',
+      target: { kind: 'home', section: 'statuses', id: 'welcomed' },
+    });
   });
 });

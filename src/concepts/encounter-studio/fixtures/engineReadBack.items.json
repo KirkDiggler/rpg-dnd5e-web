@@ -1,0 +1,575 @@
+{
+  "folded": [
+    {
+      "title": "The place",
+      "items": [
+        {
+          "text": "A Second Wind (cloak-and-ring-walk)",
+          "paths": null,
+          "items": [
+            {
+              "text": "The site `cloak-and-ring-walk` is “A Second Wind”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered.",
+              "paths": ["key"]
+            },
+            {
+              "text": "The floor is 2 regions with cells: Hall (hall) and Yard (yard). Summarised: their cells, lighting and ground are not said one by one.",
+              "paths": ["room.room.regions"]
+            },
+            {
+              "text": "Summarised: the coordinate frame, 1 wall line with 1 door in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one.",
+              "paths": ["room.room.walls"]
+            },
+            {
+              "text": "The party starts at q -3, r 4, in Hall (hall).",
+              "paths": ["room.room.partyStart"]
+            },
+            {
+              "text": "The party's sharing is not set, so it is shared view, the default.",
+              "paths": ["(engine rule)"]
+            },
+            {
+              "text": "The door `gate-wall-door` starts open.",
+              "paths": ["room.room.doorBindings.gate-wall-door"]
+            },
+            {
+              "text": "The custom item `garrison-ring`, named “Garrison ring”. What it lets its wearer do is written in its own words under `customItems.garrison-ring`, and the rules judge them when a run starts. A character can own any number of it: each one looted is its own item.",
+              "paths": ["customItems.garrison-ring"]
+            },
+            {
+              "text": "The custom item `lieutenants-cloak`, named “Lieutenant's cloak”. What it lets its wearer do is written in its own words under `customItems.lieutenants-cloak`, and the rules judge them when a run starts. A character owns at most one of it: a looter who already has it leaves it on the body.",
+              "paths": ["customItems.lieutenants-cloak"]
+            },
+            {
+              "text": "The stat block `sparring-guard` (Lieutenant) is built on dnd5e:monsters:human; hit dice 2d8; arms dnd5e:weapons:dagger.",
+              "paths": ["templates.sparring-guard"]
+            }
+          ]
+        },
+        {
+          "text": "Where the places join",
+          "paths": null,
+          "items": [
+            {
+              "text": "Hall (hall) and Yard (yard) join at the door `gate-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `gate-wall-door`.",
+              "paths": ["room.room.doorBindings.gate-wall-door"],
+              "items": [
+                {
+                  "text": "Nothing bars the join of Hall and Yard at the door `gate-wall-door`: the door `gate-wall-door` is neither locked, held nor hidden, so a member opens it and walks through.",
+                  "paths": ["room.room.doorBindings.gate-wall-door"]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Sides",
+      "items": [
+        {
+          "text": "Faction `garrison`",
+          "paths": null,
+          "items": [
+            {
+              "text": "The faction `garrison` is Lieutenant (guard); its mind (whose knowledge decides how the side stands) is Lieutenant (guard).",
+              "paths": ["factions[0]"]
+            }
+          ]
+        },
+        {
+          "text": "How the sides stand",
+          "paths": null,
+          "items": [
+            {
+              "text": "The factions `garrison` and `party` start hostile.",
+              "paths": ["dispositions[0]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Creatures",
+      "items": [
+        {
+          "text": "Lieutenant (guard): a dnd5e:monsters:sparring-guard of `garrison` at q -2, r 4 in Hall, facing w",
+          "paths": ["room.room.monsterDeclarations[0]"],
+          "base": "room.room.monsterBindings.guard",
+          "items": [
+            {
+              "text": "The lieutenant has “Lieutenant's cloak” and “Garrison ring” equipped. Looting its body gives “Lieutenant's cloak” and “Garrison ring” to the looter.",
+              "paths": ["room.room.monsterBindings.guard.equipment"]
+            },
+            {
+              "text": "Runs the routine `sparring-policy` (as `policy`), whose state decides its posts and blocking.",
+              "paths": ["room.room.monsterBindings.guard.behaviors[0]"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Routines",
+      "items": [
+        {
+          "text": "Routine `sparring-policy` — run by Lieutenant (guard); starts in `fighting`; recipe `site:behaviors:sparring-policy`.",
+          "paths": ["behaviorDefinitions.sparring-policy"],
+          "base": "behaviorDefinitions.sparring-policy",
+          "items": [
+            {
+              "text": "States (it is the runner):",
+              "paths": null,
+              "base": "behaviorDefinitions.sparring-policy.recipe.states.",
+              "items": [
+                {
+                  "text": "In `fighting`, on its time (out of a fight) → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.sparring-policy.recipe.states.fighting",
+                    "behaviorDefinitions.sparring-policy.recipe.states.fighting.transitions[0]"
+                  ]
+                },
+                {
+                  "text": "In `fighting`, on its turn in a fight → acts from its `time` rows.",
+                  "paths": [
+                    "behaviorDefinitions.sparring-policy.recipe.states.fighting.transitions[1]"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Rows (one whose conditions are true is picked by weight):",
+              "paths": null,
+              "base": "behaviorDefinitions.sparring-policy.table.",
+              "items": [
+                {
+                  "text": "`time`: if an enemy is in reach → attacks the enemy.",
+                  "paths": ["behaviorDefinitions.sparring-policy.table.time[0]"]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "key": "cloak-and-ring-walk",
+  "name": "A Second Wind",
+  "not_yet_said": [],
+  "sections": [
+    {
+      "groups": [
+        {
+          "about": {
+            "id": "cloak-and-ring-walk",
+            "kind": "site"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "cloak-and-ring-walk",
+                "kind": "site"
+              },
+              "kind": "place",
+              "path": "key",
+              "sentence": "The site `cloak-and-ring-walk` is “A Second Wind”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered."
+            },
+            {
+              "about": {
+                "id": "cloak-and-ring-walk",
+                "kind": "site"
+              },
+              "kind": "place.regions",
+              "path": "room.room.regions",
+              "sentence": "The floor is 2 regions with cells: Hall (hall) and Yard (yard). Summarised: their cells, lighting and ground are not said one by one."
+            },
+            {
+              "about": {
+                "id": "cloak-and-ring-walk",
+                "kind": "site"
+              },
+              "kind": "place.geometry",
+              "path": "room.room.walls",
+              "sentence": "Summarised: the coordinate frame, 1 wall line with 1 door in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one."
+            },
+            {
+              "about": {
+                "id": "cloak-and-ring-walk",
+                "kind": "site"
+              },
+              "kind": "place.start",
+              "path": "room.room.partyStart",
+              "sentence": "The party starts at q -3, r 4, in Hall (hall)."
+            },
+            {
+              "about": {
+                "id": "cloak-and-ring-walk",
+                "kind": "site"
+              },
+              "kind": "place.sharing",
+              "path": "(engine rule)",
+              "sentence": "The party's sharing is not set, so it is shared view, the default."
+            },
+            {
+              "about": {
+                "id": "gate-wall-door",
+                "kind": "door"
+              },
+              "kind": "place.door",
+              "path": "room.room.doorBindings.gate-wall-door",
+              "sentence": "The door `gate-wall-door` starts open."
+            },
+            {
+              "about": {
+                "id": "garrison-ring",
+                "kind": "item"
+              },
+              "kind": "place.item",
+              "path": "customItems.garrison-ring",
+              "sentence": "The custom item `garrison-ring`, named “Garrison ring”. What it lets its wearer do is written in its own words under `customItems.garrison-ring`, and the rules judge them when a run starts. A character can own any number of it: each one looted is its own item."
+            },
+            {
+              "about": {
+                "id": "lieutenants-cloak",
+                "kind": "item"
+              },
+              "kind": "place.item",
+              "path": "customItems.lieutenants-cloak",
+              "sentence": "The custom item `lieutenants-cloak`, named “Lieutenant's cloak”. What it lets its wearer do is written in its own words under `customItems.lieutenants-cloak`, and the rules judge them when a run starts. A character owns at most one of it: a looter who already has it leaves it on the body."
+            },
+            {
+              "about": {
+                "id": "sparring-guard",
+                "kind": "template"
+              },
+              "kind": "place.template",
+              "path": "templates.sparring-guard",
+              "sentence": "The stat block `sparring-guard` (Lieutenant) is built on dnd5e:monsters:human; hit dice 2d8; arms dnd5e:weapons:dagger."
+            }
+          ],
+          "title": "A Second Wind (cloak-and-ring-walk)"
+        },
+        {
+          "about": {
+            "id": "cloak-and-ring-walk",
+            "kind": "site"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "door:hall:yard:gate-wall-door",
+                "kind": "join"
+              },
+              "connects": [
+                {
+                  "id": "hall",
+                  "kind": "region",
+                  "role": "joins"
+                },
+                {
+                  "id": "yard",
+                  "kind": "region",
+                  "role": "joins"
+                },
+                {
+                  "id": "gate-wall-door",
+                  "kind": "door",
+                  "role": "by"
+                }
+              ],
+              "kind": "place.join.door",
+              "path": "room.room.doorBindings.gate-wall-door",
+              "sentence": "Hall (hall) and Yard (yard) join at the door `gate-wall-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `gate-wall-door`."
+            },
+            {
+              "about": {
+                "id": "way:door:hall:yard:gate-wall-door:free",
+                "kind": "way"
+              },
+              "connects": [
+                {
+                  "id": "door:hall:yard:gate-wall-door",
+                  "kind": "join",
+                  "role": "through"
+                },
+                {
+                  "id": "gate-wall-door",
+                  "kind": "door",
+                  "role": "by"
+                },
+                {
+                  "id": "free",
+                  "kind": "method",
+                  "role": "by"
+                }
+              ],
+              "kind": "place.way.free",
+              "path": "room.room.doorBindings.gate-wall-door",
+              "sentence": "Nothing bars the join of Hall and Yard at the door `gate-wall-door`: the door `gate-wall-door` is neither locked, held nor hidden, so a member opens it and walks through."
+            }
+          ],
+          "title": "Where the places join"
+        }
+      ],
+      "title": "The place"
+    },
+    {
+      "groups": [
+        {
+          "about": {
+            "id": "garrison",
+            "kind": "faction"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "garrison",
+                "kind": "faction"
+              },
+              "kind": "side.faction",
+              "path": "factions[0]",
+              "sentence": "The faction `garrison` is Lieutenant (guard); its mind (whose knowledge decides how the side stands) is Lieutenant (guard)."
+            }
+          ],
+          "title": "Faction `garrison`"
+        },
+        {
+          "about": {
+            "id": "cloak-and-ring-walk",
+            "kind": "site"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "garrison-party",
+                "kind": "disposition"
+              },
+              "kind": "side.disposition",
+              "path": "dispositions[0]",
+              "sentence": "The factions `garrison` and `party` start hostile."
+            }
+          ],
+          "title": "How the sides stand"
+        }
+      ],
+      "title": "Sides"
+    },
+    {
+      "groups": [
+        {
+          "about": {
+            "id": "guard",
+            "kind": "creature"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "guard",
+                "kind": "creature"
+              },
+              "connects": [
+                {
+                  "id": "garrison",
+                  "kind": "faction",
+                  "role": "member-of"
+                }
+              ],
+              "kind": "creature",
+              "path": "room.room.monsterDeclarations[0]",
+              "sentence": "Lieutenant (guard) is a dnd5e:monsters:sparring-guard of the faction `garrison`, standing at q -2, r 4 in Hall (hall), facing w."
+            },
+            {
+              "about": {
+                "id": "guard",
+                "kind": "creature"
+              },
+              "connects": [
+                {
+                  "id": "lieutenants-cloak",
+                  "kind": "item",
+                  "role": "equips"
+                },
+                {
+                  "id": "garrison-ring",
+                  "kind": "item",
+                  "role": "equips"
+                }
+              ],
+              "kind": "creature.equipment",
+              "path": "room.room.monsterBindings.guard.equipment",
+              "sentence": "Lieutenant (guard) has “Lieutenant's cloak” and “Garrison ring” equipped. Looting its body gives “Lieutenant's cloak” and “Garrison ring” to the looter."
+            },
+            {
+              "about": {
+                "id": "guard",
+                "kind": "creature"
+              },
+              "connects": [
+                {
+                  "id": "sparring-policy",
+                  "kind": "routine",
+                  "role": "uses"
+                }
+              ],
+              "kind": "creature.routine",
+              "path": "room.room.monsterBindings.guard.behaviors[0]",
+              "sentence": "Lieutenant (guard) runs the routine `sparring-policy` (as `policy`); this routine's state decides its posts and when its body blocks."
+            }
+          ],
+          "title": "Lieutenant (guard)"
+        }
+      ],
+      "title": "Creatures"
+    },
+    {
+      "groups": null,
+      "title": "Conversations"
+    },
+    {
+      "groups": [
+        {
+          "about": {
+            "id": "sparring-policy",
+            "kind": "routine"
+          },
+          "statements": [
+            {
+              "about": {
+                "id": "sparring-policy",
+                "kind": "routine"
+              },
+              "connects": [
+                {
+                  "id": "guard",
+                  "kind": "creature",
+                  "role": "runs"
+                },
+                {
+                  "id": "fighting",
+                  "kind": "state",
+                  "role": "starts"
+                }
+              ],
+              "kind": "routine",
+              "path": "behaviorDefinitions.sparring-policy",
+              "sentence": "The routine `sparring-policy` is run by Lieutenant (guard); it starts in the state `fighting`; its recipe is `site:behaviors:sparring-policy`. When it acts from a set of rows, one row whose conditions are true is picked by weight."
+            },
+            {
+              "about": {
+                "id": "sparring-policy",
+                "kind": "routine"
+              },
+              "connects": [
+                {
+                  "id": "fighting",
+                  "kind": "state",
+                  "role": "is"
+                }
+              ],
+              "kind": "routine.state",
+              "path": "behaviorDefinitions.sparring-policy.recipe.states.fighting",
+              "sentence": "In the state `fighting`, Lieutenant (guard) listens for 2 beats."
+            },
+            {
+              "about": {
+                "id": "sparring-policy",
+                "kind": "routine"
+              },
+              "connects": [
+                {
+                  "id": "fighting",
+                  "kind": "state",
+                  "role": "from"
+                },
+                {
+                  "id": "time",
+                  "kind": "beat",
+                  "role": "on"
+                },
+                {
+                  "id": "time",
+                  "kind": "table",
+                  "role": "picks"
+                },
+                {
+                  "at": "do[0]",
+                  "id": "pick:time",
+                  "kind": "act",
+                  "role": "does"
+                }
+              ],
+              "kind": "routine.wake",
+              "path": "behaviorDefinitions.sparring-policy.recipe.states.fighting.transitions[0]",
+              "sentence": "In the state `fighting`, on Lieutenant (guard)'s own time (each round Lieutenant (guard) is due, out of a fight), Lieutenant (guard) acts from its own `time` rows."
+            },
+            {
+              "about": {
+                "id": "sparring-policy",
+                "kind": "routine"
+              },
+              "connects": [
+                {
+                  "id": "fighting",
+                  "kind": "state",
+                  "role": "from"
+                },
+                {
+                  "id": "turn",
+                  "kind": "beat",
+                  "role": "on"
+                },
+                {
+                  "id": "time",
+                  "kind": "table",
+                  "role": "picks"
+                },
+                {
+                  "at": "do[0]",
+                  "id": "pick:time",
+                  "kind": "act",
+                  "role": "does"
+                }
+              ],
+              "kind": "routine.wake",
+              "path": "behaviorDefinitions.sparring-policy.recipe.states.fighting.transitions[1]",
+              "sentence": "In the state `fighting`, on Lieutenant (guard)'s turn in a fight, Lieutenant (guard) acts from its own `time` rows."
+            },
+            {
+              "about": {
+                "id": "sparring-policy",
+                "kind": "routine"
+              },
+              "connects": [
+                {
+                  "id": "time",
+                  "kind": "table",
+                  "role": "row-of"
+                }
+              ],
+              "kind": "routine.row",
+              "path": "behaviorDefinitions.sparring-policy.table.time[0]",
+              "sentence": "`time` row 1 of `sparring-policy`: if an enemy is in Lieutenant (guard)'s reach, Lieutenant (guard) attacks the enemy."
+            }
+          ],
+          "title": "Routine `sparring-policy`"
+        }
+      ],
+      "title": "Routines"
+    },
+    {
+      "groups": null,
+      "title": "Topics"
+    },
+    {
+      "groups": null,
+      "title": "Facts"
+    },
+    {
+      "groups": null,
+      "title": "Records"
+    },
+    {
+      "groups": null,
+      "title": "Secrets"
+    }
+  ]
+}

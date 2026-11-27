@@ -20,10 +20,21 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { withEquipment } from '../encounter-studio/equipEdit';
+import {
+  addCustomItem,
+  removeCustomItem,
+  setCustomItem,
+} from '../encounter-studio/itemEdit';
 import {
   definitionOf,
   setBehaviorDefinition,
 } from '../encounter-studio/machineEdit';
+import {
+  addStatus,
+  removeStatus,
+  setStatus,
+} from '../encounter-studio/statusEdit';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
@@ -5321,6 +5332,152 @@ export function WorldBuildingConcept({
                   }
                 }
               ),
+              commitCustomItem: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    item: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const items = current.scope.unread?.customItems;
+                    const item = (
+                      items as Record<string, unknown> | undefined
+                    )?.[id];
+                    if (
+                      !item ||
+                      typeof item !== 'object' ||
+                      Array.isArray(item)
+                    )
+                      throw new Error(
+                        `customItems.${id}: this site authors no such item`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setCustomItem(
+                        current.scope,
+                        id,
+                        edit(item as Record<string, unknown>)
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              addStatus: guardSnapshotIntent(
+                (id: string, status: Record<string, unknown>): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: addStatus(current.scope, id, status),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              removeStatus: guardSnapshotIntent((id: string): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: removeStatus(current.scope, id),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }),
+              commitStatus: guardSnapshotIntent(
+                (
+                  id: string,
+                  edit: (
+                    status: Record<string, unknown>
+                  ) => Record<string, unknown>
+                ): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const statuses = current.scope.unread?.statuses;
+                    const status = (
+                      statuses as Record<string, unknown> | undefined
+                    )?.[id];
+                    if (
+                      !status ||
+                      typeof status !== 'object' ||
+                      Array.isArray(status)
+                    )
+                      throw new Error(
+                        `statuses.${id}: this site authors no such status`
+                      );
+                    return commitRoomDocument({
+                      ...current,
+                      scope: setStatus(
+                        current.scope,
+                        id,
+                        edit(status as Record<string, unknown>)
+                      ),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              setCreatureEquipment: guardSnapshotIntent(
+                (creatureId: string, ids: readonly string[]): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    const room = current.draft.room;
+                    if (
+                      !room.monsterDeclarations.some(
+                        (placed) => placed.id === creatureId
+                      )
+                    )
+                      throw new Error(
+                        `room.room.monsterBindings.${creatureId}: this site places no such creature`
+                      );
+                    const bindings = withBinding(
+                      room.monsterBindings,
+                      creatureId,
+                      withEquipment(room.monsterBindings?.[creatureId], ids)
+                    );
+                    const nextRoom = { ...room };
+                    if (bindings === undefined) delete nextRoom.monsterBindings;
+                    else nextRoom.monsterBindings = bindings;
+                    return commitRoomDocument({
+                      ...current,
+                      draft: { ...current.draft, room: nextRoom },
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              addCustomItem: guardSnapshotIntent(
+                (id: string, item: Record<string, unknown>): boolean => {
+                  const current = roomHistoryRef.current.present;
+                  try {
+                    return commitRoomDocument({
+                      ...current,
+                      scope: addCustomItem(current.scope, id, item),
+                    });
+                  } catch (error) {
+                    return rejectEdit(error);
+                  }
+                }
+              ),
+              removeCustomItem: guardSnapshotIntent((id: string): boolean => {
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: removeCustomItem(current.scope, id),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }),
               commitBehaviorDefinition: guardSnapshotIntent(
                 (
                   id: string,

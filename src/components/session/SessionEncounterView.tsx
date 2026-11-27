@@ -1616,9 +1616,9 @@ function SessionEncounterScope({
             actor: member,
             target: subject,
           });
-          if (response.descriptor) {
+          if (response.npcDescriptor) {
             setEquipmentOpen(false);
-            setActiveVendor({ subject, descriptor: response.descriptor });
+            setActiveVendor({ subject, descriptor: response.npcDescriptor });
           }
         } catch (error) {
           setVendorNotice(errorMessage(error));
@@ -1661,10 +1661,10 @@ function SessionEncounterScope({
             quantity,
             price,
           });
-          if (response.descriptor) {
+          if (response.npcDescriptor) {
             setActiveVendor({
               subject: activeVendor.subject,
-              descriptor: response.descriptor,
+              descriptor: response.npcDescriptor,
             });
             setVendorNotice(`Bought ${entry.displayName}.`);
             // Unlike EquipItem/UnequipItem, TradeResponse carries the
@@ -1719,10 +1719,10 @@ function SessionEncounterScope({
             quantity,
             price,
           });
-          if (response.descriptor) {
+          if (response.npcDescriptor) {
             setActiveVendor({
               subject: activeVendor.subject,
-              descriptor: response.descriptor,
+              descriptor: response.npcDescriptor,
             });
             setVendorNotice(`Sold ${item.name}.`);
             // Same reasoning as handleVendorBuy: TradeResponse carries

@@ -5,6 +5,7 @@
  *
  * - records: the site's `intel` ids;
  * - regions: the site's regions, by id with their names;
+ * - statuses: the site's `statuses`, by id with their names;
  * - topics: every topic the file mentions — given by a line's row or a
  *   conversation's outcome (`give: { topic }`), or asked for by a
  *   `noted:` requirement (rpg-project#1005). A topic is declared by
@@ -38,6 +39,10 @@ export interface SiteNames {
    * topics of its own): a requirement on one nothing gives is refused at
    * its field, in the engine's words. */
   readonly topics: readonly string[];
+  /** The site's status effects (`statuses`, a mapping): each key with its
+   * `name` when that is text, else the id; in the file's order. Empty when
+   * `statuses` is anything else. */
+  readonly statuses: readonly { readonly id: string; readonly name: string }[];
   /** The site's conversations (root `interactions`). */
   readonly conversations: readonly SiteConversation[];
   /** The site's doors — every wall opening's door — by id, in wall order:
@@ -54,6 +59,7 @@ export const NO_SITE_NAMES: SiteNames = Object.freeze({
   records: [],
   regions: [],
   topics: [],
+  statuses: [],
   conversations: [],
   doors: [],
   facts: [],
@@ -97,6 +103,15 @@ function factsIn(value: unknown, into: Set<string>): void {
       if (inner !== '' && !inner.startsWith('/')) into.add(inner);
     } else factsIn(inner, into);
   }
+}
+
+/** The keys of a `statuses` mapping, each with its name. */
+function statusesIn(statuses: unknown): { id: string; name: string }[] {
+  if (!isRecord(statuses)) return [];
+  return Object.entries(statuses).map(([id, written]) => {
+    const name = isRecord(written) ? written.name : undefined;
+    return { id, name: typeof name === 'string' ? name : id };
+  });
 }
 
 export function siteNamesOf(
@@ -143,6 +158,7 @@ export function siteNamesOf(
       name: region.name || region.id,
     })),
     topics: [...topics].sort(),
+    statuses: statusesIn(scope.unread?.statuses),
     doors: (room.walls ?? []).flatMap((wall) =>
       wall.openings.flatMap((opening) =>
         opening.door ? [opening.door.id] : []

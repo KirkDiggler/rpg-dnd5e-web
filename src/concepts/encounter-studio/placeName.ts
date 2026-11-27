@@ -201,6 +201,10 @@ export function placeName(
       return join(`bundle ${code(id)}`, insideWords(rest, undefined));
     case 'template':
       return join(`stat block ${code(id)}`, insideWords(rest, undefined));
+    case 'item':
+      return join(`item ${code(id)}`, insideWords(rest, undefined));
+    case 'status':
+      return join(`status ${code(id)}`, insideWords(rest, undefined));
     case 'table':
       return join(`table ${code(id)}`, insideWords(rest, undefined));
     case 'routine':

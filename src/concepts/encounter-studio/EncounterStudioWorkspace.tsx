@@ -99,6 +99,7 @@ import { StudioExits } from './StudioExits';
 import { StudioInspector } from './StudioInspector';
 import { StudioInspectorResize } from './StudioInspectorResize';
 import { StudioInteractions } from './StudioInteractions';
+import { StudioItems } from './StudioItems';
 import { StudioOpen, type OpenedFile } from './StudioOpen';
 import { StudioParty } from './StudioParty';
 import {
@@ -130,12 +131,14 @@ import {
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioSitePanel, type SiteOperation } from './StudioSitePanel';
+import { StudioStatuses } from './StudioStatuses';
 import { StudioTabBar } from './StudioTabBar';
 import { StudioThreads } from './StudioThreads';
 import { StudioWallControls } from './StudioWallControls';
 import { StudioWatch } from './StudioWatch';
 import { StudioWatchTimeline } from './StudioWatchTimeline';
 import type { ThreadHub } from './threadHubs';
+import { useItemWords } from './useItemWords';
 import { useMachineWords } from './useMachineWords';
 import { usePlacesView } from './usePlacesView';
 import { useRevealController, type RevealKey } from './useReveal';
@@ -145,6 +148,7 @@ import {
   useWatchSave,
 } from './useSavedRun';
 import { useSettledRefusals } from './useSettledRefusals';
+import { useStatusWords } from './useStatusWords';
 import { useStudioLabels } from './useStudioLabels';
 import { layoutStepsOf, useStudioStep } from './useStudioStep';
 import { useWatchLeave } from './watchLeave';
@@ -573,6 +577,8 @@ function StudioSurface({
   /** The behaviour a read-back routine named: Behaviours opens on it
    * (rpg-project#970). */
   const [focusRoutine, setFocusRoutine] = useState<string | null>(null);
+  const [focusItem, setFocusItem] = useState<string | null>(null);
+  const [focusStatus, setFocusStatus] = useState<string | null>(null);
   const openFact = (id: string, hub: ThreadHub['kind'] = 'fact'): void => {
     // The hub's row in Threads, or the routine's in Behaviours, is revealed.
     queueReveal({ kind: hub, id });
@@ -672,6 +678,8 @@ function StudioSurface({
   /** The engine's machine words, asked once while the server is up
    * (rpg-project#1015); none draws the machines in their ids. */
   const machineWords = useMachineWords({ enabled: gate.state === 'live' });
+  const itemWords = useItemWords({ enabled: gate.state === 'live' });
+  const statusWords = useStatusWords({ enabled: gate.state === 'live' });
   const placesView = usePlacesView(session, readBack);
   /** A way pointer on a record's or a secret's entry opens the join its way
    * goes through, as Places selects it (rpg-project#973). The pointer names
@@ -1279,6 +1287,9 @@ function StudioSurface({
         setEncounterSection(target.section);
         if (target.section === 'behaviours' && target.id)
           setFocusRoutine(target.id);
+        if (target.section === 'items' && target.id) setFocusItem(target.id);
+        if (target.section === 'statuses' && target.id)
+          setFocusStatus(target.id);
         // A row (`target.row`) is landed on by the reveal above, which opens
         // it on the way (rpg-project#983).
         return;
@@ -2555,6 +2566,47 @@ function StudioSurface({
                   }
                 />
               )}
+              {home === 'encounter' && encounterSection === 'items' && (
+                <StudioItems
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusItem}
+                  onSelect={setFocusItem}
+                  onJump={jumpTo}
+                  itemWords={itemWords.words}
+                  itemWordsUnavailable={
+                    itemWords.status === 'unavailable' ? itemWords.reason : null
+                  }
+                  onCommitItem={session.commitCustomItem}
+                  onAddItem={session.addCustomItem}
+                  onRemoveItem={session.removeCustomItem}
+                  refusals={
+                    publishing.preview.status === 'validating' ? [] : jumps
+                  }
+                />
+              )}
+              {home === 'encounter' && encounterSection === 'statuses' && (
+                <StudioStatuses
+                  document={session.document}
+                  readBack={readBack}
+                  focus={focusStatus}
+                  onSelect={setFocusStatus}
+                  onJump={jumpTo}
+                  enabled={gate.state === 'live'}
+                  statusWords={statusWords.words}
+                  statusWordsUnavailable={
+                    statusWords.status === 'unavailable'
+                      ? statusWords.reason
+                      : null
+                  }
+                  onCommitStatus={session.commitStatus}
+                  onAddStatus={session.addStatus}
+                  onRemoveStatus={session.removeStatus}
+                  refusals={
+                    publishing.preview.status === 'validating' ? [] : jumps
+                  }
+                />
+              )}
               {home === 'encounter' && encounterSection === 'facts' && (
                 <StudioThreads
                   document={session.document}
@@ -2621,6 +2673,8 @@ const LIST_DETAIL_SECTIONS: ReadonlySet<string> = new Set([
   'concealments',
   'facts',
   'behaviours',
+  'items',
+  'statuses',
 ]);
 
 export function EncounterStudioWorkspace({

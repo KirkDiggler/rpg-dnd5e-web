@@ -22,7 +22,7 @@ describe('the Encounter side’s groups and sections', () => {
       ['People', ['Cast', 'Sides', 'Party', 'Conversations']],
       ['Places', ['Secrets', 'Ways out']],
       ['What is known', ['Records', 'Threads']],
-      ['Pieces', ['Behaviours', 'Bundles']],
+      ['Pieces', ['Behaviours', 'Bundles', 'Items', 'Status effects']],
     ]);
   });
 

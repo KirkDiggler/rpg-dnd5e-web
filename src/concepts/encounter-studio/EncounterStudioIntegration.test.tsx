@@ -1,3 +1,4 @@
+import { authoringClient } from '@/api/client';
 import { decodeCompositionScene } from '@/compositions/compositionScene';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
@@ -7,6 +8,7 @@ import {
 import type { GroundCatalog } from '@/rendering/groundCatalog';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { PutDungeonResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
@@ -92,6 +94,7 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { defaultDraftKey, exportDraftYaml, readDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
+import { equipmentOf } from './equipEdit';
 import {
   createEmptyCastDocument,
   createGuardCastDocument,
@@ -110,12 +113,18 @@ import {
   castleRectangleCells,
   createCastleWorkspaceDocument,
 } from './fixtures/castleWorkspace';
+import itemsSiteYaml from './fixtures/cloak-and-ring-walk.yaml?raw';
 import {
   castleEngineReadBack,
   castlePlacesReadBack,
   castleRoutinesReadBack,
   castleThreadsReadBack,
+  hailSiteReadBack,
+  itemsSiteReadBack,
+  itemWordsV237,
+  statusWordsV240,
 } from './fixtures/engineReadBack';
+import hailSiteYaml from './fixtures/hail-site.yaml?raw';
 import {
   createRegionLightingDocument,
   createUnresolvedRegionLightingDocument,
@@ -136,13 +145,29 @@ import { LayoutViewport } from './LayoutViewport';
 import { cellsBounds, contentBounds } from './overviewFrame';
 import { READ_BACK_VIEW_STORAGE_KEY } from './ReadBack';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
+import type { StudioStatuses } from './StudioStatuses';
 import { encounterSection, studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
+import { forgetItemWords } from './useItemWords';
 import { PLACES_VIEW_STORAGE_KEY } from './usePlacesView';
+import { forgetStatusWords } from './useStatusWords';
+type StatusPageProps = React.ComponentProps<typeof StudioStatuses>;
 
 const groundPreview = vi.hoisted(() => ({
   catalog: null as GroundCatalog | null,
 }));
+// The Status effects page is the real one; the mock only keeps the props it
+// was last given, so a test can call the session intent it was handed.
+vi.mock('./StudioStatuses', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./StudioStatuses')>();
+  return {
+    ...actual,
+    StudioStatuses: (props: StatusPageProps) => {
+      statusProps.current = props;
+      return actual.StudioStatuses(props);
+    },
+  };
+});
 vi.mock('@/components/session/useGroundCatalog', () => ({
   useGroundCatalog: () =>
     groundPreview.catalog
@@ -5409,7 +5434,12 @@ describe('S0 one selection across the homes', () => {
     fireEvent.click(groups.getByRole('tab', { name: 'What is known' }));
     expect(sections()).toEqual(['Records', 'Threads']);
     fireEvent.click(groups.getByRole('tab', { name: 'Pieces' }));
-    expect(sections()).toEqual(['Behaviours', 'Bundles']);
+    expect(sections()).toEqual([
+      'Behaviours',
+      'Bundles',
+      'Items',
+      'Status effects',
+    ]);
     expect(screen.queryByRole('button', { name: 'Tables' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scenarios' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
@@ -8133,7 +8163,14 @@ describe('the list-and-detail piece takes its height from its container (rpg-pro
     fireEvent.click(button('Encounter'));
     const panel = (): HTMLElement =>
       document.querySelector<HTMLElement>('.es-encounter-panel')!;
-    for (const name of ['Cast', 'Secrets', 'Threads', 'Behaviours']) {
+    for (const name of [
+      'Cast',
+      'Secrets',
+      'Threads',
+      'Behaviours',
+      'Items',
+      'Status effects',
+    ]) {
       fireEvent.click(encounterSection(name));
       expect(panel().getAttribute('data-layout')).toBe('list-detail');
       expect(
@@ -8306,5 +8343,930 @@ describe('a conversation’s steps through the real session (rpg-project#1040)',
     );
     fireEvent.click(button('Undo'));
     expect(fileOf()).toBe(before);
+  });
+});
+
+describe('Items page through the real owner (rpg-project#1196)', () => {
+  beforeEach(() => forgetItemWords());
+  afterEach(() => localStorage.clear());
+
+  const openItemsSite = async (): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+    );
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+  };
+  const pressed = (bar: string, name: string): string | null =>
+    within(screen.getByRole('tablist', { name: bar }))
+      .getByRole('tab', { name })
+      .getAttribute('aria-selected');
+  const openRing = async (): Promise<HTMLElement> => {
+    await openItemsSite();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    fireEvent.click(
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ })
+    );
+    return items;
+  };
+
+  it('Pieces → Items lists both items and shows the selected item’s sentence', async () => {
+    const items = await openRing();
+    expect(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    ).toBeTruthy();
+    expect(items.textContent).toContain('A character can own any number of it');
+    expect(within(items).getByText('As written')).toBeTruthy();
+    expect(items.querySelector('pre')!.textContent).toMatch(/^garrison-ring:/);
+    expect(
+      within(items).getByRole('button', { name: 'Lieutenant (guard)' })
+    ).toBeTruthy();
+  });
+
+  it('with no engine answer it lists the items and says nothing of who has them', async () => {
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    expect(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(items).getByRole('button', { name: /^Garrison ring\b/ })
+    );
+    expect(within(items).getByText('As written')).toBeTruthy();
+    expect(
+      within(items).getByText('The engine has not said the items yet.')
+    ).toBeTruthy();
+    expect(within(items).queryByText('Equipped by')).toBeNull();
+    expect(within(items).queryByText('Nobody has it equipped.')).toBeNull();
+  });
+
+  it('without the engine’s item words there is no form', async () => {
+    const asked = vi
+      .spyOn(authoringClient, 'getItemWords')
+      .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+    try {
+      const items = await openRing();
+      expect(
+        await within(items).findByText(/cannot be changed here/)
+      ).toBeTruthy();
+      expect(
+        within(items).getByText(/the engine has no item words/)
+      ).toBeTruthy();
+      expect(within(items).queryByRole('button', { name: 'Save' })).toBeNull();
+    } finally {
+      asked.mockRestore();
+    }
+  });
+
+  it('a refusal at the item is shown on the item', async () => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, {
+        readBack: itemsSiteReadBack(),
+        errors: [{ path: 'customItems.garrison-ring', message: 'x' }],
+      })
+    );
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Items'));
+    const items = screen.getByRole('region', { name: 'Items' });
+    fireEvent.click(
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ })
+    );
+    expect((await within(items).findByRole('alert')).textContent).toBe('x');
+    fireEvent.click(
+      within(items).getByRole('button', { name: /^Lieutenant's cloak\b/ })
+    );
+    expect(within(items).queryByRole('alert')).toBeNull();
+  });
+
+  it('an author changes an item’s slot and it is written at once', async () => {
+    const words = itemWordsV237();
+    const asked = vi
+      .spyOn(authoringClient, 'getItemWords')
+      .mockResolvedValue(words);
+    const slotWord = words.words.find((w) => w.word === 'slot')!;
+    try {
+      const items = await openRing();
+      await within(items).findByRole('combobox', { name: slotWord.label });
+      expect(within(items).queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        within(items).queryByRole('button', { name: 'Discard' })
+      ).toBeNull();
+      expect(items.querySelector('pre')!.textContent).toContain('slot: ring');
+      fireEvent.change(
+        within(items).getByRole('combobox', { name: slotWord.label }),
+        { target: { value: 'amulet' } }
+      );
+      await waitFor(() =>
+        expect(items.querySelector('pre')!.textContent).toContain(
+          'slot: amulet'
+        )
+      );
+      // Everything else is as written.
+      const block = (
+        parseYaml(items.querySelector('pre')!.textContent!) as Record<
+          string,
+          { name: unknown; charges: unknown }
+        >
+      )['garrison-ring'];
+      expect(block.name).toBe('Garrison ring');
+      expect(block.charges).toEqual({
+        max: 1,
+        refills: { on: ['short rest', 'long rest'] },
+      });
+      // One Undo restores the file.
+      fireEvent.click(button('Undo'));
+      await waitFor(() =>
+        expect(items.querySelector('pre')!.textContent).toContain('slot: ring')
+      );
+    } finally {
+      asked.mockRestore();
+    }
+  });
+
+  describe('new and delete (rpg-project#1202)', () => {
+    const rows = (items: HTMLElement): HTMLElement[] =>
+      Array.from(items.querySelectorAll('li button[aria-pressed]'));
+    const openItems = async (): Promise<HTMLElement> => {
+      await openItemsSite();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Items'));
+      const items = screen.getByRole('region', { name: 'Items' });
+      await within(items).findByRole('button', { name: /^Garrison ring\b/ });
+      return items;
+    };
+    const withWords = async <T,>(run: () => Promise<T>): Promise<T> => {
+      const asked = vi
+        .spyOn(authoringClient, 'getItemWords')
+        .mockResolvedValue(itemWordsV237());
+      try {
+        return await run();
+      } finally {
+        asked.mockRestore();
+      }
+    };
+    const nameLabel = (): string =>
+      itemWordsV237().words.find(
+        (w) => w.place === 'item' && w.required && w.shape === 'text'
+      )!.label;
+    const type = async (
+      items: HTMLElement,
+      text: string
+    ): Promise<HTMLInputElement> => {
+      const input = (await within(items).findByRole('textbox', {
+        name: nameLabel(),
+      })) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: text } });
+      return input;
+    };
+
+    it('an author makes a new item by its name', async () => {
+      await withWords(async () => {
+        const items = await openItems();
+        const before = rows(items).length;
+        const input = await type(items, '  Signet ring ');
+        fireEvent.click(
+          within(items).getByRole('button', { name: 'New item' })
+        );
+        await waitFor(() => expect(rows(items).length).toBe(before + 1));
+        const row = within(items).getByRole('button', {
+          name: /^Signet ring\b/,
+        });
+        expect(row.getAttribute('aria-pressed')).toBe('true');
+        expect(input.value).toBe('');
+        const pre = items.querySelector('pre')!.textContent!;
+        expect(pre).toMatch(/^signet-ring:/);
+        expect(parseYaml(pre)).toEqual({
+          'signet-ring': { name: 'Signet ring' },
+        });
+        const nameInput = within(items).getAllByRole('textbox', {
+          name: nameLabel(),
+        });
+        expect(
+          nameInput.some(
+            (el) => (el as HTMLInputElement).value === 'Signet ring'
+          )
+        ).toBe(true);
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(items).length).toBe(before));
+        expect(
+          within(items).queryByRole('button', { name: /^Signet ring\b/ })
+        ).toBeNull();
+      });
+    });
+
+    it('the id avoids one that is taken', async () => {
+      await withWords(async () => {
+        const items = await openItems();
+        await type(items, 'Garrison ring');
+        expect(items.textContent).toContain('id garrison-ring-2');
+      });
+    });
+
+    it('an author makes the first item on a site with none', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+        );
+        const read = readDraftYaml(servedCastleYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        expect(read.scope.unread?.customItems).toBeUndefined();
+        mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Items'));
+        const items = screen.getByRole('region', { name: 'Items' });
+        expect(
+          within(items).getByText('This site has no custom items.')
+        ).toBeTruthy();
+        await type(items, 'First ring');
+        fireEvent.click(
+          within(items).getByRole('button', { name: 'New item' })
+        );
+        await waitFor(() =>
+          expect(
+            within(items).getByRole('button', { name: /^First ring\b/ })
+          ).toBeTruthy()
+        );
+        expect(items.querySelector('pre')!.textContent).toMatch(/^first-ring:/);
+        expect(
+          within(items).queryByText('This site has no custom items.')
+        ).toBeNull();
+      });
+    });
+
+    it('an author deletes an item', async () => {
+      await withWords(async () => {
+        const items = await openRing();
+        const before = rows(items).length;
+        fireEvent.click(
+          await within(items).findByRole('button', { name: 'Delete item' })
+        );
+        await waitFor(() => expect(rows(items).length).toBe(before - 1));
+        expect(
+          within(items).queryByRole('button', { name: /^Garrison ring\b/ })
+        ).toBeNull();
+        expect(items.querySelector('pre')).toBeNull();
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(items).length).toBe(before));
+        fireEvent.click(
+          within(items).getByRole('button', { name: /^Garrison ring\b/ })
+        );
+        expect(
+          parseYaml(items.querySelector('pre')!.textContent!)['garrison-ring']
+            .charges
+        ).toEqual({ max: 1, refills: { on: ['short rest', 'long rest'] } });
+      });
+    });
+
+    it('deleting an item somebody has equipped says so first', async () => {
+      await withWords(async () => {
+        const items = await openRing();
+        const del = await within(items).findByRole('button', {
+          name: 'Delete item',
+        });
+        const line = within(items).getByText(/^Equipped by 1\./);
+        expect(
+          line.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect((del as HTMLButtonElement).disabled).toBe(false);
+      });
+    });
+
+    it('without the engine’s item words there is no new-item control', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getItemWords')
+        .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+      try {
+        const items = await openItems();
+        await within(items).findByRole('button', { name: /^Garrison ring\b/ });
+        expect(
+          within(items).queryByRole('button', { name: 'New item' })
+        ).toBeNull();
+        expect(within(items).queryByRole('textbox')).toBeNull();
+      } finally {
+        asked.mockRestore();
+      }
+    });
+  });
+
+  it('Equipped by goes to the person', async () => {
+    const items = await openRing();
+    fireEvent.click(
+      within(items).getByRole('button', { name: 'Lieutenant (guard)' })
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getAllByText(
+        /guard/
+      ).length
+    ).toBeGreaterThan(0);
+    expect(
+      document.querySelector('[data-placed-creature="guard"]')
+    ).not.toBeNull();
+  });
+
+  it('an item link in a person’s read-back opens Items on that item', async () => {
+    await openItemsSite();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector('[data-placed-creature="guard"] circle')!,
+      { button: 0 }
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    // The equipment sentence is folded into the person's line; its full
+    // sentence is where the item's link is.
+    fireEvent.click(
+      await inspector.findByRole('button', {
+        name: /^Full sentences: The lieutenant has/,
+      })
+    );
+    fireEvent.click(
+      (
+        await inspector.findAllByRole('button', {
+          name: 'Open item lieutenants-cloak',
+        })
+      )[0]!
+    );
+    expect(pressed('Encounter groups', 'Pieces')).toBe('true');
+    expect(pressed('Encounter tools', 'Items')).toBe('true');
+    expect(
+      within(screen.getByRole('region', { name: 'Items' }))
+        .getByRole('button', { name: /^Lieutenant's cloak\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+  });
+});
+
+describe('Equipping a person through the real owner (rpg-project#1203)', () => {
+  beforeEach(() => forgetItemWords());
+  afterEach(() => localStorage.clear());
+
+  const open = async (
+    yaml: string,
+    creature: string
+  ): Promise<{ storage: MemoryStorage; row: HTMLElement }> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+    );
+    const read = readDraftYaml(yaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({
+      draft: read.draft,
+      scope: read.scope,
+    });
+    mount(storage);
+    await settled();
+    fireEvent.pointerDown(
+      screen
+        .getByRole('application', { name: 'Layout floor surface' })
+        .querySelector(`[data-placed-creature="${creature}"] circle`)!,
+      { button: 0 }
+    );
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    const label = await inspector.findByText('Equipped');
+    return { storage, row: label.closest('div') as HTMLElement };
+  };
+  const ring = (equipment: string): string =>
+    itemsSiteYaml.replace(
+      'equipment: [lieutenants-cloak, garrison-ring]',
+      `equipment: ${equipment}`
+    );
+  const equipped = (storage: MemoryStorage): unknown =>
+    equipmentOf(storage.document(), 'guard');
+
+  it('a person’s panel lists what they have equipped', async () => {
+    const { row } = await open(itemsSiteYaml, 'guard');
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((el) => el.getAttribute('aria-label') ?? el.textContent)
+    ).toEqual([
+      "Lieutenant's cloak",
+      "Unequip Lieutenant's cloak",
+      'Garrison ring',
+      'Unequip Garrison ring',
+    ]);
+  });
+
+  it('Unequip writes the list without that item, and Undo restores it', async () => {
+    const { storage, row } = await open(itemsSiteYaml, 'guard');
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+    fireEvent.click(button('Undo'));
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak', 'garrison-ring'],
+      })
+    );
+  });
+
+  it('Equip offers only what is not equipped, and writes it last', async () => {
+    const { storage, row } = await open(itemsSiteYaml, 'guard');
+    expect(within(row).queryByRole('combobox')).toBeNull();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    const select = (await within(row).findByRole('combobox', {
+      name: 'Equip an item',
+    })) as HTMLSelectElement;
+    expect(
+      Array.from(select.options).map((option) => option.textContent)
+    ).toEqual(['', 'Garrison ring']);
+    const equip = within(row).getByRole('button', {
+      name: 'Equip',
+    }) as HTMLButtonElement;
+    expect(equip.disabled).toBe(true);
+    fireEvent.change(select, { target: { value: 'garrison-ring' } });
+    expect(equip.disabled).toBe(false);
+    fireEvent.click(equip);
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak', 'garrison-ring'],
+      })
+    );
+    expect(within(row).queryByRole('combobox')).toBeNull();
+  });
+
+  it('an equipped item’s name opens the Items page on it', async () => {
+    const { row } = await open(itemsSiteYaml, 'guard');
+    fireEvent.click(
+      within(row).getByRole('button', { name: "Lieutenant's cloak" })
+    );
+    const items = await screen.findByRole('region', { name: 'Items' });
+    expect(
+      within(items)
+        .getByRole('button', { name: /^Lieutenant's cloak\b/ })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+  });
+
+  it('an id the site does not have is shown, not hidden', async () => {
+    const { storage, row } = await open(
+      ring('[lieutenants-cloak, signet-ring]'),
+      'guard'
+    );
+    const named = within(row).getByRole('button', { name: 'signet-ring' });
+    expect((named as HTMLButtonElement).disabled).toBe(true);
+    expect(within(row).getByText(/not an item of this site/)).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip signet-ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+  });
+
+  it('equipment that is not a list is shown and has no controls', async () => {
+    const { storage, row } = await open(ring('cloak'), 'guard');
+    expect(row.textContent).toContain('"cloak"');
+    expect(row.textContent).toContain(
+      'This is not written as a list of items, so it cannot be changed here.'
+    );
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(within(row).queryByRole('combobox')).toBeNull();
+    expect(equipped(storage)).toEqual({ kind: 'other', written: 'cloak' });
+  });
+
+  it('a person whose stat block is not in the cast still shows what they have equipped', async () => {
+    const { storage, row } = await open(
+      itemsSiteYaml.replace(
+        'ref: dnd5e:monsters:sparring-guard',
+        'ref: dnd5e:monsters:ghost-guard'
+      ),
+      'guard'
+    );
+    expect(screen.getByText(/is not in the cast/)).toBeTruthy();
+    expect(
+      within(row).getByRole('button', { name: "Lieutenant's cloak" })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', { name: 'Unequip Garrison ring' })
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['lieutenants-cloak'],
+      })
+    );
+  });
+
+  it('one of two duplicate ids is removed', async () => {
+    const { storage, row } = await open(
+      ring('[garrison-ring, garrison-ring]'),
+      'guard'
+    );
+    fireEvent.click(
+      within(row).getAllByRole('button', { name: 'Unequip Garrison ring' })[0]!
+    );
+    await waitFor(() =>
+      expect(equipped(storage)).toEqual({
+        kind: 'list',
+        ids: ['garrison-ring'],
+      })
+    );
+  });
+
+  it('the session refuses a creature the site does not place, and changes nothing', () => {
+    const read = readDraftYaml(itemsSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    const storage = new MemoryStorage({ draft: read.draft, scope: read.scope });
+    let session: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const before = session!.document;
+    act(() => {
+      expect(session.setCreatureEquipment('nobody', ['garrison-ring'])).toBe(
+        false
+      );
+    });
+    expect(session!.document).toEqual(before);
+    act(() => {
+      expect(session.setCreatureEquipment('guard', [])).toBe(true);
+    });
+    expect(equipmentOf(session!.document, 'guard')).toEqual({ kind: 'none' });
+    expect(session!.document.draft.room.monsterBindings?.guard).toBeDefined();
+  });
+
+  it('a site with no items offers the way to Items', async () => {
+    const { row } = await open(servedCastleYaml, 'captain');
+    expect(
+      within(row).getByText('This site has no custom items.')
+    ).toBeTruthy();
+    fireEvent.click(within(row).getByRole('button', { name: 'Open Items' }));
+    expect(await screen.findByRole('region', { name: 'Items' })).toBeTruthy();
+  });
+});
+
+/** The Status effects page's own props, as last drawn: a test calls the
+ * session intent the page was given with an edit the form cannot make. */
+const statusProps: { current: StatusPageProps | null } = { current: null };
+
+describe('Status effects page through the real owner (rpg-project#1215)', () => {
+  const openHail = async (
+    errors: { path: string; message: string }[] = []
+  ): Promise<void> => {
+    gate.state = 'live';
+    services.putDungeon.mockResolvedValue(
+      create(PutDungeonResponseSchema, {
+        readBack: hailSiteReadBack(),
+        errors,
+      })
+    );
+    const read = readDraftYaml(hailSiteYaml);
+    if (!read.ok) throw new Error(read.refusal);
+    mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+    await settled();
+    await waitFor(() => expect(services.putDungeon).toHaveBeenCalled());
+  };
+
+  it('Pieces → Status effects lists the status and shows who gives it', async () => {
+    await openHail();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(encounterSection('Status effects'));
+    const page = screen.getByRole('region', { name: 'Status effects' });
+    fireEvent.click(
+      await within(page).findByRole('button', { name: /^Welcomed\b/ })
+    );
+    expect(page.textContent).toContain('is a status effect a line');
+    expect(page.querySelector('pre')!.textContent).toMatch(/^welcomed:/);
+    expect(
+      within(page).getByRole('button', { name: 'creature porter' })
+    ).toBeTruthy();
+  });
+
+  // catches: a refusal under statuses.<id> that opens nothing, or the wrong status
+  it('a refusal at the status opens the Status effects page on that status', async () => {
+    await openHail([{ path: 'statuses.welcomed.changes[0]', message: 'x' }]);
+    fireEvent.click(await screen.findByRole('button', { name: '1 refusal' }));
+    const refused = await screen.findAllByRole('button', {
+      name: /Status effects · welcomed: x/,
+    });
+    fireEvent.click(refused[0]!);
+    const page = await screen.findByRole('region', { name: 'Status effects' });
+    expect(
+      page.querySelector('[data-status="welcomed"] pre')!.textContent
+    ).toMatch(/^welcomed:/);
+  });
+  describe('the Change form (rpg-project#1220)', () => {
+    beforeEach(() => forgetStatusWords());
+    const openWelcomed = async (): Promise<HTMLElement> => {
+      await openHail();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Status effects'));
+      const page = screen.getByRole('region', { name: 'Status effects' });
+      fireEvent.click(
+        await within(page).findByRole('button', { name: /^Welcomed\b/ })
+      );
+      return page;
+    };
+    const ability = /only when the ability is/;
+
+    // catches: an edit that is not one undoable step, or one that drops the rest of the block
+    it('an author changes the ability: written at once, one Undo restores it', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        const page = await openWelcomed();
+        const select = await within(page).findByRole('combobox', {
+          name: ability,
+        });
+        expect(page.querySelector('pre')!.textContent).toContain(
+          'ability: charisma'
+        );
+        fireEvent.change(select, { target: { value: 'wisdom' } });
+        await waitFor(() =>
+          expect(page.querySelector('pre')!.textContent).toContain(
+            'ability: wisdom'
+          )
+        );
+        const block = (
+          parseYaml(page.querySelector('pre')!.textContent!) as Record<
+            string,
+            Record<string, unknown>
+          >
+        ).welcomed!;
+        expect(block.name).toBe('Welcomed');
+        expect(block.maintenance).toEqual([{ ends_on: 'rest' }]);
+        fireEvent.click(button('Undo'));
+        await waitFor(() =>
+          expect(page.querySelector('pre')!.textContent).toContain(
+            'ability: charisma'
+          )
+        );
+      } finally {
+        asked.mockRestore();
+      }
+    });
+
+    // catches: a rejected edit that still writes, or one that leaves a history step
+    it('an edit that throws is rejected: the file and the history stay as they were', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        const page = await openWelcomed();
+        await within(page).findByRole('combobox', { name: ability });
+        const before = page.querySelector('pre')!.textContent;
+        const commit = statusProps.current!.onCommitStatus!;
+        let thrown = true;
+        act(() => {
+          thrown = commit('welcomed', () => {
+            throw new Error('boom');
+          });
+        });
+        expect(thrown).toBe(false);
+        let unknown = true;
+        act(() => {
+          unknown = commit('not-a-status', (status) => status);
+        });
+        expect(unknown).toBe(false);
+        expect(page.querySelector('pre')!.textContent).toBe(before);
+        expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+      } finally {
+        asked.mockRestore();
+      }
+    });
+  });
+  describe('new and delete (rpg-project#1221)', () => {
+    beforeEach(() => forgetStatusWords());
+    const rows = (page: HTMLElement): HTMLElement[] =>
+      Array.from(page.querySelectorAll('li button[aria-pressed]'));
+    const nameLabel = (): string =>
+      statusWordsV240().words.find(
+        (w) => w.place === 'status' && w.required && w.shape === 'text'
+      )!.label;
+    const withWords = async <T,>(run: () => Promise<T>): Promise<T> => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockResolvedValue(statusWordsV240());
+      try {
+        return await run();
+      } finally {
+        asked.mockRestore();
+      }
+    };
+    const openPage = async (): Promise<HTMLElement> => {
+      await openHail();
+      fireEvent.click(button('Encounter'));
+      fireEvent.click(encounterSection('Status effects'));
+      const page = screen.getByRole('region', { name: 'Status effects' });
+      await within(page).findByRole('button', { name: /^Welcomed\b/ });
+      return page;
+    };
+    const type = async (
+      page: HTMLElement,
+      text: string
+    ): Promise<HTMLInputElement> => {
+      const input = (await within(page).findByRole('textbox', {
+        name: nameLabel(),
+      })) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: text } });
+      return input;
+    };
+
+    // catches: a new status that is not one undoable step, is not selected, or carries more than its name
+    it('an author makes a new status by its name', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        const before = rows(page).length;
+        await type(page, 'Warmed Up');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await waitFor(() => expect(rows(page).length).toBe(before + 1));
+        const row = within(page).getByRole('button', {
+          name: /^Warmed Up\b/,
+        });
+        expect(row.getAttribute('aria-pressed')).toBe('true');
+        expect(parseYaml(page.querySelector('pre')!.textContent!)).toEqual({
+          'warmed-up': { name: 'Warmed Up' },
+        });
+        expect(
+          within(page)
+            .getAllByRole('textbox', { name: nameLabel() })
+            .some((el) => (el as HTMLInputElement).value === 'Warmed Up')
+        ).toBe(true);
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(page).length).toBe(before));
+        expect(
+          within(page).queryByRole('button', { name: /^Warmed Up\b/ })
+        ).toBeNull();
+      });
+    });
+
+    // catches: an id that overwrites a status that is already there
+    it('the id avoids one that is taken', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        await type(page, 'Welcomed');
+        expect(page.textContent).toContain('id welcomed-2');
+      });
+    });
+
+    // catches: the first status on a site with none refused, or `statuses` not created
+    it('the first status on a site with none creates the statuses key', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: itemsSiteReadBack() })
+        );
+        const read = readDraftYaml(itemsSiteYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        expect(read.scope.unread?.statuses).toBeUndefined();
+        mount(new MemoryStorage({ draft: read.draft, scope: read.scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Status effects'));
+        const page = screen.getByRole('region', { name: 'Status effects' });
+        await type(page, 'First');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await waitFor(() =>
+          expect(
+            within(page).getByRole('button', { name: /^First\b/ })
+          ).toBeTruthy()
+        );
+        expect(page.querySelector('pre')!.textContent).toMatch(/^first:/);
+      });
+    });
+
+    // catches: a delete that leaves the row, leaves a selection, or an Undo that brings back less
+    it('an author deletes a status; one Undo brings it back as it was', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        const before = rows(page).length;
+        fireEvent.click(
+          await within(page).findByRole('button', { name: 'Delete status' })
+        );
+        await waitFor(() => expect(rows(page).length).toBe(before - 1));
+        expect(
+          within(page).queryByRole('button', { name: /^Welcomed\b/ })
+        ).toBeNull();
+        expect(page.querySelector('pre')).toBeNull();
+        fireEvent.click(button('Undo'));
+        await waitFor(() => expect(rows(page).length).toBe(before));
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        expect(
+          (
+            parseYaml(page.querySelector('pre')!.textContent!) as Record<
+              string,
+              Record<string, unknown>
+            >
+          ).welcomed!.maintenance
+        ).toEqual([{ ends_on: 'rest' }]);
+      });
+    });
+
+    // catches: deleting a status a line gives with no word of it first
+    it('deleting a status a line gives shows the Given by line first', async () => {
+      await withWords(async () => {
+        const page = await openPage();
+        fireEvent.click(
+          within(page).getByRole('button', { name: /^Welcomed\b/ })
+        );
+        const del = await within(page).findByRole('button', {
+          name: 'Delete status',
+        });
+        const line = within(page).getByText(/^Given by 1\./);
+        expect(
+          line.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect((del as HTMLButtonElement).disabled).toBe(false);
+      });
+    });
+
+    // catches: an add the writer refuses that is swallowed: no notice, or a write
+    it('New status on a site whose statuses is text says why and writes nothing', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: hailSiteReadBack() })
+        );
+        const read = readDraftYaml(hailSiteYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        const scope = {
+          ...read.scope,
+          unread: { ...read.scope.unread, statuses: 'oops' },
+        };
+        mount(new MemoryStorage({ draft: read.draft, scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Status effects'));
+        const page = screen.getByRole('region', { name: 'Status effects' });
+        await type(page, 'Poisoned');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await screen.findByText(
+          /Edit rejected.*statuses: is not written as a set of statuses/
+        );
+        expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+        expect(page.textContent).toContain('oops');
+      });
+    });
+
+    // catches: a new-status control drawn without the engine's words
+    it('without the engine’s status words there is no new-status control', async () => {
+      const asked = vi
+        .spyOn(authoringClient, 'getStatusWords')
+        .mockRejectedValue(new ConnectError('no', Code.Unimplemented));
+      try {
+        const page = await openPage();
+        expect(
+          within(page).queryByRole('button', { name: 'New status' })
+        ).toBeNull();
+        expect(within(page).queryByRole('textbox')).toBeNull();
+      } finally {
+        asked.mockRestore();
+      }
+    });
   });
 });

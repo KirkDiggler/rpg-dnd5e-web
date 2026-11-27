@@ -23,6 +23,10 @@ export type RefusalHomeSection =
   /** A behaviour the file defines (rpg-project#970). */
   | 'behaviours'
   | 'bundles'
+  /** A custom item the file declares (rpg-project#1196). */
+  | 'items'
+  /** A status effect the file declares (rpg-project#1215). */
+  | 'statuses'
   | 'factions'
   | 'dispositions'
   | 'intel'
@@ -106,6 +110,10 @@ export function targetOfPath(
       return { kind: 'castMember', ref: `${MONSTER_PREFIX}${id}` };
     case 'routine':
       return { kind: 'home', section: 'behaviours', id };
+    case 'item':
+      return { kind: 'home', section: 'items', id };
+    case 'status':
+      return { kind: 'home', section: 'statuses', id };
     case 'concealment':
       return { kind: 'home', section: 'concealments', id };
     case 'bundle': {
