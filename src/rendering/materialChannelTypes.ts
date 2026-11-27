@@ -22,3 +22,23 @@ export type ChannelCapability =
       readonly minMultiplier: number;
       readonly maxMultiplier: number;
     };
+
+/** One declared logical scope; selectors are specific to its representation. */
+export interface MaterialChannelTarget {
+  readonly id: string;
+  readonly label: string;
+  readonly selectors: readonly {
+    readonly node: string;
+    readonly material: string;
+  }[];
+  readonly normal: ChannelCapability;
+  readonly emissive: ChannelCapability;
+}
+
+/** Verified provider metadata, not permission to guess a loaded model's scope. */
+export interface MaterialChannelBinding {
+  readonly assetRef: string;
+  readonly representation: 'model' | 'standing' | 'downed';
+  readonly glbSha256: string;
+  readonly targets: readonly MaterialChannelTarget[];
+}

@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import { describe, expect, it } from 'vitest';
-import { createPinnedWorldMaterialCatalog } from './worldMaterialCatalog';
+import {
+  createPinnedWorldMaterialCatalog,
+  parseWorldMaterialPreview,
+} from './worldMaterialCatalog';
 import type { WorldSurfaceMaterial } from './worldMaterialTypes';
 const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const asset = GENERATED_WORLD_ASSETS[ref];
@@ -50,6 +53,60 @@ describe('independently pinned material/world registry', () => {
       { assetRef: ref, glbSha256: asset.glbSha256, bindings },
     ]);
   });
+  it('preserves detached channel declarations through pinned and preview projections', () => {
+    const channels = [
+      {
+        assetRef: ref,
+        representation: 'model' as const,
+        glbSha256: asset.glbSha256,
+        targets: [
+          {
+            id: 'body',
+            label: 'Body',
+            selectors: [{ node: 'Body', material: 'Paint' }],
+            normal: {
+              kind: 'adjustable' as const,
+              minMultiplier: 0.5,
+              maxMultiplier: 2,
+            },
+            emissive: { kind: 'absent' as const },
+          },
+        ],
+      },
+    ];
+    const pinned = createPinnedWorldMaterialCatalog({
+      provider,
+      materials: [],
+      assets: {},
+      channelBindings: channels,
+    });
+    const preview = parseWorldMaterialPreview({
+      kind: 'candidate',
+      catalogSha256: provider.catalogSha256,
+      materials: [],
+      surfaces: [],
+      channelBindings: channels,
+    });
+    channels[0].targets[0].selectors[0].node = 'changed';
+    expect(pinned!.channelBindings![0].targets[0].selectors[0].node).toBe(
+      'Body'
+    );
+    expect(preview.channelBindings![0].targets[0].selectors[0].node).toBe(
+      'Body'
+    );
+    expect(() =>
+      createPinnedWorldMaterialCatalog({
+        provider: { ...provider, catalogSha256: null },
+        materials: [],
+        assets: {},
+        channelBindings: channels,
+      })
+    ).toThrow(/Absent/);
+    expect(() =>
+      parseWorldMaterialPreview({ ...preview, channelBindings: null })
+    ).toThrow();
+  });
+
   it('does not treat miter tags as enrollment or silently fill absent resources', () => {
     const plain = { ...asset };
     delete plain.surfaces;

@@ -3,7 +3,9 @@ import {
   resolveWorldAsset,
   type GeneratedWorldAsset,
 } from '@/generated/worldAssetCatalog';
+import type { MaterialChannelBinding } from './materialChannelTypes';
 import { parseWorldAtlasPreview } from './worldAtlasCatalog';
+import { parseMaterialChannelBindings } from './worldAtlasCatalogSchema.mjs';
 import type {
   WorldAtlasCatalog,
   WorldSurfaceMaterial,
@@ -22,6 +24,7 @@ export interface WorldMaterialCatalog {
   materials: readonly WorldSurfaceMaterial[];
   surfaces: readonly WorldSurfaceAsset[];
   atlas?: WorldAtlasCatalog;
+  channelBindings?: readonly MaterialChannelBinding[];
 }
 
 /** Join independently pinned material resources and world surface declarations.
@@ -32,12 +35,13 @@ export function createPinnedWorldMaterialCatalog(input: {
   materials: readonly WorldSurfaceMaterial[];
   assets: Readonly<Record<string, GeneratedWorldAsset>>;
   atlas?: WorldAtlasCatalog;
+  channelBindings?: readonly MaterialChannelBinding[];
 }): WorldMaterialCatalog | null {
   const { provider, materials, assets } = input;
   if (!/^[a-f0-9]{40}$/.test(provider.commit))
     throw new Error('Invalid material provider pin.');
   if (provider.catalogSha256 === null) {
-    if (materials.length || input.atlas)
+    if (materials.length || input.atlas || input.channelBindings?.length)
       throw new Error('Absent material catalog cannot carry resources.');
     return null;
   }
@@ -49,6 +53,9 @@ export function createPinnedWorldMaterialCatalog(input: {
     catalogSha256: provider.catalogSha256,
     materials,
     ...(input.atlas ? { atlas: input.atlas } : {}),
+    ...(input.channelBindings !== undefined
+      ? { channelBindings: parseMaterialChannelBindings(input.channelBindings) }
+      : {}),
     surfaces: Object.values(assets)
       .filter((asset) => asset.surfaces)
       .map((asset) => ({
@@ -157,10 +164,13 @@ export function parseWorldMaterialPreview(
       targets.add(key);
     }
   }
-  return Object.hasOwn(input, 'atlas')
-    ? {
-        ...input,
-        atlas: parseWorldAtlasPreview(input.atlas, GENERATED_WORLD_ASSETS),
-      }
-    : input;
+  return {
+    ...input,
+    ...(Object.hasOwn(input, 'atlas')
+      ? { atlas: parseWorldAtlasPreview(input.atlas, GENERATED_WORLD_ASSETS) }
+      : {}),
+    ...(Object.hasOwn(input, 'channelBindings')
+      ? { channelBindings: parseMaterialChannelBindings(input.channelBindings) }
+      : {}),
+  };
 }

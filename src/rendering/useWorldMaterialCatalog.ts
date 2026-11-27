@@ -2,6 +2,7 @@ import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import {
   GENERATED_WORLD_ATLAS_BINDINGS,
   GENERATED_WORLD_ATLAS_MATERIALS,
+  GENERATED_WORLD_CHANNEL_BINDINGS,
   GENERATED_WORLD_MATERIAL_COLLECTIONS,
   GENERATED_WORLD_MATERIAL_PROVIDER,
   GENERATED_WORLD_MATERIALS,
@@ -32,6 +33,9 @@ export function useWorldMaterialCatalog(): WorldMaterialCatalogState {
       provider: GENERATED_WORLD_MATERIAL_PROVIDER,
       materials: GENERATED_WORLD_MATERIALS,
       assets: GENERATED_WORLD_ASSETS,
+      ...(GENERATED_WORLD_CHANNEL_BINDINGS.length
+        ? { channelBindings: GENERATED_WORLD_CHANNEL_BINDINGS }
+        : {}),
       ...(GENERATED_WORLD_ATLAS_MATERIALS.length
         ? {
             atlas: {

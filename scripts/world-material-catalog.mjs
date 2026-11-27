@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
-import { parseWorldAtlasMetadata } from '../src/rendering/worldAtlasCatalogSchema.mjs';
+import {
+  parseMaterialChannelBindings,
+  parseWorldAtlasMetadata,
+} from '../src/rendering/worldAtlasCatalogSchema.mjs';
 import {
   MAX_IMAGE_PIXELS,
   verifyOwnedResourceFiles,
@@ -60,12 +63,21 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
   const bytes = readFileSync(catalogPath);
   const document = JSON.parse(bytes.toString('utf8'));
   const version = document?.schemaVersion;
-  if (version !== 1 && version !== 3) fail('unsupported schema');
+  if (version !== 1 && version !== 3 && version !== 4)
+    fail('unsupported schema');
   const catalog = object(
     document,
-    version === 3
-      ? ['schemaVersion', 'materials', 'collections', 'bindings']
-      : ['schemaVersion', 'materials'],
+    version === 4
+      ? [
+          'schemaVersion',
+          'materials',
+          'collections',
+          'bindings',
+          'channelBindings',
+        ]
+      : version === 3
+        ? ['schemaVersion', 'materials', 'collections', 'bindings']
+        : ['schemaVersion', 'materials'],
     [],
     'catalog'
   );
@@ -78,7 +90,8 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     const path = `materials[${index}]`;
     const atlas =
       raw && typeof raw === 'object' && Object.hasOwn(raw, 'mapping');
-    if (atlas && version !== 3) fail(`${path}: atlas rows require schema3`);
+    if (atlas && version < 3)
+      fail(`${path}: atlas rows require schema3 or schema4`);
     const row = object(
       raw,
       atlas
@@ -178,7 +191,7 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     (atlas ? atlasMaterials : materials).push(result);
   });
   const atlasMetadata =
-    version === 3
+    version >= 3
       ? parseWorldAtlasMetadata({
           collections: catalog.collections,
           bindings: catalog.bindings,
@@ -195,9 +208,16 @@ export function readWorldMaterialCatalog({ catalogPath, modelRoot }) {
     subtree: 'world-materials',
     expected: images,
   });
-  return version === 3
+  return version >= 3
     ? {
-        schemaVersion: 3,
+        schemaVersion: version,
+        ...(version === 4
+          ? {
+              channelBindings: parseMaterialChannelBindings(
+                catalog.channelBindings
+              ),
+            }
+          : {}),
         catalogSha256: digest(bytes),
         materials,
         atlasMaterials,

@@ -39,6 +39,7 @@ export function stageWorldMaterialPreview({
   runtimeRoot,
   outputRoot,
   assets,
+  npcAssets = {},
 }) {
   if (basename(outputRoot) !== 'world-material-preview')
     throw new Error(
@@ -83,7 +84,7 @@ export function stageWorldMaterialPreview({
         bindings: parseSurfaces(row.surfaces, row.ref),
       };
     });
-  if (parsed.schemaVersion === 3) {
+  if (parsed.schemaVersion >= 3) {
     for (const binding of parsed.bindings) {
       const matches = source.assets.filter(
         (row) => row.ref === binding.assetRef
@@ -95,8 +96,57 @@ export function stageWorldMaterialPreview({
       verifyGeometry(matches[0]);
     }
   }
+  if (parsed.schemaVersion === 4) {
+    const representations = new Map();
+    for (const binding of parsed.channelBindings) {
+      const seen = representations.get(binding.assetRef) ?? new Set();
+      seen.add(binding.representation);
+      representations.set(binding.assetRef, seen);
+      if (binding.representation === 'model') {
+        const matches = source.assets.filter(
+          (row) => row.ref === binding.assetRef
+        );
+        if (matches.length !== 1 || matches[0].glbSha256 !== binding.glbSha256)
+          throw Error(`Channel geometry differs for ${binding.assetRef}.`);
+        verifyGeometry(matches[0]);
+      } else {
+        const expected = npcAssets[binding.assetRef];
+        const url =
+          binding.representation === 'standing'
+            ? expected?.standingUrl
+            : expected?.downedUrl;
+        const digest =
+          binding.representation === 'standing'
+            ? expected?.standingSha256
+            : expected?.downedSha256;
+        if (
+          typeof url !== 'string' ||
+          !url.startsWith('/models/synty/') ||
+          digest !== binding.glbSha256 ||
+          hash(
+            readFileSync(file(runtimeRoot, url.slice('/models/synty/'.length)))
+          ) !== digest
+        )
+          throw Error(
+            `Channel NPC geometry differs for ${binding.assetRef}/${binding.representation}.`
+          );
+      }
+    }
+    for (const [ref, seen] of representations) {
+      const expected = assets[ref]
+        ? ['model']
+        : npcAssets[ref]?.downedUrl
+          ? ['standing', 'downed']
+          : ['standing'];
+      if (
+        seen.size !== expected.length ||
+        expected.some((role) => !seen.has(role))
+      )
+        throw Error(`Channel representation roster differs for ${ref}.`);
+    }
+  }
   if (
-    (!surfaces.length && parsed.schemaVersion !== 3) ||
+    (!surfaces.length && parsed.schemaVersion === undefined) ||
     new Set(surfaces.map((s) => s.assetRef)).size !== surfaces.length
   )
     throw new Error('Expected unique enrolled preview assets.');
@@ -131,7 +181,10 @@ export function stageWorldMaterialPreview({
     catalogSha256: parsed.catalogSha256,
     materials,
     surfaces,
-    ...(parsed.schemaVersion === 3
+    ...(parsed.schemaVersion === 4
+      ? { channelBindings: parsed.channelBindings }
+      : {}),
+    ...(parsed.schemaVersion >= 3
       ? {
           atlas: {
             materials: parsed.atlasMaterials.map(previewMaterial),
@@ -184,6 +237,8 @@ if (
   };
   const { GENERATED_WORLD_ASSETS: assets } =
     await import('../src/generated/worldAssetCatalog.ts');
+  const { GENERATED_NPC_APPEARANCES: npcAssets } =
+    await import('../src/generated/npcAppearanceCatalog.ts');
   console.log(
     stageWorldMaterialPreview({
       catalogPath: argument('--catalog'),
@@ -192,6 +247,7 @@ if (
       runtimeRoot: argument('--runtime-root'),
       outputRoot: resolve('.local/world-material-preview'),
       assets,
+      npcAssets,
     })
   );
 }
