@@ -68,7 +68,12 @@ export function useStatusSaid({
     said: Settled;
   } | null>(null);
   useEffect(() => {
-    if (key === null || !id || json === null) return;
+    if (key === null || !id || json === null) {
+      // Nothing to ask: what was said belongs to a run of asks that is over,
+      // so a status made later under the same id never inherits it.
+      setAnswer(null);
+      return;
+    }
     let live = true;
     client
       .sayStatus(create(SayStatusRequestSchema, { id, statusJson: json }))

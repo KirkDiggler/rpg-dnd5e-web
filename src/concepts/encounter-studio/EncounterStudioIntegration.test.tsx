@@ -9223,6 +9223,36 @@ describe('Status effects page through the real owner (rpg-project#1215)', () => 
       });
     });
 
+    // catches: an add the writer refuses that is swallowed: no notice, or a write
+    it('New status on a site whose statuses is text says why and writes nothing', async () => {
+      await withWords(async () => {
+        gate.state = 'live';
+        services.putDungeon.mockResolvedValue(
+          create(PutDungeonResponseSchema, { readBack: hailSiteReadBack() })
+        );
+        const read = readDraftYaml(hailSiteYaml);
+        if (!read.ok) throw new Error(read.refusal);
+        const scope = {
+          ...read.scope,
+          unread: { ...read.scope.unread, statuses: 'oops' },
+        };
+        mount(new MemoryStorage({ draft: read.draft, scope }));
+        await settled();
+        fireEvent.click(button('Encounter'));
+        fireEvent.click(encounterSection('Status effects'));
+        const page = screen.getByRole('region', { name: 'Status effects' });
+        await type(page, 'Poisoned');
+        fireEvent.click(
+          within(page).getByRole('button', { name: 'New status' })
+        );
+        await screen.findByText(
+          /Edit rejected.*statuses: is not written as a set of statuses/
+        );
+        expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+        expect(page.textContent).toContain('oops');
+      });
+    });
+
     // catches: a new-status control drawn without the engine's words
     it('without the engine’s status words there is no new-status control', async () => {
       const asked = vi

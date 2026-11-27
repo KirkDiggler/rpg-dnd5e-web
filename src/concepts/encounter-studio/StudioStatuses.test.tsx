@@ -435,6 +435,52 @@ describe('StudioStatuses, further cases', () => {
       ).toBeNull();
     });
 
+    // catches: a refused answer dropped while the same status is asked again
+    it('a refused answer stays, dimmed and busy, while the status is asked again', async () => {
+      let calls = 0;
+      const client = {
+        sayStatus: vi.fn(() =>
+          calls++ === 0
+            ? Promise.resolve(
+                create(SayStatusResponseSchema, {
+                  errors: [
+                    create(FieldErrorSchema, {
+                      path: 'changes[0]',
+                      message: 'bad',
+                    }),
+                  ],
+                })
+              )
+            : new Promise(() => undefined)
+        ),
+      } as unknown as StatusSaidClient;
+      const ui = (document: RoomDraftDocument) => (
+        <StudioStatuses
+          document={document}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          client={client}
+          enabled
+        />
+      );
+      const view = render(ui(hailDocument()));
+      await screen.findByText('changes[0]: bad');
+      const changed = hailDocument();
+      (
+        (changed.scope.unread!.statuses as Record<string, unknown>)
+          .welcomed as Record<string, unknown>
+      ).name = 'Renamed';
+      view.rerender(ui(changed));
+      await waitFor(() => expect(client.sayStatus).toHaveBeenCalledTimes(2));
+      const block = screen
+        .getByText('changes[0]: bad')
+        .closest('.es-status-said')!;
+      expect(block.classList.contains('es-said-again')).toBe(true);
+      expect(block.getAttribute('aria-busy')).toBe('true');
+      screen.getByText('The engine is reading the change.');
+    });
+
     it('not enabled asks nothing and shows nothing', () => {
       const client = { sayStatus: vi.fn() } as unknown as StatusSaidClient;
       render(
