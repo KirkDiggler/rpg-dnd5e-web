@@ -175,6 +175,98 @@ describe('useStatusSaid', () => {
     expect(result.current).toEqual({ status: 'loading' });
   });
 
+  // catches: the answer dropped while the same status is asked again (the block blinks)
+  it('while the same status is asked again, the last answer rides along as was', async () => {
+    const { client } = clientWith((id) =>
+      id === 'A' ? said('first') : new Promise(() => undefined)
+    );
+    const { result, rerender } = renderHook(
+      ({ n }) =>
+        useStatusSaid({ id: 'A', written: { n }, client, enabled: true }),
+      { initialProps: { n: 1 } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('said'));
+    rerender({ n: 2 });
+    expect(result.current).toMatchObject({
+      status: 'loading',
+      was: { status: 'said', sentence: 'first' },
+    });
+  });
+
+  // catches: a deleted status's sentence shown under a new status with the same id
+  it('an answer is forgotten once there is nothing to ask', async () => {
+    const { client } = clientWith(() =>
+      calls++ === 0 ? said('old') : new Promise(() => undefined)
+    );
+    let calls = 0;
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | null }) =>
+        useStatusSaid({ id, written: { n: 1 }, client, enabled: true }),
+      { initialProps: { id: 'A' as string | null } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('said'));
+    rerender({ id: null });
+    await waitFor(() => expect(result.current).toEqual({ status: 'idle' }));
+    rerender({ id: 'A' });
+    expect(result.current).toEqual({ status: 'loading' });
+  });
+
+  // catches: a refused answer not carried, so its refusals blink away
+  it('a refused answer rides along as was', async () => {
+    const refused = Promise.resolve(
+      create(SayStatusResponseSchema, {
+        errors: [create(FieldErrorSchema, { path: 'p', message: 'no' })],
+      })
+    );
+    const { client } = clientWith(() =>
+      calls++ === 0 ? refused : new Promise(() => undefined)
+    );
+    let calls = 0;
+    const { result, rerender } = renderHook(
+      ({ n }) =>
+        useStatusSaid({ id: 'A', written: { n }, client, enabled: true }),
+      { initialProps: { n: 1 } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('refused'));
+    rerender({ n: 2 });
+    expect(result.current).toMatchObject({
+      status: 'loading',
+      was: { status: 'refused' },
+    });
+  });
+
+  // catches: an unavailable answer carried as if the engine had said it
+  it('an unavailable answer is never carried as was', async () => {
+    const { client } = clientWith(() =>
+      calls++ === 0
+        ? Promise.reject(new ConnectError('down', Code.Unavailable))
+        : new Promise(() => undefined)
+    );
+    let calls = 0;
+    const { result, rerender } = renderHook(
+      ({ n }) =>
+        useStatusSaid({ id: 'A', written: { n }, client, enabled: true }),
+      { initialProps: { n: 1 } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('unavailable'));
+    rerender({ n: 2 });
+    expect(result.current).toEqual({ status: 'loading' });
+  });
+
+  // catches: was kept across ids, so another status's sentence is drawn
+  it('another status gets no was', async () => {
+    const { client } = clientWith((id) =>
+      id === 'A' ? said('A says') : new Promise(() => undefined)
+    );
+    const { result, rerender } = renderHook(
+      ({ id }) => useStatusSaid({ id, written: { id }, client, enabled: true }),
+      { initialProps: { id: 'A' } }
+    );
+    await waitFor(() => expect(result.current.status).toBe('said'));
+    rerender({ id: 'B' });
+    expect('was' in result.current).toBe(false);
+  });
+
   // catches: an ask per render
   it('asks again when written changes, and not when the same written re-renders', async () => {
     const { client, sayStatus } = clientWith(() => said('x'));

@@ -4,6 +4,7 @@ import {
   SayStatusResponseSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -379,6 +380,107 @@ describe('StudioStatuses, further cases', () => {
       void ui;
     });
 
+    // catches: the block removed while loading (it blinks and the form jumps)
+    it('changing the words of the same status keeps the last sentence, busy, until the new one comes', async () => {
+      let release: (v: unknown) => void = () => undefined;
+      let calls = 0;
+      const client = {
+        sayStatus: vi.fn(() =>
+          calls++ === 0
+            ? Promise.resolve(
+                create(SayStatusResponseSchema, { sentence: 'one' })
+              )
+            : new Promise((resolve) => {
+                release = resolve;
+              })
+        ),
+      } as unknown as StatusSaidClient;
+      const ui = (document: RoomDraftDocument) => (
+        <StudioStatuses
+          document={document}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          client={client}
+          enabled
+        />
+      );
+      const view = render(ui(hailDocument()));
+      await screen.findByText('one');
+      expect(
+        screen.queryByText('The engine is reading the change.')
+      ).toBeNull();
+      const changed = hailDocument();
+      (
+        (changed.scope.unread!.statuses as Record<string, unknown>)
+          .welcomed as Record<string, unknown>
+      ).name = 'Renamed';
+      view.rerender(ui(changed));
+      await waitFor(() => expect(client.sayStatus).toHaveBeenCalledTimes(2));
+      const block = screen.getByText('one').closest('.es-status-said')!;
+      expect(block.classList.contains('es-said-again')).toBe(true);
+      expect(block.getAttribute('aria-busy')).toBe('true');
+      screen.getByText('The engine is reading the change.');
+      act(() => release(create(SayStatusResponseSchema, { sentence: 'two' })));
+      await screen.findByText('two');
+      expect(screen.queryByText('one')).toBeNull();
+      expect(
+        screen.queryByText('The engine is reading the change.')
+      ).toBeNull();
+      expect(
+        screen
+          .getByText('two')
+          .closest('.es-status-said')!
+          .getAttribute('aria-busy')
+      ).toBeNull();
+    });
+
+    // catches: a refused answer dropped while the same status is asked again
+    it('a refused answer stays, dimmed and busy, while the status is asked again', async () => {
+      let calls = 0;
+      const client = {
+        sayStatus: vi.fn(() =>
+          calls++ === 0
+            ? Promise.resolve(
+                create(SayStatusResponseSchema, {
+                  errors: [
+                    create(FieldErrorSchema, {
+                      path: 'changes[0]',
+                      message: 'bad',
+                    }),
+                  ],
+                })
+              )
+            : new Promise(() => undefined)
+        ),
+      } as unknown as StatusSaidClient;
+      const ui = (document: RoomDraftDocument) => (
+        <StudioStatuses
+          document={document}
+          readBack={answered}
+          focus="welcomed"
+          onSelect={vi.fn()}
+          client={client}
+          enabled
+        />
+      );
+      const view = render(ui(hailDocument()));
+      await screen.findByText('changes[0]: bad');
+      const changed = hailDocument();
+      (
+        (changed.scope.unread!.statuses as Record<string, unknown>)
+          .welcomed as Record<string, unknown>
+      ).name = 'Renamed';
+      view.rerender(ui(changed));
+      await waitFor(() => expect(client.sayStatus).toHaveBeenCalledTimes(2));
+      const block = screen
+        .getByText('changes[0]: bad')
+        .closest('.es-status-said')!;
+      expect(block.classList.contains('es-said-again')).toBe(true);
+      expect(block.getAttribute('aria-busy')).toBe('true');
+      screen.getByText('The engine is reading the change.');
+    });
+
     it('not enabled asks nothing and shows nothing', () => {
       const client = { sayStatus: vi.fn() } as unknown as StatusSaidClient;
       render(
@@ -579,5 +681,82 @@ describe('StudioStatuses: the Change form (rpg-project#1220)', () => {
       await screen.findByText('Welcomed does one thing.');
       expect(screen.queryByText('the one part')).toBeNull();
     });
+  });
+});
+
+describe('StudioStatuses: new and delete (rpg-project#1221)', () => {
+  const words = statusWordsV240();
+  const nameLabel = words.words.find(
+    (w) => w.place === 'status' && w.required && w.shape === 'text'
+  )!.label;
+  const mountNd = (
+    props: Partial<React.ComponentProps<typeof StudioStatuses>> = {}
+  ) => {
+    const onAddStatus = vi.fn(() => true);
+    const onRemoveStatus = vi.fn(() => true);
+    const onSelect = vi.fn();
+    render(
+      <StudioStatuses
+        document={hailDocument()}
+        readBack={answered}
+        focus="welcomed"
+        onSelect={onSelect}
+        statusWords={words}
+        onAddStatus={onAddStatus}
+        onRemoveStatus={onRemoveStatus}
+        {...props}
+      />
+    );
+    return { onAddStatus, onRemoveStatus, onSelect };
+  };
+
+  // catches: the name written under a word the engine did not name, or an untrimmed name, or no selection
+  it('New status adds the trimmed name under the engine’s word and selects it', () => {
+    const { onAddStatus, onSelect } = mountNd();
+    const input = screen.getByRole('textbox', { name: nameLabel });
+    fireEvent.change(input, { target: { value: '  Warmed Up ' } });
+    screen.getByText('warmed-up');
+    fireEvent.click(screen.getByRole('button', { name: 'New status' }));
+    expect(onAddStatus).toHaveBeenCalledWith('warmed-up', {
+      name: 'Warmed Up',
+    });
+    expect(onSelect).toHaveBeenCalledWith('warmed-up');
+    expect((input as HTMLInputElement).value).toBe('');
+  });
+
+  // catches: a blank name making a status
+  it('a blank name cannot be added', () => {
+    const { onAddStatus } = mountNd();
+    expect(
+      (screen.getByRole('button', { name: 'New status' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(onAddStatus).not.toHaveBeenCalled();
+  });
+
+  // catches: a control drawn with no engine words, typing words the web does not have
+  it('without the status words there is no New status control', () => {
+    mountNd({ statusWords: null });
+    expect(screen.queryByRole('button', { name: 'New status' })).toBeNull();
+  });
+
+  // catches: the Given by line missing, or after the button, or the button disabled
+  it('Delete status says Given by N first and stays enabled', () => {
+    const { onRemoveStatus } = mountNd();
+    const del = screen.getByRole('button', { name: 'Delete status' });
+    const line = screen.getByText(/^Given by 1\. Deleting it leaves/);
+    expect(
+      line.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect((del as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(del);
+    expect(onRemoveStatus).toHaveBeenCalledWith('welcomed');
+  });
+
+  // catches: the Given by line drawn before the engine has said who gives it
+  it('before the engine answers there is no Given by line', () => {
+    mountNd({ readBack: unanswered });
+    expect(screen.queryByText(/^Given by 1\./)).toBeNull();
+    screen.getByRole('button', { name: 'Delete status' });
   });
 });
