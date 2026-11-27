@@ -4,6 +4,7 @@ import {
   firstRequiredText,
   setWord,
   unknownKeys,
+  valueText,
   whenAllowed,
   withWordsOf,
   wordsAt,
@@ -99,5 +100,38 @@ describe('firstRequiredText', () => {
     expect(whenAllowed(word, 'nope')).toEqual(['y', 'z']);
     expect(whenAllowed(word, undefined)).toEqual(['y', 'z']);
     expect(whenAllowed({ ...word, when: undefined }, 'b')).toEqual([]);
+  });
+});
+
+describe('valueText', () => {
+  it('cuts the words the word label already says', () => {
+    expect(
+      valueText('resistance to {value} damage', 'resistance to acid damage')
+    ).toBe('acid');
+    expect(valueText('ends when {value}', 'ends when the run ends')).toBe(
+      'the run ends'
+    );
+  });
+  it('a label that does not fit is not cut', () => {
+    expect(
+      valueText(
+        'advantage on {value}',
+        'attacks against the holder have advantage'
+      )
+    ).toBe('attacks against the holder have advantage');
+  });
+  it('a label that fails the ending is not cut', () => {
+    expect(
+      valueText('resistance to {value} damage', 'resistance to acid armour')
+    ).toBe('resistance to acid armour');
+  });
+  it('a word label with no {value} leaves the value label alone', () => {
+    expect(valueText('where it is worn', 'worn as a cloak')).toBe(
+      'worn as a cloak'
+    );
+  });
+  it('nothing between prefix and suffix leaves the label whole', () => {
+    expect(valueText('a {value} b', 'a  b')).toBe('a  b');
+    expect(valueText('a {value} b', 'a b')).toBe('a b');
   });
 });
