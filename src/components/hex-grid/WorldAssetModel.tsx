@@ -12,6 +12,10 @@ import {
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { clipWallSection } from '@/rendering/clipWallSection';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import type {
+  MaterialChannelAdjustment,
+  MaterialChannelBinding,
+} from '@/rendering/materialChannelTypes';
 import {
   applyOriginalHeightUvs,
   captureOriginalHeightUvs,
@@ -81,6 +85,7 @@ export interface WorldAssetModelProps {
   /** A promoted exact ref. Family refs and unknown exact refs never fall back. */
   assetRef: string;
   materialOverrides?: readonly MaterialOverride[];
+  materialChannels?: readonly MaterialChannelAdjustment[];
   position: [number, number, number];
   rotationY?: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
@@ -289,6 +294,8 @@ function applyLeafSwing(leaves: ResolvedLeaf[], open: boolean) {
 function LoadedWorldAssetModel({
   assetRef,
   glbSha256,
+  materialChannels,
+  channelBinding,
   url,
   boundsMeters,
   roles,
@@ -317,6 +324,8 @@ function LoadedWorldAssetModel({
   assetRef: string;
   glbSha256: string;
   materialOverrides?: readonly MaterialOverride[];
+  materialChannels?: readonly MaterialChannelAdjustment[];
+  channelBinding?: MaterialChannelBinding;
   atlasTreatment?: Pick<
     WorldAtlasMaterialsInput,
     'glbSha256' | 'binding' | 'selections'
@@ -538,6 +547,19 @@ function LoadedWorldAssetModel({
       selections: expandPartSelections(atlasTreatment.selections, expanded.ids),
     };
   }, [atlasTreatment, instance]);
+  const channelTreatment = useMemo(() => {
+    if (!materialChannels?.length) return undefined;
+    return {
+      treatment: {
+        assetRef,
+        glbSha256,
+        representation: 'model' as const,
+        binding: channelBinding,
+        adjustments: materialChannels,
+      },
+      nodeCopies: instance.nodeCopies,
+    };
+  }, [materialChannels, channelBinding, assetRef, glbSha256, instance]);
   useRememberedModelTint(
     cloned,
     remembered,
@@ -547,7 +569,8 @@ function LoadedWorldAssetModel({
     'lit',
     surfaceTreatment,
     rememberedTint,
-    atlasHeightTreatment
+    atlasHeightTreatment,
+    channelTreatment
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -800,9 +823,35 @@ function PreparedWorldAssetModel({
  * and owns only its changed instance geometry, never cached source buffers.
  * Declared role names are bound per instance; no door node name appears here.
  */
+/** Only explicit intent needs the channel catalog; legacy Original rendering
+ * keeps its existing dependencies, like the atlas selection adapter above. */
+function ChannelWorldAssetModel(
+  props: React.ComponentProps<typeof PreparedWorldAssetModel>
+): React.JSX.Element | null {
+  const state = useWorldMaterialCatalog();
+  if (state.status === 'loading') return null;
+  if (state.status !== 'ready' || !state.catalog)
+    throw Error('Material channels: verified catalog is unavailable.');
+  const bindings =
+    state.catalog.channelBindings?.filter(
+      (binding) =>
+        binding.assetRef === props.assetRef &&
+        binding.representation === 'model'
+    ) ?? [];
+  if (bindings.length > 1)
+    throw Error('Material channels: ambiguous provider binding.');
+  const Component = props.plans.length
+    ? PreparedWorldAssetModel
+    : props.materialOverrides?.length
+      ? AtlasWorldAssetModel
+      : LoadedWorldAssetModel;
+  return <Component {...props} channelBinding={bindings[0]} />;
+}
+
 export function WorldAssetModel({
   assetRef,
   materialOverrides,
+  materialChannels,
   position,
   rotationY = 0,
   onBoundsMeasured,
@@ -859,17 +908,20 @@ export function WorldAssetModel({
     throw new Error(
       'Surface provider geometry differs from the pinned world asset.'
     );
-  const Component = surfacePlans?.length
-    ? PreparedWorldAssetModel
-    : materialOverrides?.length
-      ? AtlasWorldAssetModel
-      : LoadedWorldAssetModel;
+  const Component = materialChannels?.length
+    ? ChannelWorldAssetModel
+    : surfacePlans?.length
+      ? PreparedWorldAssetModel
+      : materialOverrides?.length
+        ? AtlasWorldAssetModel
+        : LoadedWorldAssetModel;
   return (
     <Component
       plans={surfacePlans ?? []}
       assetRef={assetRef}
       glbSha256={asset.glbSha256}
       materialOverrides={materialOverrides}
+      materialChannels={materialChannels}
       url={asset.url}
       boundsMeters={asset.boundsMeters}
       roles={asset.roles}

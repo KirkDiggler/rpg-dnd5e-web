@@ -53,6 +53,12 @@ import type {
   NpcActivityProfile,
 } from '@/npc-activities/activityTypes';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import {
+  materialChannelSource,
+  planMaterialChannelWrites,
+  resolveMaterialChannelTargets,
+  type MaterialChannelTreatment,
+} from '@/rendering/materialChannelMaterials';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import {
@@ -95,6 +101,8 @@ import {
 
 export interface ClassCharacterModelProps {
   url: string;
+  /** Verified body identity and captured intent; never equipment/customization. */
+  materialChannelTreatment?: MaterialChannelTreatment;
   isSelected?: boolean;
   isGhost?: boolean;
   /** Render as the viewer's frozen last observation (rpg-dnd5e-web#604):
@@ -150,6 +158,7 @@ export type OutfitTreatmentStatus =
     };
 
 interface MaterialSnapshot {
+  readonly normalScale?: THREE.Vector2;
   readonly color?: THREE.Color;
   readonly emissive?: THREE.Color;
   readonly emissiveIntensity?: number;
@@ -160,6 +169,10 @@ interface MaterialSnapshot {
 
 function snapshotMaterial(material: THREE.Material): MaterialSnapshot {
   return {
+    normalScale:
+      material instanceof THREE.MeshStandardMaterial
+        ? material.normalScale.clone()
+        : undefined,
     color:
       'color' in material && material.color instanceof THREE.Color
         ? material.color.clone()
@@ -190,6 +203,7 @@ function restoreMaterial(
     material.color.copy(snapshot.color);
   }
   if (material instanceof THREE.MeshStandardMaterial) {
+    if (snapshot.normalScale) material.normalScale.copy(snapshot.normalScale);
     if (snapshot.emissive) material.emissive.copy(snapshot.emissive);
     if (snapshot.emissiveIntensity !== undefined) {
       material.emissiveIntensity = snapshot.emissiveIntensity;
@@ -203,6 +217,7 @@ function restoreMaterial(
 
 export function ClassCharacterModel({
   url,
+  materialChannelTreatment,
   isSelected = false,
   isGhost = false,
   remembered = false,
@@ -268,8 +283,21 @@ export function ClassCharacterModel({
   const materialOwnership = useMemo(() => {
     const baseByMesh = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
     const snapshots = new Map<THREE.Material, MaterialSnapshot>();
+    const sourceMeshes: THREE.Mesh[] = [],
+      ownedMeshes: THREE.Mesh[] = [];
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) sourceMeshes.push(child);
+    });
     cloned.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
+      if (child instanceof THREE.Mesh) ownedMeshes.push(child);
+    });
+    if (sourceMeshes.length !== ownedMeshes.length)
+      throw Error(
+        'Material owner: cloned body topology differs from its source.'
+      );
+    const meshBySource = new Map<THREE.Mesh, THREE.Mesh>();
+    ownedMeshes.forEach((child, index) => {
+      meshBySource.set(sourceMeshes[index], child);
       const source = Array.isArray(child.material)
         ? child.material
         : [child.material];
@@ -280,8 +308,19 @@ export function ClassCharacterModel({
       const assignment = Array.isArray(child.material) ? owned : owned[0]!;
       baseByMesh.set(child, assignment);
     });
-    return { baseByMesh, snapshots };
-  }, [cloned]);
+    return { baseByMesh, snapshots, meshBySource };
+  }, [cloned, scene]);
+  const channelTargets = useMemo(
+    () =>
+      materialChannelTreatment
+        ? resolveMaterialChannelTargets({
+            root: scene,
+            treatment: materialChannelTreatment,
+            meshBySource: materialOwnership.meshBySource,
+          })
+        : [],
+    [scene, materialOwnership, materialChannelTreatment]
+  );
 
   // Publish the retained ownership plan only at commit. StrictMode probes
   // useMemo initializers twice; assigning there can bind a discarded plan's
@@ -314,22 +353,49 @@ export function ClassCharacterModel({
         if (base) preparedSources.set(prepared.material, base);
       });
     }
+    const snapshotFor = (material: THREE.Material) =>
+      materialOwnership.snapshots.get(
+        preparedSources.get(material) ?? material
+      );
+    const channelWrites = planMaterialChannelWrites({
+      targets: channelTargets,
+      sourceForMaterial: (material) => {
+        const snapshot = snapshotFor(material);
+        if (
+          !snapshot?.normalScale ||
+          !snapshot.emissive ||
+          snapshot.emissiveIntensity === undefined
+        )
+          throw Error('Material channels: missing owned body baseline.');
+        return {
+          ...materialChannelSource(material),
+          normalScale: [snapshot.normalScale.x, snapshot.normalScale.y],
+          emissive: [
+            snapshot.emissive.r,
+            snapshot.emissive.g,
+            snapshot.emissive.b,
+          ],
+          emissiveIntensity: snapshot.emissiveIntensity,
+        };
+      },
+    });
     const active = new Set<THREE.Material>();
     materialOwnership.baseByMesh.forEach((_base, mesh) => {
       const materials = Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material];
       materials.forEach((material) => {
-        const source = preparedSources.get(material);
-        const snapshot = source
-          ? materialOwnership.snapshots.get(source)
-          : materialOwnership.snapshots.get(material);
+        const snapshot = snapshotFor(material);
         if (snapshot) restoreMaterial(material, snapshot);
         active.add(material);
       });
     });
+    for (const { material, values } of channelWrites) {
+      material.normalScale.set(...values.normalScale);
+      material.emissiveIntensity = values.emissiveIntensity;
+    }
     applyRuntimeEntityMaterialOverlay([...active], overlayRef.current);
-  }, [materialOwnership]);
+  }, [materialOwnership, channelTargets]);
 
   const releaseOutfitMaterials = useCallback(() => {
     for (const entry of preparedOutfitsRef.current) {
