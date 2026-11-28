@@ -123,6 +123,27 @@ function BoundedCompositionModel({
 }
 
 describe('CompositionModel', () => {
+  it('does not silently drop retained channel intent on an unenrolled legacy composition leaf', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const value = withSingleLeaf(0.1);
+    const envelope = JSON.parse(value.json);
+    envelope.scene.items[0].materialChannels = [
+      { targetId: 'body', normal: { mode: 'off' } },
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <BoundedCompositionModel
+        value={create(CompositionSchema, {
+          ...value,
+          json: JSON.stringify(envelope),
+        })}
+        instanceId="channels"
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'composition-error-channels' })
+    ).toHaveLength(1);
+    await renderer.unmount();
+  });
   it('keeps authored leaf transforms relative to one placement root', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <CompositionModel

@@ -6,6 +6,7 @@ import type {
 } from '@/rendering/worldMaterialTypes';
 import { wallFinishFor } from '../../world-building/wallFinishEdits';
 import { WALL_FINISH_SIDES } from '../../world-building/wallFinishTypes';
+import { appearanceChannelFields } from './appearanceChannelFields';
 import {
   appearanceSelectionKey,
   type AppearanceChannelState,
@@ -303,18 +304,26 @@ function worldFields(input: AppearanceSheetInput): AppearanceField[] {
 export function buildAppearanceSheet(
   input: AppearanceSheetInput
 ): AppearanceSheet {
-  const fields =
-    input.selection.kind === 'actor' ? npcFields(input) : worldFields(input);
+  const fields = [
+    ...(input.selection.kind === 'actor'
+      ? npcFields(input)
+      : worldFields(input)),
+    ...appearanceChannelFields(input),
+  ];
   return {
     selectionKey: appearanceSelectionKey(input.selection),
     fields,
     diagnostics: [
       ...new Set(
-        fields.flatMap((field) =>
-          field.kind !== 'channel' && field.unavailable
+        fields.flatMap((field) => {
+          if (field.kind === 'channel-adjustment')
+            return field.value && (field.unavailable || field.invalid)
+              ? [field.unavailable ?? field.invalid!]
+              : [];
+          return field.kind !== 'channel' && field.unavailable
             ? [field.unavailable]
-            : []
-        )
+            : [];
+        })
       ),
     ],
   };

@@ -15,7 +15,8 @@ function choice(
   label: string
 ): string {
   const field = sheet.fields.find((row) => row.kind === kind);
-  if (!field || field.kind === 'channel') throw Error('Missing choice field');
+  if (!field || field.kind === 'channel' || field.kind === 'channel-adjustment')
+    throw Error('Missing choice field');
   const selected = field.choices.find((row) => row.label === label);
   if (!selected) throw Error(`Missing ${label} choice`);
   return selected.value;

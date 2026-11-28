@@ -15,6 +15,7 @@ import type { WorldBuildingCatalogEntry } from './catalog';
 export interface WorldPropModelProps {
   entry: WorldBuildingCatalogEntry;
   materialOverrides?: WorldAssetModelProps['materialOverrides'];
+  materialChannels?: WorldAssetModelProps['materialChannels'];
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
@@ -49,6 +50,7 @@ export interface WorldPropModelProps {
 export function WorldPropModel({
   entry,
   materialOverrides,
+  materialChannels,
   position,
   rotationY,
   heightScale = 1,
@@ -67,6 +69,10 @@ export function WorldPropModel({
   onBoundsMeasured,
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
+  if (materialChannels?.length && entry.source !== 'generated')
+    throw Error(
+      'Material channels require a provider-enrolled generated asset.'
+    );
   if (
     (surfaceSelections?.length ||
       surfacePlans?.length ||
@@ -83,6 +89,7 @@ export function WorldPropModel({
     <WorldAssetModel
       assetRef={entry.ref}
       materialOverrides={materialOverrides}
+      materialChannels={materialChannels}
       plainWallFit={plainWallFit}
       wallOpeningFit={wallOpeningFit}
       surfaceSelections={surfaceSelections}

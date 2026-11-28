@@ -7,6 +7,7 @@ import {
   type PropPresentation,
   type PropSighting,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { materialChannelsFromProto } from './materialChannels';
 
 /** Validate transport integrity, never visibility or collision. */
 export function assertPropPresentation(p: PropPresentation): void {
@@ -16,6 +17,10 @@ export function assertPropPresentation(p: PropPresentation): void {
   copyMaterialOverrides(
     p.materialOverrides ?? [],
     `prop ${p.id}.materialOverrides`
+  );
+  materialChannelsFromProto(
+    p.materialChannels,
+    `prop ${p.id}.materialChannels`
   );
   if (!p.id || !p.ref || !p.origin)
     fail('identity, ref and origin are required');
@@ -108,6 +113,10 @@ export function propPresentationItem(
     throw new Error('Invalid prop render hex size');
   const k = (Math.sqrt(3) * hexSize) / 5;
   const light = p.pointLight;
+  const materialChannels = materialChannelsFromProto(
+    p.materialChannels,
+    `prop ${p.id}.materialChannels`
+  );
   return {
     id: p.id,
     kind: 'prop',
@@ -120,6 +129,7 @@ export function propPresentationItem(
       rotationY: (-p.facingDegrees * Math.PI) / 180,
     },
     heightScale: p.heightScale,
+    ...(materialChannels.length ? { materialChannels } : {}),
     ...(p.materialOverrides?.length
       ? { materialOverrides: copyMaterialOverrides(p.materialOverrides) }
       : {}),

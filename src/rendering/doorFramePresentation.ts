@@ -1,3 +1,6 @@
+import { copyMaterialChannelAdjustments } from './materialChannelAdjustments';
+import type { MaterialChannelAdjustment } from './materialChannelTypes';
+
 export interface WallFrameSpan {
   before: number;
   after: number;
@@ -12,6 +15,7 @@ export interface DoorFrameFaceFinish {
 export interface DoorFramePresentation {
   span: WallFrameSpan;
   faceFinishes: DoorFrameFaceFinish[];
+  materialChannels?: MaterialChannelAdjustment[];
 }
 function object(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -55,6 +59,14 @@ export function copyDoorFramePresentation(
   const seen = new Set<string>();
   return {
     span,
+    ...(row.materialChannels === undefined
+      ? {}
+      : {
+          materialChannels: copyMaterialChannelAdjustments(
+            row.materialChannels,
+            `${path}.materialChannels`
+          ),
+        }),
     faceFinishes: faces.map((value, index) => {
       const at = `${path}.faceFinishes[${index}]`,
         face = object(value, at);

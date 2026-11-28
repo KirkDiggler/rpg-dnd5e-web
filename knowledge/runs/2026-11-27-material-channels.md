@@ -15,6 +15,8 @@ Slice [rpg-project#1192](https://github.com/KirkDiggler/rpg-project/issues/1192)
 
 - 2026-11-28: existing world/NPC material owners now apply verified channel intent, with full local Web gate11855 passed/31 skipped and919 test files passed/1 skipped; controls, captured adapters, actual asset enrollment and browser acceptance remain unfinished — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
 
+- 2026-11-28: shared staged controls, native owner/history plumbing, generated-wire adapters and native/captured prop/NPC/wall/section/frame delivery are implemented; the complete local gate passes11922 tests/31 skipped across932 passed files/1 skipped, while real combined enrollment and browser acceptance remain outstanding — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+
 ## Decided
 
 - Default, Off and explicit positive multiplier remain distinct; native metadata is preserved while captured copies retain known facts only — [approved contract](https://github.com/KirkDiggler/rpg-project/pull/1189).
@@ -27,6 +29,10 @@ Slice [rpg-project#1192](https://github.com/KirkDiggler/rpg-project/issues/1192)
 - Resolve exact identity/hash/selectors on pristine materials, expand only declared fitted-part provenance, and plan all numeric results before channel writes; world clones and stable NPC-owned materials retain their distinct existing lifecycles — [T6](https://github.com/KirkDiggler/rpg-project/blob/design/material-channels/ideas/material-channels/plan.md#task-6-shared-arithmetic-with-existing-material-owners-t6).
 - NPC binding uses pristine-to-owned mesh correspondence because the existing owner splits shared materials per mesh; normal-scale snapshots restore defaults before channels and existing overlays, without a second writer or equipment enrollment — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
 
+- Channel controls use provider ranges and exact representation identity, retain unknown native metadata, and refuse incompatible complete looks or projected ranges before history; reset/repair is explicit and there is no per-side channel mode — [approved contract](https://github.com/KirkDiggler/rpg-project/pull/1189).
+- Project only matching logical ids through declared paired-surface families; unenrolled inserts/trim/leaves remain unchanged, and missing proof of a former projection never authorizes deleting independent captured frame facts — [design R5/R7](https://github.com/KirkDiggler/rpg-project/blob/design/material-channels/ideas/material-channels/design.md#law).
+- NPC adapters resolve current body URLs and standing/downed hashes through the existing NPC authority while retaining the existing body lifecycle; captured/missing roster fields never enroll player customization or guess rules-derived channel targets — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+
 ## Found
 
 - SDKv0.1.293 includes the earlier npcDescriptor rename; adopting it on the old branch exposed six type errors until current dev was normally merged — [upstream Protos#457](https://github.com/KirkDiggler/rpg-api-protos/pull/457).
@@ -35,9 +41,15 @@ Slice [rpg-project#1192](https://github.com/KirkDiggler/rpg-project/issues/1192)
 
 - Actual Three renderer assertions cover signed normals/tint/maps, StrictMode/reset/overlay cycles, two instances, multi-primitive NPC ownership, both activity-adapter branches, different standing/downed selectors, and a fitted base/three repeats/cap sharing one owned material while trim/leaves stay unchanged — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
 
+- Actual owner tests prove one Apply, exact Undo/Redo, Cancel, fresh-provider refusal and detached duplication; native YAML retains Default/Off/1 and metadata, generated-wire/cache tests retain dimensionless values and reject malformed oneofs, and current served-castle regressions pass — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+- Seven existing lint warnings remain in untouched files; the normal gate reports zero lint errors, with no warning suppression, audit rewrite, test skip or timeout change — [slice](https://github.com/KirkDiggler/rpg-project/issues/1192).
+
 ## Mistaken
 
 - The first copier used Array.map, which skips sparse slots; a failing invalid-row test drove Array.from so every entry is validated — [T1 evidence](https://github.com/KirkDiggler/rpg-project/issues/1192).
 - The first writer gate passed11854 tests but failed formatting of generated local plan artifacts; after formatting only those owned files and adding the activity-library case, the full normal gate passed, with no ignore/test/timeout changes — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
 - Unconditional channel catalog loading added a dependency to legacy Original models and broke three surface regressions; a conditional explicit-intent adapter preserves existing behavior instead of weakening fixtures — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
 - NPC test fixtures first confused instance names with JSX props, then omitted the real URL-keyed representation boundary and reused a body clip name in the activity library; corrected the fixtures to the existing owners without changing traversal, duplicate-clip validation or model lifecycle to satisfy them — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+- The Apply gate initially omitted channel-only drafts, so a real provider-range change committed unsupported intent; the failing history test drove inclusion in the existing fresh appearance validation gate — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+- Initial adapters dropped new values, frame wire messages needed explicit oneof decoding, and a composition leaf silently ignored its channel intent; targeted failing tests drove typed forwarding and explicit legacy refusal instead of unadjusted substitutes — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).
+- New fixtures exposed duplicate IDs for a selected closure, a legacy prop without a GLB hash, incorrect memory-prop naming, and V1 messages supplied to V2 constructors; each was corrected to the actual contract without weakening production validation — [Web1503](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1503).

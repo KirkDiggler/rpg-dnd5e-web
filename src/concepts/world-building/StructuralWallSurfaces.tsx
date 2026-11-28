@@ -430,6 +430,7 @@ export function StructuralWallSurfacePieces({
                   <WorldPropModel
                     entry={entry}
                     materialOverrides={wall.appearance.materialOverrides}
+                    materialChannels={wall.appearance.materialChannels}
                     targetHeight={wall.appearance.height}
                     plainWallFit={
                       staticFit?.kind === 'body' ? fitting : undefined
@@ -752,6 +753,7 @@ export function FittedDoorSurface({
       >
         <WorldPropModel
           entry={entry}
+          materialChannels={frame?.materialChannels}
           position={[0, 0, 0]}
           rotationY={0}
           heightScale={1}

@@ -51,6 +51,7 @@ import type {
   AtlasStructuralWall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { FEET_PER_HEX } from './areaFootprintProjection';
+import { materialChannelsFromProto } from './materialChannels';
 import { positionToCube } from './positionBridge';
 
 /** Captured render-only facts; this does not add keys to the authored wall. */
@@ -94,6 +95,28 @@ export function sceneUnitsPerFoot(hexSize: number): number {
     );
   }
   return (Math.sqrt(3) * hexSize) / FEET_PER_HEX;
+}
+
+function frameFromProto(
+  frame: AtlasStructuralDoor['framePresentation'],
+  path: string,
+  scale: number
+): DoorFramePresentation | undefined {
+  if (frame === undefined) return undefined;
+  if (!frame || typeof frame !== 'object')
+    throw Error(`${path}: expected a frame record.`);
+  const materialChannels = materialChannelsFromProto(
+    frame.materialChannels,
+    `${path}.materialChannels`
+  );
+  return copyDoorFramePresentation(
+    {
+      ...frame,
+      materialChannels: materialChannels.length ? materialChannels : undefined,
+    },
+    path,
+    scale
+  );
 }
 
 function reasonOf(error: unknown): string {
@@ -151,6 +174,10 @@ export function structuralWallSurfaceFromAtlas(
     );
   }
   const path = `wall ${wall.id}`;
+  const materialChannels = materialChannelsFromProto(
+    wall.materialChannels,
+    `${path}.materialChannels`
+  );
   const materialOverrides = copyMaterialOverrides(
     wall.materialOverrides ?? [],
     `${path}.materialOverrides`
@@ -229,6 +256,7 @@ export function structuralWallSurfaceFromAtlas(
       thickness,
       elevation,
       ...(materialOverrides.length ? { materialOverrides } : {}),
+      ...(materialChannels.length ? { materialChannels } : {}),
       ...(sections?.length ? { sections } : {}),
     },
     openings,
@@ -260,7 +288,7 @@ export function structuralDoorPoseFromAtlas(
       `structural layout: ${path} endpoints must define a nonzero opening width`
     );
   }
-  const frame = copyDoorFramePresentation(
+  const frame = frameFromProto(
     door.framePresentation,
     `${path}.framePresentation`,
     scale
@@ -343,7 +371,7 @@ export function structuralLayoutRender(
         pose: structuralDoorPoseFromAtlas(door, scale),
         ...(door.framePresentation
           ? {
-              framePresentation: copyDoorFramePresentation(
+              framePresentation: frameFromProto(
                 door.framePresentation,
                 `door ${door.id}.framePresentation`,
                 scale

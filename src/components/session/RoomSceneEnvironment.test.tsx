@@ -1,4 +1,5 @@
 import { type RoomWorkspace } from '@/concepts/world-building/workspaceGeometry';
+import type { MaterialChannelAdjustment } from '@/rendering/materialChannelTypes';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +22,7 @@ const hoisted = vi.hoisted(() => ({
     heightScale: number;
   }>,
   generatedLeafCalls: [] as Array<{
+    materialChannels?: readonly MaterialChannelAdjustment[];
     assetRef: string;
     position: [number, number, number];
     rotationY: number;
@@ -98,17 +100,20 @@ vi.mock('@/components/hex-grid/PropModel', () => ({
 
 vi.mock('@/components/hex-grid/WorldAssetModel', () => ({
   WorldAssetModel: ({
+    materialChannels,
     assetRef,
     position,
     rotationY,
     heightScale,
   }: {
+    materialChannels?: readonly MaterialChannelAdjustment[];
     assetRef: string;
     position: [number, number, number];
     rotationY: number;
     heightScale: number;
   }) => {
     hoisted.generatedLeafCalls.push({
+      ...(materialChannels ? { materialChannels } : {}),
       assetRef,
       position,
       rotationY,
@@ -215,6 +220,24 @@ function nodes(
 }
 
 describe('RoomSceneEnvironment', () => {
+  it('passes captured prop channels through the shared catalog/model adapters', async () => {
+    const captured = structuredClone(presentation);
+    const materialChannels: MaterialChannelAdjustment[] = [
+      {
+        targetId: 'body',
+        normal: { mode: 'scale', multiplier: 1 },
+        emissive: { mode: 'off' },
+      },
+    ];
+    captured.scene.items[2].materialChannels = materialChannels;
+    const renderer = await ReactThreeTestRenderer.create(
+      <RoomSceneEnvironment presentation={captured} />
+    );
+    expect(hoisted.generatedLeafCalls[0].materialChannels).toEqual(
+      materialChannels
+    );
+    await renderer.unmount();
+  });
   it('renders each canonical item exactly once through the shared leaves at the exact source poses', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <RoomSceneEnvironment presentation={presentation} />

@@ -1,5 +1,8 @@
 import { REMEMBERED_SURFACE_TINT } from '@/components/hex-grid/sceneKnowledge';
+import { projectMasonryMaterialChannels } from '@/rendering/materialChannelProjection';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import { useWorldMaterialCatalog } from '@/rendering/useWorldMaterialCatalog';
+import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import {
   partitionFinishInterval,
@@ -11,11 +14,32 @@ import type { WallFogState, WallFogStretch } from './StructuralWallSurfaces';
 import { staticWallFit } from './wallSectionAssets';
 import { WorldPropModel } from './WorldPropModel';
 
+type SectionProps = Omit<
+  React.ComponentProps<typeof SectionPieces>,
+  'channelCatalog'
+>;
+
+function ChannelSectionPieces(props: SectionProps): React.JSX.Element | null {
+  const catalog = useWorldMaterialCatalog();
+  if (catalog.status === 'loading') return null;
+  return <SectionPieces {...props} channelCatalog={catalog.catalog} />;
+}
+
+export function StructuralWallSections(props: SectionProps): React.JSX.Element {
+  return props.wall.appearance.materialChannels?.length &&
+    props.wall.appearance.sections?.length ? (
+    <ChannelSectionPieces {...props} />
+  ) : (
+    <SectionPieces {...props} />
+  );
+}
+
 /** Visual children of the existing wall owner. Each full feature is fitted
  * once per visible fragment, then clipped without stretching its unique part.
  * Neither fragments nor section records are independent scene/wall entities. */
-export function StructuralWallSections({
+function SectionPieces({
   wall,
+  channelCatalog,
   finishSpans,
   fogStretches,
   remembered,
@@ -23,6 +47,7 @@ export function StructuralWallSections({
   onMeasured,
 }: {
   wall: StructuralWallSurface;
+  channelCatalog?: WorldMaterialCatalog | null;
   finishSpans: readonly WallFinishSpan[];
   fogStretches: readonly WallFogStretch[];
   remembered: boolean;
@@ -51,6 +76,26 @@ export function StructuralWallSections({
         const entry = WORLD_BUILDING_CATALOG_BY_REF.get(section.assetRef);
         if (entry?.source !== 'generated')
           throw Error(`Unknown section appearance ${section.assetRef}.`);
+        const source = WORLD_BUILDING_CATALOG_BY_REF.get(
+          wall.appearance.assetRef
+        );
+        if (
+          wall.appearance.materialChannels?.length &&
+          source?.source !== 'generated'
+        )
+          throw Error(
+            'Material channels: section projection needs a verified wall source.'
+          );
+        const materialChannels =
+          wall.appearance.materialChannels?.length &&
+          source?.source === 'generated'
+            ? projectMasonryMaterialChannels({
+                source: source.asset,
+                destination: entry.asset,
+                values: wall.appearance.materialChannels,
+                catalog: channelCatalog ?? null,
+              })
+            : [];
         const kind = staticWallFit(entry)?.kind;
         if (!kind) throw Error(`Section ${section.id} has no static wall fit.`);
         const start = section.position - section.width / 2,
@@ -136,6 +181,9 @@ export function StructuralWallSections({
                 >
                   <WorldPropModel
                     entry={entry}
+                    materialChannels={
+                      materialChannels.length ? materialChannels : undefined
+                    }
                     position={[0, 0, 0]}
                     rotationY={0}
                     heightScale={1}

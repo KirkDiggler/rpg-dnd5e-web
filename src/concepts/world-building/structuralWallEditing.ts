@@ -18,6 +18,7 @@ import {
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { validateMaterialChannels } from './materialChannels';
 import { validateMaterialOverrides } from './materialOverrides';
 import {
   resizeWallEndpoint,
@@ -660,6 +661,14 @@ export function setWallAppearance(
           materialOverrides: validateMaterialOverrides(
             appearance.materialOverrides,
             'wall.appearance.materialOverrides'
+          ),
+        }),
+    ...(appearance.materialChannels === undefined
+      ? {}
+      : {
+          materialChannels: validateMaterialChannels(
+            appearance.materialChannels,
+            'wall.appearance.materialChannels'
           ),
         }),
   };

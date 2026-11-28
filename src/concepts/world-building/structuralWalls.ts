@@ -1,5 +1,6 @@
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { isDoorAsset } from './doorBindingEdits';
+import { validateMaterialChannels } from './materialChannels';
 import { validateMaterialOverrides } from './materialOverrides';
 import type { RoomPropDeclaration } from './roomDraft';
 import { carryUnknownKeys, objectShape } from './strictShape';
@@ -23,6 +24,7 @@ const APPEARANCE_KEYS = [
   'thickness',
   'elevation',
   'materialOverrides',
+  'materialChannels',
   'sections',
 ];
 const BLOCKER_KEYS = ['footprint', 'blocksMovement', 'blocksLineOfSight'];
@@ -60,6 +62,7 @@ export interface StructuralWall extends WallGeometry {
     /** Once-placed visual features; never mechanical openings. */
     sections?: WallSection[];
     materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
+    materialChannels?: import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
     assetRef: string;
     height: number;
     thickness: number;
@@ -200,6 +203,17 @@ export function validateStructuralWalls(input: {
             doorShape.framePresentation,
             `${at}.door.framePresentation`
           );
+          if (framePresentation) {
+            const rawFrame = objectShape(
+              doorShape.framePresentation,
+              `${at}.door.framePresentation`
+            );
+            if (rawFrame.materialChannels !== undefined)
+              framePresentation.materialChannels = validateMaterialChannels(
+                rawFrame.materialChannels,
+                `${at}.door.framePresentation.materialChannels`
+              );
+          }
           const width = numberAt(opening.width, `${at}.width`, true);
           if (
             framePresentation &&
@@ -254,6 +268,14 @@ export function validateStructuralWalls(input: {
               materialOverrides: validateMaterialOverrides(
                 appearance.materialOverrides,
                 `${location}.appearance.materialOverrides`
+              ),
+            }),
+        ...(appearance.materialChannels === undefined
+          ? {}
+          : {
+              materialChannels: validateMaterialChannels(
+                appearance.materialChannels,
+                `${location}.appearance.materialChannels`
               ),
             }),
         height: numberAt(

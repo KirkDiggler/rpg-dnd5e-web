@@ -1,6 +1,7 @@
 import type { RegionPresentation, RegionResolution } from './authoringRegions';
 import { castMemberOf, type CastMember } from './cast';
 import { authoredActorName, setActorName } from './creaturePalette';
+import { validateMaterialChannels } from './materialChannels';
 import { validateMaterialOverrides } from './materialOverrides';
 import { regionsAtCell } from './regionAtCell';
 import { resolveRegions } from './regionBoundaryGeometry';
@@ -10,6 +11,7 @@ import {
   setRoomMonsterAppearance,
   setRoomMonsterDefaultActivity,
   setRoomMonsterFacing,
+  setRoomMonsterMaterialChannels,
   setRoomPartyStart,
   type RoomDraft,
   type RoomHexCell,
@@ -169,6 +171,7 @@ export interface StudioSceneArrangeEdit {
   };
   readonly heightScale?: number;
   readonly materialOverrides?: readonly import('@/rendering/worldMaterialTypes').MaterialOverride[];
+  readonly materialChannels?: readonly import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
 }
 
 export interface StudioWallArrangeEdit {
@@ -191,6 +194,7 @@ export interface StudioWallArrangeEdit {
 
 export interface StudioActorArrangeEdit {
   readonly kind: 'actor-start';
+  readonly materialChannels?: readonly import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
   readonly mapName?: string | null;
   /** Omitted is unchanged; null clears only the authored visual override. */
   readonly appearanceRef?: string | null;
@@ -538,6 +542,20 @@ export function applyStudioSceneArrange(
       ),
     };
   }
+  if (intent.materialChannels !== undefined) {
+    if (roots.length !== 1 || !next.items.some((item) => item.id === roots[0]))
+      throw Error('Select exactly one prop for material channels.');
+    const materialChannels = validateMaterialChannels(
+      intent.materialChannels,
+      'prop.materialChannels'
+    );
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.id === roots[0] ? { ...item, materialChannels } : item
+      ),
+    };
+  }
   return next;
 }
 
@@ -669,6 +687,12 @@ export function applyStudioActorArrange(
       intent.appearanceRef ?? undefined
     );
   }
+  if (intent.materialChannels !== undefined)
+    next = setRoomMonsterMaterialChannels(
+      next,
+      monster.id,
+      intent.materialChannels
+    );
   if (intent.defaultActivityRef !== undefined) {
     next = setRoomMonsterDefaultActivity(
       next,

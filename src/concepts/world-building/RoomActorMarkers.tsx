@@ -154,11 +154,13 @@ function MonsterMarker({
     defaultActivityRef: placement.defaultActivityRef,
   });
   const modelUrl =
-    appearance.kind === 'legacy'
-      ? resolveMonsterModelUrl(refId, undefined, false, placement.id)
-      : appearance.kind === 'resolved'
-        ? appearance.url
-        : undefined;
+    placement.materialChannels?.length && appearance.kind !== 'resolved'
+      ? undefined
+      : appearance.kind === 'legacy'
+        ? resolveMonsterModelUrl(refId, undefined, false, placement.id)
+        : appearance.kind === 'resolved'
+          ? appearance.url
+          : undefined;
   // Authored overrides are weapon-only ordered refs at the room-draft ingress.
   // With no override, no client reconstruction of the rulebook default occurs.
   const mainHand = resolveNpcMainHandPresentation({
@@ -191,11 +193,13 @@ function MonsterMarker({
               <ActorChip
                 tone="error"
                 text={
-                  activityProfile
-                    ? `Activity unavailable: ${placement.defaultActivityRef || activityProfile.defaultActivityRef}`
-                    : placement.appearanceRef
-                      ? `Appearance unavailable: ${placement.appearanceRef}`
-                      : `${label} — model failed`
+                  placement.materialChannels?.length
+                    ? `Material channel appearance unavailable: ${placement.appearanceRef ?? label}`
+                    : activityProfile
+                      ? `Activity unavailable: ${placement.defaultActivityRef || activityProfile.defaultActivityRef}`
+                      : placement.appearanceRef
+                        ? `Appearance unavailable: ${placement.appearanceRef}`
+                        : `${label} — model failed`
                 }
               />
             }
@@ -204,6 +208,8 @@ function MonsterMarker({
                 A plain scene.clone leaves skinned bodies at the source origin. */}
             <ActivityCharacterModel
               url={modelUrl}
+              appearanceRef={placement.appearanceRef}
+              materialChannels={placement.materialChannels}
               profile={activityProfile}
               defaultActivityRef={placement.defaultActivityRef}
               facingRotation={roomMonsterMarkerYaw(
@@ -220,9 +226,11 @@ function MonsterMarker({
         <ActorChip
           tone="unavailable"
           text={
-            appearance.kind === 'unavailable'
-              ? `Appearance unavailable: ${appearance.appearanceRef}`
-              : `${label} — model unavailable`
+            placement.materialChannels?.length
+              ? 'Material channels require a verified NPC appearance.'
+              : appearance.kind === 'unavailable'
+                ? `Appearance unavailable: ${appearance.appearanceRef}`
+                : `${label} — model unavailable`
           }
         />
       )}

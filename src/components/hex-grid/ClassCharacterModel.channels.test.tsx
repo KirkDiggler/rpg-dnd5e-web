@@ -1,6 +1,7 @@
 import { ActivityCharacterModel } from '@/npc-activities/ActivityCharacterModel';
 import type { NpcActivityProfile } from '@/npc-activities/activityTypes';
 import type { MaterialChannelTreatment } from '@/rendering/materialChannelMaterials';
+import type { WorldMaterialCatalogState } from '@/rendering/useWorldMaterialCatalog';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { StrictMode, useMemo } from 'react';
 import * as THREE from 'three';
@@ -11,6 +12,7 @@ const loaded = vi.hoisted(() => ({
   scenes: new Map<string, THREE.Group>(),
   animations: [] as THREE.AnimationClip[],
   activityClips: [] as THREE.AnimationClip[],
+  catalog: null as WorldMaterialCatalogState | null,
 }));
 vi.mock('@react-three/drei', () => ({
   useGLTF: (url: string) => ({
@@ -34,6 +36,22 @@ vi.mock('@react-three/drei', () => ({
       };
     }, [clips, root]),
 }));
+vi.mock('@/rendering/useWorldMaterialCatalog', () => ({
+  useWorldMaterialCatalog: () => loaded.catalog,
+}));
+vi.mock('@/generated/npcAppearanceCatalog', () => ({
+  resolveNpcAppearance: (ref: string) =>
+    ref === 'dnd5e:npcs:test:body'
+      ? {
+          assetRef: ref,
+          standingUrl: '/standing.glb',
+          downedUrl: '/downed.glb',
+          standingSha256: 'a'.repeat(64),
+          downedSha256: 'b'.repeat(64),
+          forwardAxis: '+Z',
+        }
+      : undefined,
+}));
 beforeAll(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -42,6 +60,17 @@ beforeAll(() => {
 let source: THREE.MeshStandardMaterial;
 beforeEach(() => {
   loaded.scenes.clear();
+  loaded.catalog = {
+    status: 'ready',
+    message: 'fixture',
+    catalog: {
+      kind: 'pinned',
+      catalogSha256: 'c'.repeat(64),
+      materials: [],
+      surfaces: [],
+      channelBindings: [treatment().binding!, treatment(true).binding!],
+    },
+  };
   loaded.animations = [new THREE.AnimationClip('Idle_Relaxed', 1, [])];
   loaded.activityClips = [new THREE.AnimationClip('ActivityIdle', 1, [])];
   source = new THREE.MeshStandardMaterial();
@@ -115,6 +144,28 @@ const material = (
   renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>,
   name = 'Body'
 ) => meshOf(renderer, name).material;
+
+it('resolves raw placement intent through the existing NPC identity and catalog without remounting the body', async () => {
+  const render = (channels = treatment().adjustments) => (
+    <ActivityCharacterModel
+      url="/standing.glb"
+      appearanceRef="dnd5e:npcs:test:body"
+      materialChannels={channels}
+    />
+  );
+  const renderer = await ReactThreeTestRenderer.create(render());
+  const body = meshOf(renderer),
+    owned = material(renderer);
+  expect(owned.normalScale.toArray()).toEqual([-0.5, 0.3]);
+  await renderer.update(render([]));
+  expect(meshOf(renderer)).toBe(body);
+  expect(material(renderer)).toBe(owned);
+  expect(owned.normalScale.toArray()).toEqual([-1, 0.6]);
+  await renderer.update(render());
+  expect(material(renderer)).toBe(owned);
+  expect(owned.emissiveIntensity).toBe(6);
+  await renderer.unmount();
+});
 
 it('keeps the NPC material owner stable while restoring channel defaults after overlays', async () => {
   const channels = treatment();
