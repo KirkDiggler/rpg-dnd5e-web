@@ -2,11 +2,16 @@ import {
   ClassCharacterModel,
   type ClassCharacterModelProps,
 } from '@/components/hex-grid/ClassCharacterModel';
+import { resolveNpcMaterialChannelTreatment } from '@/npc-appearances/npcAppearanceModel';
+import type { MaterialChannelAdjustment } from '@/rendering/materialChannelTypes';
+import { useWorldMaterialCatalog } from '@/rendering/useWorldMaterialCatalog';
 import { useGLTF } from '@react-three/drei';
 import type { WalkingReadiness } from './activityPlayback';
 import type { ActivityCueRequest, NpcActivityProfile } from './activityTypes';
 
 type Props = Omit<ClassCharacterModelProps, 'activity'> & {
+  appearanceRef?: string;
+  materialChannels?: readonly MaterialChannelAdjustment[];
   profile?: NpcActivityProfile;
   defaultActivityRef?: string;
   activityCue?: ActivityCueRequest;
@@ -44,6 +49,8 @@ function BoundActivityModel({
 
 /** Library loading stays inside the body's existing suspense/error boundary. */
 export function ActivityCharacterModel({
+  appearanceRef,
+  materialChannels,
   profile,
   defaultActivityRef,
   activityCue,
@@ -52,9 +59,24 @@ export function ActivityCharacterModel({
   onWalkingReadiness,
   ...props
 }: Props) {
+  // Keep this adapter's identity stable as intent changes. The one existing
+  // catalog is read while mounted, not by inserting a new material/body owner.
+  const catalog = useWorldMaterialCatalog();
+  if (materialChannels?.length && catalog.status === 'loading') return null;
+  const materialChannelTreatment =
+    materialChannels === undefined
+      ? props.materialChannelTreatment
+      : resolveNpcMaterialChannelTreatment({
+          appearanceRef,
+          url: props.url,
+          downed: props.isDownedVariant,
+          catalog: catalog.catalog,
+          adjustments: materialChannels,
+        });
+  const model = { ...props, materialChannelTreatment };
   return profile ? (
     <BoundActivityModel
-      {...props}
+      {...model}
       profile={profile}
       defaultActivityRef={defaultActivityRef}
       activityCue={activityCue}
@@ -63,6 +85,6 @@ export function ActivityCharacterModel({
       onWalkingReadiness={onWalkingReadiness}
     />
   ) : (
-    <ClassCharacterModel {...props} />
+    <ClassCharacterModel {...model} />
   );
 }

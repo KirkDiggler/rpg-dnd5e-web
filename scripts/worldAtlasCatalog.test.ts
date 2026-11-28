@@ -64,6 +64,49 @@ describe('shared authored-UV material catalog', () => {
     expect(JSON.stringify(result)).not.toContain(f.root);
   });
 
+  it('reads schema4 channel bindings without discarding the existing atlas/material views', async () => {
+    const f = fixture();
+    const channels = [
+      {
+        assetRef: f.binding.assetRef,
+        representation: 'model',
+        glbSha256: f.binding.glbSha256,
+        targets: [
+          {
+            id: 'body',
+            label: 'Body',
+            selectors: [{ node: 'Body', material: 'Paint' }],
+            normal: { kind: 'absent' },
+            emissive: { kind: 'fixed' },
+          },
+        ],
+      },
+    ];
+    Object.assign(f.document, { schemaVersion: 4, channelBindings: channels });
+    f.save();
+    const result = readWorldMaterialCatalog(f);
+    expect(result.schemaVersion).toBe(4);
+    if (result.schemaVersion !== 4) throw Error('Expected schema4');
+    expect(result.channelBindings).toEqual(channels);
+    const generated = renderWorldMaterialCatalogModule({
+      commit: 'a'.repeat(40),
+      catalog: result,
+    });
+    const js = ts.transpileModule(generated, {
+      compilerOptions: { module: ts.ModuleKind.ESNext },
+    }).outputText;
+    const module = await import(
+      'data:text/javascript;base64,' + Buffer.from(js).toString('base64')
+    );
+    expect(module.GENERATED_WORLD_CHANNEL_BINDINGS).toEqual(channels);
+    expect(result.bindings).toEqual([f.binding]);
+    expect(result.materials.map((row) => row.ref)).toEqual([f.masonry.ref]);
+    expect(result.atlasMaterials.map((row) => row.ref)).toEqual([f.atlas.ref]);
+    Object.assign(f.document, { schemaVersion: 3 });
+    f.save();
+    expect(() => readWorldMaterialCatalog(f)).toThrow(/fields/);
+  });
+
   it('does not discard a valid atlas choice merely because no collection recommends it', () => {
     const f = fixture();
     const uncurated = { ...f.atlas, ref: 'dnd5e:material:test:other_atlas' };
@@ -108,51 +151,139 @@ describe('shared authored-UV material catalog', () => {
     );
   });
 
-  it('stages complete atlas metadata and refuses stale geometry without replacing the prior preview', () => {
-    const f = fixture();
-    const outputRoot = join(f.root, 'world-material-preview'),
-      worldCatalogPath = join(f.root, 'world.json');
-    const bytes = Buffer.from('hash-bound model fixture');
-    const sha = createHash('sha256').update(bytes).digest('hex');
-    const file = 'world-assets/env/test/house_wall_05.glb';
-    mkdirSync(dirname(join(f.modelRoot, file)), { recursive: true });
-    writeFileSync(join(f.modelRoot, file), bytes);
-    f.binding.glbSha256 = sha;
-    f.save();
-    const asset = {
-      ref: f.binding.assetRef,
-      glbSha256: sha,
-      file,
-      sizeBytes: bytes.length,
-    };
-    writeFileSync(
-      worldCatalogPath,
-      JSON.stringify({ schemaVersion: 1, assets: [asset] })
-    );
-    const assets = { [asset.ref]: { ...asset, url: `/models/synty/${file}` } };
-    const input = {
-      ...f,
-      worldCatalogPath,
-      runtimeRoot: f.modelRoot,
-      outputRoot,
-      assets,
-    };
-    stageWorldMaterialPreview(input);
-    const saved = readFileSync(join(outputRoot, 'catalog.json'), 'utf8');
-    const catalog = JSON.parse(saved);
-    expect(catalog.atlas.bindings).toEqual([f.binding]);
-    expect(catalog.atlas.collections).toEqual([f.collection]);
-    expect(catalog.atlas.materials[0].baseColor.url).toBe(
-      `/world-material-preview/images/${f.atlas.baseColor.sha256}.png?v=${f.atlas.baseColor.sha256}`
-    );
-    expect(
-      existsSync(join(outputRoot, 'images', `${f.atlas.baseColor.sha256}.png`))
-    ).toBe(true);
-    f.binding.glbSha256 = 'd'.repeat(64);
-    f.save();
-    expect(() => stageWorldMaterialPreview(input)).toThrow(/geometry|binding/i);
-    expect(readFileSync(join(outputRoot, 'catalog.json'), 'utf8')).toBe(saved);
-  });
+  it.each([3, 4])(
+    'stages schema%s metadata and refuses stale geometry without replacing the prior preview',
+    (version) => {
+      const f = fixture();
+      const outputRoot = join(f.root, 'world-material-preview'),
+        worldCatalogPath = join(f.root, 'world.json');
+      const bytes = Buffer.from('hash-bound model fixture');
+      const sha = createHash('sha256').update(bytes).digest('hex');
+      const file = 'world-assets/env/test/house_wall_05.glb';
+      mkdirSync(dirname(join(f.modelRoot, file)), { recursive: true });
+      writeFileSync(join(f.modelRoot, file), bytes);
+      f.binding.glbSha256 = sha;
+      const channels = [
+        {
+          assetRef: f.binding.assetRef,
+          representation: 'model',
+          glbSha256: sha,
+          targets: [
+            {
+              id: 'body',
+              label: 'Body',
+              selectors: [{ node: 'Body', material: 'Paint' }],
+              normal: { kind: 'fixed' },
+              emissive: { kind: 'absent' },
+            },
+          ],
+        },
+      ];
+      if (version === 4)
+        Object.assign(f.document, {
+          schemaVersion: 4,
+          channelBindings: channels,
+        });
+      f.save();
+      const asset = {
+        ref: f.binding.assetRef,
+        glbSha256: sha,
+        file,
+        sizeBytes: bytes.length,
+      };
+      writeFileSync(
+        worldCatalogPath,
+        JSON.stringify({ schemaVersion: 1, assets: [asset] })
+      );
+      const assets = {
+        [asset.ref]: { ...asset, url: `/models/synty/${file}` },
+      };
+      const input = {
+        ...f,
+        worldCatalogPath,
+        runtimeRoot: f.modelRoot,
+        outputRoot,
+        assets,
+      };
+      stageWorldMaterialPreview(input);
+      const saved = readFileSync(join(outputRoot, 'catalog.json'), 'utf8');
+      const catalog = JSON.parse(saved);
+      if (version === 4) expect(catalog.channelBindings).toEqual(channels);
+      else expect(catalog.channelBindings).toBeUndefined();
+      expect(catalog.atlas.bindings).toEqual([f.binding]);
+      expect(catalog.atlas.collections).toEqual([f.collection]);
+      if (version === 4) {
+        const npcRef = 'dnd5e:npcs:test:body';
+        const standing = Buffer.from('standing model fixture'),
+          downed = Buffer.from('downed model fixture');
+        const standingSha256 = createHash('sha256')
+          .update(standing)
+          .digest('hex');
+        const downedSha256 = createHash('sha256').update(downed).digest('hex');
+        mkdirSync(join(f.modelRoot, 'npcs'), { recursive: true });
+        writeFileSync(join(f.modelRoot, 'npcs/standing.glb'), standing);
+        writeFileSync(join(f.modelRoot, 'npcs/downed.glb'), downed);
+        const npcAssets = {
+          [npcRef]: {
+            standingUrl: '/models/synty/npcs/standing.glb',
+            standingSha256,
+            downedUrl: '/models/synty/npcs/downed.glb',
+            downedSha256,
+          },
+        };
+        Object.assign(f.document, {
+          channelBindings: [
+            ...channels,
+            {
+              ...structuredClone(channels[0]),
+              assetRef: npcRef,
+              representation: 'standing',
+              glbSha256: standingSha256,
+            },
+            {
+              ...structuredClone(channels[0]),
+              assetRef: npcRef,
+              representation: 'downed',
+              glbSha256: downedSha256,
+            },
+          ],
+        });
+        f.save();
+        stageWorldMaterialPreview({ ...input, npcAssets });
+        const preserved = readFileSync(
+          join(outputRoot, 'catalog.json'),
+          'utf8'
+        );
+        expect(JSON.parse(preserved).channelBindings).toHaveLength(3);
+        writeFileSync(join(f.modelRoot, 'npcs/downed.glb'), 'changed');
+        expect(() =>
+          stageWorldMaterialPreview({ ...input, npcAssets })
+        ).toThrow(/channel|geometry/i);
+        expect(readFileSync(join(outputRoot, 'catalog.json'), 'utf8')).toBe(
+          preserved
+        );
+        Object.assign(f.document, { channelBindings: channels });
+        f.save();
+        stageWorldMaterialPreview(input);
+      }
+      expect(catalog.atlas.materials[0].baseColor.url).toBe(
+        `/world-material-preview/images/${f.atlas.baseColor.sha256}.png?v=${f.atlas.baseColor.sha256}`
+      );
+      expect(
+        existsSync(
+          join(outputRoot, 'images', `${f.atlas.baseColor.sha256}.png`)
+        )
+      ).toBe(true);
+      f.binding.glbSha256 = 'd'.repeat(64);
+      f.save();
+      expect(() => stageWorldMaterialPreview(input)).toThrow(
+        /geometry|binding/i
+      );
+      expect(readFileSync(join(outputRoot, 'catalog.json'), 'utf8')).toBe(
+        saved
+      );
+    }
+  );
 
   const malformed: [string, (f: Fixture) => void][] = [
     [

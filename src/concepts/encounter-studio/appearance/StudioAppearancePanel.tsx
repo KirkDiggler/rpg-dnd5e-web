@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import type {
+  AppearanceChannelAdjustmentField,
   AppearanceEdit,
   AppearanceField,
   AppearanceSheet,
 } from './appearanceTypes';
 
-type ChoiceField = Exclude<AppearanceField, { kind: 'channel' }>;
+type ChoiceField = Exclude<
+  AppearanceField,
+  { kind: 'channel' | 'channel-adjustment' }
+>;
 function editFor(field: ChoiceField, value: string): AppearanceEdit {
   if (field.kind === 'atlas-pack')
     return { kind: field.kind, surfaceId: field.surfaceId, value };
@@ -93,6 +97,99 @@ function AppearanceChoiceField({
   );
 }
 
+function ChannelAdjustmentField({
+  field,
+  onChange,
+}: {
+  field: AppearanceChannelAdjustmentField;
+  onChange(edit: AppearanceEdit): void;
+}): React.JSX.Element {
+  const capability = field.capability;
+  const editable = capability?.kind === 'adjustable' && !field.unavailable;
+  const identity = {
+    kind: 'channel-adjustment' as const,
+    targetId: field.targetId,
+    channel: field.channel,
+  };
+  return (
+    <div className="es-appearance-choice">
+      <label className="es-arrange-row">
+        <span>{field.label}</span>
+        {editable ? (
+          <select
+            aria-label={`${field.label} mode`}
+            value={field.value?.mode ?? 'default'}
+            onChange={(event) => {
+              const mode = event.target.value;
+              onChange(
+                mode === 'off' || mode === 'default'
+                  ? { ...identity, mode }
+                  : {
+                      ...identity,
+                      mode: 'scale',
+                      multiplier:
+                        field.value?.mode === 'scale'
+                          ? field.value.multiplier
+                          : 1,
+                    }
+              );
+            }}
+          >
+            <option value="default">Default</option>
+            <option value="off">Off</option>
+            <option value="scale">Strength</option>
+          </select>
+        ) : (
+          <output>
+            {field.unavailable
+              ? 'Unavailable'
+              : capability?.kind === 'fixed'
+                ? 'Fixed by source'
+                : 'No map'}
+          </output>
+        )}
+      </label>
+      {editable &&
+        capability.kind === 'adjustable' &&
+        field.value?.mode === 'scale' && (
+          <label className="es-arrange-row">
+            <span>Relative strength</span>
+            <input
+              type="range"
+              aria-label={`${field.label} strength`}
+              min={capability.minMultiplier}
+              max={capability.maxMultiplier}
+              step="any"
+              value={field.value.multiplier}
+              onChange={(event) =>
+                onChange({
+                  ...identity,
+                  mode: 'scale',
+                  multiplier: Number(event.target.value),
+                })
+              }
+            />
+            <output>{field.value.multiplier}×</output>
+          </label>
+        )}
+      {field.value && (
+        <button
+          type="button"
+          aria-label={`Reset ${field.label}`}
+          onClick={() => onChange({ ...identity, mode: 'default' })}
+        >
+          Original / default
+        </button>
+      )}
+      {(field.unavailable || field.invalid) && (
+        <p role="alert" className="es-help">
+          {field.unavailable ?? field.invalid}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Pure field presentation; it never owns catalogs, document state or commits. */
 export function StudioAppearancePanel({
   sheet,
@@ -111,7 +208,10 @@ export function StudioAppearancePanel({
     (field) => field.kind === 'wall-finish' && field.side === 'both'
   );
   const choices = sheet.fields
-    .filter((field): field is ChoiceField => field.kind !== 'channel')
+    .filter(
+      (field): field is ChoiceField =>
+        field.kind !== 'channel' && field.kind !== 'channel-adjustment'
+    )
     .filter(
       (field) =>
         field.kind !== 'wall-finish' ||
@@ -119,6 +219,9 @@ export function StudioAppearancePanel({
         (separate ? field.side !== 'both' : field.side === 'both')
     );
   const channels = sheet.fields.filter((field) => field.kind === 'channel');
+  const adjustments = sheet.fields.filter(
+    (field) => field.kind === 'channel-adjustment'
+  );
   const names = { color: 'Color', normal: 'Normal', emissive: 'Emissive' };
   return (
     <fieldset className="es-texture-pack" aria-label="Appearance">
@@ -145,9 +248,16 @@ export function StudioAppearancePanel({
           onChange={onChange}
         />
       ))}
-      {channels.length > 0 && (
+      {(channels.length > 0 || adjustments.length > 0) && (
         <details className="es-help" open>
           <summary>Material channels</summary>
+          {adjustments.map((field) => (
+            <ChannelAdjustmentField
+              key={field.id}
+              field={field}
+              onChange={onChange}
+            />
+          ))}
           <dl>
             {channels.map((field) => (
               <div key={field.id}>
@@ -170,8 +280,9 @@ export function StudioAppearancePanel({
             ))}
           </dl>
           <p>
-            Channels shown here are part of the selected look, not independent
-            overrides.
+            {adjustments.length
+              ? 'Strength is relative to the current look. Source maps stay unchanged; emission adds no scene lights.'
+              : 'Channels shown here are part of the selected look, not independent overrides.'}
           </p>
         </details>
       )}

@@ -1,4 +1,9 @@
 import {
+  applyWorldMaterialChannels,
+  resolveMaterialChannelTargets,
+  type MaterialChannelTreatment,
+} from '@/rendering/materialChannelMaterials';
+import {
   cloneRegionLightingMaterial,
   type RegionLightingMaterialBinding,
 } from '@/rendering/regionLightingMaterials';
@@ -26,7 +31,14 @@ export function useRememberedModelTint(
   surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>,
   /** The remembered multiply tint; defaults to `REMEMBERED_TINT`. */
   rememberedTint?: THREE.Color,
-  atlas?: Pick<WorldAtlasMaterialsInput, 'glbSha256' | 'binding' | 'selections'>
+  atlas?: Pick<
+    WorldAtlasMaterialsInput,
+    'glbSha256' | 'binding' | 'selections'
+  >,
+  channels?: {
+    treatment: MaterialChannelTreatment;
+    nodeCopies?: ReadonlyMap<string, readonly string[]>;
+  }
 ): void {
   // Courses created while a previous treatment is mounted can inherit one of
   // its clones. Retain weak provenance, not retired meshes or owned resources.
@@ -41,7 +53,10 @@ export function useRememberedModelTint(
     if (!root) return;
     if (surfaces?.selections.length && !assetRef)
       throw new Error('World surface treatment requires an asset reference.');
-    // One committed material owner: finish first, then memory/lighting. Reverse
+    const channelTargets = channels
+      ? resolveMaterialChannelTargets({ root, ...channels })
+      : [];
+    // One committed material owner: finish, channels, then memory/lighting. Reverse
     // the order on cleanup so StrictMode and selection changes start from the
     // authored source rather than a retired finish or overlay.
     const finish =
@@ -49,13 +64,20 @@ export function useRememberedModelTint(
         ? applyWorldSurfaceMaterials({ root, assetRef, ...surfaces })
         : undefined;
     let atlasFinish: ReturnType<typeof applyWorldAtlasMaterials> | undefined;
+    let channelFinish:
+      | ReturnType<typeof applyWorldMaterialChannels>
+      | undefined;
     try {
       if (atlas) {
         if (!assetRef)
           throw Error('Atlas treatment requires an asset reference.');
         atlasFinish = applyWorldAtlasMaterials({ root, assetRef, ...atlas });
       }
+      if (channelTargets.length)
+        channelFinish = applyWorldMaterialChannels({ targets: channelTargets });
     } catch (error) {
+      channelFinish?.dispose();
+      atlasFinish?.dispose();
       finish?.dispose();
       throw error;
     }
@@ -101,6 +123,7 @@ export function useRememberedModelTint(
         mesh.material = source;
       });
       created.forEach((material) => material.dispose());
+      channelFinish?.dispose();
       atlasFinish?.dispose();
       finish?.dispose();
     };
@@ -137,5 +160,6 @@ export function useRememberedModelTint(
     surfaces,
     rememberedTint,
     atlas,
+    channels,
   ]);
 }

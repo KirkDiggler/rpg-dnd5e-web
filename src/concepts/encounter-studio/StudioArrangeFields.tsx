@@ -49,6 +49,7 @@ export type ArrangeFieldKey =
   | 'finishB';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>> & {
   materialOverrides?: import('@/rendering/worldMaterialTypes').MaterialOverride[];
+  materialChannels?: import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
 };
 export interface ArrangeField {
   key: ArrangeFieldKey;
@@ -367,6 +368,9 @@ export function arrangeIntent(
         ...(draft.materialOverrides !== undefined
           ? { materialOverrides: draft.materialOverrides }
           : {}),
+        ...(draft.materialChannels !== undefined
+          ? { materialChannels: draft.materialChannels }
+          : {}),
         ...(draft.x !== undefined ||
         draft.y !== undefined ||
         draft.z !== undefined
@@ -391,6 +395,8 @@ export function arrangeIntent(
       if (draft.assetRef !== undefined) appearance.assetRef = draft.assetRef;
       if (draft.materialOverrides !== undefined)
         appearance.materialOverrides = draft.materialOverrides;
+      if (draft.materialChannels !== undefined)
+        appearance.materialChannels = draft.materialChannels;
       return {
         kind: 'wall-edit',
         target: selection.target,
@@ -481,6 +487,9 @@ export function arrangeIntent(
       return {
         kind: 'actor-start',
         target: selection.target,
+        ...(draft.materialChannels !== undefined
+          ? { materialChannels: draft.materialChannels }
+          : {}),
         ...(draft.mapName !== undefined
           ? { mapName: draft.mapName.trim() || null }
           : {}),

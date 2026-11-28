@@ -1,14 +1,17 @@
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import {
+  GENERATED_WORLD_CHANNEL_BINDINGS,
   GENERATED_WORLD_MATERIAL_PROVIDER,
   GENERATED_WORLD_MATERIALS,
 } from '@/generated/worldMaterialCatalog';
 import type { DoorFramePresentation } from '@/rendering/doorFramePresentation';
+import { copyMaterialChannelAdjustments } from '@/rendering/materialChannelAdjustments';
 import {
   createPinnedWorldMaterialCatalog,
   type WorldMaterialCatalog,
 } from '@/rendering/worldMaterialCatalog';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { captureFrameMaterialChannels } from './doorFrameMaterialChannels';
 import type { RoomDraft } from './roomDraft';
 import { surfaceRepeatSceneUnits } from './roomWallFinishes';
 import {
@@ -23,6 +26,7 @@ export function pinnedFrameMaterials(): WorldMaterialCatalog | null {
     provider: GENERATED_WORLD_MATERIAL_PROVIDER,
     materials: GENERATED_WORLD_MATERIALS,
     assets: GENERATED_WORLD_ASSETS,
+    channelBindings: GENERATED_WORLD_CHANNEL_BINDINGS,
   });
 }
 /** Refresh affected source-owned frames in the same history transaction. With
@@ -43,16 +47,31 @@ export function captureDoorFramePresentations(
     const openings = wall.openings.map((opening) => {
       if (!opening.door) return opening;
       const old = oldWall?.openings.find((o) => o.id === opening.id);
-      const sourceChanged =
-        !old?.door ||
-        old.door.assetRef !== opening.door.assetRef ||
-        old.position !== opening.position ||
-        old.width !== opening.width ||
+      const channelsChanged =
+        oldWall?.appearance.assetRef !== wall.appearance.assetRef ||
+        JSON.stringify(
+          copyMaterialChannelAdjustments(
+            oldWall?.appearance.materialChannels ?? []
+          )
+        ) !==
+          JSON.stringify(
+            copyMaterialChannelAdjustments(
+              wall.appearance.materialChannels ?? []
+            )
+          );
+      const lookChanged =
+        old?.door?.assetRef !== opening.door.assetRef ||
         WALL_FINISH_SIDES.some(
           (side) =>
             previous?.scene.wallFinishes?.[wall.id]?.[side] !==
             draft.scene.wallFinishes?.[wall.id]?.[side]
         );
+      const sourceChanged =
+        !old?.door ||
+        lookChanged ||
+        channelsChanged ||
+        old.position !== opening.position ||
+        old.width !== opening.width;
       if (
         (previous && !sourceChanged) ||
         ((!previous || !old?.door) && opening.door.framePresentation)
@@ -62,6 +81,15 @@ export function captureDoorFramePresentations(
       const profile =
         entry?.source === 'generated' ? entry.asset.wallOpening : undefined;
       if (!profile) {
+        if (
+          (
+            opening.door.framePresentation?.materialChannels ??
+            old?.door?.framePresentation?.materialChannels
+          )?.length
+        )
+          throw Error(
+            'Cannot drop captured frame material channels for an unavailable replacement; reset them explicitly first.'
+          );
         if (!opening.door.framePresentation) return opening;
         if (old?.door?.assetRef === opening.door.assetRef)
           throw Error('Cannot recapture an unavailable doorway frame profile.');
@@ -133,6 +161,19 @@ export function captureDoorFramePresentations(
           phaseU: ((phase % 1) + 1) % 1,
         });
       }
+      const materialChannels = captureFrameMaterialChannels({
+        wall,
+        previousWall: oldWall,
+        door: opening.door,
+        previousDoor: old?.door,
+        asset: entry.asset,
+        catalog,
+        channelsChanged,
+        lookChanged,
+        faceFinishes: framePresentation.faceFinishes,
+      });
+      if (materialChannels.length)
+        framePresentation.materialChannels = materialChannels;
       wallChanged = true;
       return { ...opening, door: { ...opening.door, framePresentation } };
     });

@@ -23,6 +23,7 @@ import {
   type CreatureStates,
 } from './creatureStates';
 import { loadDungeonSource, saveDungeonSource } from './dungeonSources';
+import { validateMaterialChannels } from './materialChannels';
 import { requirementPath, requirementsOf, requiresRead } from './predicateNot';
 import {
   pruneRegionGround,
@@ -86,6 +87,7 @@ export interface RoomMonsterPlacement {
   ref: string;
   /** Optional visual identity; never a rules/template ref or faction choice. */
   appearanceRef?: string;
+  materialChannels?: import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
   /** Optional authored presentation default, never a current phase or rule. */
   defaultActivityRef?: string;
   /** WHERE IT STARTS, and which way it is looking (rpg-project#501 §6.1).
@@ -743,6 +745,34 @@ function requireAppearanceRef(value: unknown, path: string): string {
   return value;
 }
 
+/** Change only placement-owned visual intent, validating and detaching every row. */
+export function setRoomMonsterMaterialChannels(
+  draft: RoomDraft,
+  id: string,
+  values: readonly import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[]
+): RoomDraft {
+  const monster = draft.room.monsterDeclarations.find((item) => item.id === id);
+  if (!monster) throw Error('Material channel target no longer exists.');
+  const materialChannels = validateMaterialChannels(
+    values,
+    `Monster ${id} materialChannels`
+  );
+  if (
+    JSON.stringify(monster.materialChannels) ===
+    JSON.stringify(materialChannels)
+  )
+    return draft;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((item) =>
+        item.id === id ? { ...item, materialChannels } : item
+      ),
+    },
+  };
+}
+
 /** Set or clear one actor's look without changing its rules, bindings or start. */
 export function setRoomMonsterAppearance(
   draft: RoomDraft,
@@ -1097,6 +1127,7 @@ const MONSTER_KEYS = [
   'ref',
   'startingCell',
   'appearanceRef',
+  'materialChannels',
   'defaultActivityRef',
 ] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
@@ -1171,6 +1202,11 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id} defaultActivityRef`
       );
     }
+    if (source.materialChannels !== undefined)
+      monster.materialChannels = validateMaterialChannels(
+        source.materialChannels,
+        `Monster ${source.id} materialChannels`
+      );
     monsters.push(carryUnknownKeys(source, MONSTER_KEYS, monster));
   }
   return monsters;

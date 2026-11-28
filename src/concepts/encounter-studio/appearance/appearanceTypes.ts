@@ -1,5 +1,9 @@
 import type { GeneratedWorldAsset } from '@/generated/worldAssetCatalog';
 import type { NpcAppearanceFamily } from '@/npc-appearances/npcAppearanceChoices';
+import type {
+  ChannelAdjustment,
+  ChannelCapability,
+} from '@/rendering/materialChannelTypes';
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import type { WorldSurfaceImage } from '@/rendering/worldMaterialTypes';
 import type { StudioArrangeSelection } from '../../world-building/studioArrange';
@@ -28,7 +32,19 @@ export type AppearanceChannelState =
   | { readonly kind: 'no-map' }
   | { readonly kind: 'complete-look' }
   | { readonly kind: 'unavailable'; readonly reason: string };
+export interface AppearanceChannelAdjustmentField {
+  readonly kind: 'channel-adjustment';
+  readonly id: string;
+  readonly label: string;
+  readonly targetId: string;
+  readonly channel: 'normal' | 'emissive';
+  readonly capability?: ChannelCapability;
+  readonly value?: ChannelAdjustment;
+  readonly unavailable?: string;
+  readonly invalid?: string;
+}
 export type AppearanceField =
+  | AppearanceChannelAdjustmentField
   | (ChoiceField & {
       readonly kind: 'npc-family' | 'npc-style' | 'npc-skin' | 'asset';
     })
@@ -46,6 +62,15 @@ export type AppearanceField =
       readonly state: AppearanceChannelState;
     };
 export type AppearanceEdit =
+  | ({
+      readonly kind: 'channel-adjustment';
+      readonly targetId: string;
+      readonly channel: 'normal' | 'emissive';
+    } & (
+      | { readonly mode: 'default' }
+      | { readonly mode: 'off' }
+      | { readonly mode: 'scale'; readonly multiplier: number }
+    ))
   | {
       readonly kind: 'npc-family' | 'npc-style' | 'npc-skin' | 'asset';
       readonly value: string;

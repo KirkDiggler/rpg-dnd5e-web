@@ -213,3 +213,106 @@ export function parseWorldAtlasMetadata({
   });
   return { collections: parsedCollections, bindings: parsedBindings };
 }
+
+function channelCapability(value, path) {
+  if (!value || !['absent', 'fixed', 'adjustable'].includes(value.kind))
+    fail(`${path} has an invalid kind`);
+  if (value.kind !== 'adjustable') {
+    keys(value, ['kind'], path);
+    return { kind: value.kind };
+  }
+  keys(value, ['kind', 'minMultiplier', 'maxMultiplier'], path);
+  const { minMultiplier, maxMultiplier } = value;
+  if (
+    !Number.isFinite(minMultiplier) ||
+    !Number.isFinite(maxMultiplier) ||
+    minMultiplier <= 0 ||
+    minMultiplier > 1 ||
+    maxMultiplier < 1
+  )
+    fail(`${path} has an invalid interval`);
+  return { kind: 'adjustable', minMultiplier, maxMultiplier };
+}
+
+/** Schema4 channel declarations only; source bytes/basis remain provider and
+ * exact-model adapter checks. Returns detached known facts, never source paths.
+ * @param {unknown} value
+ * @returns {import('./materialChannelTypes').MaterialChannelBinding[]}
+ */
+export function parseMaterialChannelBindings(value) {
+  if (!Array.isArray(value)) fail('channelBindings must be an array');
+  const identities = new Set(),
+    logical = new Map();
+  return Array.from(value, (row, index) => {
+    const at = `channelBindings[${index}]`;
+    keys(row, ['assetRef', 'representation', 'glbSha256', 'targets'], at);
+    const assetRef = pattern(
+      row.assetRef,
+      /^dnd5e:(?:(?:props|env):[a-z0-9-]+:[a-z0-9_]+|npcs:[a-z0-9][a-z0-9:-]*)$/,
+      `${at}.assetRef`
+    );
+    if (!['model', 'standing', 'downed'].includes(row.representation))
+      fail(`${at} has an invalid representation`);
+    const glbSha256 = pattern(row.glbSha256, SHA, `${at}.glbSha256`);
+    const identity = JSON.stringify([assetRef, row.representation]);
+    if (identities.has(identity)) fail(`${at} has a duplicate representation`);
+    identities.add(identity);
+    const ids = new Set(),
+      selectors = new Set();
+    const targets = Array.from(
+      rows(row.targets, `${at}.targets`),
+      (target, ti) => {
+        const path = `${at}.targets[${ti}]`;
+        keys(target, ['id', 'label', 'selectors', 'normal', 'emissive'], path);
+        const id = pattern(target.id, NAME, `${path}.id`);
+        if (ids.has(id)) fail(`${path} has a duplicate target`);
+        ids.add(id);
+        if (
+          typeof target.label !== 'string' ||
+          !target.label.trim() ||
+          target.label !== target.label.trim() ||
+          /[\p{C}\p{Zl}\p{Zp}]/u.test(target.label)
+        )
+          fail(`${path} has an invalid label`);
+        const selected = Array.from(
+          rows(target.selectors, `${path}.selectors`),
+          (selector, si) => {
+            const where = `${path}.selectors[${si}]`;
+            keys(selector, ['node', 'material'], where);
+            const node = pattern(selector.node, NAME, `${where}.node`);
+            const material = pattern(
+              selector.material,
+              NAME,
+              `${where}.material`
+            );
+            const key = JSON.stringify([node, material]);
+            if (selectors.has(key)) fail(`${where} has a duplicate selector`);
+            selectors.add(key);
+            return { node, material };
+          }
+        );
+        return {
+          id,
+          label: target.label,
+          selectors: selected,
+          normal: channelCapability(target.normal, `${path}.normal`),
+          emissive: channelCapability(target.emissive, `${path}.emissive`),
+        };
+      }
+    );
+    const signature = JSON.stringify(
+      targets
+        .map(({ id, label, normal, emissive }) => ({
+          id,
+          label,
+          normal,
+          emissive,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id))
+    );
+    if (logical.has(assetRef) && logical.get(assetRef) !== signature)
+      fail(`${at} logical targets differ across representations`);
+    logical.set(assetRef, signature);
+    return { assetRef, representation: row.representation, glbSha256, targets };
+  });
+}

@@ -178,6 +178,7 @@ export function RoomSceneItem({
           <WorldPropModel
             entry={entry}
             materialOverrides={item.materialOverrides}
+            materialChannels={item.materialChannels}
             position={position}
             rotationY={item.transform.rotationY}
             heightScale={item.heightScale}

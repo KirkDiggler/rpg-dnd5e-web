@@ -174,6 +174,38 @@ owner edit. Unknown/stale selections remain errors, never guessed Original.
 Absent metadata preserves the legacy choice list; rendering and native/captured
 records continue to resolve their exact compatible references.
 
+## Verified material channel adjustments
+
+Props, wall appearances and NPC placements may carry typed `materialChannels`
+rows: an opaque provider target id, with optional normal/emissive adjustments.
+Absence follows the effective look's default; Off is explicit, and Scale carries
+an explicit finite positive relative multiplier. One is not normalized to default.
+Native row/channel metadata remains owned by the native codec; captured values
+contain only known facts.
+
+The shared Appearance panel stages these controls with the existing owner form.
+Apply validates current capabilities, representation hashes, complete-look changes
+and compatible projected scopes before history changes. Reset removes only its
+selected channel and then empty rows. Missing, fixed and adjustable capabilities
+are distinct; source-default-zero emission cannot be activated by these controls.
+Unknown or stale intent remains visible and permits explicit reset/repair.
+
+Wall-body projection requires matching logical target ids and declared compatible
+paired-surface families. It does not address trim, moving leaves or unenrolled
+inserted scopes, and introduces no per-side channel mode or independent section
+editor. Fixed-frame values are captured independently with the door presentation.
+Unchanged supplied captures remain intact; missing prior projection proof never
+permits erasing unrelated independent facts or inventing a parent association.
+
+Rendering applies channel values after fitting/complete-look selection and before
+existing memory/lighting overlays. World instances own their clones; NPC bodies
+retain their stable material owner and immutable default snapshots. Normal signs,
+emissive tint, texture maps and geometry remain unchanged except for the requested
+contribution. Source caches are never mutated. Captured props/members use observed
+values, not current source-file enrichment. Unsupported intent is diagnosed and
+refused, not presented as a substituted default. These controls add no lights,
+bloom, player equipment enrollment or gameplay authority.
+
 ## Original maps and height adapters
 
 A repeat-above assembly does not stretch the fixed region's Original UVs.

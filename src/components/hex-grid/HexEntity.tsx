@@ -126,6 +126,7 @@ export interface HexEntityProps {
   monsterRefId?: string;
   /** Observer-captured visual override, independent of the monster rules ref. */
   appearanceRef?: string;
+  materialChannels?: readonly import('@/rendering/materialChannelTypes').MaterialChannelAdjustment[];
   defaultActivityRef?: string;
   activityCue?: ActivityCueRequest;
   onActivityCueConsumed?: (member: string, id: string) => void;
@@ -413,6 +414,7 @@ export function HexEntity({
   monster,
   monsterRefId,
   appearanceRef,
+  materialChannels,
   defaultActivityRef,
   activityCue,
   onActivityCueConsumed,
@@ -704,8 +706,10 @@ export function HexEntity({
       downed: isDead,
     });
     const hasExplicitAppearance = appearance.kind !== 'legacy';
+    const hasChannelIntent = type === 'monster' && !!materialChannels?.length;
     const monsterModelUrl =
-      type === 'monster'
+      type === 'monster' &&
+      (!hasChannelIntent || appearance.kind === 'resolved')
         ? appearance.kind === 'legacy'
           ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
           : appearance.kind === 'resolved'
@@ -819,26 +823,31 @@ export function HexEntity({
       />
     );
 
-    const modelFallback =
-      activityUnavailable || activityProfile ? (
-        <NpcActivityUnavailable
-          activityRef={
-            (unsupportedNpcDefault({
-              profile: activityProfile,
-              defaultActivityRef,
-            })
-              ? defaultActivityRef
-              : activityCue?.activityRef) ||
-            defaultActivityRef ||
-            activityProfile?.defaultActivityRef ||
-            'unspecified'
-          }
-        />
-      ) : hasExplicitAppearance ? (
-        <NpcAppearanceUnavailable appearanceRef={appearanceRef!} />
-      ) : (
-        mediumHumanoidElement
-      );
+    const modelFallback = hasChannelIntent ? (
+      <NpcAppearanceUnavailable
+        appearanceRef={
+          appearanceRef || 'material channels require a verified NPC appearance'
+        }
+      />
+    ) : activityUnavailable || activityProfile ? (
+      <NpcActivityUnavailable
+        activityRef={
+          (unsupportedNpcDefault({
+            profile: activityProfile,
+            defaultActivityRef,
+          })
+            ? defaultActivityRef
+            : activityCue?.activityRef) ||
+          defaultActivityRef ||
+          activityProfile?.defaultActivityRef ||
+          'unspecified'
+        }
+      />
+    ) : hasExplicitAppearance ? (
+      <NpcAppearanceUnavailable appearanceRef={appearanceRef!} />
+    ) : (
+      mediumHumanoidElement
+    );
 
     // rpg-dnd5e-web#542: this group's position is owned entirely by
     // useHexMovePath (via movingGroupRef) — no declarative `position` prop
@@ -935,6 +944,12 @@ export function HexEntity({
                 >
                   <ActivityCharacterModel
                     url={effectiveModelUrl}
+                    appearanceRef={
+                      type === 'monster' ? appearanceRef : undefined
+                    }
+                    materialChannels={
+                      type === 'monster' ? materialChannels : undefined
+                    }
                     profile={activityProfile}
                     defaultActivityRef={defaultActivityRef}
                     activityCue={remembered || isDead ? undefined : activityCue}

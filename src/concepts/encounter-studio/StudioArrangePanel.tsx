@@ -327,6 +327,7 @@ function SelectedArrange({
                 'appearanceRef',
                 'assetRef',
                 'materialOverrides',
+                'materialChannels',
                 'finishA',
                 'finishB',
               ].some((key) => Object.hasOwn(draft, key));

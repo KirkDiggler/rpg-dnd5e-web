@@ -81,6 +81,7 @@ export function CompositionModel({
         <group key={item.id} name={`composition-leaf-${item.id}`}>
           <WorldPropModel
             entry={entry}
+            materialChannels={item.materialChannels}
             position={[item.transform.x, item.transform.y, item.transform.z]}
             rotationY={item.transform.rotationY}
             heightScale={item.heightScale}

@@ -8,3 +8,8 @@ export function parseWorldAtlasMetadata(input: {
   atlasFamilies: Set<string>;
   atlasMaterialFamilies?: ReadonlyMap<string, string>;
 }): Pick<WorldAtlasCatalog, 'collections' | 'bindings'>;
+
+/** Detached schema4 channel metadata; never a claim about loaded geometry. */
+export function parseMaterialChannelBindings(
+  value: unknown
+): import('./materialChannelTypes').MaterialChannelBinding[];

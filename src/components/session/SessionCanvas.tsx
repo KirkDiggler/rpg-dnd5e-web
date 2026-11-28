@@ -105,6 +105,7 @@ import { CreatureVerbMenu } from './CreatureVerbMenu';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
 import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
+import { materialChannelsFromProto } from './materialChannels';
 import { facingWhileWalking, type Movements } from './moveController';
 import type { HoverAct } from './moveIndicator';
 import { MoveIndicator } from './MoveIndicator.tsx';
@@ -1187,6 +1188,14 @@ export function SessionScene({
           appearanceRef={
             member.kind === MemberKind.MONSTER
               ? roster?.get(member.subject)?.appearanceRef || undefined
+              : undefined
+          }
+          materialChannels={
+            member.kind === MemberKind.MONSTER
+              ? materialChannelsFromProto(
+                  roster?.get(member.subject)?.materialChannels,
+                  `member ${member.subject}.materialChannels`
+                )
               : undefined
           }
           activityCue={activityCues?.get(member.subject)}

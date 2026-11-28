@@ -1,4 +1,5 @@
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
+import type { MaterialChannelBinding } from '@/rendering/materialChannelTypes';
 import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ async function mountCatalog() {
 const pinned = vi.hoisted(() => ({
   provider: { commit: 'c'.repeat(40), catalogSha256: null as string | null },
   materials: [] as WorldSurfaceMaterial[],
+  channels: [] as MaterialChannelBinding[],
 }));
 vi.mock('@/generated/worldMaterialCatalog', () => ({
   GENERATED_WORLD_MATERIAL_PROVIDER: pinned.provider,
@@ -20,6 +22,7 @@ vi.mock('@/generated/worldMaterialCatalog', () => ({
   GENERATED_WORLD_ATLAS_MATERIALS: [],
   GENERATED_WORLD_MATERIAL_COLLECTIONS: [],
   GENERATED_WORLD_ATLAS_BINDINGS: [],
+  GENERATED_WORLD_CHANNEL_BINDINGS: pinned.channels,
 }));
 const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const image = {
@@ -69,8 +72,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
   pinned.provider.catalogSha256 = null;
   pinned.materials.length = 0;
+  pinned.channels.length = 0;
 });
 describe('explicit development material catalog loader', () => {
+  it('exposes generated channel metadata without replacing the existing provider authority', async () => {
+    vi.stubEnv('MODE', 'production');
+    pinned.provider.catalogSha256 = 'd'.repeat(64);
+    pinned.channels.push({
+      assetRef: ref,
+      representation: 'model',
+      glbSha256: GENERATED_WORLD_ASSETS[ref].glbSha256,
+      targets: [
+        {
+          id: 'masonry',
+          label: 'Masonry',
+          selectors: [{ node: 'WallBody_v1', material: 'Masonry_Front' }],
+          normal: { kind: 'adjustable', minMultiplier: 0.5, maxMultiplier: 2 },
+          emissive: { kind: 'absent' },
+        },
+      ],
+    });
+    const { result } = await mountCatalog();
+    expect(result.current.catalog?.channelBindings).toEqual(pinned.channels);
+    expect(result.current.catalog?.providerCommit).toBe(pinned.provider.commit);
+  });
   it('uses pinned material records in production and joins only declared faces without fetching', async () => {
     vi.stubEnv('MODE', 'production');
     vi.stubEnv('VITE_WORLD_MATERIAL_PREVIEW', '0');

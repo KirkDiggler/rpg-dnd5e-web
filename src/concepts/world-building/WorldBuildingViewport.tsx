@@ -338,6 +338,7 @@ export function WorldPropVisual({
             <WorldPropModel
               entry={entry}
               materialOverrides={item.materialOverrides}
+              materialChannels={item.materialChannels}
               visualLighting={visualLighting}
               position={position}
               rotationY={item.transform.rotationY}
